@@ -1,0 +1,77 @@
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  relative-path-mode: cfg
+
+linters:
+  default: standard
+  enable:
+    - staticcheck   # Equivalent to: staticcheck -checks all ./...
+    - revive        # Equivalent to: revive -formatter friendly -exclude ./vendor/... ./...
+    - gosec         # Equivalent to: gosec -fmt=golint -quiet ./...
+    - nakedret      # Equivalent to: nakedret ./...
+    - misspell      # Pairs with identypo / cspell for identifier & comment typos
+    - dupword       # Catches accidental duplicate words
+    - gocritic      # Deep Go code smell & performance diagnostics
+    - errorlint     # Enforces Go 1.13+ error wrapping (%w, errors.Is/As)
+    - bodyclose     # Checks HTTP response bodies are closed
+    - noctx         # Finds HTTP requests sent without context.Context
+    - exhaustive    # Enforces exhaustiveness on enum switch statements
+    - unconvert     # Removes unnecessary type conversions
+
+  settings:
+    staticcheck:
+      checks:
+        - all
+    nakedret:
+      max-func-lines: 0
+    misspell:
+      locale: US
+    revive:
+      enable-all-rules: false
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: exported
+        - name: identical-branches
+        - name: if-return
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: Early-return
+          disabled: true
+        - name: package-comments
+          disabled: true
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+    gosec:
+      excludes: []
+
+  exclusions:
+    generated: lax
+    paths:
+      - vendor
+      - node_modules
+      - .next
+      - out
+      - docs/design/figma-make-reference
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

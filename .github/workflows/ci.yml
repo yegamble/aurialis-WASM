@@ -48,11 +48,16 @@ jobs:
 
       - name: Smoke-test Stop hook (Claude Code & Gemini Argon payloads)
         run: |
-          echo '{"stop_hook_active": true}' | python3 .claude/hooks/scrutinise.py
-          OUT_CLAUDE=$(echo '{"stop_hook_active": false, "last_assistant_message": "Still working on slice."}' | python3 .claude/hooks/scrutinise.py)
-          echo "$OUT_CLAUDE" | grep -q '"decision": "block"'
-          OUT_AGY=$(echo '{"hook_event_name": "Stop", "response": "Still working on slice."}' | python3 .claude/hooks/scrutinise.py)
-          echo "$OUT_AGY" | grep -q '"decision": "block"'
+          rm -rf .claude/hooks/.state
+          OUT_CLAUDE_1=$(echo '{"hook_event_name": "Stop", "session_id": "ci-1"}' | python3 .claude/hooks/scrutinise.py)
+          echo "$OUT_CLAUDE_1" | grep -q '"decision": "block"'
+          OUT_CLAUDE_2=$(echo '{"hook_event_name": "Stop", "session_id": "ci-1"}' | python3 .claude/hooks/scrutinise.py)
+          test -z "$OUT_CLAUDE_2"
+          OUT_AGY_1=$(echo '{"terminationReason": "NO_TOOL_CALL", "conversationId": "ci-2"}' | python3 .claude/hooks/scrutinise.py)
+          echo "$OUT_AGY_1" | grep -q '"decision": "continue"'
+          OUT_AGY_2=$(echo '{"terminationReason": "NO_TOOL_CALL", "conversationId": "ci-2"}' | python3 .claude/hooks/scrutinise.py)
+          echo "$OUT_AGY_2" | grep -q '"decision": "allow"'
+          rm -rf .claude/hooks/.state
 
       - name: Validate GitHub Actions workflows with actionlint
         run: |

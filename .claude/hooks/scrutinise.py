@@ -31,26 +31,36 @@ REMINDER_TEXT = (
 )
 
 
-def check_antigravity_stop(payload: dict) -> dict | None:
-    """Handle Antigravity / Gemini Argon camelCase Stop hook contract."""
-    term_reason = payload.get("terminationReason", "")
-    if term_reason != "NO_TOOL_CALL":
-        return {}
-    conv_id = str(payload.get("conversationId", "default"))
+def should_remind_once(session_key: str) -> bool:
+    """Return True on the first Stop for session_key, False on the second (and reset)."""
     state_dir = os.path.join(os.path.dirname(__file__), ".state")
-    os.makedirs(state_dir, exist_ok=True)
-    key = hashlib.sha256(f"agy:{conv_id}".encode()).hexdigest()[:16]
+    try:
+        os.makedirs(state_dir, exist_ok=True)
+    except OSError:
+        return False
+    key = hashlib.sha256(session_key.encode("utf-8")).hexdigest()[:16]
     marker = os.path.join(state_dir, f"{key}.reminded")
     if os.path.exists(marker):
         try:
             os.remove(marker)
         except OSError:
             pass
-        return {"decision": "allow"}
+        return False
     try:
         with open(marker, "w", encoding="utf-8") as f:
             f.write("1\n")
     except OSError:
+        return False
+    return True
+
+
+def check_antigravity_stop(payload: dict) -> dict | None:
+    """Handle Antigravity / Gemini Argon camelCase Stop hook contract."""
+    term_reason = payload.get("terminationReason", "")
+    if term_reason != "NO_TOOL_CALL":
+        return {}
+    conv_id = str(payload.get("conversationId") or payload.get("session_id") or "default")
+    if not should_remind_once(f"agy:{conv_id}"):
         return {"decision": "allow"}
     return {
         "decision": "continue",
@@ -59,10 +69,18 @@ def check_antigravity_stop(payload: dict) -> dict | None:
 
 
 def check_claude_stop(payload: dict) -> dict | None:
-    """Handle Claude Code snake_case Stop / SubagentStop hook contract."""
+    """Handle Claude Code / Antigravity snake_case Stop / SubagentStop hook contract."""
     if payload.get("hook_event_name") not in ("Stop", "SubagentStop"):
         return None
     if payload.get("stop_hook_active") is True:
+        return None
+    session_id = str(
+        payload.get("session_id")
+        or payload.get("conversation_id")
+        or payload.get("transcript_path")
+        or "default"
+    )
+    if not should_remind_once(f"claude:{session_id}"):
         return None
     return {
         "decision": "block",

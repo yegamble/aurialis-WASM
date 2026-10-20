@@ -28,7 +28,7 @@ You are the **Chair of the Aurialis-WASM War Room**, running the pessimistic com
 2. **War Room Council (Rounds 0–D)**:
    - If fewer than 3 ready `P0`/`P1` items exist for the scope (or after completing a fix wave), run a `/war-room` sweep on the scope to surface and rule on all gaps.
 3. **Implementation Wave (Isolated Worktrees + Small Atomic Commits)**:
-   - Dispatch up to 3 non-overlapping `P0`/`P1` items to the owning engineers (`aurialis-backend`, `aurialis-frontend`, `aurialis-designer`, `aurialis-security`, `aurialis-qa`):
+   - Dispatch up to 3 non-overlapping `P0`/`P1` items to the owning engineers (`aurialis-backend`, `aurialis-dsp-plugin-engineer`, `aurialis-audio-engineer`, `aurialis-grammy-veteran`, `aurialis-frontend`, `aurialis-designer`, `aurialis-security`, `aurialis-qa`):
      - **Gemini Argon (Antigravity)**: `define_subagent` with `EnableWriteTools: true`, then `invoke_subagent` with `Workspace: "share"` (or `"branch"` / `"inherit"` for non-overlapping files).
      - **Claude Code**: `isolation: "worktree"`.
      - **OpenAI Codex**: Parallel subagent worktrees.

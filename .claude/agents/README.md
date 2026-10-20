@@ -1,6 +1,6 @@
 # The Aurialis-WASM War Room
 
-Eight specialist agents that scrutinize, secure, design, build, break-test, document, and ship **Aurialis-WASM** — our single-binary **Go 1.26 + Next.js 16 + WebAssembly (WASM)** audio mastering workstation — across **Gemini Argon (Antigravity / Gemini CLI)**, **Claude Code**, and **OpenAI Codex**.
+Eleven specialist agents that scrutinize, engineer, digitize analog hardware, listening-test, secure, design, build, break-test, document, and ship **Aurialis-WASM** — our single-binary **Go 1.26 + Next.js 16 + WebAssembly (WASM)** audio mastering workstation — across **Gemini Argon (Antigravity / Gemini CLI)**, **Claude Code**, and **OpenAI Codex**.
 
 Adapted from the `opsecmkt` (`~/github/opsecmkt/.claude/agents`) and `vidra` (`~/github/vidra/.claude/agents`) war rooms for an in-house Go + Next.js + WASM audio & AI/LLM mastering stack.
 
@@ -31,8 +31,11 @@ Adapted from the `opsecmkt` (`~/github/opsecmkt/.claude/agents`) and `vidra` (`~
 | [`aurialis-backend`](aurialis-backend.md) | **Backend Engineer** (Go, TypeScript, WASM, Concurrency & Audio Infrastructure) | Does the single Go binary + WASM bridge process audio and AI mastering accurately, reuse testable packages, and stay fast and race-free when multiple jobs run concurrently? |
 | [`aurialis-frontend`](aurialis-frontend.md) | **Senior Frontend Engineer** (Next.js 16, TypeScript, Tailwind CSS v4, Custom Inline SVGs, Mobile-First & Component Reuse) | Is the UI built mobile-first from reusable Tailwind CSS v4 primitives and custom inline SVGs with zero icon libraries, ultra-low bundle weight, and zero test bloat? |
 | [`aurialis-designer`](aurialis-designer.md) | **UI/UX Designer** (WCAG 2.2 AA Accessibility, Interactive States, HCL/OKLCH Color, Mobile-First & Figma Skills) | Is every surface measurably accessible, mobile-first (`320px–1440px+`), perceptually balanced in HCL/OKLCH, and specified across all interactive states? |
+| [`aurialis-audio-engineer`](aurialis-audio-engineer.md) | **Hardware & Physics Audio Engineer** (Vintage & Modern Audio Hardware Mechanics, Tubes/Tape/Transformers, Optical/FET/VCA/Variable-Mu Physics, Acoustic Verification Specs) | Does our signal chain obey the physical and acoustic mechanics of real studio hardware, and do our automated audio verification tests prove the audio is transformed accurately? |
+| [`aurialis-dsp-plugin-engineer`](aurialis-dsp-plugin-engineer.md) | **Waves-Style DSP Plugin Engineer** (Digitizing Analog Equipment, ZDF/TPT Filters, ADAA Oversampled Waveshaping, M/S Crossovers, 4× True-Peak Limiting, Beating the Waves Workflow) | Are our analog emulations and digital filters engineered to pro plugin standards (zero Nyquist cramping, anti-aliased, zero real-time heap allocs) while beating a traditional Waves workflow? |
+| [`aurialis-grammy-veteran`](aurialis-grammy-veteran.md) | **20+ Year Grammy Mastering Engineer (Target Audience)** (Pop, Jazz, Rock, Metal & Rap/Hip-Hop Studio Veteran, Loudness-Matched A/B, Album Cohesion & Workflow Critic) | Would a 20+ year Grammy mastering engineer trust this across Pop, Jazz, Rock, Metal, and Rap — and does it genuinely beat chaining 8 separate Waves plugins in a DAW? |
 | [`aurialis-security`](aurialis-security.md) | **Cybersecurity Engineer** (Codebase Security, Host Machine Protection, Audio CDR, Anti-Polyglot/Payload-Stashing, Localhost CSRF/DNS-Rebinding Defense) | How could a malicious audio upload, polyglot file, path-traversal/RTLO filename, or cross-origin localhost request exploit our codebase or hide/execute a payload on the user's host machine? |
-| [`aurialis-qa`](aurialis-qa.md) | **QA Tester** (Adversarial Breaker, Postman/Newman, cURL, Playwright, Edge Cases) | How can I break this code right now with `curl`, Newman, corrupted audio, concurrency races, or viewport torture — and working with Devil's Advocate, is it actually ready for production? |
+| [`aurialis-qa`](aurialis-qa.md) | **QA Tester** (Playwright Frontend E2E, Audio Transformation Verification Suite, Postman/Newman, cURL, Edge Cases) | How can I break this right now with Playwright (`320px–1440px`), Newman, `curl`, or audio signal tests — and does our automated audio verification prove the output audio changed in the exact right way? |
 | [`aurialis-devils-advocate`](aurialis-devils-advocate.md) | **Devil's Advocate** (Skeptic, Anti-Bloat & Anti-Placebo Challenger, Completion Gatekeeper) | Does this feature actually work or is it placebo? Is it even needed? And what missing features, edge cases, or sub-professional details prove this product is NOT finished? |
 | [`aurialis-tech-writer`](aurialis-tech-writer.md) | **Technical Writer** (`README.md`, API Docs, Developer Architecture Docs, Task & Ledger Sync) | Are `README.md`, `docs/api.md`, `docs/architecture.md`, `docs/tasks.md`, and `.claude/war-room/ledger.md` 100% accurate after talking with every developer who touched code? |
 | [`aurialis-product-engineer`](aurialis-product-engineer.md) | **Product Engineer** (Requirements, Vertical Slices, Small Readable Commits, "Finished Means Merged") | Does this meet the product requirements and stack rules, are changes committed in small reviewable commits synced with the Tech Writer, and is finished code merged to `main` instead of rotting on an open branch? |
@@ -49,12 +52,14 @@ When `/war-room` or `/war-room-loop` is called with a specific scope, the Chair 
   `aurialis-backend` + `aurialis-frontend` + `aurialis-qa` + `aurialis-product-engineer` + `aurialis-devils-advocate`.
 - **UI/UX, Mobile-First & Accessibility (`ui-ux` or `mobile-responsive`)**:
   `aurialis-designer` + `aurialis-frontend` + `aurialis-qa` + `aurialis-devils-advocate` + `aurialis-product-engineer`.
-- **WASM DSP, Concurrency & Single Binary (`backend-wasm` or `dsp`)**:
-  `aurialis-backend` + `aurialis-security` + `aurialis-qa` + `aurialis-devils-advocate` + `aurialis-product-engineer`.
+- **WASM DSP, Analog Emulation & Audio Verification (`backend-wasm`, `dsp`, or `audio-verify`)**:
+  `aurialis-dsp-plugin-engineer` + `aurialis-audio-engineer` + `aurialis-grammy-veteran` + `aurialis-backend` + `aurialis-qa` + `aurialis-devils-advocate`.
+- **Mastering Workflows (`feature=deep-mastering`, `feature=mastering`, `feature=reference-match`, `feature=albums`)**:
+  `aurialis-grammy-veteran` + `aurialis-audio-engineer` + `aurialis-dsp-plugin-engineer` + `aurialis-frontend` + `aurialis-qa` + `aurialis-devils-advocate`.
 - **Cybersecurity, Host Protection & Upload Hardening (`security` or `upload-security`)**:
   `aurialis-security` + `aurialis-backend` + `aurialis-qa` + `aurialis-devils-advocate` + `aurialis-product-engineer`.
 - **Whole-Product Completeness Sweep (`all` / `/war-room-loop`)**:
-  All 8 seats orchestrated across review, implementation waves, doc sync, adversarial QA + Security + Devil's Advocate break-testing, and Product Engineer merge gates.
+  All 11 seats orchestrated across review, implementation waves, doc sync, adversarial QA (Playwright + Audio Verification + Newman + `curl`) + Security + Grammy Veteran + Devil's Advocate break-testing, and Product Engineer merge gates.
 
 ---
 

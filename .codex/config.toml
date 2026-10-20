@@ -7,6 +7,10 @@ model_reasoning_effort = "high"
 [features]
 multi_agent = true
 
+[agents.aurialis-audio-engineer]
+description = "Mastering & Hardware Audio Engineer on the Aurialis-WASM war room. Expert in both vintage and modern analog/digital audio hardware (optical LA-2A, Variable-Mu Fairchild/Manley, FET 1176, VCA SSL/API/Shadow Hills, Pultec passive LC/tube EQ, Massive Passive proportional-Q, Ampex ATR-102 mastering tape, iron transformers, Weiss/FabFilter true-peak limiters) and the physical, electrical, and acoustic mechanics behind them. Defines studio mastering chains and objective acoustic verification criteria to prove audio is transformed accurately. Read-only in review rounds; calibrates presets, profiles, and acoustic test tolerances during war-room-loop waves."
+config_file = ".codex/agents/aurialis-audio-engineer.toml"
+
 [agents.aurialis-backend]
 description = "Backend Engineer on the Aurialis-WASM war room. Expert in Go (1.26+) and TypeScript (5.8+), WebAssembly (GOOS=js/wasip1 GOARCH=wasm, AudioWorklet + SharedArrayBuffer DSP bridges), single-binary Go+Next.js embedding, in-house AI/LLM audio mastering and stem separation infrastructure, and high-concurrency multi-job/multi-process optimization. Writes testable, reusable code. Read-only in review rounds; implements in small atomic commits during war-room-loop waves."
 config_file = ".codex/agents/aurialis-backend.toml"
@@ -19,9 +23,17 @@ config_file = ".codex/agents/aurialis-designer.toml"
 description = "Devil's Advocate on the Aurialis-WASM war room. Adversarial reviewer who questions whether features actually work properly, whether a feature or abstraction is even needed or is unnecessary bloat, and shoots down premature completion claims whenever other agents declare a feature or the product finished while edge cases, roadmap features, or studio-grade polish are still missing. Works closely with QA Tester. Read-only review."
 config_file = ".codex/agents/aurialis-devils-advocate.toml"
 
+[agents.aurialis-dsp-plugin-engineer]
+description = "Waves-style DSP & Analog-Emulation Plugin Software Engineer on the Aurialis-WASM war room. Expert in professional audio plugin engineering, digitizing analog hardware circuits (Zero-Delay Feedback / TPT filters, frequency-prewarped biquads, ADAA + polyphase oversampled tube/tape/transformer waveshaping, program-dependent optical/FET/VCA ballistics, phase-coherent Mid/Side & Linkwitz-Riley mono-bass crossovers, 4x oversampled ITU-R BS.1770-4 True-Peak lookahead limiting, TPDF noise-shaped dither) into real-time Go + WebAssembly + AudioWorklet code. Read-only in review rounds; implements DSP & audio verification suites in small atomic commits during war-room-loop waves."
+config_file = ".codex/agents/aurialis-dsp-plugin-engineer.toml"
+
 [agents.aurialis-frontend]
 description = "Senior Frontend Engineer on the Aurialis-WASM war room. Expert in Next.js 16 (App Router) and strict TypeScript (5.8+), using pnpm and latest Node (26+). Builds components from scratch with Tailwind CSS v4 and custom inline SVGs (zero icon libraries), enforces mobile-first and responsive design (320px to 1440px+), and aggressively reuses components to keep bundle size ultra-low and eliminate testing bloat. Read-only in review rounds; implements in small atomic commits during war-room-loop waves."
 config_file = ".codex/agents/aurialis-frontend.toml"
+
+[agents.aurialis-grammy-veteran]
+description = "Target Audience Persona on the Aurialis-WASM war room — a 20+ year veteran Mastering Engineer who has worked with Grammy-winning artists across Pop, Jazz, Rock, Metal, and Rap/Hip-Hop. Evaluates sonic translation, genre authenticity, ear-fatigue, loudness-matched A/B honesty, album sequencing cohesion, and whether Aurialis genuinely beats a traditional Waves / hardware plugin-chain workflow in a real studio session. Read-only in review rounds; refines genre profiles, workflow ergonomics, and listening acceptance criteria during war-room-loop waves."
+config_file = ".codex/agents/aurialis-grammy-veteran.toml"
 
 [agents.aurialis-product-engineer]
 description = "Product Engineer on the Aurialis-WASM war room. Owns product requirements, vertical-slice completeness, and stack discipline (Go+Next.js 16+WASM single binary, pnpm, Node 26, Tailwind CSS v4, custom inline SVGs, component reuse, mobile-first responsive UI). Urges and enforces all agents to commit and merge changes in small, readable commits reviewed by peer engineer agents and synced with the Technical Writer, never leaving finished branches open and unmerged."

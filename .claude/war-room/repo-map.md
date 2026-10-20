@@ -62,7 +62,7 @@ Read this once before forming any opinion. Then read `AGENTS.md`, `.claude/revie
 |---|---|
 | **Toolchain Preflight** | `export PATH="$HOME/.nvm/versions/node/v26.12.0/bin:$PATH" && node -v && pnpm -v && go version` |
 | **Go Backend, Static Quality & Concurrency** | `"$(go env GOROOT)/bin/gofmt" -l cmd internal wasm` (empty) · `go mod verify` · `go vet ./...` · `golangci-lint run ./...` (runs `staticcheck -checks all`, `revive`, `gosec`, `nakedret`, `misspell`, `dupword`, `gocritic`, `errorlint`, `bodyclose`, `noctx`, `exhaustive` via `.golangci.yml`; use `--fix` locally only, never in CI) · `identypo ./...` · `govulncheck ./...` · `go test -race -count=1 -timeout 10m ./...` |
-| **WASM Compilation** | `GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp` |
+| **WASM Compilation & Audio Transformation Verification** | `GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp` · `go test -race -v ./wasm/... ./internal/audio/...` (proving EQ FFT magnitude deltas, Compressor transfer/ballistics, Saturation $H_2/H_3$ harmonics & ADAA anti-aliasing, Mid/Side & `<120 Hz` mono-bass correlation, 4× oversampled True-Peak ceiling, LUFS targets, and `MasteringScript` section envelopes change the audio in the exact physically expected way) |
 | **Frontend Strict Quality & Zero-Icon-Lib** | `pnpm exec tsc --noEmit` (`staticcheck` equivalent) · `pnpm run lint` (`eslint --max-warnings=0` with `strictTypeChecked`, `@next/next`, `security`, `sonarjs`, `unicorn`, `jsx-a11y`, and `no-restricted-imports` banning `lucide-react`/`@heroicons`/`react-icons`) · `pnpm exec knip` (dead code/unused exports) · `pnpm exec cspell lint "**/*.{ts,tsx,go,md}"` (`identypo` equivalent) · `pnpm test` · `pnpm run build` |
 | **Single Binary Build** | `pnpm run build && go build -trimpath -o aurialis ./cmd/aurialis` |
 | **API (Postman/Newman + cURL)** | `MAX_UPLOAD_BYTES_OVERRIDE=209715200 pnpm run test:backend:postman` + `curl -i` COOP/COEP & edge-case probes |
@@ -74,11 +74,12 @@ Read this once before forming any opinion. Then read `AGENTS.md`, `.claude/revie
 ## 4. Evidence Tiers — Never Promote One to Another
 
 1. `unit` — Go package unit test or Vitest component test with mocked/in-memory state.
-2. `wasm-bridge` — Real compiled `.wasm` module loaded and processing audio Float32 frames in test harness.
-3. `api-curl` — Real compiled `aurialis` Go binary serving live HTTP endpoints verified via `curl -i` (including headers, status codes, multipart errors, and concurrency).
-4. `newman-e2e` — Full Postman/Newman `PR Suite` (`TS-001` through `TS-013+`) passing against the live Go server.
-5. `playwright-a11y-responsive` — Real headless browser running against the embedded Next.js + Go + WASM stack across mobile (`320px`/`375px`), tablet (`768px`), and desktop (`1024px`/`1440px`) with axe WCAG 2.2 AA passing.
-6. `compiled-binary-smoke` — Single standalone `./aurialis` binary executed outside the source tree in a clean temp directory, serving UI, WASM, and API end-to-end.
+2. `audio-verify` — Objective mathematical & acoustic verification tests (`internal/audio/verify_test.go`, `wasm/dsp/dsp_verify_test.go`) co-designed by `aurialis-audio-engineer`, `aurialis-dsp-plugin-engineer`, `aurialis-grammy-veteran`, and `aurialis-qa` proving via FFT/Goertzel, LUFS/dBTP, THD harmonics, stereo correlation, and section envelope deltas that the output audio is changed in the exact physically expected way.
+3. `wasm-bridge` — Real compiled `.wasm` module loaded and processing audio Float32 frames in test harness.
+4. `api-curl` — Real compiled `aurialis` Go binary serving live HTTP endpoints verified via `curl -i` (including headers, status codes, multipart errors, and concurrency).
+5. `newman-e2e` — Full Postman/Newman `PR Suite` (`TS-001` through `TS-015+`) passing against the live Go server.
+6. `playwright-a11y-responsive` — Real headless browser running Playwright E2E frontend tests (`pnpm exec playwright test`) against the embedded Next.js + Go + WASM stack across all 9 routes and mobile (`320px`/`375px`), tablet (`768px`), and desktop (`1024px`/`1440px`) viewports with axe WCAG 2.2 AA passing.
+7. `compiled-binary-smoke` — Single standalone `./aurialis` binary executed outside the source tree in a clean temp directory, serving UI, WASM, and API end-to-end.
 
 *Rule*: Simulated/deterministic frontend fallback state is **not** WASM DSP or Go backend evidence. Merged is not released is not deployed.
 

@@ -94,3 +94,4 @@ Downloads a separated stem audio stream. Rejects any `../` or path-separator tra
 | `TS-012` | Long Audio (10-minute track) | Completes within memory budget with zero buffer leaks |
 | `TS-013` | Stem Download | Happy path `200 OK` audio stream; missing stem `404` |
 | `TS-014` | Audio CDR Polyglot & Host Protection (`aurialis-security`) | WAV+ZIP (`PK\x03\x04`) polyglot, WAV header `0xFFFFFFFF` overflow, RTLO `\u202e` filename, and cross-origin `Origin: https://evil.example` / `Host: evil.example` probes rejected (`400`/`403`) with zero residual files in temp dir |
+| `TS-015` | Audio Transformation Verification (`aurialis-audio-engineer`, `aurialis-dsp-plugin-engineer`, `aurialis-qa`) | Verifies processed audio FFT frequency response (`±0.5 dB`), compressor ballistics, $H_2/H_3$ harmonic saturation, mono-bass correlation (`>=0.98`), 4× True-Peak ceiling (`<= ceiling + 0.05 dBTP`), and section-by-section `MasteringScript` LUFS/width deltas |

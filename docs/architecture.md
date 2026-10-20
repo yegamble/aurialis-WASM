@@ -1,6 +1,6 @@
 # Aurialis-WASM Technical Architecture
 
-Maintained by [`aurialis-tech-writer`](../.claude/agents/aurialis-tech-writer.md) in collaboration with [`aurialis-backend`](../.claude/agents/aurialis-backend.md), [`aurialis-frontend`](../.claude/agents/aurialis-frontend.md), [`aurialis-designer`](../.claude/agents/aurialis-designer.md), and [`aurialis-security`](../.claude/agents/aurialis-security.md).
+Maintained by [`aurialis-tech-writer`](../.claude/agents/aurialis-tech-writer.md) in collaboration with [`aurialis-backend`](../.claude/agents/aurialis-backend.md), [`aurialis-dsp-plugin-engineer`](../.claude/agents/aurialis-dsp-plugin-engineer.md), [`aurialis-audio-engineer`](../.claude/agents/aurialis-audio-engineer.md), [`aurialis-grammy-veteran`](../.claude/agents/aurialis-grammy-veteran.md), [`aurialis-frontend`](../.claude/agents/aurialis-frontend.md), [`aurialis-designer`](../.claude/agents/aurialis-designer.md), and [`aurialis-security`](../.claude/agents/aurialis-security.md).
 
 ---
 
@@ -83,3 +83,20 @@ Because users run `aurialis` directly on their host workstation and load audio f
    - Binds to `127.0.0.1` by default; validates `Host` and `Origin`/`Sec-Fetch-Site` headers to block DNS rebinding and drive-by localhost CSRF from malicious websites.
    - Bans `os/exec` (`exec.Command`) in all request and audio processing paths; runs DSP inside Go and memory-isolated WebAssembly (`GOOS=js GOARCH=wasm` / `GOOS=wasip1 GOARCH=wasm`).
    - Serves strict `Content-Security-Policy`, `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`, `Cross-Origin-Resource-Policy: same-origin`, `X-Content-Type-Options: nosniff`, and `X-Frame-Options: DENY`.
+
+---
+
+## 6. Analog-Modeled DSP Engine, Beating the Waves Workflow & Audio Verification (`aurialis-audio-engineer`, `aurialis-dsp-plugin-engineer`, `aurialis-grammy-veteran`, `aurialis-qa`)
+
+1. **Digitizing Vintage & Modern Audio Hardware (`wasm/dsp` & `internal/audio`)**:
+   - **5-Band Parametric Mastering EQ**: Topology-Preserving Transform (`TPT` / Zero-Delay Feedback SVF) filters with proportional-$Q$ behavior and zero high-frequency Nyquist cramping (`12–20 kHz` air shelves remain open and silky at `44.1`/`48 kHz`).
+   - **Program-Dependent Bus Compression**: Optical (LA-2A two-stage release), Variable-Mu (soft-knee level-dependent ratio), FET (`1176` fast transient clamping), and VCA (`SSL`/`API` bus glue) ballistics with a `90 Hz` sidechain high-pass ("Thrust") filter so sub-bass never pumps the vocal/midrange.
+   - **Anti-Aliased Analog Saturation (`Warm` / `Thick` / `Crisp`)**: First-order Antiderivative Anti-Aliasing (`ADAA`) + 2× polyphase oversampling modeling asymmetric triode even harmonics ($H_2$ `Warm`), Ampex-style tape odd harmonics + head bump ($H_3$ `Thick`), and frequency-dependent iron transformer bass weight (`Crisp`).
+   - **Phase-Coherent Mid/Side & Linkwitz-Riley Mono-Bass**: 4th-order (`24 dB/oct`) Linkwitz-Riley crossover locking sub-bass (`<110 Hz`) in mono while widening highs cleanly without comb filtering.
+   - **4× Oversampled True-Peak Brickwall Limiter & TPDF Dither**: ITU-R BS.1770-4 4-phase FIR inter-sample peak (`dBTP`) lookahead limiting + Triangular Probability Density Function (`TPDF`) dither on 16/24-bit WAV exports.
+2. **How Aurialis Beats a Traditional Waves Plugin-Chain Workflow**:
+   - **Loudness-Matched A/B Comparison**: Eliminates Fletcher-Munson volume deception (where `L2` or `CLA-76` sounds "better" simply because it is `+5 dB` louder) by providing instant loudness-compensated A/B listening alongside raw output comparison.
+   - **Section-Aware Dynamic Automation (`MasteringScript` v1)**: Replaces manual automation across 6 floating DAW plugin windows with unified, inspectable section envelopes (`Intro`, `Verse`, `Chorus`, `Bridge`, `Drop`, `Breakdown`, `Outro`) across `Volume`, `EQ`, `Comp/Sat`, `Width`, and `AI Repair`.
+   - **Integrated `2–6` Smart Stem Separation & Album Cohesion**: Fixes mix-balance issues (`Vocals`, `Drums`, `Bass`, `Guitar`, `Piano`, `Other`) and album-wide LUFS/tonal outliers inside the same zero-bloat single binary.
+3. **War-Room Audio Transformation Verification Suite**:
+   - Automated tests (`internal/audio/verify_test.go`, `wasm/dsp/dsp_verify_test.go`, Newman `TS-015`, and Playwright E2E export verification) feed deterministic laboratory test signals (multi-tone sines, step bursts, out-of-phase stereo signals) and verify via FFT/Goertzel magnitude deltas, compressor dB envelopes, $H_2/H_3$ harmonic ratios, stereo phase correlation, and section LUFS/width deltas that every DSP module and profile modifies the audio in the exact physically expected way.

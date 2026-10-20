@@ -31,16 +31,32 @@ Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS
     - Send truncated multipart boundaries, empty files (`0 bytes`), negative or `NaN`/`Infinity` JSON parameters, unknown enum values (`"profile": "dubstep_destroyer"`, `"stemCount": 99`, `"stemCount": 1`), and filenames containing `../../etc/passwd`, `%0d%0aSet-Cookie: evil=1`, or 4,096-byte UTF-8 strings.
     - Fire 15 concurrent job submissions (`seq 1 15 | xargs -P 15 -I{} curl ...`) followed by immediate concurrent `DELETE /jobs/{id}` calls to expose race conditions, deadlocks, or orphaned temp files.
 
-### 2. WASM & DSP Boundary Breaking
-- Test extreme audio inputs and DSP parameter combinations:
-  - Full-scale 0 dBFS square waves, DC offset signals, digital silence (`-Infinity` LUFS), sub-sample impulses, and denormal floats (`1e-40`) that can stall biquad IIR filters.
-  - Rapidly toggle A/B bypass, scrub the playhead across section boundaries during Deep `MasteringScript` playback, and switch engineer profiles while edits are dirty.
+### 2. War-Room Audio Transformation Verification ("Verify the Audio Is Changed in the Correct Way")
+Working alongside `aurialis-audio-engineer`, `aurialis-dsp-plugin-engineer`, and `aurialis-grammy-veteran`, you write and execute automated tests (`internal/audio/verify_test.go`, `wasm/dsp/dsp_verify_test.go`, Newman `TS-015`, and Playwright E2E export verification) that prove the audio signal itself is modified in the **exact physically expected way** — never a placebo passthrough, silent buffer, or clipped mess:
+1. **Parametric EQ Spectral Delta Verification (FFT / Goertzel)**:
+   - Feed deterministic multi-tone test signals (`60 Hz`, `250 Hz`, `1 kHz`, `4 kHz`, `12 kHz`) through the 5-band EQ; verify via FFT/Goertzel bin magnitudes that boosting or cutting Band $k$ by $\pm G\text{ dB}$ shifts that frequency band by $\pm G\text{ dB} \pm 0.5\text{ dB}$ while leaving distant bands uncorrupted and high shelves uncramped near Nyquist.
+2. **Compressor & Limiter Dynamic Transfer & Ballistics Verification**:
+   - Feed a dynamic step-burst signal (`-24 dBFS` → `-4 dBFS` → `-24 dBFS`); verify that gain reduction matches the commanded threshold and ratio (`(input_dB - threshold) * (1 - 1/ratio)`), attack/release reach target envelope percentages within their time constants without click discontinuities, sidechain high-pass prevents `50 Hz` sub-bass from pumping a `1 kHz` tone, and the 4× oversampled True-Peak Limiter caps inter-sample peaks at `<= ceiling + 0.05 dBTP` while hitting target integrated LUFS (`±0.5 LU`).
+3. **Analog Harmonic Saturation Verification ($H_2$ / $H_3$ THD & Anti-Aliasing)**:
+   - Feed a pure `100 Hz` and `1 kHz` sine wave through Saturation; verify that `Warm` (triode) generates measurable even-order 2nd harmonic ($H_2 > H_3$), `Thick`/`Crisp` (tape/transformer) generates measurable odd-order 3rd harmonic ($H_3$), and oversampling/ADAA keeps aliased foldback frequencies below `-75 dBFS`.
+4. **Stereo Width, Mid/Side & Mono-Bass Verification**:
+   - Verify `width = 0%` collapses $L$ and $R$ to mono (`correlation >= +0.9999`), `width > 100%` increases Side/Mid RMS energy ratio proportionally, and `monoBass = true` forces sub-120Hz phase correlation to `>= +0.98` while preserving stereo separation at `4 kHz`.
+5. **Deep `MasteringScript` v1 Section Automation & Stem Separation Verification**:
+   - Verify that applying a `MasteringScript` alters each section window (`Intro`, `Verse`, `Chorus`, `Bridge`, `Drop`, `Outro`) according to its `Move` envelopes (e.g., Chorus window measurably louder in LUFS and wider in Side RMS than Verse window) with zero sample clicks at section boundaries.
+   - Verify that Smart Split (`2`, `3`, `4`, `5`, `6` stems) outputs the exact count of non-silent stems whose spectral centroids match their instrument role (`Bass` `< 250 Hz`, `Vocals` midrange) and whose sample-wise sum reconstructs the mix within bounded tolerance.
+6. **Extreme Signal & WASM Boundary Torture**:
+   - Test full-scale `0 dBFS` square waves, DC offset signals, digital silence (`-Infinity` LUFS), sub-sample impulses, and denormal floats (`1e-40`); verify zero `NaN`/`Inf` samples, DC offset `< -66 dBFS`, bit-identical bypass when all modules are off, and valid 16/24/32-bit WAV headers + TPDF dither on export.
 
-### 3. Frontend, Mobile-First Responsive & Accessibility Torture (Playwright + Vitest)
-- Test every workspace (`/`, `/library`, `/master/[trackId]`, `/split/[trackId]`, `/albums`, `/albums/[albumId]`, `/reference/[trackId]`, `/release-check/[trackId]`) at **`320px`, `375px`, `390px`, `768px`, `1024px`, and `1440px`**:
-  - Fail any screen where `document.documentElement.scrollWidth > document.documentElement.clientWidth` (horizontal overflow), where touch targets are `< 44×44px`, or where the sticky mobile mini-transport obscures focused inputs (`WCAG 2.4.11`).
-  - Verify keyboard-only operation (`Tab`, `Shift+Tab`, `ArrowLeft/Right`, `Enter`, `Space`, `Escape`) for every custom SVG control (5-band EQ nodes, Deep timeline moves, album track reordering).
-  - Verify IndexedDB persistence across page reloads, missing-Blob "relink source" recovery when audio data is evicted, and interrupted job state recovery after refresh.
+### 3. Playwright Frontend E2E, Responsive & Accessibility Testing (`e2e/`)
+You actively author and execute **Playwright** tests (`pnpm exec playwright test`) across all 9 Figma routes (`/`, `/library`, `/master/[trackId]`, `/split/[trackId]`, `/albums`, `/albums/[albumId]`, `/reference/[trackId]`, `/release-check/[trackId]`, `/tools`):
+- **End-to-End User & Audio Workflows in Playwright**:
+  - Upload real WAV/MP3 fixtures via file input, drag-and-drop, and clipboard paste; verify metadata extraction, waveform rendering, transport play/pause/seek, and **loudness-matched A/B toggling**.
+  - Exercise Simple mode (genre/tone/intensity/target → "Create master"), Advanced mode (dragging 5-band SVG EQ nodes + numeric inputs, compressor, saturation, stereo width, limiter), and Deep mode (all 5 engineer profiles, cancellable staged progress, editing/muting/resetting timeline moves, dirty profile-switch confirmation dialog).
+  - Intercept and inspect exported WAV downloads in Playwright (`page.waitForEvent('download')`) to assert that exported audio bytes are valid WAV containers whose PCM samples reflect the applied mastering settings.
+  - Verify IndexedDB persistence across `page.reload()`, missing-Blob "relink source" recovery when audio data is evicted, and interrupted job state recovery after refresh.
+- **Mobile-First Responsive (`320px–1440px`) & WCAG 2.2 AA Accessibility**:
+  - Test every route at **`320px`, `375px`, `390px`, `768px`, `1024px`, and `1440px`**: fail any screen where `document.documentElement.scrollWidth > document.documentElement.clientWidth` (horizontal overflow), where touch targets are `< 44×44px`, or where the sticky mobile mini-transport obscures focused inputs (`WCAG 2.4.11`).
+  - Verify keyboard-only operation (`Tab`, `Shift+Tab`, `ArrowLeft/Right`, `Enter`, `Space`, `Escape`) for every custom SVG control (5-band EQ nodes, Deep timeline moves, album track reordering) and run `@axe-core/playwright` (`wcag2a`, `wcag2aa`, `wcag21aa`, `wcag22aa`) with zero violations.
 
 ### 4. Active Collaboration with `aurialis-devils-advocate` and Other Agents
 - You and **`aurialis-devils-advocate`** are the War Room's twin skepticism engine:

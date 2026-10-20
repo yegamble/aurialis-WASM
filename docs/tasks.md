@@ -1,6 +1,6 @@
 # Aurialis-WASM Developer Task Tracker
 
-Maintained by [`aurialis-tech-writer`](../.claude/agents/aurialis-tech-writer.md) and [`aurialis-product-engineer`](../.claude/agents/aurialis-product-engineer.md). Every engineer agent (`aurialis-backend`, `aurialis-frontend`, `aurialis-designer`, `aurialis-security`, `aurialis-qa`) must catch up with `aurialis-tech-writer` to update this file and [`.claude/war-room/ledger.md`](../.claude/war-room/ledger.md) before merging a branch to `main`.
+Maintained by [`aurialis-tech-writer`](../.claude/agents/aurialis-tech-writer.md) and [`aurialis-product-engineer`](../.claude/agents/aurialis-product-engineer.md). Every engineer agent (`aurialis-backend`, `aurialis-dsp-plugin-engineer`, `aurialis-audio-engineer`, `aurialis-grammy-veteran`, `aurialis-frontend`, `aurialis-designer`, `aurialis-security`, `aurialis-qa`) must catch up with `aurialis-tech-writer` to update this file and [`.claude/war-room/ledger.md`](../.claude/war-room/ledger.md) before merging a branch to `main`.
 
 ---
 
@@ -17,7 +17,7 @@ Maintained by [`aurialis-tech-writer`](../.claude/agents/aurialis-tech-writer.md
 
 - [ ] **`WASM-1` (P0)**: Single Go 1.26 + Next.js 16 (`pnpm`, Node 26) scaffold & `//go:embed` server (`cmd/aurialis`) with COOP/COEP headers.
 - [ ] **`WASM-2` (P0)**: Warm editorial HCL/OKLCH design system tokens, custom inline SVG `<Icon />` primitive (zero icon libraries), and mobile-first responsive `AppShell` (`320px–1440px+`).
-- [ ] **`WASM-3` (P0)**: Go/WASM DSP core (`wasm/dsp`) + `AudioWorklet` / `SharedArrayBuffer` lock-free bridge (5-band EQ, compressor, limiter, saturation, stereo width, LUFS/True-Peak metering).
+- [ ] **`WASM-3` (P0)**: Waves-grade Go/WASM DSP core (`wasm/dsp`) + `AudioWorklet` / `SharedArrayBuffer` lock-free bridge (ZDF/TPT 5-band EQ, program-dependent optical/FET/VCA compressor with sidechain HPF, 4× oversampled True-Peak limiter, ADAA tube/tape/transformer saturation, Linkwitz-Riley mono-bass + M/S width, loudness-matched A/B, TPDF dither) + War-Room Audio Transformation Verification Suite (`internal/audio/verify_test.go`, `wasm/dsp/dsp_verify_test.go`).
 - [ ] **`WASM-4` (P1)**: Concurrent job engine (`internal/jobs`) + cybersecurity upload hardening (`aurialis-security`: Audio Content Disarm & Reconstruction stripping non-audio chunks/polyglots so malicious files cannot be hidden on the host machine, ephemeral `0600` `O_NOFOLLOW` temp sandboxing, magic bytes, `413` size cap, CRLF/path-traversal/RTLO sanitization, DNS-rebinding & localhost CSRF defense, `DELETE /jobs/{id}` cancellation).
 - [ ] **`WASM-5` (P1)**: Upload/Home (`/`) & persisted IndexedDB Library (`/library`) reusing `Button`, `DropZone`, `StatusBadge`, `Modal`.
 - [ ] **`WASM-6` (P1)**: Mastering Workspace (`/master/[trackId]`): Transport, custom SVG Waveform, Simple mode, Advanced 5-band EQ/DSP mode, and 16/24/32-bit WAV export with TPDF dither.

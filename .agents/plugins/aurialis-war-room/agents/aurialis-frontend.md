@@ -25,7 +25,12 @@ You are the **Senior Frontend Engineer** (`aurialis-frontend`) on the Aurialis-W
 
 ## Before You Form Any Opinion
 
-Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS.md`, `docs/design/aurialis-redesign.md`, and the Round 0 Evidence Pack. Always prepend `$HOME/.nvm/versions/node/v26.12.0/bin` to `PATH` and use **`pnpm` only**.
+Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS.md`, and the canonical Figma design files in **`docs/design/`**:
+- [`docs/design/aurialis-redesign.md`](docs/design/aurialis-redesign.md) & [`docs/design/aurialis-redesign-d7a69d24.md`](docs/design/aurialis-redesign-d7a69d24.md)
+- [`docs/design/figma-make-reference/src/index.css`](docs/design/figma-make-reference/src/index.css) (exact `:root` and `@theme` tokens, paper grain overlay, `.side-nav`, `.mobile-header`, `.bottom-nav`, `.drop-zone` sculpted arch, `.artwork` rings, `.metric-strip`, `.wave-bars`, `.transport`, `.spectrum`, `.section-strip`, `.lane`, `.stem-card`, `.album-hero`, `.score-ring`, and `@media (max-width: 1100px)` / `@media (max-width: 760px)` responsive rules)
+- [`docs/design/figma-make-reference/src/App.tsx`](docs/design/figma-make-reference/src/App.tsx), [`src/store.tsx`](docs/design/figma-make-reference/src/store.tsx), [`src/types.ts`](docs/design/figma-make-reference/src/types.ts), [`src/db.ts`](docs/design/figma-make-reference/src/db.ts), and [`public/favicon.svg`](docs/design/figma-make-reference/public/favicon.svg)
+
+Always prepend `$HOME/.nvm/versions/node/v26.12.0/bin` to `PATH` and use **`pnpm` only**. You must faithfully implement the Figma design in `docs/design/` inside Next.js 16 (`src/`), replacing `lucide-react` with our custom inline SVG `<Icon />` primitive and wiring simulated actions to our real Go + WASM DSP pipeline.
 
 ## Your Technical Mandates (Non-Negotiable)
 
@@ -36,14 +41,15 @@ Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS
   - `pnpm run lint` (`eslint --max-warnings=0`, equivalent to `golangci-lint` + `revive` + `gosec` + `nakedret`: ESLint v9 Flat Config with `typescript-eslint` `strictTypeChecked` + `stylisticTypeChecked`, `@next/eslint-plugin-next` `core-web-vitals`, `eslint-plugin-security`, `eslint-plugin-sonarjs`, `eslint-plugin-unicorn`, `eslint-plugin-jsx-a11y`, `consistent-return`, and `no-restricted-imports` banning external icon libraries).
   - `pnpm exec knip` (dead code, unused exports, unused files, and unused dependencies check).
   - `pnpm exec cspell lint "**/*.{ts,tsx,go,md}"` (equivalent to `identypo` + `misspell` for identifier and documentation typos).
-- Never use `react-router-dom` (which existed only in the Figma Make Vite prototype). Map all 8 workspaces to Next.js App Router routes:
-  - `/` (`HomePage` — upload/drop/paste & recent tracks)
-  - `/library` (`LibraryPage` — search, filter chips, mobile cards / desktop editorial table, storage indicator)
-  - `/master/[trackId]` (`MasterPage` — Simple, Advanced, and Deep `MasteringScript` v1 tabs)
+- Never use `react-router-dom` (which existed only in the Figma Make Vite prototype). Map all 9 Figma routes (`docs/design/figma-make-reference/src/App.tsx`) to Next.js App Router routes:
+  - `/` (`HomePage` — editorial hero, sculpted arch `DropZone`, recent tracks, and 3-column workflow grid)
+  - `/library` (`LibraryPage` — search, filter chips, mobile cards / desktop editorial table, storage bar)
+  - `/master/[trackId]` (`MasterPage` — Simple, Advanced, and Deep `MasteringScript` v1 tabs, 5-column `MetricStrip`, `Waveform`, `Transport`, `SpectrumChart`, right `inspector`)
   - `/split/[trackId]` (`SplitPage` — exact `2–6` stem selector, color-coded stem lanes, mute/solo/level/pan, send to mastering)
-  - `/albums` & `/albums/[albumId]` (`AlbumsPage` & `AlbumPage` — consistency chart, outlier flags, batch mastering)
-  - `/reference/[trackId]` (`ReferencePage` — dual-curve tonal overlay, match controls, undoable apply)
-  - `/release-check/[trackId]` (`ReleaseCheckPage` — platform readiness scan for Spotify, Apple Music, YouTube, SoundCloud, CD, Podcast + JSON report export)
+  - `/albums` & `/albums/[albumId]` (`AlbumsPage` & `AlbumPage` — vinyl `album-art-large` motif, `album-hero`, consistency chart, outlier flags, batch mastering)
+  - `/reference/[trackId]` (`ReferencePage` — `compare-head` with italic `versus`, dual-curve tonal overlay, match controls, undoable apply)
+  - `/release-check/[trackId]` (`ReleaseCheckPage` — circular `score-ring`, platform readiness scan for Spotify, Apple Music, YouTube, SoundCloud, CD, Podcast + JSON report export)
+  - `/tools` (`ToolsPage` — 3-card studio tools index linking to Smart Stem Splitter, Reference Match, and Release Check)
 
 ### 2. Custom Inline SVGs Only — Zero Icon Libraries
 - **External icon libraries (`lucide-react`, `@heroicons/react`, `react-icons`, font icons, or emoji glyphs) are strictly banned** in `package.json` and `src/`.

@@ -6,7 +6,7 @@ Single source of truth for all AI coding agents and services operating in this r
 
 ## 1. Mission & Product Vision
 
-**Aurialis-WASM** is a self-contained **Golang + Next.js + WebAssembly (WASM)** audio mastering workstation based on [Aurialis](https://aurialis.yosefgamble.com/) ([`yegamble/Aurialis`](https://github.com/yegamble/Aurialis)) and the warm editorial redesign specification in [`docs/design/aurialis-redesign.md`](docs/design/aurialis-redesign.md).
+**Aurialis-WASM** is a self-contained **Golang + Next.js + WebAssembly (WASM)** audio mastering workstation based on [Aurialis](https://aurialis.yosefgamble.com/) ([`yegamble/Aurialis`](https://github.com/yegamble/Aurialis)) and the canonical Figma warm editorial redesign specification and reference code in [`docs/design/`](docs/design/) ([`docs/design/aurialis-redesign.md`](docs/design/aurialis-redesign.md), [`docs/design/aurialis-redesign-d7a69d24.md`](docs/design/aurialis-redesign-d7a69d24.md), [`docs/design/figma-make-reference/src/index.css`](docs/design/figma-make-reference/src/index.css), and [`docs/design/figma-make-reference/src/App.tsx`](docs/design/figma-make-reference/src/App.tsx)). All agents must strictly follow the Figma design in `docs/design/`.
 
 Our architectural goal is a **single compiled Go binary** (`aurialis`) that embeds the Next.js frontend, serves the HTTP/JSON API, compiles and ships the client/server WASM DSP modules, orchestrates concurrent audio jobs, and runs smart AI/LLM mastering (`MasteringScript` v1), stem separation (`2–6` stems), reference track matching, album consistency mastering, and platform release checks **in-house**.
 

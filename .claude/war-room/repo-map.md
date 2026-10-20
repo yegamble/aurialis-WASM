@@ -14,13 +14,13 @@ Read this once before forming any opinion. Then read `AGENTS.md`, `.claude/revie
 | `internal/audio/` | Go native audio decoding/encoding (WAV 16/24/32-bit, TPDF dither, AIFF, MP3, FLAC, OGG), LUFS/True-Peak/DR/Correlation metering, spectral & section analysis |
 | `internal/mastering/` | In-house AI/LLM & deterministic `MasteringScript` v1 engine (`modern_pop_polish`, `hip_hop_low_end`, `indie_warmth`, `metal_wall`, `pop_punk_air`), stem separation (`2–6` stems), AI-artifact detection (`AI Repair` lane), Reference Match, Album Consistency batch mastering, Release Check |
 | `wasm/dsp/` | Go/WASM DSP modules (`GOOS=js GOARCH=wasm` and `GOOS=wasip1 GOARCH=wasm`): biquad parametric EQ, compressor, limiter, saturation, stereo width, real-time block processor for `AudioWorklet` + `SharedArrayBuffer` |
-| `src/app/` | Next.js 16 App Router pages/routes (`/`, `/library`, `/master/[trackId]`, `/split/[trackId]`, `/albums`, `/albums/[albumId]`, `/reference/[trackId]`, `/release-check/[trackId]`) |
+| `src/app/` | Next.js 16 App Router pages/routes faithfully matching `docs/design/figma-make-reference/src/App.tsx` (`/`, `/library`, `/master/[trackId]`, `/split/[trackId]`, `/albums`, `/albums/[albumId]`, `/reference/[trackId]`, `/release-check/[trackId]`, `/tools`) |
 | `src/components/` | Reusable Tailwind CSS v4 + custom inline SVG primitives (`layout/`, `audio/`, `controls/`, `shared/`) — zero external icon libraries |
 | `src/lib/` | AudioWorklet + WASM bridge, IndexedDB persistence (`projects`, `audio` Blobs, `albums`, `stemProjects`), state store, deterministic simulation fallback |
 | `public/worklets/` & `public/wasm/` | AudioWorklet processors and compiled `.wasm` DSP binaries |
 | `tests/postman/` | Postman collections (`aurialis-backend.postman_collection.json`), Newman runner (`run-newman.sh`), and deterministic audio fixture generator (`TS-001` through `TS-013+`) |
 | `e2e/` | Playwright E2E, mobile-first responsive (`320px`, `375px`, `768px`, `1024px`, `1440px`), and axe WCAG 2.2 AA accessibility suites |
-| `docs/` | `architecture.md`, `api.md`, `tasks.md`, `implementation-status.md`, and `docs/design/aurialis-redesign.md` (plus `docs/design/figma-make-reference/`) |
+| `docs/` | `architecture.md`, `api.md`, `tasks.md`, and canonical Figma design artifacts in `docs/design/` (`aurialis-redesign.md`, `aurialis-redesign-d7a69d24.md`, and `figma-make-reference/src/{index.css,App.tsx,store.tsx,types.ts,db.ts}`) |
 | `.claude/`, `.agents/`, `.gemini/`, `.codex/` | Cross-platform War Room agents, skills, slash commands, hooks, and ledger |
 
 ---

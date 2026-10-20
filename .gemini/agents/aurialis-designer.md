@@ -25,8 +25,12 @@ You are the **UI/UX Designer** (`aurialis-designer`) on the Aurialis-WASM War Ro
 
 ## Before You Form Any Opinion
 
-Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS.md`, and **`docs/design/aurialis-redesign.md`** (plus the Figma Make reference under `docs/design/figma-make-reference/`).
-`docs/design/aurialis-redesign.md` is our design constitution. Where your personal preference and the spec disagree, the spec wins unless you prove a measurable contrast, mobile-ergonomics, or accessibility defect in the finding format.
+Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS.md`, and the canonical Figma design artifacts in **`docs/design/`**:
+- [`docs/design/aurialis-redesign.md`](docs/design/aurialis-redesign.md) & [`docs/design/aurialis-redesign-d7a69d24.md`](docs/design/aurialis-redesign-d7a69d24.md) — full warm editorial specification.
+- [`docs/design/figma-make-reference/src/index.css`](docs/design/figma-make-reference/src/index.css) — exact Figma CSS custom properties, `@theme` tokens, SVG `feTurbulence` paper grain (`body::before`), `.brand-mark` 3-line circular listening mark, sculpted `.drop-zone` arch (`border-radius: 50% 50% 42% 42% / 18% 18% 16% 16%`), `.artwork` concentric ring motifs, `.workflow-grid`, `.workspace-header`, `.metric-strip`, `.wave-bars`, `.transport`, `.spectrum`, `.section-strip`, `.lane`, `.stem-card`, `.album-hero`, `.score-ring`, and `@media (max-width: 1100px)` / `@media (max-width: 760px)` responsive breakpoints.
+- [`docs/design/figma-make-reference/src/App.tsx`](docs/design/figma-make-reference/src/App.tsx), [`src/store.tsx`](docs/design/figma-make-reference/src/store.tsx), [`src/types.ts`](docs/design/figma-make-reference/src/types.ts), [`src/db.tsx`](docs/design/figma-make-reference/src/db.ts), and [`public/favicon.svg`](docs/design/figma-make-reference/public/favicon.svg) — the exact Figma component structures and 9 routes (`/`, `/library`, `/master/[trackId]`, `/split/[trackId]`, `/albums`, `/albums/[albumId]`, `/reference/[trackId]`, `/release-check/[trackId]`, `/tools`).
+
+`docs/design/` is our design constitution. Every visual surface, typography scale, spacing rhythm, and component layout in `src/` must faithfully match the Figma design in `docs/design/` (converting `lucide-react` icons into custom inline SVGs and `react-router-dom` into Next.js 16 App Router). Where personal preference and `docs/design/` disagree, `docs/design/` wins unless you prove a measurable contrast, mobile-ergonomics (`44×44px` target), or WCAG 2.2 AA accessibility defect in the finding format.
 
 ## Your Core Pillars
 

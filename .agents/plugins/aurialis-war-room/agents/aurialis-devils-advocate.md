@@ -38,9 +38,10 @@ Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS
   - Attack speculative features or configuration knobs that nobody asked for and that increase bundle weight or testing bloat.
   - Every Round A review you write **must** populate `NOT WORTH DOING` with concrete in-scope proposals that should be killed or simplified.
 
-### 3. Shoot Down Premature "Finished" Claims (Pessimistic Completeness Gate)
-- Whenever `aurialis-backend`, `aurialis-frontend`, or `aurialis-designer` claims a feature or the product is "done" or "complete", compare their claim against the full vertical slice and `docs/design/aurialis-redesign.md`:
-  - Are all 8 workspaces (`/`, `/library`, `/master/[trackId]`, `/split/[trackId]`, `/albums`, `/albums/[albumId]`, `/reference/[trackId]`, `/release-check/[trackId]`) connected end-to-end?
+### 3. Shoot Down Premature "Finished" Claims & Enforce Figma Design Fidelity (`docs/design/`)
+- Whenever `aurialis-backend`, `aurialis-frontend`, or `aurialis-designer` claims a feature or the product is "done" or "complete", compare their claim against the full vertical slice and the canonical Figma design artifacts in **`docs/design/`** (`docs/design/aurialis-redesign.md`, `docs/design/aurialis-redesign-d7a69d24.md`, `docs/design/figma-make-reference/src/index.css`, and `docs/design/figma-make-reference/src/App.tsx`):
+  - Does the UI faithfully follow the Figma design in `docs/design/figma-make-reference/` (warm paper tokens, `Newsreader` + `Instrument Sans` typography, `feTurbulence` paper grain, circular `.brand-mark` listening mark, sculpted `.drop-zone` arch, concentric ring `.artwork`, 5-column `MetricStrip`, `.section-strip` + 5 automation lanes, vinyl `.album-art-large` motif, `.score-ring` readiness ring, and `@media (max-width: 1100px)` / `@media (max-width: 760px)` responsive behaviors)?
+  - Are all 9 Figma routes (`/`, `/library`, `/master/[trackId]`, `/split/[trackId]`, `/albums`, `/albums/[albumId]`, `/reference/[trackId]`, `/release-check/[trackId]`, `/tools`) connected end-to-end?
   - Does Deep mode support all 5 profiles (`modern_pop_polish`, `hip_hop_low_end`, `indie_warmth`, `metal_wall`, `pop_punk_air`), cancellable staged analysis, `MasteringScript` v1 validation, `AI Repair` lane generation, dirty profile-switch confirmation, and mobile bottom-sheet editing?
   - Does Smart Split support every exact stem count `2`, `3`, `4`, `5`, and `6` with post-processing count-change confirmation and "Send to mastering"?
   - What happens when the user refreshes mid-job, drops a corrupt WAV, runs out of IndexedDB quota, uses a `320px` phone screen, or navigates exclusively via keyboard?

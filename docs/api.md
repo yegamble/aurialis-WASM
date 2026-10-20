@@ -1,6 +1,6 @@
 # Aurialis-WASM API & Postman/Newman Reference
 
-Maintained by [`aurialis-tech-writer`](../.claude/agents/aurialis-tech-writer.md) and verified by [`aurialis-qa`](../.claude/agents/aurialis-qa.md) using Postman/Newman and `curl`.
+Maintained by [`aurialis-tech-writer`](../.claude/agents/aurialis-tech-writer.md) and verified by [`aurialis-qa`](../.claude/agents/aurialis-qa.md) and [`aurialis-security`](../.claude/agents/aurialis-security.md) using Postman/Newman and `curl`.
 
 ---
 
@@ -11,10 +11,17 @@ All HTML and asset responses from the `aurialis` Go binary include:
 ```http
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
+Cross-Origin-Resource-Policy: same-origin
 X-Content-Type-Options: nosniff
+X-Frame-Options: DENY
+Referrer-Policy: no-referrer
+Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; media-src 'self' blob:; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'
 ```
 
-WASM modules (`/wasm/*.wasm`) are served with `Content-Type: application/wasm`.
+- WASM modules (`/wasm/*.wasm`) are served with `Content-Type: application/wasm`.
+- State-changing requests (`POST`, `PUT`, `DELETE`, `PATCH`) validate `Host` (loopback `127.0.0.1` / `localhost` / `[::1]` by default) and `Origin` / `Sec-Fetch-Site` headers, returning `403 Forbidden` on DNS-rebinding or cross-origin localhost CSRF attempts.
+- Uploaded audio files undergo **Audio Content Disarm & Reconstruction (CDR)**: user filenames never touch the host filesystem, non-audio metadata/trailer chunks (`LIST`, `INFO`, `ID3`, `JUNK`, `PAD`) and polyglot payloads (`MZ`, `ELF`, Mach-O, `PK\x03\x04` ZIP/JAR, `%PDF`, scripts) are stripped or rejected (`400 Bad Request`), and audio is decoded strictly into bounded `float32` PCM buffers.
 
 ---
 
@@ -86,3 +93,4 @@ Downloads a separated stem audio stream. Rejects any `../` or path-separator tra
 | `TS-011` | CORS Preflight | Allowed origin succeeds; disallowed origin rejected |
 | `TS-012` | Long Audio (10-minute track) | Completes within memory budget with zero buffer leaks |
 | `TS-013` | Stem Download | Happy path `200 OK` audio stream; missing stem `404` |
+| `TS-014` | Audio CDR Polyglot & Host Protection (`aurialis-security`) | WAV+ZIP (`PK\x03\x04`) polyglot, WAV header `0xFFFFFFFF` overflow, RTLO `\u202e` filename, and cross-origin `Origin: https://evil.example` / `Host: evil.example` probes rejected (`400`/`403`) with zero residual files in temp dir |

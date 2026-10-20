@@ -1,6 +1,6 @@
 # The Aurialis-WASM War Room
 
-Seven specialist agents that scrutinize, design, build, break-test, document, and ship **Aurialis-WASM** — our single-binary **Go 1.26 + Next.js 16 + WebAssembly (WASM)** audio mastering workstation — across **Gemini Argon (Antigravity / Gemini CLI)**, **Claude Code**, and **OpenAI Codex**.
+Eight specialist agents that scrutinize, secure, design, build, break-test, document, and ship **Aurialis-WASM** — our single-binary **Go 1.26 + Next.js 16 + WebAssembly (WASM)** audio mastering workstation — across **Gemini Argon (Antigravity / Gemini CLI)**, **Claude Code**, and **OpenAI Codex**.
 
 Adapted from the `opsecmkt` (`~/github/opsecmkt/.claude/agents`) and `vidra` (`~/github/vidra/.claude/agents`) war rooms for an in-house Go + Next.js + WASM audio & AI/LLM mastering stack.
 
@@ -31,6 +31,7 @@ Adapted from the `opsecmkt` (`~/github/opsecmkt/.claude/agents`) and `vidra` (`~
 | [`aurialis-backend`](aurialis-backend.md) | **Backend Engineer** (Go, TypeScript, WASM, Concurrency & Audio Infrastructure) | Does the single Go binary + WASM bridge process audio and AI mastering accurately, reuse testable packages, and stay fast and race-free when multiple jobs run concurrently? |
 | [`aurialis-frontend`](aurialis-frontend.md) | **Senior Frontend Engineer** (Next.js 16, TypeScript, Tailwind CSS v4, Custom Inline SVGs, Mobile-First & Component Reuse) | Is the UI built mobile-first from reusable Tailwind CSS v4 primitives and custom inline SVGs with zero icon libraries, ultra-low bundle weight, and zero test bloat? |
 | [`aurialis-designer`](aurialis-designer.md) | **UI/UX Designer** (WCAG 2.2 AA Accessibility, Interactive States, HCL/OKLCH Color, Mobile-First & Figma Skills) | Is every surface measurably accessible, mobile-first (`320px–1440px+`), perceptually balanced in HCL/OKLCH, and specified across all interactive states? |
+| [`aurialis-security`](aurialis-security.md) | **Cybersecurity Engineer** (Codebase Security, Host Machine Protection, Audio CDR, Anti-Polyglot/Payload-Stashing, Localhost CSRF/DNS-Rebinding Defense) | How could a malicious audio upload, polyglot file, path-traversal/RTLO filename, or cross-origin localhost request exploit our codebase or hide/execute a payload on the user's host machine? |
 | [`aurialis-qa`](aurialis-qa.md) | **QA Tester** (Adversarial Breaker, Postman/Newman, cURL, Playwright, Edge Cases) | How can I break this code right now with `curl`, Newman, corrupted audio, concurrency races, or viewport torture — and working with Devil's Advocate, is it actually ready for production? |
 | [`aurialis-devils-advocate`](aurialis-devils-advocate.md) | **Devil's Advocate** (Skeptic, Anti-Bloat & Anti-Placebo Challenger, Completion Gatekeeper) | Does this feature actually work or is it placebo? Is it even needed? And what missing features, edge cases, or sub-professional details prove this product is NOT finished? |
 | [`aurialis-tech-writer`](aurialis-tech-writer.md) | **Technical Writer** (`README.md`, API Docs, Developer Architecture Docs, Task & Ledger Sync) | Are `README.md`, `docs/api.md`, `docs/architecture.md`, `docs/tasks.md`, and `.claude/war-room/ledger.md` 100% accurate after talking with every developer who touched code? |
@@ -49,9 +50,11 @@ When `/war-room` or `/war-room-loop` is called with a specific scope, the Chair 
 - **UI/UX, Mobile-First & Accessibility (`ui-ux` or `mobile-responsive`)**:
   `aurialis-designer` + `aurialis-frontend` + `aurialis-qa` + `aurialis-devils-advocate` + `aurialis-product-engineer`.
 - **WASM DSP, Concurrency & Single Binary (`backend-wasm` or `dsp`)**:
-  `aurialis-backend` + `aurialis-qa` + `aurialis-devils-advocate` + `aurialis-tech-writer` + `aurialis-product-engineer`.
+  `aurialis-backend` + `aurialis-security` + `aurialis-qa` + `aurialis-devils-advocate` + `aurialis-product-engineer`.
+- **Cybersecurity, Host Protection & Upload Hardening (`security` or `upload-security`)**:
+  `aurialis-security` + `aurialis-backend` + `aurialis-qa` + `aurialis-devils-advocate` + `aurialis-product-engineer`.
 - **Whole-Product Completeness Sweep (`all` / `/war-room-loop`)**:
-  All 7 seats orchestrated across review, implementation waves, doc sync, adversarial QA + Devil's Advocate break-testing, and Product Engineer merge gates.
+  All 8 seats orchestrated across review, implementation waves, doc sync, adversarial QA + Security + Devil's Advocate break-testing, and Product Engineer merge gates.
 
 ---
 

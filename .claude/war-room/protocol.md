@@ -13,8 +13,9 @@ Both `/war-room` and `/war-room-loop` accept a scope argument so the user can ta
 | `feature=<name>` (or `<feature name>`, e.g., `deep-mastering`, `smart-split`, `wasm-dsp`, `albums`, `reference-match`, `release-check`, `upload-library`) | Only the specified feature's vertical slice (Go API/worker + WASM DSP + Next.js mobile/desktop UI + tests + docs) | `aurialis-backend`, `aurialis-frontend`, `aurialis-designer`, `aurialis-qa`, `aurialis-devils-advocate` (+ `aurialis-tech-writer` & `aurialis-product-engineer` for doc/commit gates) |
 | `ci-cd` (or `fix-ci`, `pipeline`, `build`) | GitHub Actions workflows, Go/WASM compilation, Next.js 16 + `pnpm` build, Newman runner, Playwright harness, flaky or failing gates | `aurialis-backend`, `aurialis-frontend`, `aurialis-qa`, `aurialis-product-engineer`, `aurialis-devils-advocate` |
 | `ui-ux` (or `mobile`, `responsive`, `a11y`, `design`) | Mobile-first responsive layouts (`320px–1440px`), HCL/OKLCH tokens, WCAG 2.2 AA, custom inline SVGs, component reuse | `aurialis-designer`, `aurialis-frontend`, `aurialis-qa`, `aurialis-devils-advocate`, `aurialis-product-engineer` |
-| `backend-wasm` (or `concurrency`, `dsp`, `jobs`) | Single Go binary embedding, WASM DSP bridge, worker-pool optimization, memory/goroutine safety, Newman/cURL API verification | `aurialis-backend`, `aurialis-qa`, `aurialis-devils-advocate`, `aurialis-product-engineer`, `aurialis-tech-writer` |
-| `all` (or omitted / `resume`) | Full-product pessimistic completeness sweep across `.claude/war-room/ledger.md` | 3–5 seats rotated per sweep area, always including `aurialis-qa` and `aurialis-devils-advocate` before any completion claim |
+| `backend-wasm` (or `concurrency`, `dsp`, `jobs`) | Single Go binary embedding, WASM DSP bridge, worker-pool optimization, memory/goroutine safety, Newman/cURL API verification | `aurialis-backend`, `aurialis-security`, `aurialis-qa`, `aurialis-devils-advocate`, `aurialis-product-engineer` |
+| `security` (or `upload-security`, `host-protection`, `cdr`) | Codebase security, host-machine protection, Audio Content Disarm & Reconstruction (CDR), anti-polyglot/payload-stashing, DNS-rebinding & localhost CSRF defense | `aurialis-security`, `aurialis-backend`, `aurialis-qa`, `aurialis-devils-advocate`, `aurialis-product-engineer` |
+| `all` (or omitted / `resume`) | Full-product pessimistic completeness sweep across `.claude/war-room/ledger.md` | 3–5 seats rotated per sweep area, always including `aurialis-qa`, `aurialis-security`, and `aurialis-devils-advocate` before any completion claim |
 
 ---
 
@@ -47,9 +48,10 @@ The Chair spawns the selected **3–5 specialist seats concurrently** in a singl
 ## 4. Round B — Cross-Examination & Adversarial Break-Testing
 
 When Round A completes, the Chair sends each seat's Round A findings to the other seats (continuing existing subagent sessions via `send_message` / `SendMessage` so context is preserved).
-- **Special QA ↔ Devil's Advocate Pairing**:
+- **Special QA ↔ Security ↔ Devil's Advocate Pairing**:
   - `aurialis-devils-advocate` attacks every claim that a feature "works", questions whether proposed features/abstractions are even needed or are bloat, and flags any gap between studio-grade expectations and current code.
-  - `aurialis-qa` takes the claims from `aurialis-backend`, `aurialis-frontend`, and `aurialis-designer` plus the skepticism from `aurialis-devils-advocate` and attempts to **break the code live** (via `curl`, Postman/Newman, Vitest, Playwright, or Go race tests).
+  - `aurialis-security` audits every upload, parser, temp-file, header, and localhost route for polyglot stashing, path/RTLO traversal, header integer overflows, DNS rebinding, and cross-origin CSRF.
+  - `aurialis-qa` takes the claims from `aurialis-backend`, `aurialis-frontend`, and `aurialis-designer` plus the threat vectors from `aurialis-security` and `aurialis-devils-advocate` and attempts to **break the code live** (via `curl`, Postman/Newman, Vitest, Playwright, or Go race tests).
 - Every seat **must** return all four sections:
   1. **CHALLENGE** — Attack at least one substantive recommendation or completion claim of another seat with `file:line` or execution evidence.
   2. **OVER-ENGINEERED / BLOAT** — Identify at least one proposal, dependency, or duplicated component that adds unnecessary bundle or testing bloat.

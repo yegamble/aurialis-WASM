@@ -1,12 +1,13 @@
 ---
 name: war-room
 description: >-
-  Convene the Aurialis-WASM 7-seat specialist War Room (Backend Engineer, Senior
-  Frontend Engineer, UI/UX Designer, QA Tester, Devil's Advocate, Technical Writer,
-  Product Engineer) on a specific feature (e.g. feature=deep-mastering,
-  feature=smart-split, feature=wasm-dsp), CI/CD fix (ci-cd), or codebase audit.
-  Use when the user invokes /war-room or asks the war room to review or plan a
-  specific feature or CI/CD problem across Gemini Argon, Claude Code, or Codex.
+  Convene the Aurialis-WASM 8-seat specialist War Room (Backend Engineer, Senior
+  Frontend Engineer, UI/UX Designer, Cybersecurity Engineer, QA Tester, Devil's
+  Advocate, Technical Writer, Product Engineer) on a specific feature (e.g.
+  feature=deep-mastering, feature=smart-split, feature=wasm-dsp), security audit
+  (security), CI/CD fix (ci-cd), or codebase audit. Use when the user invokes
+  /war-room or asks the war room to review or plan a specific feature, security
+  hardening, or CI/CD problem across Gemini Argon, Claude Code, or Codex.
 ---
 
 # Aurialis-WASM War Room (`/war-room`)
@@ -31,6 +32,7 @@ Read the corresponding specialist definitions from [`.claude/agents/`](../../.cl
 - [`aurialis-backend`](../../.claude/agents/aurialis-backend.md) — Go 1.26, TypeScript, WASM DSP, single-binary embedding, concurrent job optimization, in-house AI/LLM mastering.
 - [`aurialis-frontend`](../../.claude/agents/aurialis-frontend.md) — Next.js 16, strict TypeScript, Tailwind CSS v4, custom inline SVGs (zero icon libraries), mobile-first responsive UI, component reuse.
 - [`aurialis-designer`](../../.claude/agents/aurialis-designer.md) — WCAG 2.2 AA & APCA accessibility, HCL/OKLCH perceptual color, mobile-first (`320px–1440px+`) & desktop workstation ergonomics, Figma state matrices.
+- [`aurialis-security`](../../.claude/agents/aurialis-security.md) — Codebase security, host-machine protection for local users, Audio CDR (stripping non-audio chunks & polyglots so malicious files cannot be hidden on the host machine), DNS-rebinding & localhost CSRF defense.
 - [`aurialis-qa`](../../.claude/agents/aurialis-qa.md) — Postman/Newman (`TS-001`–`TS-013+`), raw `curl` edge-case probes, Vitest, Playwright mobile/desktop/a11y breaker.
 - [`aurialis-devils-advocate`](../../.claude/agents/aurialis-devils-advocate.md) — Anti-bloat, anti-placebo challenger who shoots down premature completion claims.
 - [`aurialis-tech-writer`](../../.claude/agents/aurialis-tech-writer.md) — `README.md`, `docs/api.md`, `docs/architecture.md`, `docs/tasks.md`, and ledger accuracy.

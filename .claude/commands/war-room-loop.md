@@ -38,7 +38,7 @@ Arguments:
 
 ### Step 3: Implementation Wave (Small, Readable Commits)
 - Pick up to **3** non-overlapping `P0`/`P1` items from `.claude/war-room/ledger.md` (grouped so no two agents edit the same files concurrently).
-- Dispatch the owning implementation specialists (`aurialis-backend`, `aurialis-frontend`, `aurialis-designer`, `aurialis-qa`) in isolated worktrees (`isolation: "worktree"` in Claude Code, `Workspace: "share"`/`"branch"` in Gemini Argon, or separate worktrees in Codex).
+- Dispatch the owning implementation specialists (`aurialis-backend`, `aurialis-frontend`, `aurialis-designer`, `aurialis-security`, `aurialis-qa`) in isolated worktrees (`isolation: "worktree"` in Claude Code, `Workspace: "share"`/`"branch"` in Gemini Argon, or separate worktrees in Codex).
 - **Enforce `aurialis-product-engineer` rules**:
   - Commit early and often in **small, atomic, readable commits** (`feat(wasm): ...`, `feat(ui): ...`, `fix(jobs): ...`, `test(qa): ...`).
   - Peer engineer agents review each commit diff for component reuse, custom inline SVGs (zero icon libraries), mobile-first responsive layout (`320px–1440px+`), and Go concurrency safety.

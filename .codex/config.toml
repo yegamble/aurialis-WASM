@@ -31,6 +31,10 @@ config_file = ".codex/agents/aurialis-product-engineer.toml"
 description = "QA Tester on the Aurialis-WASM war room. Expert in breaking code, fuzzing edge cases, running Postman/Newman API test suites and raw cURL probes against the Go backend, and driving Vitest and Playwright (including 320px-1440px responsive & WCAG 2.2 AA a11y checks) against the Next.js + WASM frontend. Works closely with Devil's Advocate to criticize every feature, try to break other agents' code, and gate production readiness."
 config_file = ".codex/agents/aurialis-qa.toml"
 
+[agents.aurialis-security]
+description = "Cybersecurity Engineer on the Aurialis-WASM war room. Expert in Go/Next.js/WASM application security, host-machine protection for local users, Content Disarm & Reconstruction (CDR) for uploaded audio, polyglot/steganographic/path-traversal defense so attackers cannot hide or execute malicious files on the host machine, DNS-rebinding/localhost-CSRF hardening, and supply-chain security. Read-only in review rounds; implements security hardening in small atomic commits during war-room-loop waves."
+config_file = ".codex/agents/aurialis-security.toml"
+
 [agents.aurialis-tech-writer]
 description = "Technical Writer on the Aurialis-WASM war room. Keeps all repository documentation 100% accurate and synchronized with the code across README.md, API docs (docs/api.md, OpenAPI/Postman docs), developer technical architecture docs (docs/architecture.md), and task/progress tracking docs (docs/tasks.md, docs/implementation-status.md, .claude/war-room/ledger.md). Every developer agent catches up with the Technical Writer before closing a slice."
 config_file = ".codex/agents/aurialis-tech-writer.toml"

@@ -25,7 +25,8 @@ Select the smallest panel of specialists from `.claude/agents/` whose perspectiv
 - `aurialis-backend` — Go 1.26, TypeScript, WASM (`GOOS=js`/`wasip1`), single-binary embedding, concurrent job/worker-pool optimization, in-house AI/LLM mastering.
 - `aurialis-frontend` — Next.js 16, strict TypeScript, Tailwind CSS v4, custom inline SVGs (no icon libraries), mobile-first responsive layouts, aggressive component reuse.
 - `aurialis-designer` — Accessible (WCAG 2.2 AA, APCA, keyboard, `>=44×44px` touch targets) & interactive design, HCL/OKLCH perceptual color, mobile-first + desktop workstation ergonomics, Figma state matrices.
-- `aurialis-qa` — Breaks code & edge cases via Postman/Newman (`TS-001`–`TS-013+`), raw `curl` probes, Vitest, and Playwright. Collaborates directly with `aurialis-devils-advocate`.
+- `aurialis-security` — Codebase security, host-machine protection for local users, Audio Content Disarm & Reconstruction (CDR), anti-polyglot/payload-stashing, DNS-rebinding & localhost CSRF hardening.
+- `aurialis-qa` — Breaks code & edge cases via Postman/Newman (`TS-001`–`TS-013+`), raw `curl` probes, Vitest, and Playwright. Collaborates directly with `aurialis-devils-advocate` and `aurialis-security`.
 - `aurialis-devils-advocate` — Argues whether a feature actually works or is placebo, whether it is needed or bloat, and shoots down premature completion claims.
 - `aurialis-tech-writer` — Audits and synchronizes `README.md`, `docs/api.md`, `docs/architecture.md`, `docs/tasks.md`, and `.claude/war-room/ledger.md`.
 - `aurialis-product-engineer` — Audits vertical-slice completeness, small readable commits, Tech Writer handoffs, and "finished means merged" branch hygiene.

@@ -35,6 +35,10 @@ Our architectural goal is a **single compiled Go binary** (`aurialis`) that embe
    - Every custom SVG chart (Waveform, EQ Spectrum, Deep Timeline, Album Consistency, Reference Overlay) must have an accessible text summary and labeled form-control equivalents. Never rely on color alone to communicate pass/warning/fail/muted/edited states.
 5. **Single Go Binary + WASM + Concurrent Job Optimization**:
    - The Go binary embeds compiled frontend assets (`//go:embed`) and `.wasm` modules, sets `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` so `SharedArrayBuffer` and `AudioWorklet` operate at full speed, and manages concurrent audio processing jobs (Smart Split `2–6` stems, Deep Analysis `MasteringScript` v1, Album Batch Mastering) via bounded worker pools, context cancellation, zero-copy buffer reuse, and deterministic resource limits.
+6. **Cybersecurity, Host-Machine Protection & Audio Content Disarm & Reconstruction (Enforced by `aurialis-security`)**:
+   - **Zero Persistent Raw Uploads / Anti-Payload Stashing**: Never write uploaded files to the host disk using user-supplied filenames or extensions. Process uploads in bounded memory (`sync.Pool` Float32 PCM buffers) or, when spill-to-disk is needed, use an isolated `0700` temp directory with random CSPRNG UUID `.pcm.tmp` filenames opened with `O_CREATE|O_EXCL|O_NOFOLLOW` and `0600` (non-executable) permissions, unlinked immediately on job completion/cancellation.
+   - **Audio Content Disarm & Reconstruction (CDR)**: Validate container magic bytes and chunk bounds, reject polyglots (`MZ`, `\x7fELF`, Mach-O, `PK\x03\x04` ZIP/JAR trailers, `%PDF`, scripts), strip all non-audio chunks (`LIST`, `INFO`, `ID3`, `JUNK`, `PAD`, trailing bytes after `data`), and re-synthesize clean PCM samples so hidden payloads cannot survive on the host machine or in exported audio.
+   - **Localhost Hardening**: Bind to `127.0.0.1` by default, validate `Host` and `Origin`/`Sec-Fetch-Site` headers against DNS rebinding and drive-by localhost CSRF, ban `os/exec` (`exec.Command`) in audio/request paths, and enforce strict CSP, `X-Content-Type-Options: nosniff`, and `X-Frame-Options: DENY`.
 
 ---
 
@@ -94,14 +98,15 @@ Enforced by the **Product Engineer** (`aurialis-product-engineer`) and the Stop 
 
 ## 5. The War Room & War Room Loop (`war-room` / `war-room-loop`)
 
-We use a 7-seat adversarial specialist War Room that works across **Gemini Argon (Antigravity / Gemini CLI)**, **Claude Code**, and **OpenAI Codex**:
+We use an 8-seat adversarial specialist War Room that works across **Gemini Argon (Antigravity / Gemini CLI)**, **Claude Code**, and **OpenAI Codex**:
 
 | Agent ID | Role | Core Responsibility |
 |---|---|---|
 | [`aurialis-backend`](.claude/agents/aurialis-backend.md) | **Backend Engineer** | Go + TypeScript + WASM (`GOOS=js`/`wasip1`), single-binary embedding, concurrent job/worker-pool optimization, in-house audio & AI/LLM mastering pipeline. |
 | [`aurialis-frontend`](.claude/agents/aurialis-frontend.md) | **Senior Frontend Engineer** | Next.js 16 + strict TypeScript + Tailwind CSS v4, custom inline SVGs (no icon libraries), mobile-first responsive layouts, maximum component reuse to eliminate test bloat. |
 | [`aurialis-designer`](.claude/agents/aurialis-designer.md) | **UI/UX Designer** | Accessible (WCAG 2.2 AA, APCA, keyboard, 44px touch targets) & interactive design, HCL/OKLCH perceptual color mastery, mobile-first + desktop workstation ergonomics, Figma skills & state matrices. |
-| [`aurialis-qa`](.claude/agents/aurialis-qa.md) | **QA Tester** | Breaks code & hunts edge cases using Postman/Newman, raw `curl` probes, Vitest, and Playwright. Collaborates with Devil's Advocate to falsify completion claims. |
+| [`aurialis-security`](.claude/agents/aurialis-security.md) | **Cybersecurity Engineer** | Codebase & supply-chain security, host-machine protection for local users, Audio Content Disarm & Reconstruction (CDR), anti-polyglot/payload-stashing, DNS-rebinding & localhost CSRF defense. |
+| [`aurialis-qa`](.claude/agents/aurialis-qa.md) | **QA Tester** | Breaks code & hunts edge cases using Postman/Newman, raw `curl` probes, Vitest, and Playwright. Collaborates with Devil's Advocate and Cybersecurity Engineer to falsify completion claims. |
 | [`aurialis-devils-advocate`](.claude/agents/aurialis-devils-advocate.md) | **Devil's Advocate** | Challenges whether features work properly, whether they are needed or bloat, and shoots down premature "finished" claims when features, edge cases, or studio polish are missing. |
 | [`aurialis-tech-writer`](.claude/agents/aurialis-tech-writer.md) | **Technical Writer** | Keeps `README.md`, `docs/api.md`, `docs/architecture.md`, `docs/tasks.md`, and `.claude/war-room/ledger.md` 100% synchronized with code. All developers catch up with Tech Writer on every change. |
 | [`aurialis-product-engineer`](.claude/agents/aurialis-product-engineer.md) | **Product Engineer** | Owns requirements, vertical-slice completeness, small readable commits, peer-agent review handoffs, Tech Writer sync, and merging finished branches to `main`. |

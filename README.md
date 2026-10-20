@@ -89,6 +89,27 @@ pnpm run build
 # 3. API (Postman/Newman + cURL) & Playwright Responsive/A11y Gate
 MAX_UPLOAD_BYTES_OVERRIDE=209715200 pnpm run test:backend:postman
 pnpm exec playwright test
+
+# 4. Multi-Model War Room Agent Sync Gate
+python3 scripts/sync-agents.py --check
+```
+
+### GitHub Actions CI/CD (`.github/workflows/ci.yml`)
+
+Every commit pushed to `main` or any feature/war-room branch (`branches: ['**']`) and every pull request triggers [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+1. **`repo-and-agent-hygiene`** — Enforces `pnpm`-only lockfiles, bans external icon libraries in `src/`, verifies multi-model agent synchronization (`python3 scripts/sync-agents.py --check`), smoke-tests `.claude/hooks/scrutinise.py`, and validates GitHub Actions YAML with `actionlint`.
+2. **`go-wasm`** — Runs `gofmt`, `go mod verify`, `go vet`, `golangci-lint` v2 (`staticcheck` all, `revive`, `gosec`, `nakedret`), `identypo`, `govulncheck`, `go test -race`, and `GOOS=js GOARCH=wasm` compilation.
+3. **`frontend-quality`** — Runs `pnpm install --frozen-lockfile`, `tsc --noEmit`, `pnpm run lint`, `knip`, `cspell`, `pnpm test`, and `pnpm run build`.
+4. **`backend-newman`** — Runs the Postman/Newman backend suite (`TS-001`–`TS-013`) with `MAX_UPLOAD_BYTES_OVERRIDE=209715200`.
+5. **`playwright-e2e`** — Runs mobile-first responsive (`320px`–`1440px`) and axe WCAG 2.2 AA E2E checks.
+6. **`ci-passed`** — Unified gate that fails if any upstream job fails or is cancelled.
+
+War Room agents inspect branch/PR health and automatically diagnose & repair broken runs via:
+
+```bash
+gh run list --branch "$(git branch --show-current)" --limit 5
+gh pr checks
+gh run view <run-id> --log-failed
 ```
 
 ---

@@ -67,7 +67,7 @@ Read this once before forming any opinion. Then read `AGENTS.md`, `.claude/revie
 | **Single Binary Build** | `pnpm run build && go build -trimpath -o aurialis ./cmd/aurialis` |
 | **API (Postman/Newman + cURL)** | `MAX_UPLOAD_BYTES_OVERRIDE=209715200 pnpm run test:backend:postman` + `curl -i` COOP/COEP & edge-case probes |
 | **Responsive & A11y E2E** | `pnpm exec playwright test` (verifying `320px`, `375px`, `768px`, `1024px`, `1440px` viewports + axe WCAG 2.2 AA) |
-| **CI/CD Workflows** | `.github/workflows/ci.yml` all jobs green (`go-wasm`, `frontend-unit`, `backend-newman`, `playwright-e2e`, `binary-smoke`) |
+| **CI/CD Workflows** | `.github/workflows/ci.yml` all jobs green (`repo-and-agent-hygiene`, `go-wasm`, `frontend-quality`, `backend-newman`, `playwright-e2e`, `ci-passed`); verify with `gh run list --branch "$(git branch --show-current)" --limit 5` and `gh run view <id> --log-failed` |
 
 ---
 

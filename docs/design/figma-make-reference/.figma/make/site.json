@@ -1,0 +1,10 @@
+{
+  "description": "Upload and master audio tracks with intuitive tools tailored by genre, featuring advanced controls, smart instrument splitting, and album-level mastering.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

@@ -1,0 +1,95 @@
+# Aurialis-WASM Repo Map — Binding Context for Every War-Room Seat
+
+Read this once before forming any opinion. Then read `AGENTS.md`, `.claude/review-loop.md`, `.claude/war-room/finding-format.md`, `.claude/war-room/protocol.md`, and the Round 0 evidence pack provided by the chair.
+
+---
+
+## 1. Repository Layout
+
+| Path | Owns |
+|---|---|
+| `cmd/aurialis/` | Single compiled Go entrypoint: CLI flags, HTTP/API server, `//go:embed` static/standalone Next.js & `.wasm` asset serving, COOP/COEP middleware, graceful shutdown |
+| `internal/server/` | HTTP routes, multipart upload streaming, magic-byte validation, rate/size caps (`413`/`400`), CORS, SSE/polling job progress |
+| `internal/jobs/` | Concurrent job scheduler, bounded worker pools, semaphores, context cancellation, backpressure, zero-copy buffer pooling, deterministic cleanup |
+| `internal/audio/` | Go native audio decoding/encoding (WAV 16/24/32-bit, TPDF dither, AIFF, MP3, FLAC, OGG), LUFS/True-Peak/DR/Correlation metering, spectral & section analysis |
+| `internal/mastering/` | In-house AI/LLM & deterministic `MasteringScript` v1 engine (`modern_pop_polish`, `hip_hop_low_end`, `indie_warmth`, `metal_wall`, `pop_punk_air`), stem separation (`2–6` stems), AI-artifact detection (`AI Repair` lane), Reference Match, Album Consistency batch mastering, Release Check |
+| `wasm/dsp/` | Go/WASM DSP modules (`GOOS=js GOARCH=wasm` and `GOOS=wasip1 GOARCH=wasm`): biquad parametric EQ, compressor, limiter, saturation, stereo width, real-time block processor for `AudioWorklet` + `SharedArrayBuffer` |
+| `src/app/` | Next.js 16 App Router pages/routes (`/`, `/library`, `/master/[trackId]`, `/split/[trackId]`, `/albums`, `/albums/[albumId]`, `/reference/[trackId]`, `/release-check/[trackId]`) |
+| `src/components/` | Reusable Tailwind CSS v4 + custom inline SVG primitives (`layout/`, `audio/`, `controls/`, `shared/`) — zero external icon libraries |
+| `src/lib/` | AudioWorklet + WASM bridge, IndexedDB persistence (`projects`, `audio` Blobs, `albums`, `stemProjects`), state store, deterministic simulation fallback |
+| `public/worklets/` & `public/wasm/` | AudioWorklet processors and compiled `.wasm` DSP binaries |
+| `tests/postman/` | Postman collections (`aurialis-backend.postman_collection.json`), Newman runner (`run-newman.sh`), and deterministic audio fixture generator (`TS-001` through `TS-013+`) |
+| `e2e/` | Playwright E2E, mobile-first responsive (`320px`, `375px`, `768px`, `1024px`, `1440px`), and axe WCAG 2.2 AA accessibility suites |
+| `docs/` | `architecture.md`, `api.md`, `tasks.md`, `implementation-status.md`, and `docs/design/aurialis-redesign.md` (plus `docs/design/figma-make-reference/`) |
+| `.claude/`, `.agents/`, `.gemini/`, `.codex/` | Cross-platform War Room agents, skills, slash commands, hooks, and ledger |
+
+---
+
+## 2. Non-Negotiable Invariants
+
+1. **Single Self-Contained Go + Next.js + WASM Binary**:
+   - Production compiles into a single Go binary (`aurialis`) that serves the Next.js UI, `.wasm` modules, AudioWorklets, and JSON/multipart APIs in-house without requiring an external Python FastAPI container at runtime.
+   - All responses serving the app shell and worklets must include `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` so `SharedArrayBuffer` and WASM `AudioWorklet` pipelines work in Chrome, Firefox, and Safari.
+2. **Latest Node, Next.js 16, and `pnpm` Only**:
+   - Node `26.12.0` (`>=24.0.0`), `pnpm@10.33.0`, Next.js `^16.4.2`, React 19, TypeScript 5.8+, Go `1.26.2`.
+   - Any use of `npm` or `yarn`, or committing `package-lock.json` / `yarn.lock`, is a **BLOCKER**.
+3. **Zero External Icon Libraries & Low Bundle Weight**:
+   - All styling uses **Tailwind CSS v4**.
+   - All icons use **custom inline SVGs** (`src/components/shared/Icon.tsx`). Importing `lucide-react`, `@heroicons/react`, `react-icons`, or emoji icons in application code is a **BLOCKER**.
+   - Components must be reused across all 8 routes (`Button`, `SliderField`, `SegmentedControl`, `Toggle`, `Modal`, `BottomSheet`, `StatusBadge`, `DropZone`, `Waveform`, `SpectrumChart`, `DeepTimeline`, `Transport`, `MetricStrip`). One-off duplicated sliders, buttons, or modals are **REQUIRED** defects.
+4. **Mobile-First & Responsive Workstation Ergonomics**:
+   - Enforced jointly by `aurialis-frontend` and `aurialis-designer`.
+   - Base CSS/Tailwind classes target `320px–390px` mobile screens first (compact header, 4-item bottom nav, sticky mini-transport, bottom-sheet move editors, horizontally scrollable Deep timeline with sticky lane headers), then scale up at `md:` (`768px` tablet 2-column grids) and `lg:`/`xl:` (`1024px–1440px+` desktop left rail + central canvas + right inspector + bottom transport).
+   - Zero unintended horizontal page scroll at `320px`, `375px`, `390px`, `768px`, `1024px`, and `1440px`.
+   - All interactive controls and drag handles must have `>=44×44px` hit areas and single-pointer/keyboard equivalents (`WCAG 2.5.7`, `2.5.8`).
+5. **HCL / OKLCH Perceptual Color & WCAG 2.2 AA Accessibility**:
+   - Warm editorial identity (`--canvas: #f2eee6`, `--paper: #faf7f0`, `--ink: #29231f`, `--clay: #b4543c`, `--moss: #596c52`, `--ochre: #b8893d`, `Newsreader` + `Instrument Sans` + `tabular-nums`).
+   - Color ramps and state washes are audited in **HCL / OKLCH** perceptual space and certified against **WCAG 2.2 AA** contrast ratios.
+   - Every custom SVG visualization must provide an accessible text summary and labeled form controls; status is never conveyed by color alone.
+6. **Production-Compatible Contracts (`MasteringScript` v1 & Smart Split 2–6)**:
+   - Deep mode uses the version `1` `MasteringScript` schema with the 5 engineer profiles (`modern_pop_polish`, `hip_hop_low_end`, `indie_warmth`, `metal_wall`, `pop_punk_air`), section vocabulary (`intro`, `verse`, `chorus`, `bridge`, `drop`, `breakdown`, `outro`, `unknown`), and 5 automation lanes (`Volume`, `EQ`, `Comp/Sat`, `Width`, `AI Repair`).
+   - Smart Split supports every exact stem count from `2` through `6` (`2`: Vocals/Instrumental; `3`: Vocals/Drums/Other; `4`: Vocals/Drums/Bass/Other; `5`: Vocals/Drums/Bass/Melody/Other; `6`: Vocals/Drums/Bass/Guitar/Piano/Other).
+7. **Concurrent Job Safety & Resource Bounds**:
+   - Multiple concurrent uploads, stem splits, deep analyses, and album batch jobs must run through bounded Go worker pools with `context.Context` cancellation, upload size limits (`MAX_UPLOAD_BYTES_OVERRIDE` / 413), magic-byte sniffing (`400`), filename sanitization (no CRLF or `../`), and deterministic temp/buffer cleanup.
+8. **Small Commits, Technical Writer Sync, and Finished Means Merged**:
+   - Enforced by `aurialis-product-engineer` and `aurialis-tech-writer`. Small readable commits, synchronized docs (`README.md`, `docs/api.md`, `docs/architecture.md`, `docs/tasks.md`), and merged to `main` before claiming completion.
+
+---
+
+## 3. Verification Gates (Quote These; Do Not Invent Others)
+
+| Area | Gate Command |
+|---|---|
+| **Toolchain Preflight** | `export PATH="$HOME/.nvm/versions/node/v26.12.0/bin:$PATH" && node -v && pnpm -v && go version` |
+| **Go Backend, Static Quality & Concurrency** | `"$(go env GOROOT)/bin/gofmt" -l cmd internal wasm` (empty) · `go mod verify` · `go vet ./...` · `golangci-lint run ./...` (runs `staticcheck -checks all`, `revive`, `gosec`, `nakedret`, `misspell`, `dupword`, `gocritic`, `errorlint`, `bodyclose`, `noctx`, `exhaustive` via `.golangci.yml`; use `--fix` locally only, never in CI) · `identypo ./...` · `govulncheck ./...` · `go test -race -count=1 -timeout 10m ./...` |
+| **WASM Compilation** | `GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp` |
+| **Frontend Strict Quality & Zero-Icon-Lib** | `pnpm exec tsc --noEmit` (`staticcheck` equivalent) · `pnpm run lint` (`eslint --max-warnings=0` with `strictTypeChecked`, `@next/next`, `security`, `sonarjs`, `unicorn`, `jsx-a11y`, and `no-restricted-imports` banning `lucide-react`/`@heroicons`/`react-icons`) · `pnpm exec knip` (dead code/unused exports) · `pnpm exec cspell lint "**/*.{ts,tsx,go,md}"` (`identypo` equivalent) · `pnpm test` · `pnpm run build` |
+| **Single Binary Build** | `pnpm run build && go build -trimpath -o aurialis ./cmd/aurialis` |
+| **API (Postman/Newman + cURL)** | `MAX_UPLOAD_BYTES_OVERRIDE=209715200 pnpm run test:backend:postman` + `curl -i` COOP/COEP & edge-case probes |
+| **Responsive & A11y E2E** | `pnpm exec playwright test` (verifying `320px`, `375px`, `768px`, `1024px`, `1440px` viewports + axe WCAG 2.2 AA) |
+| **CI/CD Workflows** | `.github/workflows/ci.yml` all jobs green (`go-wasm`, `frontend-unit`, `backend-newman`, `playwright-e2e`, `binary-smoke`) |
+
+---
+
+## 4. Evidence Tiers — Never Promote One to Another
+
+1. `unit` — Go package unit test or Vitest component test with mocked/in-memory state.
+2. `wasm-bridge` — Real compiled `.wasm` module loaded and processing audio Float32 frames in test harness.
+3. `api-curl` — Real compiled `aurialis` Go binary serving live HTTP endpoints verified via `curl -i` (including headers, status codes, multipart errors, and concurrency).
+4. `newman-e2e` — Full Postman/Newman `PR Suite` (`TS-001` through `TS-013+`) passing against the live Go server.
+5. `playwright-a11y-responsive` — Real headless browser running against the embedded Next.js + Go + WASM stack across mobile (`320px`/`375px`), tablet (`768px`), and desktop (`1024px`/`1440px`) with axe WCAG 2.2 AA passing.
+6. `compiled-binary-smoke` — Single standalone `./aurialis` binary executed outside the source tree in a clean temp directory, serving UI, WASM, and API end-to-end.
+
+*Rule*: Simulated/deterministic frontend fallback state is **not** WASM DSP or Go backend evidence. Merged is not released is not deployed.
+
+---
+
+## 5. Traps That Have Burned This Project
+
+- **Node version in non-interactive shells**: macOS default non-interactive `zsh` resolves `node` to `~/.nvm/versions/node/v19.9.0/bin/node`, which fails Next.js 16 and Vite 8 builds. Always prepend `$HOME/.nvm/versions/node/v26.12.0/bin` to `PATH` (or use `mise exec --`).
+- **`gofmt` shell alias**: `gofmt` may be aliased to `gofmt -w .` in the owner's interactive shell. Always invoke `"$(go env GOROOT)/bin/gofmt" -l cmd internal wasm` so read-only review seats never dirty the tree.
+- **Figma Make reference imports `lucide-react` and `react-router-dom`**: The reference prototype in `docs/design/figma-make-reference/` came from Figma Make (Vite + `react-router-dom` + `lucide-react`). When building/porting into Next.js 16 (`src/`), **never** copy `lucide-react` or `react-router-dom`—use Next.js App Router (`next/link`, `next/navigation`) and custom inline SVGs (`src/components/shared/Icon.tsx`).
+- **Newman `TS-007` Oversized Upload**: `TS-007` sends a 250 MB payload and expects `413 Payload Too Large`. If `MAX_UPLOAD_BYTES_OVERRIDE=209715200` (~200 MB) is not set when booting the server under test, the server uses its 1 GB default and rejects on magic bytes (`400`) instead of size (`413`).
+- **`SharedArrayBuffer` silently degrades without COOP/COEP**: If the Go server or Next.js dev server omits `Cross-Origin-Opener-Policy: same-origin` or `Cross-Origin-Embedder-Policy: require-corp`, `window.crossOriginIsolated` is `false` and `SharedArrayBuffer` throws `ReferenceError`, forcing the audio engine into bypass fallback. Always verify headers with `curl -I`.
+- **Object URL & WASM linear memory leaks**: Creating `URL.createObjectURL(blob)` or allocating WASM Float32 buffers per render/block without revoking URLs or reusing pre-allocated ring buffers causes browser OOM on 10-minute tracks (`TS-012`).
+- **Killing shared processes**: Multiple agents may run tests concurrently. Track the PID of any `./aurialis` test server you start on a unique free port (`127.0.0.1:<port>`) and kill only that PID (`lsof -tiTCP:<port> -sTCP:LISTEN`); never run `pkill -f aurialis`.

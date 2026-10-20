@@ -1,0 +1,12 @@
+{
+  "war-room-scrutiny": {
+    "enabled": true,
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python3 ../.claude/hooks/scrutinise.py",
+        "timeout": 10
+      }
+    ]
+  }
+}

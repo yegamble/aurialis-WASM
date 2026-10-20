@@ -1,0 +1,11 @@
+{
+  "name": "aurialis-war-room",
+  "displayName": "Aurialis-WASM War Room",
+  "version": "1.0.0",
+  "description": "7-seat adversarial War Room and pessimistic War Room Loop for Aurialis-WASM (Backend, Frontend, UI/UX Designer, QA Tester, Devil's Advocate, Technical Writer, Product Engineer).",
+  "suggestedPrompts": [
+    "/war-room feature=deep-mastering",
+    "/war-room ci-cd",
+    "/war-room-loop feature=wasm-dsp max-iterations=4"
+  ]
+}

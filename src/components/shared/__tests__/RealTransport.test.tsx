@@ -59,6 +59,7 @@ describe("live A/B transport", () => {
 it("restarts the current track, forwards to the queued track, and toggles the actual repeat setting", () => {
   const callbacks = handlers();
   const { rerender } = render(<RealTransport {...callbacks} state={initial} sourceReady nextTrackTitle="Second song" />);
+  expect(screen.getByRole("status").textContent).toBe("Next: Second song");
   fireEvent.click(screen.getByRole("button", { name: "Restart track" }));
   expect(callbacks.onRestart).toHaveBeenCalledOnce();
   fireEvent.click(screen.getByRole("button", { name: "Next track: Second song" }));

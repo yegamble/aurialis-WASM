@@ -41,15 +41,15 @@ function graphHarness(autoReady = true) {
     currentTime = 0;
     state = "running";
     destination = {};
-    resume = vi.fn().mockResolvedValue(undefined);
-    suspend = vi.fn().mockResolvedValue(undefined);
+    resume = vi.fn(() => { this.state = "running"; return Promise.resolve(); });
+    suspend = vi.fn(() => { this.state = "suspended"; return Promise.resolve(); });
     close = vi.fn(() => { this.state = "closed"; return Promise.resolve(); });
     audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
     createChannelSplitter = endpoint;
     createChannelMerger = endpoint;
     createAnalyser = () => ({ ...endpoint(), fftSize: 4096, smoothingTimeConstant: 0, minDecibels: -120, maxDecibels: 0 });
     createBuffer = () => ({ copyToChannel: vi.fn() });
-    createBufferSource = () => ({ ...endpoint(), buffer: null, loop: false, onended: null, start: vi.fn(), stop: vi.fn() });
+    createBufferSource = vi.fn(() => ({ ...endpoint(), buffer: null, loop: false, onended: null, start: vi.fn(), stop: vi.fn() }));
     constructor() { contexts.push(this); }
   }
   vi.stubGlobal("crossOriginIsolated", true);
@@ -132,6 +132,32 @@ describe("per-track live audio lifecycle", () => {
     ]));
     expect(worker).not.toHaveBeenCalled();
     expect(controller.getState()).toMatchObject({ playing: true, original: true, volume: 0.25, parameterVersion: 2 });
+    controller.dispose();
+  });
+  it("resumes inside a second Play gesture while module loading is held and rejects the stale play ticket", async () => {
+    const { contexts, nodes, fetchModule } = graphHarness();
+    let completeFetch: ((response: Response) => void) | undefined;
+    fetchModule.mockReturnValue(new Promise<Response>((resolve) => { completeFetch = resolve; }));
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams());
+    const firstPlay = controller.play();
+    const context = contexts[0];
+    if (!context) throw new Error("Missing audio context fixture");
+    expect(context.resume).toHaveBeenCalledTimes(1);
+    controller.pause();
+    expect(context.state).toBe("suspended");
+    const secondPlay = controller.play();
+    // Fetch is unresolved and no worklet can send ready yet. This assertion
+    // distinguishes gesture-time resume from a late resume after readiness.
+    expect(nodes).toHaveLength(0);
+    expect(context.resume).toHaveBeenCalledTimes(2);
+    expect(context.state).toBe("running");
+    expect(context.createBufferSource).not.toHaveBeenCalled();
+    completeFetch?.(new Response(new Uint8Array([0]), { status: 200 }));
+    await Promise.all([firstPlay, secondPlay]);
+    expect(contexts).toHaveLength(1);
+    expect(nodes).toHaveLength(1);
+    expect(context.createBufferSource).toHaveBeenCalledOnce();
+    expect(controller.getState()).toMatchObject({ ready: true, playing: true, loading: false, error: null });
     controller.dispose();
   });
   it("creates a fresh graph after a processor failure and ignores old graph events", async () => {

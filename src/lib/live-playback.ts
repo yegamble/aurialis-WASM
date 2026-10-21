@@ -345,8 +345,11 @@ export function createLivePlayback(
       state = { ...state, loading: true, error: null };
       emit();
       try {
+        // A prior Pause can suspend the context while the module is still
+        // loading. Resume inside this Play gesture before waiting for ready.
+        const resuming = initialization ? audio?.resume() : undefined;
         initialization ??= initialize();
-        await initialization;
+        await Promise.all([initialization, resuming]);
         if (isDisposed() || ticket !== playTicket || !audio) return;
         await audio.resume();
         if (isDisposed() || ticket !== playTicket) return;

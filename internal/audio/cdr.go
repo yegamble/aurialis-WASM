@@ -107,44 +107,53 @@ func SanitizeFilename(rawName string) (string, error) {
 	return base, nil
 }
 
-// ScanPolyglotPayloads inspects raw upload bytes for executable headers, scripts, PDFs,
-// or embedded ZIP/JAR/archive trailers (e.g., WAV+ZIP polyglots).
+// ScanPolyglotPayloads checks file headers and bytes outside declared audio
+// containers. PCM bytes are arbitrary binary data and must never be scanned for
+// text or executable signatures. Container parsers inspect non-audio chunks.
 func ScanPolyglotPayloads(data []byte) error {
 	if len(data) < 12 {
 		return fmt.Errorf("%w: file too short (%d bytes)", ErrCorruptContainer, len(data))
 	}
-	// Check leading magic signatures for non-audio binaries
-	switch {
-	case bytes.HasPrefix(data, []byte("MZ")):
-		return fmt.Errorf("%w: Windows PE MZ signature detected", ErrPolyglotPayload)
-	case bytes.HasPrefix(data, []byte("\x7fELF")):
-		return fmt.Errorf("%w: ELF binary signature detected", ErrPolyglotPayload)
-	case bytes.HasPrefix(data, []byte("\xfe\xed\xfa\xce")) ||
-		bytes.HasPrefix(data, []byte("\xfe\xed\xfa\xcf")) ||
-		bytes.HasPrefix(data, []byte("\xce\xfa\xed\xfe")) ||
-		bytes.HasPrefix(data, []byte("\xcf\xfa\xed\xfe")):
-		return fmt.Errorf("%w: Mach-O binary signature detected", ErrPolyglotPayload)
-	case bytes.HasPrefix(data, []byte("%PDF-")):
-		return fmt.Errorf("%w: PDF document signature detected", ErrPolyglotPayload)
-	case bytes.HasPrefix(data, []byte("#!")):
-		return fmt.Errorf("%w: shell script shebang detected", ErrPolyglotPayload)
+	if err := scanNonAudioPayloads(data[:12]); err != nil {
+		return err
 	}
-
-	// Scan the bounded upload for ZIP/JAR markers, plus header/trailer script markers.
-	scanSlice := data
-	if bytes.Contains(scanSlice, []byte("PK\x03\x04")) || bytes.Contains(scanSlice, []byte("PK\x05\x06")) {
-		return fmt.Errorf("%w: embedded ZIP/JAR archive signature (PK) detected", ErrPolyglotPayload)
+	var containerEnd uint64
+	switch string(data[:4]) {
+	case "RIFF":
+		containerEnd = uint64(binary.LittleEndian.Uint32(data[4:8])) + 8
+	case "FORM":
+		containerEnd = uint64(binary.BigEndian.Uint32(data[4:8])) + 8
 	}
-	lowerHead := bytes.ToLower(data[:minInt(len(data), 4096)])
-	if bytes.Contains(lowerHead, []byte("<script")) || bytes.Contains(lowerHead, []byte("<?php")) || bytes.Contains(lowerHead, []byte("<!doctype html")) {
-		return fmt.Errorf("%w: embedded HTML/script payload detected", ErrPolyglotPayload)
-	}
-	if len(data) > 4096 {
-		tail := data[len(data)-4096:]
-		if bytes.Contains(tail, []byte("PK\x03\x04")) || bytes.Contains(tail, []byte("PK\x05\x06")) ||
-			bytes.Contains(bytes.ToLower(tail), []byte("<script")) {
-			return fmt.Errorf("%w: trailing polyglot payload detected", ErrPolyglotPayload)
+	if containerEnd >= 12 && containerEnd < uint64(len(data)) {
+		if err := scanNonAudioPayloads(data[int(containerEnd):]); err != nil {
+			return err
 		}
+	}
+	// The first chunk header is structural data, not PCM. This catches an HTML
+	// or script body immediately following a spoofed RIFF/FORM prefix.
+	if (string(data[:4]) == "RIFF" || string(data[:4]) == "FORM") && len(data) >= 20 {
+		if err := scanNonAudioPayloads(data[12:20]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func scanNonAudioPayloads(data []byte) error {
+	for _, signature := range [][]byte{
+		[]byte("PK\x03\x04"), []byte("PK\x05\x06"), []byte("\x7fELF"),
+		[]byte("\xfe\xed\xfa\xce"), []byte("\xfe\xed\xfa\xcf"), []byte("\xce\xfa\xed\xfe"), []byte("\xcf\xfa\xed\xfe"), []byte("%PDF-"),
+	} {
+		if bytes.Contains(data, signature) {
+			return ErrPolyglotPayload
+		}
+	}
+	if bytes.HasPrefix(data, []byte("MZ")) || bytes.HasPrefix(data, []byte("#!")) {
+		return ErrPolyglotPayload
+	}
+	lower := bytes.ToLower(data)
+	if bytes.Contains(lower, []byte("<script")) || bytes.Contains(lower, []byte("<?php")) || bytes.Contains(lower, []byte("<!doctype html")) {
+		return ErrPolyglotPayload
 	}
 	return nil
 }
@@ -209,6 +218,9 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 			if chunkSize < 16 {
 				return nil, fmt.Errorf("%w: fmt chunk smaller than 16 bytes", ErrCorruptContainer)
 			}
+			if err := scanNonAudioPayloads(chunkBytes[16:]); err != nil {
+				return nil, err
+			}
 			audioFormat = binary.LittleEndian.Uint16(chunkBytes[0:2])
 			numChannels = binary.LittleEndian.Uint16(chunkBytes[2:4])
 			sampleRate = binary.LittleEndian.Uint32(chunkBytes[4:8])
@@ -225,8 +237,8 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 		default:
 			// CDR: Strip LIST, INFO, ID3, JUNK, PAD, bext, cue, smpl, or unknown chunks.
 			// Still inspect stripped chunk content for embedded polyglot signatures.
-			if bytes.Contains(chunkBytes, []byte("PK\x03\x04")) || bytes.Contains(chunkBytes, []byte("\x7fELF")) {
-				return nil, fmt.Errorf("%w: malicious signature inside %q chunk", ErrPolyglotPayload, chunkID)
+			if err := scanNonAudioPayloads(chunkBytes); err != nil {
+				return nil, fmt.Errorf("%w: non-audio chunk %q", err, chunkID)
 			}
 		}
 
@@ -335,11 +347,6 @@ func decodeSampleLE(b []byte, audioFormat, bitsPerSample uint16) float32 {
 			if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
 				return 0.0
 			}
-			if f > 1.0 {
-				return 1.0
-			} else if f < -1.0 {
-				return -1.0
-			}
 			return f
 		}
 		v := int32(u) // #nosec G115 -- intentional 32-bit two's complement PCM bit reinterpretation
@@ -380,6 +387,9 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 			if len(chunkBytes) < 18 {
 				return nil, fmt.Errorf("%w: AIFF COMM chunk too short", ErrCorruptContainer)
 			}
+			if err := scanNonAudioPayloads(chunkBytes[18:]); err != nil {
+				return nil, err
+			}
 			numChannels = binary.BigEndian.Uint16(chunkBytes[0:2])
 			numFrames = binary.BigEndian.Uint32(chunkBytes[2:6])
 			bitsPerSample = binary.BigEndian.Uint16(chunkBytes[6:8])
@@ -395,7 +405,14 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 			if int64(8)+int64(dataOffset) > int64(len(chunkBytes)) {
 				return nil, fmt.Errorf("%w: AIFF SSND offset out of bounds", ErrCorruptContainer)
 			}
+			if err := scanNonAudioPayloads(chunkBytes[8 : 8+int(dataOffset)]); err != nil {
+				return nil, err
+			}
 			ssndData = chunkBytes[8+int(dataOffset):]
+		default:
+			if err := scanNonAudioPayloads(chunkBytes); err != nil {
+				return nil, err
+			}
 		}
 		offset += int(chunkSize)
 		if chunkSize%2 == 1 {
@@ -532,10 +549,10 @@ func EncodeWAV(left, right []float32, sampleRate, bitDepth int) ([]byte, error) 
 			if math.IsNaN(s) || math.IsInf(s, 0) {
 				s = 0.0
 			}
-			if s > 1.0 {
-				s = 1.0
-			} else if s < -1.0 {
-				s = -1.0
+			// Floating-point WAV carries finite headroom above 0 dBFS. Integer
+			// formats alone require clipping to their representable full scale.
+			if bitDepth != 32 {
+				s = math.Max(-1, math.Min(1, s))
 			}
 			switch bitDepth {
 			case 16:
@@ -556,11 +573,4 @@ func EncodeWAV(left, right []float32, sampleRate, bitDepth int) ([]byte, error) 
 		}
 	}
 	return out, nil
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

@@ -35,7 +35,10 @@ func supportedControlCases() []controlCase {
 	}
 	p.Bands[2].GainDB = 6
 	add("EQ enabled", p, func(p *dsp.Params) { p.EQEnabled = false })
-	add("highpass type", p, func(p *dsp.Params) { p.Bands[2].Type = dsp.FilterHighPass; p.Bands[2].GainDB = 0 })
+	add("low shelf type", p, func(p *dsp.Params) { p.Bands[2].Type = dsp.FilterLowShelf })
+	add("high shelf type", p, func(p *dsp.Params) { p.Bands[2].Type = dsp.FilterHighShelf })
+	p.Bands[2].GainDB = 0
+	add("highpass type", p, func(p *dsp.Params) { p.Bands[2].Type = dsp.FilterHighPass })
 	p = dsp.DefaultParams()
 	p.Compressor.ThresholdDB = -16
 	p.Compressor.Ratio = 3
@@ -125,19 +128,23 @@ func TestSupportedControlsChangeAudioIndependently(t *testing.T) {
 }
 
 func TestHighPassRejectsBassAndPreservesTreble(t *testing.T) {
-	const rate = 48000.0
-	left, right := make([]float32, 48000), make([]float32, 48000)
-	for i := range left {
-		left[i] = float32(0.1*math.Sin(2*math.Pi*100*float64(i)/rate) + 0.1*math.Sin(2*math.Pi*8000*float64(i)/rate))
-		right[i] = left[i]
-	}
-	p := dsp.DefaultParams()
-	p.Bands[0] = dsp.BandParams{Type: dsp.FilterHighPass, FreqHz: 1000, GainDB: 0, Q: 0.707, Enabled: true}
-	output, _ := renderControl(rate, p, left[:47872], right[:47872])
-	low := dsp.GoertzelMagnitudeDB(output, rate, 100) - dsp.GoertzelMagnitudeDB(left[:47872], rate, 100)
-	high := dsp.GoertzelMagnitudeDB(output, rate, 8000) - dsp.GoertzelMagnitudeDB(left[:47872], rate, 8000)
-	if low > -35 || math.Abs(high) > 0.3 {
-		t.Fatalf("highpass response bass=%g treble=%g dB", low, high)
+	for _, rate := range []float64{8000, 16000, 44100, 48000, 96000, 192000} {
+		t.Run(fmt.Sprintf("%g Hz", rate), func(t *testing.T) {
+			frames := int(rate) / 128 * 128
+			left, right := make([]float32, frames), make([]float32, frames)
+			for i := range left {
+				left[i] = float32(0.1*math.Sin(2*math.Pi*100*float64(i)/rate) + 0.1*math.Sin(2*math.Pi*2500*float64(i)/rate))
+				right[i] = left[i]
+			}
+			p := dsp.DefaultParams()
+			p.Bands[0] = dsp.BandParams{Type: dsp.FilterHighPass, FreqHz: 1000, GainDB: 0, Q: 0.707, Enabled: true}
+			output, _ := renderControl(rate, p, left, right)
+			low := dsp.GoertzelMagnitudeDB(output, rate, 100) - dsp.GoertzelMagnitudeDB(left, rate, 100)
+			high := dsp.GoertzelMagnitudeDB(output, rate, 2500) - dsp.GoertzelMagnitudeDB(left, rate, 2500)
+			if low > -35 || math.Abs(high) > 0.3 {
+				t.Fatalf("highpass response bass=%g treble=%g dB", low, high)
+			}
+		})
 	}
 }
 

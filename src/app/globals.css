@@ -339,67 +339,6 @@ input[type="range"] {
   min-width: 0;
 }
 
-.transport {
-  display: grid;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 18px;
-  border-radius: 999px;
-  border: 1px solid var(--line-dark);
-  background: var(--paper);
-  box-shadow: var(--shadow);
-}
-
-.play-button {
-  width: 46px;
-  height: 46px;
-  min-width: 46px;
-  min-height: 46px;
-  border-radius: 50%;
-  border: 0;
-  background: var(--ink);
-  color: var(--paper);
-  display: grid;
-  place-items: center;
-}
-
-.transport strong {
-  display: block;
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-}
-
-.transport span {
-  font-size: 12px;
-  color: var(--ink-soft);
-  font-variant-numeric: tabular-nums;
-}
-
-.ab-toggle {
-  display: inline-flex;
-  padding: 3px;
-  border-radius: 999px;
-  background: var(--paper-deep);
-  border: 1px solid var(--line);
-}
-
-.ab-toggle button {
-  border: 0;
-  background: transparent;
-  padding: 8px 12px;
-  min-height: 44px;
-  min-width: 44px;
-  border-radius: 999px;
-  color: var(--ink-soft);
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.ab-toggle button.is-active {
-  background: var(--clay-dark);
-  color: #ffffff;
-}
-
 .metric-strip {
   display: grid;
 }
@@ -681,14 +620,6 @@ input[type="range"] {
     align-items: flex-start;
   }
 
-  .transport {
-    position: sticky;
-    bottom: 72px;
-    z-index: 25;
-    grid-template-columns: auto 1fr;
-    border-radius: 22px;
-  }
-
   .bottom-nav {
     position: fixed;
     left: 10px;
@@ -755,17 +686,6 @@ input[type="range"] {
   align-items: center;
   gap: 14px;
 }
-.volume-control {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  min-width: 0;
-}
-.volume-control input {
-  min-width: 44px;
-  max-width: 100px;
-}
 .inspector .check-row {
   display: flex;
   gap: 10px;
@@ -779,28 +699,6 @@ input[type="range"] {
 }
 .inspector .check-row > span {
   display: none;
-}
-.transport {
-  grid-template-columns: auto 46px auto minmax(80px, 1fr);
-}
-@media (max-width: 767px) {
-  .transport {
-    grid-template-columns: minmax(0, 1fr) 46px;
-    gap: 8px;
-    padding: 12px;
-  }
-  .transport-time {
-    grid-column: 1;
-  }
-  .volume-control {
-    grid-column: 2;
-  }
-  .volume-control {
-    font-size: 0;
-  }
-  .volume-control input {
-    width: 44px;
-  }
 }
 
 /* Match the canonical reference component names to the production shell. */
@@ -1352,18 +1250,9 @@ input[type="range"] {
   .master-page {
     padding-bottom: 240px;
   }
-  .master-page .transport {
-    position: fixed;
-    bottom: 82px;
-    left: 14px;
-    right: 14px;
-  }
   .master-page :is(button, input, select, a) {
     scroll-margin-bottom: 240px;
   }
-}
-.ab-toggle button.is-active > span {
-  color: inherit;
 }
 @media (min-width: 768px) {
   .side-nav {

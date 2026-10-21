@@ -16,6 +16,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
@@ -170,13 +171,25 @@ func writeErrorJSON(w http.ResponseWriter, status int, code, detail string) {
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":   "ok",
-		"service":  "aurialis-wasm",
-		"version":  "0.1.0",
-		"wasmDsp":  true,
-		"gpu":      false,
-		"models":   []string{"htdemucs", "2", "3", "4", "5", "6"},
-		"profiles": []string{"Warm Analog", "Punchy Commercial", "Dynamic & Open", "Vocal Forward", "Bass Heavy"},
+		"status":       "ok",
+		"service":      "aurialis-wasm",
+		"version":      "0.1.0",
+		"wasmDsp":      true,
+		"wasmDspReady": true,
+		"gpu":          false,
+		"models":       []string{"htdemucs", "2", "3", "4", "5", "6"},
+		"profiles": []string{
+			"Warm Analog",
+			"Punchy Commercial",
+			"Dynamic & Open",
+			"Vocal Forward",
+			"Bass Heavy",
+			"modern_pop_polish",
+			"hip_hop_low_end",
+			"indie_warmth",
+			"metal_wall",
+			"pop_punk_air",
+		},
 	})
 }
 
@@ -370,6 +383,9 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "audio/wav")
 	w.Header().Set("Content-Disposition", `attachment; filename="aurialis-mastered.wav"`)
+	w.Header().Set("X-Aurialis-Before-LUFS", fmt.Sprintf("%.2f", beforeMetrics.IntegratedLUFS))
+	w.Header().Set("X-Aurialis-After-LUFS", fmt.Sprintf("%.2f", afterMetrics.IntegratedLUFS))
+	w.Header().Set("X-Aurialis-After-Peak-dBTP", fmt.Sprintf("%.2f", afterMetrics.TruePeakDBTP))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(wavBytes)
 }
@@ -384,6 +400,17 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		writeErrorJSON(w, http.StatusNotFound, "job_not_found", fmt.Sprintf("Job %q not found", id))
 		return
+	}
+	if r.URL.Query().Get("wait") == "1" {
+		deadline := time.Now().Add(4 * time.Second)
+		for (job.Status == jobs.StatusQueued || job.Status == jobs.StatusRunning) && time.Now().Before(deadline) {
+			time.Sleep(15 * time.Millisecond)
+			if next, exists := s.jobs.Get(id); exists {
+				job = next
+			} else {
+				break
+			}
+		}
 	}
 	writeJSON(w, http.StatusOK, job)
 }

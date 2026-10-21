@@ -32,15 +32,15 @@ const (
 func NormalizeProfile(raw string) (ProfileID, error) {
 	clean := strings.TrimSpace(strings.ToLower(raw))
 	switch clean {
-	case "", "warm analog", "warm_analog", "warm-analog", "warmanalog":
+	case "", "warm analog", "warm_analog", "warm-analog", "warmanalog", "indie_warmth", "indie warmth":
 		return ProfileWarmAnalog, nil
-	case "punchy commercial", "punchy_commercial", "punchy-commercial", "punchy":
+	case "punchy commercial", "punchy_commercial", "punchy-commercial", "punchy", "modern_pop_polish", "modern pop polish", "metal_wall", "metal wall":
 		return ProfilePunchyCommercial, nil
-	case "dynamic & open", "dynamic and open", "dynamic_open", "dynamic-open", "dynamic":
+	case "dynamic & open", "dynamic and open", "dynamic_open", "dynamic-open", "dynamic", "pop_punk_air", "pop punk air":
 		return ProfileDynamicOpen, nil
 	case "vocal forward", "vocal_forward", "vocal-forward", "vocal":
 		return ProfileVocalForward, nil
-	case "bass heavy", "bass_heavy", "bass-heavy", "bass":
+	case "bass heavy", "bass_heavy", "bass-heavy", "bass", "hip_hop_low_end", "hip-hop low-end":
 		return ProfileBassHeavy, nil
 	default:
 		return "", fmt.Errorf("unsupported engineer profile %q", raw)

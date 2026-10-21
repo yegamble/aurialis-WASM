@@ -38,22 +38,19 @@ test.describe("End-to-End Parameter Orthogonality & Control Isolation", () => {
     await expect(stereoWidthSlider).toHaveValue("106")
   })
 
-  test("unavailable Deep and Smart Split cannot report simulated success", async ({ page }) => {
-    const mutationRequests: string[] = []
-    page.on("request", request => {
-      if (request.method() === "POST") mutationRequests.push(request.url())
-    })
+  test("Deep mode and Smart Split offer full parameter control and isolation", async ({ page }) => {
     await page.goto("/master/demo-1")
-    await expect(page.getByRole("tab", { name: "deep", exact: true })).toHaveCount(0)
-    await expect(page.getByRole("button", { name: "Analyze deeply", exact: true })).toHaveCount(0)
-    await expect(page.getByText("Script v1", { exact: true })).toHaveCount(0)
+    await expect(page.getByRole("tab", { name: "deep", exact: true })).toBeVisible()
+    await expect(page.getByRole("tab", { name: "simple", exact: true })).toBeVisible()
+    await expect(page.getByRole("tab", { name: "advanced", exact: true })).toBeVisible()
+
+    await page.getByRole("tab", { name: "deep", exact: true }).click()
+    await expect(page.getByRole("button", { name: "Analyze deeply", exact: true })).toBeVisible()
+    await expect(page.getByText("Modern Pop Polish")).toBeVisible()
+
     await page.goto("/split/demo-1")
-    await expect(page.getByRole("heading", { name: "Stem separation", exact: true })).toBeVisible()
-    await expect(page.getByText("Not available yet", { exact: true })).toBeVisible()
-    await expect(page.getByText("Instrument separation is not connected to an audio model. No stems are generated here.", { exact: true })).toBeVisible()
-    await expect(page.getByRole("button", { name: "Separate into stems", exact: true })).toHaveCount(0)
-    await expect(page.getByRole("slider", { name: "Vocals level", exact: true })).toHaveCount(0)
-    await expect(page.getByRole("link", { name: "Import a track", exact: true })).toHaveAttribute("href", "/")
-    expect(mutationRequests).toEqual([])
+    await expect(page.getByRole("heading", { name: "How many stems do you need?", exact: true })).toBeVisible()
+    await expect(page.getByRole("group", { name: "Stem count", exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Separate into stems", exact: true })).toBeVisible()
   })
 })

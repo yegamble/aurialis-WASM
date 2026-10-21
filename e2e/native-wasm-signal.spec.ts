@@ -72,7 +72,8 @@ test("actual Go WASM bridge matches native PCM for independent parameter changes
     if (hasHeadroom) {
       const gain = 10 ** ((params.inputGainDb ?? 0) / 20)
       for (const channel of ["left", "right"] as const) {
-        const expected = decoded[channel].map(sample => Math.fround(sample * gain))
+        // Signed zero has the same audio amplitude; the DSP may canonicalize it.
+        const expected = decoded[channel].map(sample => Math.fround(sample * gain) || 0)
         expect(native[channel], "float headroom must survive canonicalization and export").toEqual(expected)
       }
     }

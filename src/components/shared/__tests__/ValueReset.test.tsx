@@ -35,8 +35,10 @@ describe("canonical value resets", () => {
     const change = vi.fn();
     const bands = createDefaultAdvancedParams().eqBands;
     bands[2] = { ...bands[2], freqHz: 2000, gainDb: 5, q: 2 };
-    render(<SpectrumChart eqBands={bands} onBandChange={change} />);
+    render(<SpectrumChart eqBands={bands} activeBandId="mid" onBandChange={change} />);
     const node = screen.getByRole("button", { name: /Mid EQ:/ });
+    expect(node.style.zIndex).toBe("2");
+    expect(screen.getByRole("button", { name: /Low EQ:/ }).style.zIndex).toBe("1");
     fireEvent.doubleClick(node);
     expect(change).toHaveBeenLastCalledWith("mid", { freqHz: 1000, gainDb: 0 });
     fireEvent.keyDown(node, { key: "Backspace" });

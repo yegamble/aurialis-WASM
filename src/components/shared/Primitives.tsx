@@ -605,6 +605,7 @@ export function SpectrumChart({
             const position = {
               left: `${String(freqToX(band.freqHz, maxFrequency))}%`,
               top: `${String((gainToY(band.gainDb) / 60) * 100)}%`,
+              zIndex: isSelected ? 2 : 1,
             };
             const marker = (
               <span aria-hidden="true" className={`eq-marker block shrink-0 rounded-full border-2 border-paper ${isSelected ? "size-[12px] ring-2 ring-clay-dark ring-offset-2 ring-offset-paper" : "size-[10px] ring-1 ring-clay-dark"} ${band.enabled ? "bg-clay" : "bg-ink-soft"}`} />

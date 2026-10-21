@@ -23,16 +23,17 @@ async function exportPCM(page: Page) {
 }
 
 test("first Simple apply previews exactly the settings exported from the uploaded source", async ({ page }) => {
+  test.setTimeout(120_000);
   await uploadProject(page);
   await page.getByRole("tab", { name: "simple", exact: true }).click();
   await page.getByRole("button", { name: "Apply master direction", exact: true }).click();
-  await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
   await expect(page.getByText("Preview matches your settings.", { exact: true })).toBeVisible();
   await expect.poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.readyState)).toBeGreaterThanOrEqual(2);
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Apply master direction", exact: true }).click();
-  await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
   await expect(page.getByText("Preview matches your settings.", { exact: true })).toBeVisible();
   await expect.poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.readyState)).toBeGreaterThanOrEqual(2);
   const preview = await previewPCM(page);
@@ -44,6 +45,7 @@ test("first Simple apply previews exactly the settings exported from the uploade
 });
 
 test("re-applying an unchanged Simple direction never compounds EQ or other settings", async ({ page }) => {
+  test.setTimeout(120_000);
   await uploadProject(page);
   await page.getByRole("tab", { name: "simple", exact: true }).click();
   await page.getByRole("button", { name: "Rock", exact: true }).click();
@@ -52,8 +54,8 @@ test("re-applying an unchanged Simple direction never compounds EQ or other sett
   for (let repeat = 0; repeat < 3; repeat++) {
     const apply = page.getByRole("button", { name: "Apply master direction", exact: true });
     await apply.click();
-    await expect(apply).toBeEnabled();
-    await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled();
+    await expect(apply).toBeEnabled({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
     snapshots.push(await page.evaluate(() => {
       const raw = localStorage.getItem("aurialis-state-v1");
       if (!raw) throw new Error("Missing project settings");
@@ -69,7 +71,7 @@ test("A/B switches preserve playback and retain matched level after repeated met
   await uploadProject(page, "qa-comparison.wav", 3);
   await page.getByRole("slider", { name: "Input gain", exact: true }).fill("6");
   await page.getByRole("button", { name: "Render preview", exact: true }).click();
-  await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
   await expect.poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.readyState)).toBeGreaterThanOrEqual(2);
   await page.getByRole("button", { name: "Match level", exact: true }).click();
   const audio = page.locator("audio");

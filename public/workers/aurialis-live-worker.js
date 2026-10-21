@@ -3,7 +3,7 @@
 const QUANTUM = 128;
 const SLOTS = 256;
 const FRAMES = QUANTUM * SLOTS;
-const WRITE = 0, READ = 1, GENERATION = 2, APPLIED = 4, ERROR = 5, WAKE = 7;
+const WRITE = 0, READ = 1, GENERATION = 2, ERROR = 5, WAKE = 7;
 let header, tags, samples, inputPort, activeGeneration = 0, version = 0, pumping = false, stopped = false;
 const left = new Float32Array(QUANTUM), right = new Float32Array(QUANTUM);
 const outLeft = new Float32Array(QUANTUM), outRight = new Float32Array(QUANTUM);

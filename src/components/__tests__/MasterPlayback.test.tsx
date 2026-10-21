@@ -11,10 +11,10 @@ import { StoreProvider } from "@/lib/store";
 import { testStore } from "@/lib/__tests__/fixtures";
 import { AurialisWorkstation } from "../AurialisWorkstation";
 
-const mocks = vi.hoisted(() => ({ getAudio: vi.fn(), createLivePlayback: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getAudio: vi.fn(), createLivePlayback: vi.fn(), push: vi.fn() }));
 vi.mock("@/lib/db", () => ({ getAudio: mocks.getAudio, saveAudio: vi.fn(), deleteAudio: vi.fn() }));
 vi.mock("@/lib/live-playback", () => ({ createLivePlayback: mocks.createLivePlayback }));
-vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => ({ push: mocks.push }) }));
 vi.mock("next/link", () => ({ default: ({ href, children, ...props }: ComponentProps<"a">) => <a {...props} href={href}>{children}</a> }));
 
 type Callbacks = {
@@ -37,10 +37,11 @@ beforeEach(() => {
   const storage = new Map([["aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1) })]]);
   vi.stubGlobal("localStorage", { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value); } });
   instances.length = 0;
+  mocks.push.mockReset();
   mocks.getAudio.mockReset().mockResolvedValue(previewWAV(pcm));
   mocks.createLivePlayback.mockReset().mockImplementation((_source: StereoPCM, _settings: AdvancedParams, callbacks: Callbacks) => {
     const instance: Instance = { controller: {} as LivePlaybackController, callbacks,
-      state: { position: 0, duration: 0.1, playing: false, ready: false, loading: false, original: false, volume: 0.8, underruns: 0, parameterVersion: 1, appliedVersion: 1, error: null } };
+      state: { position: 0, duration: 0.1, playing: false, ready: false, loading: false, original: false, volume: 0.8, repeat: false, underruns: 0, parameterVersion: 1, appliedVersion: 1, error: null } };
     const update = (patch: Partial<LivePlaybackState>) => { instance.state = { ...instance.state, ...patch }; callbacks.onState?.(instance.state); };
     instance.controller = {
       play: vi.fn(() => { update({ playing: true, ready: true }); return Promise.resolve(); }),
@@ -48,13 +49,14 @@ beforeEach(() => {
       seek: vi.fn((position: number) => { update({ position }); }),
       setParams: vi.fn(), setBypass: vi.fn((original: boolean) => { update({ original }); }),
       setVolume: vi.fn((volume: number) => { update({ volume }); }),
+      setRepeat: vi.fn((repeat: boolean) => { update({ repeat }); }),
       dispose: vi.fn(), getState: () => instance.state,
     };
     instances.push(instance);
     return instance.controller;
   });
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("master live playback lifecycle", () => {
   it("loads canonical stored PCM offline, applies settings live, and clears meters on pause", async () => {
@@ -134,6 +136,81 @@ describe("master live playback lifecycle", () => {
     await ready();
     expect(mocks.createLivePlayback).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: "Retry source" })).toBeNull();
+  }, 20000);
+
+  it("restarts and skips within the current track without changing play or repeat state", async () => {
+    mount();
+    await ready();
+    const instance = latest();
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    fireEvent.click(screen.getByRole("button", { name: "Repeat track" }));
+    expect(instance.controller.setRepeat).toHaveBeenCalledWith(true);
+    expect(screen.getByRole("button", { name: "Repeat track" }).getAttribute("aria-pressed")).toBe("true");
+    act(() => { instance.state = { ...instance.state, position: 0.05 }; instance.callbacks.onState?.(instance.state); });
+    fireEvent.click(screen.getByRole("button", { name: "Restart track" }));
+    expect(instance.controller.seek).toHaveBeenLastCalledWith(0);
+    expect(instance.state.playing).toBe(true);
+    expect(instance.state.repeat).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Skip forward 10 seconds" }));
+    expect(instance.controller.seek).toHaveBeenLastCalledWith(0.1);
+    expect(instance.state.playing).toBe(true);
+    expect(mocks.push).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart track" }));
+    expect(instance.state.playing).toBe(false);
+  }, 20000);
+
+  it.each([true, false])("scrubs a held direction while paused, suppresses Next, and restores prior playing=%s", async (wasPlaying) => {
+    localStorage.setItem("aurialis-state-v1", JSON.stringify(testStore));
+    mount(); await ready();
+    const instance = latest();
+    if (wasPlaying) fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    act(() => { instance.state = { ...instance.state, position: 20, duration: 100 }; instance.callbacks.onState?.(instance.state); });
+    const frames = new Map<number, FrameRequestCallback>(); let frameId = 0;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++frameId, callback); return frameId; });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => { frames.delete(id); });
+    const clock = vi.spyOn(performance, "now").mockReturnValue(1000);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const button = screen.getByRole("button", { name: "Next track: Test source" });
+    fireEvent.keyDown(button, { key: "Enter" });
+    act(() => { vi.advanceTimersByTime(300); });
+    expect(instance.state.playing).toBe(false);
+    function frame(time: number) { clock.mockReturnValue(time); const callbacks = [...frames.values()]; frames.clear(); act(() => { for (const callback of callbacks) callback(time); }); }
+    frame(1050); expect(instance.state.position).toBeCloseTo(20.1);
+    frame(2100); expect(instance.state.position).toBeCloseTo(21.1);
+    frame(4100); expect(instance.state.position).toBeCloseTo(23.1);
+    fireEvent.keyUp(button, { key: "Enter" });
+    fireEvent.click(button);
+    expect(instance.state.playing).toBe(wasPlaying);
+    expect(instance.controller.play).toHaveBeenCalledTimes(wasPlaying ? 2 : 0);
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(frames.size).toBe(0);
+  }, 20000);
+
+  it("opens the next Library project with a fresh graph and preserves only play intent and volume", async () => {
+    localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.map((track, index) => ({ ...track, title: index === 0 ? "First source" : "Next source" })) }));
+    const view = mount();
+    await ready();
+    const previous = latest();
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Playback volume" }), { target: { value: "0.4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Repeat track" }));
+    fireEvent.click(screen.getByRole("button", { name: "B Original" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next track: Next source" }));
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith("/master/test-2");
+    expect(previous.controller.pause).toHaveBeenCalledOnce();
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Next track: Next source" }).disabled).toBe(true);
+    view.rerender(<StoreProvider><AurialisWorkstation route="master" paramId="test-2" /></StoreProvider>);
+    await ready();
+    const current = latest();
+    expect(current.controller).not.toBe(previous.controller);
+    expect(previous.controller.dispose).toHaveBeenCalledOnce();
+    expect(current.controller.play).toHaveBeenCalledOnce();
+    expect(current.controller.setVolume).toHaveBeenCalledWith(0.4);
+    expect(current.state.original).toBe(false);
+    expect(current.state.repeat).toBe(false);
+    expect(mocks.getAudio).toHaveBeenLastCalledWith("test-2");
+    expect(screen.getByRole("button", { name: "Skip forward 10 seconds" })).toBeTruthy();
   }, 20000);
 
   it("does not create an engine when an old source load resolves after navigation", async () => {

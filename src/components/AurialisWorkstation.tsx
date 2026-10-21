@@ -13,6 +13,7 @@ import {
   sourcePeaks,
   type StereoPCM,
 } from "@/lib/browser-engine";
+import { bindPlaybackControls } from "@/lib/media-session";
 import { DSPModule } from "./shared/DSPModule";
 import { RealTransport } from "./shared/RealTransport";
 import { createLivePlayback, type LiveMeter, type LivePlaybackController, type LivePlaybackState, type LiveSpectrum } from "@/lib/live-playback";
@@ -120,6 +121,9 @@ function resolveDynamicId(
   return fallbackId;
 }
 
+type PlaybackHandoff = { fromTrackId: string; trackId: string; playing: boolean; volume: number };
+let pendingPlaybackHandoff: PlaybackHandoff | null = null;
+
 export function AurialisWorkstation({
   route,
   paramId,
@@ -140,6 +144,9 @@ export function AurialisWorkstation({
   const inWorkspace = route === "master";
   const defaultTrackId = state.tracks[0]?.id ?? "placeholder";
   const resolvedId = resolveDynamicId(paramId, livePath, defaultTrackId);
+  useEffect(() => {
+    if (pendingPlaybackHandoff && (route !== "master" || (resolvedId !== pendingPlaybackHandoff.trackId && resolvedId !== pendingPlaybackHandoff.fromTrackId))) pendingPlaybackHandoff = null;
+  }, [route, resolvedId]);
 
   const navItems: {
     href: string;
@@ -802,12 +809,20 @@ function MasterView({ trackId }: { trackId: string }) {
   const { state, dispatch } = useStore();
   const router = useRouter();
   const track = state.tracks.find((item) => item.id === trackId);
+  // Match the unfiltered Library order; editing a project does not reorder this queue.
+  const queueIndex = state.tracks.findIndex((item) => item.id === trackId);
+  const nextTrack = queueIndex >= 0 ? state.tracks.at(queueIndex + 1) : undefined;
+  const [handover, setHandover] = useState(false);
+  const handoverActive = useRef(false);
+  const forwardAction = useRef<() => void>(() => undefined);
   const [processing, setProcessing] = useState(false);
   const [source, setSource] = useState<StereoPCM | null>(null);
   const [preview, setPreview] = useState<StereoPCM | null>(null);
   const [renderedKey, setRenderedKey] = useState("");
   const [renderedDirection, setRenderedDirection] = useState("");
   const live = useRef<LivePlaybackController | null>(null);
+  const playbackControls = useRef<ReturnType<typeof bindPlaybackControls> | null>(null);
+  const scrub = useRef<{ controller: LivePlaybackController; direction: -1 | 1; startedAt: number; lastAt: number; position: number; wasPlaying: boolean; frame: number } | null>(null);
   const [playback, setPlayback] = useState<LivePlaybackState | null>(null);
   const [meter, setMeter] = useState<LiveMeter | null>(null);
   const [spectrum, setSpectrum] = useState<LiveSpectrum | null>(null);
@@ -854,11 +869,13 @@ function MasterView({ trackId }: { trackId: string }) {
   useEffect(() => {
     if (!source) return undefined;
     let active = true;
+    let controls: ReturnType<typeof bindPlaybackControls> | null = null;
     try {
       const controller = createLivePlayback(source, currentSettings.current, {
         onState: (next) => {
           if (!active) return;
           setPlayback(next);
+          controls?.update(next);
           if (!next.playing) { setMeter(null); setSpectrum(null); }
         },
         onMeter: (next) => { if (active && live.current?.getState().playing) setMeter(next); },
@@ -868,12 +885,29 @@ function MasterView({ trackId }: { trackId: string }) {
       live.current = controller;
       setPlayback(controller.getState());
       setLiveError("");
-      return () => { active = false; controller.dispose(); if (live.current === controller) live.current = null; };
+      controls = bindPlaybackControls(track?.title || "Untitled track", {
+        getState: controller.getState,
+        available: () => active && live.current === controller && !handoverActive.current && !controller.getState().loading,
+        play: () => { stopScrub(false); return controller.play(); },
+        pause: () => { stopScrub(false); controller.pause(); },
+        seek: (seconds) => { stopScrub(false); controller.seek(seconds); },
+        restart: () => { stopScrub(false); controller.seek(0); },
+        forward: () => { forwardAction.current(); },
+        onError: (error) => { if (active) setLiveError(error instanceof Error ? error.message : "Playback could not start."); },
+      });
+      playbackControls.current = controls;
+      const handoff = pendingPlaybackHandoff?.trackId === trackId ? pendingPlaybackHandoff : null;
+      if (handoff) {
+        pendingPlaybackHandoff = null;
+        controller.setVolume(handoff.volume);
+        if (handoff.playing) void controller.play().catch((error: unknown) => { if (active) setLiveError(error instanceof Error ? error.message : "Press play to start the next track."); });
+      }
+      return () => { active = false; stopScrub(false); controls?.dispose(); if (playbackControls.current === controls) playbackControls.current = null; controller.dispose(); if (live.current === controller) live.current = null; };
     } catch (error) {
       setLiveError(error instanceof Error ? error.message : "Playback could not be initialized. Retry the source.");
       return undefined;
     }
-  }, [source]);
+  }, [source, trackId]);
 
   useEffect(() => {
     try { live.current?.setParams(liveSettings); }
@@ -884,10 +918,69 @@ function MasterView({ trackId }: { trackId: string }) {
     const controller = live.current;
     if (!controller) return;
     setLiveError("");
+    stopScrub(false);
     try { await controller.play(); }
     catch (error) { if (live.current === controller) setLiveError(error instanceof Error ? error.message : "Playback could not start. Press play to retry."); }
   }
-  function seek(ratio: number) { live.current?.seek(Math.max(0, Math.min(1, ratio)) * (source ? source.left.length / source.sampleRate : 0)); }
+  function seekSeconds(seconds: number) {
+    const controller = live.current;
+    if (!controller) return;
+    stopScrub(false);
+    controller.seek(Math.max(0, Math.min(controller.getState().duration, seconds)));
+    playbackControls.current?.update(controller.getState(), true);
+  }
+  function seek(ratio: number) { seekSeconds(Math.max(0, Math.min(1, ratio)) * (source ? source.left.length / source.sampleRate : 0)); }
+  function stopScrub(resume: boolean) {
+    const session = scrub.current;
+    if (!session) return;
+    cancelAnimationFrame(session.frame);
+    scrub.current = null;
+    if (resume && session.wasPlaying && live.current === session.controller) void play();
+  }
+  function onScrub(direction: -1 | 1, phase: "start" | "end" | "cancel") {
+    if (phase !== "start") { stopScrub(true); return; }
+    const controller = live.current;
+    if (!controller || handoverActive.current || controller.getState().loading) return;
+    stopScrub(false);
+    const state = controller.getState();
+    const now = performance.now();
+    const session = { controller, direction, startedAt: now, lastAt: now, position: state.position, wasPlaying: state.playing, frame: 0 };
+    scrub.current = session;
+    controller.pause();
+    function advance(time: number) {
+      if (scrub.current !== session || live.current !== controller) return;
+      if (time - session.lastAt >= 50) {
+        const elapsed = (time - session.startedAt) / 1000;
+        const speed = elapsed >= 3 ? 8 : elapsed >= 1 ? 4 : 2;
+        session.position = Math.max(0, Math.min(state.duration, session.position + direction * speed * Math.min(0.25, (time - session.lastAt) / 1000)));
+        session.lastAt = time;
+        session.controller.seek(session.position);
+        playbackControls.current?.update(session.controller.getState(), true);
+      }
+      session.frame = requestAnimationFrame(advance);
+    }
+    session.frame = requestAnimationFrame(advance);
+  }
+  function forward() {
+    const controller = live.current;
+    if (!controller || handover) return;
+    const current = controller.getState();
+    const intendedPlaying = scrub.current?.wasPlaying ?? current.playing;
+    stopScrub(false);
+    if (!nextTrack) { controller.seek(Math.min(current.duration, current.position + 10)); return; }
+    pendingPlaybackHandoff = { fromTrackId: trackId, trackId: nextTrack.id, playing: intendedPlaying, volume: current.volume };
+    handoverActive.current = true;
+    setHandover(true);
+    controller.pause();
+    try { router.push(`/master/${encodeURIComponent(nextTrack.id)}`); }
+    catch (error) {
+      pendingPlaybackHandoff = null;
+      handoverActive.current = false;
+      setHandover(false);
+      setLiveError(error instanceof Error ? error.message : "The next track could not be opened.");
+    }
+  }
+  forwardAction.current = forward;
 
   useEffect(() => {
     let cancelled = false;
@@ -1136,9 +1229,15 @@ function MasterView({ trackId }: { trackId: string }) {
             state={playback}
             sourceReady={source !== null && live.current !== null}
             onPlay={play}
-            onPause={() => { live.current?.pause(); }}
+            onPause={() => { stopScrub(false); live.current?.pause(); }}
             onOriginal={(original) => { live.current?.setBypass(original); }}
             onVolume={(volume) => { live.current?.setVolume(volume); }}
+            onRestart={() => { seekSeconds(0); }}
+            onForward={forward}
+            onRepeat={(repeat) => { live.current?.setRepeat(repeat); }}
+            onScrub={onScrub}
+            {...(nextTrack ? { nextTrackTitle: nextTrack.title || "Untitled track" } : {})}
+            handover={handover}
           />
           <LiveSpectrumChart frame={spectrum} playing={playback?.playing ?? false} />
           {sourceError && <div className="flex flex-wrap items-center gap-3" role="alert">
@@ -1283,7 +1382,7 @@ function AdvancedControls({
     <div className="control-stack">
       <div>
         <h2>Shape the detail</h2>
-        <p>Adjust a module, then render a preview to hear your settings.</p>
+        <p>Adjust a module while you listen.</p>
       </div>
 
       <SliderField

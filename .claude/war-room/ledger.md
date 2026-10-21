@@ -15,9 +15,9 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 The latest whole-product review audited local and remote `main` at `ade7736` (the only live branch). The blanket verification claims in the historical activation record are withdrawn. The corrected design archive matches the canonical checked-in Figma source exactly.
 
-[The baseline audit](../../docs/reviews/2026-10-21-war-room-audit.md) records 17 evidence-backed recovery items, reproduction steps, acceptance criteria, dissent and retractions. The user subsequently requested implementation, Figma fidelity, removal of prototype examples, and independent verification of every audio setting. Corrective work is on `codex/war-room-product-audit`, using isolated design, audio and workflow checkouts. The bounded corrective subset passed local verification and is **open — awaiting merge (`codex/war-room-product-audit`)**. The corrective change is [draft PR #2](https://github.com/yegamble/aurialis-WASM/pull/2). Default owner merge gate applies; full-product completion and a merge are not claimed.
+[The baseline audit](../../docs/reviews/2026-10-21-war-room-audit.md) records 17 evidence-backed recovery items, reproduction steps, acceptance criteria, dissent and retractions. The user subsequently requested implementation, Figma fidelity, removal of prototype examples, and independent verification of every audio setting. Corrective work is on `codex/war-room-product-audit`, using isolated design, audio and workflow checkouts. The earlier bounded corrective subset passed local verification and is **open — awaiting merge (`codex/war-room-product-audit`)**. Its transport/preview evidence predates the live follow-up below, whose final integrated verification is pending. The corrective change is [draft PR #2](https://github.com/yegamble/aurialis-WASM/pull/2). Default owner merge gate applies; full-product completion and a merge are not claimed.
 
-The current recovery retains real shared Go/WASM processing and replaces misleading success paths. Trained separation, source-derived musical/AI analysis, time automation and continuous worklet streaming remain requirements. Finite 3/5-minute native processing now has representative execution evidence; longer/high-rate/browser-scale capacity remains open; honest unavailable states do not deliver them.
+The current recovery retains real shared Go/WASM processing and replaces misleading success paths. Trained separation, source-derived musical/AI analysis and time automation remain open requirements. A worker/SAB/worklet live path is now integrated at the runtime layer, with fresh full-application verification pending. Finite 3/5-minute native processing now has representative execution evidence; longer/high-rate/browser-scale capacity remains open; honest unavailable states do not deliver them.
 
 ## Iteration Log
 
@@ -63,7 +63,7 @@ The corrective subset passed current-session QA and Devil’s Advocate review an
 | R-07 | P1 | Measured album processing and actual output | open — awaiting merge (bounded actual album WAV subset verified; wider consistency/batch scope open) |
 | R-08 | P1 | Measured reference matching and effective protection controls | open — EQ-settings blend and protection controls verified; measured spectral matching not delivered |
 | R-09 | P1 | Measured, correctly labeled release diagnostics | open — awaiting merge (actual rendered diagnostics and JSON verified; certification not claimed) |
-| R-10 | P1 | Stable A/B trim, seek and playback continuity | open — awaiting merge (RMS trim, playhead and playback continuity verified) |
+| R-10 | P1 | Current user transport: A Processed default, B Original, shared clock, no Match level | in-progress (`codex/war-room-product-audit`; supersedes prior RMS-matching UI, fresh live-output proof pending) |
 | R-11 | P1 | Independent move edits when real automation is delivered | open — stale simulated editor removed; real automation editing not delivered |
 | R-12 | P1 | Every enabled audio setting maps independently to sample output | open — awaiting merge (42 native control pairs, 267 parity fixtures, 31 real UI/export pairs verified) |
 | R-13 | P1 | Bounded full-song input capacity and visible current limits | open — finite 3/5-minute native capacity verified; general high-rate/browser memory and longer capacity open |
@@ -120,7 +120,7 @@ Preliminary evidence is also listed in [`docs/tasks.md`](../../docs/tasks.md). F
 The pending-preview track-switch concern was ruled out by code inspection: MasterView is keyed by resolved track ID, so changing tracks remounts it and unmount cleanup aborts pending rendering. This historical checkpoint retained unsupported processing workflows and a blocked vulnerability gate. The recovery record below supersedes its current-state claims; history is not final recovery evidence.
 
 
-## Current recovery loop — four iterations
+## Earlier corrective loop — four iterations
 
 The user authorized corrective implementation after the baseline review. This recovery counter is separate from the earlier ten-iteration history. All broad `WASM-1`…`WASM-10` requirements remain open; disabled unsupported features do not satisfy their acceptance criteria.
 
@@ -137,3 +137,14 @@ See [`docs/tasks.md`](../../docs/tasks.md) for the finite capacity, per-control 
 ### Remote CI hygiene follow-up
 
 The [initial PR #2 CI run](https://github.com/yegamble/aurialis-WASM/actions/runs/39551701995) failed `scripts/sync-agents.py --check` because the generated plugin rule mirror retained Go 1.26.2 instead of canonical Go 1.26.10. Regeneration changes only that mirrored version line; the local synchronization check then exited 0 for all 11 agents. Application code is unchanged. All six jobs in the [corrected remote run](https://github.com/yegamble/aurialis-WASM/actions/runs/39552061335) succeeded at `40d2503668a2379e4677562aed9f46448d53e585`. Remote CI passed at `40d2503`; [live PR checks](https://github.com/yegamble/aurialis-WASM/pull/2/checks) show newer commit status. Owner merge and full-product delivery remain open, so PR #2 stays **open — awaiting merge**.
+
+
+## Current live playback follow-up
+
+The user’s updated contract supersedes the old A-original/B-processed labels and RMS Match level control. **A Processed** is now the default, **B Original** is the aligned dry path, and automatic gain matching is removed. Shared Go DSP runs in a worker behind a bounded SAB bridge; the worklet stays nonblocking. Approximately 80 ms aligned dry/wet buffering and an 8 ms transition retain one playback clock. Meters and the 4096-point L/R power-mean FFT describe audible output; the warm live spectrum is primary and the compact Advanced EQ remains an editable settings view.
+
+Simple tone changes and static profiles update the live chain; explicit Simple Apply separately prepares measured target settings for export/offline preview. Strict cached canonical loading, contextual request/body errors, source retry and fresh graph ownership address recovery paths. Native export keeps the source rate; live device-rate resampling prevents a cross-rate sample-identity claim.
+
+Runtime `0265eba` and frontend `4562a99` have been integrated. The controller-only Chromium/Brave fixture reported zero underruns, 124.9/123.9 ms parameter callbacks, a 997 Hz input at the 996.09375 Hz FFT bin, finite silence meters, pause/seek and fresh-controller reopen. A Devil’s Advocate reset-ordering race gained an idempotent-generation fix and VM regression. These are runtime/contract observations; final bundled UI output capture and complete applicable gates are pending.
+
+The original “Failed to fetch” cause remains **UNVERIFIED** despite successful fresh POST probes. Do not label the contextual error or cache changes as a proven diagnosis. The broader AI/separation/automation/certification backlog remains open. PR #2 is **open — awaiting merge**, with owner approval and fresh live verification still required.

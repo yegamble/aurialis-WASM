@@ -3,8 +3,11 @@
 const QUANTUM = 128;
 const SLOTS = 256;
 const FRAMES = QUANTUM * SLOTS;
+const BURST_MS = 20;
+const BURST_BLOCKS = 64;
 const WRITE = 0, READ = 1, GENERATION = 2, ERROR = 5, WAKE = 7;
 let header, tags, samples, inputPort, activeGeneration = 0, version = 0, pumping = false, stopped = false;
+let continuation;
 let direct, memoryBuffer, left, right, outLeft, outRight;
 function refreshLiveBuffers() {
   if (direct.memory.buffer === memoryBuffer) return;
@@ -52,6 +55,7 @@ function processLiveBlock() {
 }
 function fail(message) {
   stopped = true;
+  cancelContinuation();
   if (header) Atomics.store(header, ERROR, 1);
   self.postMessage({ type: "error", message });
 }
@@ -78,15 +82,41 @@ function reset(requestedGeneration = Atomics.load(header, GENERATION)) {
   activeGeneration = generation;
   Atomics.store(header, READ, 0);
 }
+function cancelContinuation() {
+  if (continuation === undefined) return;
+  clearTimeout(continuation);
+  continuation = undefined;
+}
+function continueAfterYield() {
+  if (continuation !== undefined) return;
+  continuation = setTimeout(() => {
+    continuation = undefined;
+    pump();
+  }, 0);
+}
 function pump() {
   if (stopped || pumping || !header) return;
+  cancelContinuation();
   pumping = true;
+  let processed = false;
   try {
-    if (activeGeneration !== Atomics.load(header, GENERATION)) reset();
-    let read = Atomics.load(header, READ);
-    for (let count = 0; count < 64; count++) {
+    // Keep one active wake lease across bounded bursts. The render thread only
+    // needs a MessagePort task when starting an idle worker; subsequent input
+    // wakes the worker's predicate wait without allocating one task per block.
+    Atomics.store(header, WAKE, 1);
+    const deadline = performance.now() + BURST_MS;
+    for (let count = 0; count < BURST_BLOCKS;) {
+      if (activeGeneration !== Atomics.load(header, GENERATION)) reset();
+      const read = Atomics.load(header, READ);
       const written = Atomics.load(header, WRITE);
-      if (written <= read) break;
+      if (written <= read) {
+        const remaining = deadline - performance.now();
+        if (remaining <= 0) break;
+        // Publication before this atomic check returns "not-equal"; input
+        // published while waiting notifies WRITE. Only this worker can wait.
+        Atomics.wait(header, WRITE, written, remaining);
+        continue;
+      }
       if (written - read > SLOTS) throw new Error("The live audio worker fell behind its bounded buffer.");
       const sequence = read + 1, slot = (sequence - 1) % SLOTS, offset = slot * QUANTUM;
       if (Atomics.load(tags, slot) !== sequence || Atomics.load(tags, SLOTS + slot) !== activeGeneration) break;
@@ -105,19 +135,35 @@ function pump() {
       Atomics.store(tags, 4 * SLOTS + slot, version);
       Atomics.store(tags, 3 * SLOTS + slot, activeGeneration);
       Atomics.store(tags, 2 * SLOTS + slot, sequence);
-      read = sequence;
-      Atomics.store(header, READ, read);
+      Atomics.store(header, READ, sequence);
+      processed = true;
+      count++;
+      if (performance.now() >= deadline) break;
     }
   } catch (error) {
     fail(error instanceof Error ? error.message : "Live audio processing failed.");
   } finally {
     pumping = false;
-    if (header) Atomics.store(header, WAKE, 0);
   }
-  // Input normally wakes us over a direct worklet/worker MessagePort. A bounded
-  // backlog yields to parameter/reset messages before continuing.
-  if (!stopped && Atomics.load(header, WRITE) > Atomics.load(header, READ))
-    setTimeout(pump, 0);
+  if (stopped) {
+    Atomics.store(header, WAKE, 0);
+    return;
+  }
+  // Yield to JSON controls after at most one burst. An empty burst retires the
+  // lease, so a paused graph does not leave a perpetual polling timer behind.
+  if (processed || Atomics.load(header, WRITE) > Atomics.load(header, READ)
+    || activeGeneration !== Atomics.load(header, GENERATION)) {
+    continueAfterYield();
+    return;
+  }
+  Atomics.store(header, WAKE, 0);
+  // A publication before releasing the lease needs our continuation; one after
+  // releasing it posts a bootstrap task. That task cancels a stale continuation.
+  if (Atomics.load(header, WRITE) > Atomics.load(header, READ)
+    || activeGeneration !== Atomics.load(header, GENERATION)) {
+    Atomics.store(header, WAKE, 1);
+    continueAfterYield();
+  }
 }
 self.onmessage = async (event) => {
   const message = event.data;
@@ -153,6 +199,8 @@ self.onmessage = async (event) => {
       reset(message.generation);
     } else if (message.type === "dispose") {
       stopped = true;
+      cancelContinuation();
+      if (header) Atomics.store(header, WAKE, 0);
       inputPort?.close();
       self.close();
     }

@@ -76,6 +76,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     Atomics.store(this.tags, slot, sequence);
     Atomics.store(this.tags, SLOTS + slot, this.generation);
     Atomics.store(this.header, WRITE, sequence);
+    Atomics.notify(this.header, WRITE, 1);
     if (this.inputPort && Atomics.compareExchange(this.header, WAKE, 0, 1) === 0)
       this.inputPort.postMessage(0);
     const expected = sequence - this.delay;

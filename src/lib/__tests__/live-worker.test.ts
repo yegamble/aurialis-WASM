@@ -24,6 +24,14 @@ function engineFixture() {
 }
 
 function workerFixture(engine = engineFixture()) {
+  let now = 0, nextTimer = 1;
+  const timers = new Map<number, () => void>();
+  const wait = vi.fn((array: Int32Array, index: number, expected: number, timeout: number): "ok" | "not-equal" | "timed-out" => {
+    if (Atomics.load(array, index) !== expected) return "not-equal";
+    now += timeout;
+    return "timed-out";
+  });
+  const store = vi.fn((array: Int32Array, index: number, value: number) => Atomics.store(array, index, value));
   const posted: { type: string; message?: string }[] = [];
   const legacyProcess = vi.fn(() => { throw new Error("Legacy processing callback was used"); });
   const legacyReset = vi.fn(() => { throw new Error("Legacy reset callback was used"); });
@@ -41,7 +49,9 @@ function workerFixture(engine = engineFixture()) {
   const context = { self: scope, importScripts: vi.fn(),
     fetch: () => Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) }),
     WebAssembly: { Memory: WebAssembly.Memory, instantiate: () => Promise.resolve({ instance: { exports: engine.exports } }) },
-    setTimeout: vi.fn(), probe: undefined as Probe | undefined };
+    Atomics: { load: Atomics.load, store, wait }, performance: { now: () => now },
+    setTimeout: vi.fn((callback: () => void) => { const id = nextTimer++; timers.set(id, callback); return id; }),
+    clearTimeout: vi.fn((id: number) => { timers.delete(id); }), probe: undefined as Probe | undefined };
   // This fixed repository script uses isolated fake Go exports. These cases
   // verify its protocol and memory lifecycle, not DSP sample correctness.
   const script = readFileSync("public/workers/aurialis-live-worker.js", "utf8");
@@ -66,7 +76,13 @@ function workerFixture(engine = engineFixture()) {
     samples.fill(-0.5, FRAMES + offset, FRAMES + offset + QUANTUM);
     tags.set([sequence], slot); tags.set([generation], SLOTS + slot); header[0] = sequence;
   }
-  return { engine, scope, context, probe, header, tags, samples, posted, legacyProcess, legacyReset, port, init, message, queue };
+  function runContinuation() {
+    const entry = timers.entries().next().value;
+    if (!entry) throw new Error("No worker continuation was queued");
+    timers.delete(entry[0]); entry[1]();
+  }
+  return { engine, scope, context, probe, header, tags, samples, posted, legacyProcess, legacyReset, port, init, message,
+    queue, wait, store, timers, runContinuation, advance: (milliseconds: number) => { now += milliseconds; }, elapsed: () => now };
 }
 
 describe("direct-export audio worker", () => {
@@ -189,5 +205,121 @@ describe("direct-export audio worker", () => {
     expect(fixture.scope.close).toHaveBeenCalledOnce();
     expect(fixture.engine.process).toHaveBeenCalledTimes(256);
     expect(fixture.header[1]).toBe(0);
+  });
+
+  it.each(["before-wait", "during-wait"] as const)("consumes input published %s without another port task", async (timing) => {
+    const fixture = workerFixture();
+    await fixture.init();
+    fixture.queue(1, 1);
+    fixture.wait.mockImplementationOnce((array, index, expected) => {
+      expect(index).toBe(0);
+      expect(expected).toBe(1);
+      fixture.queue(2, 1);
+      // Model the two atomic outcomes: a prior publication fails the predicate;
+      // a publication after checking the predicate notifies the parked worker.
+      if (timing === "before-wait") {
+        expect(Atomics.load(array, index)).not.toBe(expected);
+        return "not-equal";
+      }
+      return "ok";
+    });
+    fixture.probe.pump();
+    expect(fixture.header[1]).toBe(2);
+    expect(fixture.tags[2 * SLOTS + 1]).toBe(2);
+    expect(fixture.header[7]).toBe(1);
+    expect(fixture.timers.size).toBe(1);
+    expect(fixture.wait.mock.calls.every(call => call[3] <= 20)).toBe(true);
+  });
+
+  it.each(["before-release", "after-release"] as const)("retains a wake for input published %s", async (timing) => {
+    const fixture = workerFixture();
+    await fixture.init();
+    let published = false;
+    fixture.store.mockImplementation((array, index, value) => {
+      if (index !== 7 || value !== 0 || published) return Atomics.store(array, index, value);
+      published = true;
+      if (timing === "before-release") fixture.queue(1, 1);
+      const result = Atomics.store(array, index, value);
+      if (timing === "after-release") {
+        fixture.queue(1, 1);
+        // The real producer posts its bootstrap task only on this transition.
+        expect(Atomics.compareExchange(array, 7, 0, 1)).toBe(0);
+      }
+      return result;
+    });
+    fixture.probe.pump();
+    expect(fixture.header[1]).toBe(0);
+    expect(fixture.header[7]).toBe(1);
+    expect(fixture.timers.size).toBe(1);
+    fixture.probe.pump();
+    expect(fixture.header[1]).toBe(1);
+    expect(fixture.timers.size).toBe(1);
+    expect(fixture.context.clearTimeout).toHaveBeenCalledOnce();
+  });
+
+  it("cancels a stale continuation on a bootstrap and becomes timer-free when input pauses", async () => {
+    const fixture = workerFixture();
+    await fixture.init();
+    fixture.queue(1, 1); fixture.probe.pump();
+    fixture.queue(2, 1); fixture.probe.pump();
+    expect(fixture.context.clearTimeout).toHaveBeenCalledOnce();
+    expect(fixture.timers.size).toBe(1);
+    expect(fixture.engine.process).toHaveBeenCalledTimes(258);
+    fixture.runContinuation();
+    expect(fixture.header[7]).toBe(0);
+    expect(fixture.timers.size).toBe(0);
+    expect(fixture.engine.process).toHaveBeenCalledTimes(258);
+  });
+
+  it("yields after 20 ms so queued settings apply before the next burst", async () => {
+    const fixture = workerFixture();
+    await fixture.init();
+    fixture.engine.process.mockImplementation(() => { fixture.advance(5); return QUANTUM; });
+    for (let sequence = 1; sequence <= 8; sequence++) fixture.queue(sequence, 1);
+    fixture.probe.pump();
+    expect(fixture.elapsed()).toBe(20);
+    expect(fixture.header[1]).toBe(4);
+    expect(fixture.timers.size).toBe(1);
+    await fixture.message({ type: "params", params: "{}", version: 9 });
+    fixture.runContinuation();
+    expect(fixture.header[1]).toBe(8);
+    expect(fixture.tags[4 * SLOTS + 3]).toBe(1);
+    expect(fixture.tags[4 * SLOTS + 4]).toBe(9);
+  });
+
+  it("also bounds a fast backlogged burst to 64 blocks", async () => {
+    const fixture = workerFixture();
+    await fixture.init();
+    for (let sequence = 1; sequence <= 70; sequence++) fixture.queue(sequence, 1);
+    fixture.probe.pump();
+    expect(fixture.header[1]).toBe(64);
+    expect(fixture.timers.size).toBe(1);
+    expect(fixture.wait).not.toHaveBeenCalled();
+  });
+
+  it("resets a generation changed during a wait before publishing its new input", async () => {
+    const fixture = workerFixture();
+    await fixture.init();
+    fixture.queue(1, 1);
+    fixture.wait.mockImplementationOnce(() => { fixture.queue(1, 2); return "ok"; });
+    fixture.probe.pump();
+    expect(fixture.header[1]).toBe(1);
+    expect(fixture.tags[3 * SLOTS]).toBe(2);
+    expect(fixture.engine.reset).toHaveBeenCalledTimes(2);
+    await fixture.message({ type: "reset", generation: 1 });
+    expect(fixture.engine.reset).toHaveBeenCalledTimes(2);
+  });
+
+  it("cancels its active continuation and wake lease on dispose", async () => {
+    const fixture = workerFixture();
+    await fixture.init();
+    fixture.queue(1, 1); fixture.probe.pump();
+    expect(fixture.timers.size).toBe(1);
+    await fixture.message({ type: "dispose" });
+    expect(fixture.timers.size).toBe(0);
+    expect(fixture.header[7]).toBe(0);
+    expect(fixture.context.clearTimeout).toHaveBeenCalledOnce();
+    fixture.queue(2, 1); fixture.probe.pump();
+    expect(fixture.header[1]).toBe(1);
   });
 });

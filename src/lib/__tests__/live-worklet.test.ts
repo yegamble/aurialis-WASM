@@ -9,7 +9,11 @@ type RenderProcessor = {
 
 function workletFixture() {
   let Processor: (new (options: unknown) => RenderProcessor) | undefined;
+  const notify = vi.fn((array: Int32Array, index: number, count: number) => Atomics.notify(array, index, count));
+  const wait = vi.fn(() => { throw new Error("The audio render thread must never block"); });
   const context = { sampleRate: 48000, currentTime: 0,
+    Atomics: { load: Atomics.load, store: Atomics.store, add: Atomics.add,
+      compareExchange: Atomics.compareExchange, notify, wait },
     AudioWorkletProcessor: class { port = { onmessage: undefined, postMessage: vi.fn() }; },
     registerProcessor: (_name: string, constructor: new (options: unknown) => RenderProcessor) => { Processor = constructor; } };
   runInNewContext(readFileSync("public/worklets/aurialis-live-worklet.js", "utf8"), context);
@@ -20,10 +24,35 @@ function workletFixture() {
   header[2] = 1;
   const processor = new Processor({ processorOptions: { header: header.buffer,
     tags: tags.buffer, samples: samples.buffer, delayBlocks: 1 } });
-  return { context, header, tags, samples, processor };
+  return { context, header, tags, samples, processor, notify, wait };
 }
 
 describe("worklet stream lifecycle", () => {
+  it("notifies the published input predicate every quantum and posts a port task only for an idle worker", () => {
+    const { header, tags, processor, notify, wait } = workletFixture();
+    const wake = vi.fn();
+    processor.port.onmessage({ data: { type: "connect", port: { start: vi.fn(), postMessage: wake } } });
+    processor.port.onmessage({ data: { type: "reset", generation: 1 } });
+    const output = [new Float32Array(128), new Float32Array(128)];
+    notify.mockImplementation((array, index, count) => {
+      const sequence = Atomics.load(array, index);
+      expect(index).toBe(0);
+      expect(count).toBe(1);
+      expect(tags.at(sequence - 1)).toBe(sequence);
+      expect(tags.at(256 + sequence - 1)).toBe(1);
+      return Atomics.notify(array, index, count);
+    });
+    for (let block = 0; block < 3; block++) processor.process([], [output]);
+    expect(notify).toHaveBeenCalledTimes(3);
+    expect(wake).toHaveBeenCalledOnce();
+    expect(header[7]).toBe(1);
+    Atomics.store(header, 7, 0);
+    processor.process([], [output]);
+    expect(notify).toHaveBeenCalledTimes(4);
+    expect(wake).toHaveBeenCalledTimes(2);
+    expect(wait).not.toHaveBeenCalled();
+  });
+
   it("keeps an idle graph dormant and preserves real active deadline failures", () => {
     const { context, header, processor } = workletFixture();
     const wake = vi.fn();

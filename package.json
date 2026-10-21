@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build && node scripts/sync-webui.mjs",
-    "start": "next start",
+    "start": "./aurialis",
     "lint": "eslint --max-warnings=0 src",
     "test": "vitest run",
     "test:backend:postman": "bash tests/postman/run-newman.sh",

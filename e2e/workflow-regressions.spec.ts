@@ -64,14 +64,14 @@ test("first Simple apply previews exactly the settings exported from the uploade
   test.setTimeout(120_000);
   await uploadProject(page);
   await page.getByRole("tab", { name: "simple", exact: true }).click();
-  await page.getByRole("button", { name: "Apply master direction", exact: true }).click();
+  await page.getByRole("button", { name: "Set target loudness", exact: true }).click();
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
   await expect(page.getByText("Offline preview matches your settings. Live playback updates independently.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Download offline preview", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Open", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Export", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Export", exact: true }), "current canonical settings remain exportable after a Simple change").toBeEnabled();
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "Apply master direction", exact: true }).click();
+  await page.getByRole("button", { name: "Set target loudness", exact: true }).click();
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
   await expect(page.getByText("Offline preview matches your settings. Live playback updates independently.", { exact: true })).toBeVisible();
   const preview = await previewPCM(page);
@@ -90,7 +90,7 @@ test("re-applying an unchanged Simple direction never compounds EQ or other sett
   await page.getByRole("button", { name: "Clean", exact: true }).click();
   const snapshots: unknown[] = [];
   for (let repeat = 0; repeat < 3; repeat++) {
-    const apply = page.getByRole("button", { name: "Apply master direction", exact: true });
+    const apply = page.getByRole("button", { name: "Set target loudness", exact: true });
     await apply.click();
     await expect(apply).toBeEnabled({ timeout: 30_000 });
     await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });

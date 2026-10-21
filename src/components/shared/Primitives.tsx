@@ -13,6 +13,7 @@ import {
 } from "react";
 import { computeEqMagnitudeDb } from "@/lib/audio-dsp";
 import type { EQBandId, EQBandParams, Track } from "@/lib/types";
+import type { LiveSpectrum } from "@/lib/live-playback";
 import { Icon } from "./Icon";
 
 export const formatTime = (seconds: number): string =>
@@ -380,7 +381,10 @@ export function Waveform({
         }}
       >
         {peaks.map((peak, i) => (
-          <i key={i} className="block min-w-0 flex-1 rounded-[2px] bg-moss" style={{ height: `${String(Math.max(1, Math.min(100, peak * 100)))}%` }} />
+          <i key={i} className="block min-w-0 flex-1 rounded-[2px]" style={{
+            height: `${String(Math.max(1, Math.min(100, peak * 100)))}%`,
+            backgroundColor: ratio > 0 && i / peaks.length < ratio ? "var(--clay)" : "var(--line-dark)",
+          }} />
         ))}
         <span
           className="playhead absolute inset-y-0 w-px bg-clay-dark"
@@ -401,6 +405,54 @@ function freqToX(freqHz: number, maxFrequency = 20000): number {
 function gainToY(gainDb: number): number {
   const clamped = Math.max(-15, Math.min(15, gainDb));
   return 30 - clamped * 2;
+}
+
+function chartFrequencyTicks(maxFrequency: number): number[] {
+  return [...new Set([
+    ...[20, 50, 100, 200, 500, 1000, 2000, 5000, 10000].filter((frequency) => frequency < maxFrequency),
+    maxFrequency,
+  ])];
+}
+
+function FrequencyAxis({ maxFrequency }: { maxFrequency: number }) {
+  const labeledFrequencies = new Set([20, 100, 1000, maxFrequency]);
+  return (
+    <div aria-hidden="true" className="absolute right-[22px] bottom-0 left-8 h-[14px] text-[9px] text-ink-soft tabular-nums">
+      {chartFrequencyTicks(maxFrequency).filter((frequency) => labeledFrequencies.has(frequency)).map((frequency) => (
+        <span key={frequency} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${String(freqToX(frequency, maxFrequency))}%` }}>
+          {frequency >= 1000 ? `${String(Number((frequency / 1000).toFixed(1)))}k` : String(Math.round(frequency))} Hz
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function LevelAxis({ levels, levelToY, top = 12 }: { levels: readonly number[]; levelToY: (level: number) => number; top?: number }) {
+  return (
+    <>
+      <span aria-hidden="true" className="absolute top-0 left-0 text-[9px] text-ink-soft">dB</span>
+      <div aria-hidden="true" className="absolute bottom-6 left-0 w-6 text-[9px] text-ink-soft tabular-nums" style={{ top }}>
+        {levels.map((level) => (
+          <span key={level} className="absolute right-0 -translate-y-1/2" style={{ top: `${String((levelToY(level) / 60) * 100)}%` }}>
+            {level > 0 ? `+${String(level)}` : String(level)}
+          </span>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function FrequencyGrid({ maxFrequency, levels, levelToY }: { maxFrequency: number; levels: readonly number[]; levelToY: (level: number) => number }) {
+  return (
+    <g aria-hidden="true">
+      {chartFrequencyTicks(maxFrequency).map((frequency) => (
+        <line key={frequency} x1={freqToX(frequency, maxFrequency)} x2={freqToX(frequency, maxFrequency)} y1="0" y2="60" stroke="var(--line)" strokeWidth="0.6" vectorEffect="non-scaling-stroke" />
+      ))}
+      {levels.map((level) => (
+        <line key={level} x1="0" x2="100" y1={levelToY(level)} y2={levelToY(level)} stroke={level === 0 ? "var(--line-dark)" : "var(--line)"} strokeWidth={level === 0 ? "1" : "0.6"} vectorEffect="non-scaling-stroke" />
+      ))}
+    </g>
+  );
 }
 
 function eqCurvePoints(
@@ -487,15 +539,7 @@ export function SpectrumChart({
     : "";
   const summaryText = `Source EQ: ${sourceSummary}${referenceSummary ? `. ${referenceSummary}` : ""}`;
 
-  const frequencyTicks = [...new Set([
-    ...[20, 50, 100, 200, 500, 1000, 2000, 5000, 10000].filter((frequency) => frequency < maxFrequency),
-    maxFrequency,
-  ])];
-  const labeledFrequencies = new Set([20, 100, 1000, maxFrequency]);
   const gainTicks = [12, 6, 0, -6, -12];
-  const frequencyLabel = (frequency: number) => frequency >= 1000
-    ? `${String(Number((frequency / 1000).toFixed(1)))}k`
-    : String(Math.round(frequency));
 
   return (
     <div className="spectrum rounded-[18px] border border-line bg-paper p-3 md:p-4">
@@ -504,14 +548,7 @@ export function SpectrumChart({
         <span>20 Hz — {String(Number((maxFrequency / 1000).toFixed(1)))} kHz</span>
       </div>
       <div className="spectrum-plot relative h-[148px] md:h-[176px]">
-        <span aria-hidden="true" className="absolute top-0 left-0 text-[9px] text-ink-soft">dB</span>
-        <div aria-hidden="true" className="absolute top-3 bottom-6 left-0 w-6 text-[9px] text-ink-soft tabular-nums">
-          {gainTicks.map((gain) => (
-            <span key={gain} className="absolute right-0 -translate-y-1/2" style={{ top: `${String((gainToY(gain) / 60) * 100)}%` }}>
-              {gain > 0 ? `+${String(gain)}` : String(gain)}
-            </span>
-          ))}
-        </div>
+        <LevelAxis levels={gainTicks} levelToY={gainToY} />
         <div className="eq-plot-bounds absolute top-3 right-[22px] bottom-6 left-8" ref={plotRef}>
           <svg
             className="absolute inset-0 block size-full overflow-visible"
@@ -527,14 +564,7 @@ export function SpectrumChart({
                 <stop offset="1" stopColor="var(--clay)" stopOpacity="0" />
               </linearGradient>
             </defs>
-            <g aria-hidden="true">
-              {frequencyTicks.map((frequency) => (
-                <line key={frequency} x1={freqToX(frequency, maxFrequency)} x2={freqToX(frequency, maxFrequency)} y1="0" y2="60" stroke="var(--line)" strokeWidth="0.6" vectorEffect="non-scaling-stroke" />
-              ))}
-              {gainTicks.map((gain) => (
-                <line key={gain} x1="0" x2="100" y1={gainToY(gain)} y2={gainToY(gain)} stroke={gain === 0 ? "var(--line-dark)" : "var(--line)"} strokeWidth={gain === 0 ? "1" : "0.6"} vectorEffect="non-scaling-stroke" />
-              ))}
-            </g>
+            <FrequencyGrid maxFrequency={maxFrequency} levels={gainTicks} levelToY={gainToY} />
             <polygon points={`0,60 ${basePoints} 100,60`} fill={`url(#${gradientId})`} />
             <polyline points={basePoints} fill="none" stroke="var(--clay)" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
             {referencePoints !== undefined && (
@@ -584,11 +614,7 @@ export function SpectrumChart({
             );
           })}
         </div>
-        <div aria-hidden="true" className="absolute right-[22px] bottom-0 left-8 h-[14px] text-[9px] text-ink-soft tabular-nums">
-          {frequencyTicks.filter((frequency) => labeledFrequencies.has(frequency)).map((frequency) => (
-            <span key={frequency} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${String(freqToX(frequency, maxFrequency))}%` }}>{frequencyLabel(frequency)} Hz</span>
-          ))}
-        </div>
+        <FrequencyAxis maxFrequency={maxFrequency} />
       </div>
       {onBandChange && (
         <p className="sr-only" id={instructionsId}>
@@ -604,5 +630,83 @@ export function SpectrumChart({
         </p>
       )}
     </div>
+  );
+}
+
+
+const spectrumFloorDb = -100;
+const spectrumLevelToY = (decibels: number): number =>
+  (Math.max(spectrumFloorDb, Math.min(0, decibels)) / spectrumFloorDb) * 60;
+
+function measuredSpectrumPoints(frame: LiveSpectrum, maxFrequency: number): { points: string; peakDb: number } {
+  let peakDb = Number.NEGATIVE_INFINITY;
+  const points = Array.from({ length: 160 }, (_, index) => {
+    const ratio = index / 159;
+    const frequency = 20 * Math.pow(maxFrequency / 20, ratio);
+    const lower = 20 * Math.pow(maxFrequency / 20, Math.max(0, (index - 0.5) / 159));
+    const upper = 20 * Math.pow(maxFrequency / 20, Math.min(1, (index + 0.5) / 159));
+    const firstBin = Math.max(0, Math.floor((lower * frame.fftSize) / frame.sampleRate));
+    const lastBin = Math.min(frame.dbBins.length - 1, Math.ceil((upper * frame.fftSize) / frame.sampleRate));
+    let level = spectrumFloorDb;
+    for (let bin = firstBin; bin <= lastBin; bin++) {
+      const value = frame.dbBins.at(bin);
+      if (value !== undefined && Number.isFinite(value)) {
+        level = Math.max(level, value);
+        peakDb = Math.max(peakDb, value);
+      }
+    }
+    return `${freqToX(frequency, maxFrequency).toFixed(2)},${spectrumLevelToY(level).toFixed(2)}`;
+  }).join(" ");
+  return { points, peakDb };
+}
+
+export function LiveSpectrumChart({ frame, playing }: { frame?: LiveSpectrum | null; playing: boolean }) {
+  const gradientId = useId();
+  const validFrame = frame && Number.isFinite(frame.sampleRate) && Number.isFinite(frame.fftSize)
+    && frame.sampleRate > 0 && frame.fftSize > 0 && frame.dbBins.length > 1
+    && ((frame.dbBins.length - 1) * frame.sampleRate) / frame.fftSize > 20
+    && frame.dbBins.some((value) => Number.isFinite(value) || value === Number.NEGATIVE_INFINITY)
+    ? frame : null;
+  const maxFrequency = validFrame
+    ? Math.min(20000, ((validFrame.dbBins.length - 1) * validFrame.sampleRate) / validFrame.fftSize)
+    : 20000;
+  const measured = validFrame ? measuredSpectrumPoints(validFrame, maxFrequency) : null;
+  const peakLabel = measured && measured.peakDb > spectrumFloorDb
+    ? `${measured.peakDb.toFixed(1)} dB max bin` : "Below −100 dB";
+  const status = playing ? validFrame ? "Playing" : "Waiting for analyser data" : validFrame ? "Paused · last frame" : "Waiting for playback";
+  const levels = [0, -20, -40, -60, -80, -100];
+  const summary = validFrame
+    ? `${status}. Actual audible output FFT, ${String(validFrame.fftSize)} samples at ${String(validFrame.sampleRate)} Hz. ${peakLabel}. Frequency range 20 to ${String(Math.round(maxFrequency))} Hz; level range minus 100 to zero dB.`
+    : "No live frequency data yet. Play the source or processed audio to see its measured output spectrum.";
+
+  return (
+    <section className="live-spectrum rounded-[18px] border border-line bg-paper p-3 md:p-4" aria-label="Live output spectrum">
+      <div className="mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-[11px] text-ink-soft">
+        <span>Live output spectrum</span>
+        <span role="status">{status}</span>
+      </div>
+      <div className="relative h-[148px] md:h-[176px]">
+        <LevelAxis levels={levels} levelToY={spectrumLevelToY} top={24} />
+        <div className="absolute top-6 right-[22px] bottom-6 left-8">
+          <svg className={`absolute inset-0 block size-full ${playing ? "opacity-100" : "opacity-55"}`} viewBox="0 0 100 60" preserveAspectRatio="none" role="img" aria-label={summary}>
+            <title>{summary}</title>
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="var(--clay)" stopOpacity=".22" />
+                <stop offset="1" stopColor="var(--clay)" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <FrequencyGrid maxFrequency={maxFrequency} levels={levels} levelToY={spectrumLevelToY} />
+            {measured && <>
+              <polygon points={`0,60 ${measured.points} 100,60`} fill={`url(#${gradientId})`} />
+              <polyline points={measured.points} fill="none" stroke="var(--clay)" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
+            </>}
+          </svg>
+          {!measured && <div className="absolute inset-0 grid place-items-center"><p className="max-w-[28ch] bg-paper/90 p-2 text-center text-[11px] text-ink-soft">Play audio to see the live output spectrum.</p></div>}
+        </div>
+        <FrequencyAxis maxFrequency={maxFrequency} />
+      </div>
+      {measured && <p className="mt-2 text-[10px] text-ink-soft tabular-nums">{peakLabel} · {validFrame?.fftSize} point FFT · 20 Hz–{Number((maxFrequency / 1000).toFixed(1))} kHz</p>}
+    </section>
   );
 }

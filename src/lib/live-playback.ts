@@ -8,6 +8,7 @@ export type LivePlaybackState = {
   ready: boolean;
   loading: boolean;
   original: boolean;
+  repeat: boolean;
   volume: number;
   underruns: number;
   parameterVersion: number;
@@ -44,6 +45,7 @@ export type LivePlaybackController = {
   setParams: (settings: AdvancedParams) => void;
   setBypass: (original: boolean) => void;
   setVolume: (volume: number) => void;
+  setRepeat: (enabled: boolean) => void;
   dispose: () => void;
   getState: () => LivePlaybackState;
 };
@@ -78,7 +80,7 @@ export function createLivePlayback(
   let serializedSettings = JSON.stringify(engineParams(settings));
   let state: LivePlaybackState = {
     position: 0, duration: source.left.length / source.sampleRate,
-    playing: false, ready: false, loading: false, original: false, volume: 1,
+    playing: false, ready: false, loading: false, original: false, repeat: false, volume: 1,
     underruns: 0, parameterVersion: 1, appliedVersion: 0, error: null,
   };
   let audio: AudioContext | undefined;
@@ -99,15 +101,28 @@ export function createLivePlayback(
   let playTicket = 0;
   let sourceOffset = 0;
   let sourceStart = 0;
+  let sourceEnd = state.duration;
   let delaySeconds = 0;
   let spectrumFrame = 0;
   let lastSpectrumTime = 0;
 
   function isDisposed(): boolean { return disposed; }
+  function unwrappedPosition(time?: number): number {
+    if (!audio) return state.position;
+    return Math.max(sourceOffset, sourceOffset + (time ?? audio.currentTime) - sourceStart - delaySeconds);
+  }
   function positionAt(time?: number): number {
     if (!state.playing || !audio) return state.position;
-    return Math.max(sourceOffset, Math.min(state.duration,
-      sourceOffset + (time ?? audio.currentTime) - sourceStart - delaySeconds));
+    const position = unwrappedPosition(time);
+    return position >= sourceEnd ? state.duration : position % state.duration;
+  }
+  function setSourceEnd(end: number): void {
+    sourceEnd = end;
+    if (!worklet || !header) return;
+    // End the AUDIBLE cycle rather than the input cycle, which is ahead by the
+    // bounded DSP latency. The worklet silences at the exact sample deadline.
+    worklet.port.postMessage({ type: "end", generation: Atomics.load(header, GENERATION),
+      time: end === Infinity ? Infinity : sourceStart + end - sourceOffset + delaySeconds });
   }
   function snapshot(): LivePlaybackState {
     return { ...state, position: positionAt(),
@@ -187,9 +202,13 @@ export function createLivePlayback(
     resetStream();
     sourceNode = audio.createBufferSource();
     sourceNode.buffer = buffer;
+    // Keep the input continuous even during the final buffered tail. Repeat can
+    // then be enabled without resurrecting an already-ended native source.
+    sourceNode.loop = true;
     sourceNode.connect(worklet);
     sourceOffset = offset;
     sourceStart = audio.currentTime + 0.01;
+    setSourceEnd(state.repeat ? Infinity : state.duration);
     sourceNode.start(sourceStart, offset);
     state = { ...state, position: offset, playing: true, loading: false, error: null };
   }
@@ -228,7 +247,7 @@ export function createLivePlayback(
       }
       state = { ...state, position: positionAt(message.time),
         underruns: Atomics.load(header, UNDERRUNS), appliedVersion: Atomics.load(header, APPLIED_VERSION) };
-      if (state.position >= state.duration) {
+      if (!state.repeat && unwrappedPosition(message.time) >= sourceEnd) {
         pause();
         return;
       }
@@ -364,6 +383,17 @@ export function createLivePlayback(
       if (disposed || !Number.isFinite(volume)) return;
       state = { ...state, volume: Math.max(0, Math.min(1, volume)) };
       worklet?.port.postMessage({ type: "volume", value: state.volume });
+      emit();
+    },
+    setRepeat(enabled) {
+      if (disposed || enabled === state.repeat) return;
+      const position = unwrappedPosition();
+      const wasEnded = state.playing && position >= sourceEnd;
+      state = { ...state, repeat: enabled };
+      if (state.playing) {
+        if (enabled && wasEnded) startSource(0);
+        else setSourceEnd(enabled ? Infinity : (Math.floor(position / state.duration) + 1) * state.duration);
+      }
       emit();
     },
     getState: snapshot,

@@ -18,6 +18,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.mix = 0;
     this.volume = 1;
     this.targetVolume = 1;
+    this.endTime = Infinity;
     this.inputPort = null;
     this.failed = false;
     this.missing = 0;
@@ -35,8 +36,11 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       } else if (message.type === "reset") {
         this.generation = message.generation;
         this.sequence = 0;
+        this.endTime = Infinity;
         this.missing = 0;
         this.sum = this.peak = this.ll = this.rr = this.lr = this.frames = 0;
+      } else if (message.type === "end" && message.generation === this.generation) {
+        if (typeof message.time === "number" && message.time >= 0) this.endTime = message.time;
       } else if (message.type === "original") {
         this.original = message.value;
       } else if (message.type === "volume") {
@@ -92,8 +96,9 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       const dryR = expected > 0 ? this.samples[FRAMES + outputOffset + i] : 0;
       const wetL = available ? this.samples[2 * FRAMES + outputOffset + i] : 0;
       const wetR = available ? this.samples[3 * FRAMES + outputOffset + i] : 0;
-      const l = (wetL * (1 - this.mix) + dryL * this.mix) * this.volume;
-      const r = (wetR * (1 - this.mix) + dryR * this.mix) * this.volume;
+      const audible = currentTime + i / sampleRate < this.endTime;
+      const l = audible ? (wetL * (1 - this.mix) + dryL * this.mix) * this.volume : 0;
+      const r = audible ? (wetR * (1 - this.mix) + dryR * this.mix) * this.volume : 0;
       outL[i] = l; outR[i] = r;
       this.peak = Math.max(this.peak, Math.abs(l), Math.abs(r));
       this.sum += l * l + r * r;

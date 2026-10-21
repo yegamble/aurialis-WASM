@@ -77,8 +77,8 @@ const stemNames = new Map<number, string[]>([
   [6, ["Vocals", "Drums", "Bass", "Guitar", "Piano", "Other"]],
 ]);
 
-const MAX_SOURCE_BYTES = 128 * 1024 * 1024;
 const MAX_SOURCE_FRAMES = 16 * 1024 * 1024;
+const MAX_SOURCE_BYTES = MAX_SOURCE_FRAMES * 8 + 44;
 
 // Capacity preflight only. The Go server remains the authoritative container validator.
 async function wavCapacity(file: File): Promise<{ frames: number; sampleRate: number } | null> {

@@ -83,7 +83,9 @@ func TestConcurrentJobSubmissionAndIdempotentCancel(t *testing.T) {
 		t.Fatal("no job admitted within the memory budget")
 	}
 
-	deadline := time.Now().Add(10 * time.Second)
+	// This checks eventual settlement, not DSP throughput. Race instrumentation
+	// competes with other package suites on shared CI and developer machines.
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		allSettled := true
 		for _, id := range jobIDs {

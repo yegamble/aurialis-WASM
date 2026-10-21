@@ -554,8 +554,8 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	written, writeErr := w.Write(wavBytes) // #nosec G705 -- canonical PCM WAV synthesized by EncodeWAV; fixed audio/wav and nosniff headers
 	if writeErr != nil || written != len(wavBytes) {
-		// No filenames, source samples, or request metadata enter delivery logs.
-		log.Printf("audio response interrupted: bytes=%d/%d error=%v", written, len(wavBytes), writeErr)
+		// Keep delivery logs independent of request data and transport error text.
+		log.Print("audio response interrupted")
 	}
 }
 

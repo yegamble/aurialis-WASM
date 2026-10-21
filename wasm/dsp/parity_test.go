@@ -130,7 +130,7 @@ func TestNativeMatchesStoredParityFixture(t *testing.T) {
 	if path == "" {
 		t.Skip("set AURIALIS_BASELINE_PARITY_FIXTURE for stored-output regression")
 	}
-	raw, err := os.ReadFile(path) // #nosec G304 -- explicit local test fixture, never an audio/request path.
+	raw, err := os.ReadFile(path) // #nosec G304 G703 -- opt-in local test fixture selected by the test operator, never an audio/request path.
 	if err != nil {
 		t.Fatal(err)
 	}

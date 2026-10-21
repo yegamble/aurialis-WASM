@@ -319,7 +319,7 @@ export function Waveform({
 }) {
   const [internalRatio, setInternalRatio] = useState(0);
   const ratio = controlledRatio ?? internalRatio;
-  const currentSec = Math.round(ratio * duration);
+  const currentSec = Math.floor(ratio * duration);
 
   const setRatio = (next: number) => {
     const clamped = Math.max(0, Math.min(1, next));

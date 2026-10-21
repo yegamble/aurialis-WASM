@@ -4,6 +4,7 @@ import { expect, test } from "@playwright/test"
 const VIEWPORTS = [
   { width: 320, height: 640, name: "mobile-320" },
   { width: 375, height: 812, name: "mobile-375" },
+  { width: 390, height: 844, name: "mobile-390" },
   { width: 768, height: 1024, name: "tablet-768" },
   { width: 1024, height: 768, name: "desktop-1024" },
   { width: 1440, height: 900, name: "desktop-1440" },
@@ -57,7 +58,7 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
       await page.goto(route)
       await expect(page.locator("h1")).toBeVisible()
       const results = await new AxeBuilder({ page })
-        .withTags(["wcag2a", "wcag2aa", "wcag22aa"])
+        .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
         .analyze()
       expect(
         results.violations,

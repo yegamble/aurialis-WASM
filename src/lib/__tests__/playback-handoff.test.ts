@@ -57,4 +57,17 @@ describe("explicit next-track handoff", () => {
     expect(handoff.takeNextPlaybackHandoff("source-b")).toEqual({ playing: true, volume: 0.37 });
     expect(handoff.takeNextPlaybackHandoff("source-b")).toBeNull();
   });
+
+  it("discards an unconsumed target handoff on reload but permits a new explicit Next afterward", async () => {
+    const outgoing = await import("../playback-handoff");
+    outgoing.stageNextPlaybackHandoff(intent);
+    vi.resetModules();
+    vi.stubGlobal("performance", { getEntriesByType: () => [{ type: "reload" }] });
+    const reloaded = await import("../playback-handoff");
+    reloaded.reconcileNextPlaybackHandoff("master", "source-b");
+    expect(reloaded.takeNextPlaybackHandoff("source-b")).toBeNull();
+    expect(sessionStorage.getItem("aurialis-next-playback-v1")).toBeNull();
+    reloaded.stageNextPlaybackHandoff(intent);
+    expect(reloaded.takeNextPlaybackHandoff("source-b")).toEqual({ playing: true, volume: 0.37 });
+  });
 });

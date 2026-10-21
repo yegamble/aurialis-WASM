@@ -20,6 +20,10 @@ export function clearNextPlaybackHandoff() {
 function read(): PlaybackHandoff | null {
   let candidate: unknown = pending;
   if (candidate === null) {
+    if (typeof performance.getEntriesByType === "function" && performance.getEntriesByType("navigation").some((entry) => "type" in entry && entry.type === "reload")) {
+      clearNextPlaybackHandoff();
+      return null;
+    }
     try { const raw = globalThis.sessionStorage.getItem(STORAGE_KEY); candidate = raw ? JSON.parse(raw) as unknown : null; }
     catch { clearNextPlaybackHandoff(); return null; }
   }

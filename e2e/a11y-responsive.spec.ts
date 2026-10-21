@@ -36,16 +36,18 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
   })
 
   test("audio touch targets retain 44 CSS pixels at the editorial font size", async ({ page }) => {
-    await page.setViewportSize({ width: 320, height: 640 })
     await uploadProject(page)
-    for (const selector of [".eq-handle", 'input[type="range"]', ".module-disclosure > summary", ".button"]) {
-      const controls = page.locator(selector)
-      expect(await controls.count(), `${selector} must exercise rendered controls`).toBeGreaterThan(0)
-      for (const control of await controls.all()) {
-        if (!(await control.isVisible())) continue
-        const box = await control.boundingBox()
-        expect(box?.width, `${selector} width`).toBeGreaterThanOrEqual(44)
-        expect(box?.height, `${selector} height`).toBeGreaterThanOrEqual(44)
+    for (const width of [320, 375, 1440]) {
+      await page.setViewportSize({ width, height: 900 })
+      for (const selector of [".eq-handle", 'input[type="range"]', ".module-disclosure > summary", ".button"]) {
+        const controls = page.locator(selector)
+        expect(await controls.count(), `${selector} must exercise rendered controls`).toBeGreaterThan(0)
+        for (const control of await controls.all()) {
+          if (!(await control.isVisible())) continue
+          const box = await control.boundingBox()
+          expect(box?.width, `${selector} width at ${width}px`).toBeGreaterThanOrEqual(44)
+          expect(box?.height, `${selector} height at ${width}px`).toBeGreaterThanOrEqual(44)
+        }
       }
     }
   })

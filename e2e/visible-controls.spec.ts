@@ -129,7 +129,9 @@ test("all 31 visible audio controls independently change actual exported PCM", a
   await reset();
   await slider("Input gain", 6)();
   await slider("Limiter ceiling", -3)();
+  await expect(page.getByLabel("Enable limiter", { exact: true })).not.toBeChecked();
   await check("Limiter enable", toggle("Enable limiter"), ["limiter.enabled"]);
+  await expect(page.getByLabel("Enable limiter", { exact: true })).toBeChecked();
   await check("Limiter ceiling", slider("Limiter ceiling", -1), ["limiter.ceilingDbtp"]);
   expect(results).toHaveLength(31);
   await testInfo.attach("independent-audio-controls", { body: JSON.stringify(results, null, 2), contentType: "application/json" });

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import { decode } from "./audio-fixture";
 import { uploadProject } from "./workflow-fixture";
+import type { AdvancedParams } from "../src/lib/types";
 
 async function previewPCM(page: Page) {
   const bytes = await page.locator("audio").evaluate(async (audio: HTMLAudioElement) => Array.from(new Uint8Array(await (await fetch(audio.src)).arrayBuffer())));
@@ -21,6 +22,40 @@ async function exportPCM(page: Page) {
   await page.keyboard.press("Escape");
   return pcm;
 }
+
+test("EQ handles support keyboard and dragging without changing other bands or modules", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const id = await uploadProject(page);
+  const settings = () => page.evaluate((id) => {
+    const raw = localStorage.getItem("aurialis-state-v1");
+    if (!raw) throw new Error("Missing project settings");
+    const track = (JSON.parse(raw) as { tracks: { id: string; advanced: AdvancedParams }[] }).tracks.find((track) => track.id === id);
+    if (!track) throw new Error("Missing uploaded project");
+    return track.advanced;
+  }, id);
+  const before = await settings();
+  const handle = page.locator(".eq-handle").nth(2);
+  await handle.focus();
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("ArrowRight");
+  const keyboard = await settings();
+  expect(keyboard.eqBands[2].gainDb).toBe(before.eqBands[2].gainDb + 0.5);
+  expect(keyboard.eqBands[2].freqHz).toBeGreaterThan(before.eqBands[2].freqHz);
+  const box = await handle.boundingBox();
+  if (!box) throw new Error("Missing EQ touch target");
+  expect(box.width).toBeGreaterThanOrEqual(44);
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 35, box.y + box.height / 2 - 15, { steps: 5 });
+  await page.mouse.up();
+  const dragged = await settings();
+  expect(dragged.eqBands[2].gainDb).not.toBe(keyboard.eqBands[2].gainDb);
+  for (const actual of [keyboard, dragged]) {
+    for (const index of [0, 1, 3, 4]) expect(actual.eqBands[index]).toEqual(before.eqBands[index]);
+    expect({ ...actual, eqBands: before.eqBands }).toEqual(before);
+  }
+});
 
 test("first Simple apply previews exactly the settings exported from the uploaded source", async ({ page }) => {
   test.setTimeout(120_000);

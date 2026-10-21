@@ -190,6 +190,9 @@ func TestCSPHashesTrustedBootstrap(t *testing.T) {
 	if strings.Contains(scriptPolicy, "'unsafe-inline'") {
 		t.Fatal("arbitrary inline scripts allowed")
 	}
+	if !strings.Contains(csp, "connect-src 'self' blob:;") {
+		t.Fatal("local audio blob decoding must be allowed")
+	}
 }
 
 func TestStrictRenderParameters(t *testing.T) {

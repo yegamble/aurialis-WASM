@@ -38,5 +38,5 @@ func buildCSP(assets fs.FS) string {
 		ordered = append(ordered, hash)
 	}
 	sort.Strings(ordered)
-	return "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' " + strings.Join(ordered, " ") + "; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; font-src 'self'; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+	return "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' " + strings.Join(ordered, " ") + "; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; font-src 'self'; worker-src 'self' blob:; connect-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 }

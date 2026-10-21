@@ -462,7 +462,11 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		params.DitherBits = bitDepth
 	}
 
-	beforeMetrics := dsp.MeasureStereo(buf.Left, buf.Right, float64(buf.SampleRate))
+	beforeMetrics, measureErr := dsp.MeasureStereoContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate))
+	if measureErr != nil {
+		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio measurement canceled or timed out")
+		return
+	}
 	outL, outR, afterMetrics, renderErr := dsp.RenderBufferContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate), params)
 	if renderErr != nil {
 		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio rendering canceled or timed out")

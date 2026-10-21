@@ -985,7 +985,7 @@ function MasterView({ trackId }: { trackId: string }) {
       </header>
       <div className="workspace-layout">
         <section className="workspace-canvas">
-          <div className="metric-strip" aria-label="Measured audio levels">
+          <div className="metric-strip" role="region" tabIndex={0} aria-label="Measured audio levels">
             <div>
               <span>Sample peak</span>
               <strong>{levels?.peak ?? "—"}</strong>

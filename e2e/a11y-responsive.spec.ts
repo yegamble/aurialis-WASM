@@ -24,6 +24,17 @@ const ROUTES = [
 ]
 
 test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", () => {
+  test("mobile level meters can be scrolled with the keyboard", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 640 })
+    await uploadProject(page)
+    const meters = page.getByRole("region", { name: "Measured audio levels", exact: true })
+    await meters.focus()
+    await expect(meters).toBeFocused()
+    await expect.poll(() => meters.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeGreaterThan(0)
+    await page.keyboard.press("ArrowRight")
+    await expect.poll(() => meters.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+  })
+
   test("serves COOP/COEP headers and zero horizontal overflow across 320px-1440px", async ({
     page,
   }) => {
@@ -32,6 +43,7 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
     await page.goto("/albums")
     await page.getByRole("button", { name: "New album", exact: true }).click()
     await page.getByRole("link", { name: /Untitled sequence 1/ }).click()
+    await expect(page).toHaveURL(/\/albums\/album-/)
     const album = new URL(page.url()).pathname.split("/")[2] ?? ""
     const response = await page.goto("/")
     expect(response).not.toBeNull()
@@ -40,11 +52,6 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
     expect(headers["cross-origin-embedder-policy"]).toBe("require-corp")
 
     for (const vp of VIEWPORTS) {
-      const id = await uploadProject(page)
-      await page.goto("/albums")
-      await page.getByRole("button", { name: "New album", exact: true }).click()
-      await page.getByRole("link", { name: /Untitled sequence 1/ }).click()
-      const album = new URL(page.url()).pathname.split("/")[2] ?? ""
       await page.setViewportSize({ width: vp.width, height: vp.height })
       for (const route of ROUTES) {
         await page.goto(route.replace("PROJECT", id).replace("ALBUM", album))
@@ -69,6 +76,7 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
       await page.goto("/albums")
       await page.getByRole("button", { name: "New album", exact: true }).click()
       await page.getByRole("link", { name: /Untitled sequence 1/ }).click()
+      await expect(page).toHaveURL(/\/albums\/album-/)
       const album = new URL(page.url()).pathname.split("/")[2] ?? ""
       await page.setViewportSize({ width: vp.width, height: vp.height })
       for (const route of ROUTES) {

@@ -689,40 +689,46 @@ export function DeepTimeline({
           </span>
         ))}
       </div>
-      {lanes.map((lane) => (
-        <div className="lane" key={lane}>
-          <strong>{lane}</strong>
-          <div>
-            {script.moves
-              .filter((move) => move.lane === lane)
-              .map((move) => {
-                const stateBadge = move.muted
-                  ? " (Muted)"
-                  : move.edited
-                    ? " (Edited)"
-                    : ""
-                return (
-                  <button
-                    type="button"
-                    key={move.id}
-                    className={`${move.edited ? "is-edited" : ""} ${
-                      move.muted ? "is-muted" : ""
-                    }`.trim()}
-                    style={{
-                      left: `${(move.start / script.duration) * 100}%`,
-                      width: `${((move.end - move.start) / script.duration) * 100}%`,
-                    }}
-                    onClick={() => {
-                      onSelect(move)
-                    }}
-                    aria-label={`Edit ${move.parameter}${stateBadge}`}
-                    title={`${move.parameter}: ${move.value.toFixed(1)}${stateBadge}`}
-                  />
-                )
-              })}
+      <div className="lane-table">
+        {lanes.map((lane) => (
+          <div className="lane" key={lane}>
+            <strong>{lane}</strong>
+            <div className="lane-track">
+              {script.moves
+                .filter((move) => move.lane === lane)
+                .map((move) => {
+                  const stateBadge = move.muted
+                    ? " (Muted)"
+                    : move.edited
+                      ? " (Edited)"
+                      : ""
+                  return (
+                    <button
+                      type="button"
+                      key={move.id}
+                      className={`${move.edited ? "is-edited" : ""} ${
+                        move.muted ? "is-muted" : ""
+                      }`.trim()}
+                      style={{
+                        left: `${(move.start / script.duration) * 100}%`,
+                        width: `${((move.end - move.start) / script.duration) * 100}%`,
+                      }}
+                      onClick={() => {
+                        onSelect(move)
+                      }}
+                      aria-label={`Edit ${move.parameter}${stateBadge}`}
+                      title={`${move.parameter}: ${move.value.toFixed(1)}${stateBadge}`}
+                    >
+                      <span className="lane-pill" aria-hidden="true">
+                        {move.muted ? "M" : move.edited ? "E" : move.value.toFixed(1)}
+                      </span>
+                    </button>
+                  )
+                })}
+            </div>
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
       {firstFinding !== undefined && (
         <div className="finding">
           <Icon name="circle-alert" />

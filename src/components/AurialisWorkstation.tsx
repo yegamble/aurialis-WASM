@@ -442,15 +442,7 @@ function HomeView() {
             setDragging(false)
             void importFile(event.dataTransfer.files[0])
           }}
-          onClick={() => inputRef.current?.click()}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault()
-              inputRef.current?.click()
-            }
-          }}
-          role="button"
-          tabIndex={0}
+          role="region"
           aria-label="Bring in a track: drop audio or choose a file"
         >
           <input
@@ -472,7 +464,11 @@ function HomeView() {
           <span className="file-types">
             WAV · AIFF · FLAC · MP3 · M4A · OGG
           </span>
-          <Button variant="primary" icon={<Icon name="file-audio" />}>
+          <Button
+            variant="primary"
+            icon={<Icon name="file-audio" />}
+            onClick={() => inputRef.current?.click()}
+          >
             Choose audio
           </Button>
         </div>

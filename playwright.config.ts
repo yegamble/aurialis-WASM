@@ -23,7 +23,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `./aurialis --addr 127.0.0.1:${PORT}`,
+    command: `go build -o aurialis ./cmd/aurialis && ./aurialis --addr 127.0.0.1:${PORT}`,
     url: `${BASE_URL}/health`,
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,

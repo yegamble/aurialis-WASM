@@ -1,4 +1,5 @@
 # Aurialis-WASM
+<!-- cspell:words Embedder trimpath goroutines scrutinise -->
 
 **Single-Binary Go 1.26 + Next.js 16 + WebAssembly (WASM) Audio Mastering Workstation**
 
@@ -11,17 +12,55 @@ Based on [Aurialis](https://aurialis.yosefgamble.com/) ([`yegamble/Aurialis`](ht
 Aurialis-WASM consolidates the entire audio mastering stack into a **single compiled Go executable** (`aurialis`) with an ultra-low-bundle, mobile-first Next.js 16 frontend:
 
 - **Single Binary Host (`cmd/aurialis`, `internal/`)**:
-  - Go `1.26.2` HTTP/API server embedding compiled Next.js 16 static/standalone assets and `.wasm` binaries via `//go:embed`.
-  - Serves `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` so browser `SharedArrayBuffer` and `AudioWorklet` pipelines run at full native speed.
-  - High-concurrency job manager (`internal/jobs`) using bounded worker pools, weighted semaphores, `context.Context` cancellation, and `sync.Pool` zero-copy Float32 buffers across simultaneous jobs.
-  - In-house AI/LLM & deterministic `MasteringScript` v1 generator, Smart Stem Splitter (`2–6` stems), Reference Match, Album Consistency batch mastering, and Platform Release Check.
+  - Go `1.26.2` HTTP/API server embedding compiled Next.js 16 static assets and `.wasm` binaries via `//go:embed all:embedded` in `internal/webui`.
+  - Serves `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` headers so browser `SharedArrayBuffer` and `AudioWorklet` run with hardware-level isolation.
+  - High-concurrency job manager (`internal/jobs`) using bounded worker pools, `context.Context` cancellation, zero-copy `sync.Pool` Float32 buffers, and 5 lifecycle states (`queued`, `running`, `done`, `cancelled`, `failed`) with `?wait=1` long-polling.
+  - In-house AI/LLM & deterministic `MasteringScript` v1 generator across 5 engineer profiles (`Warm Analog`, `Punchy Commercial`, `Dynamic & Open`, `Vocal Forward`, `Bass Heavy` plus UI aliases), Smart Stem Splitter (`2–6` stems), Reference Match, Album Consistency batch mastering, and Platform Release Check.
 - **WebAssembly DSP Core (`wasm/dsp`, `public/worklets/`)**:
-  - Compiled from Go (`GOOS=js GOARCH=wasm` / `GOOS=wasip1 GOARCH=wasm`) with zero per-block heap allocations: 5-band biquad parametric EQ, compressor, true-peak limiter, harmonic saturation, stereo width/mono-bass, and ITU-R BS.1770-4 LUFS / True-Peak / Dynamic Range / Stereo Correlation metering.
+  - Compiled from Go (`GOOS=js GOARCH=wasm` / `GOOS=wasip1 GOARCH=wasm`) with zero per-block heap allocations: 5-band ZDF/TPT SVF parametric EQ, program-dependent optical/FET/VCA compressor with 90 Hz sidechain HPF, 4× oversampled ITU-R BS.1770-4 True-Peak lookahead limiter, ADAA + oversampled `Warm`/`Thick`/`Crisp` saturation, Linkwitz-Riley mono-bass + M/S width, and TPDF dither.
 - **Low-Bundle, Mobile-First Frontend (`src/`)**:
-  - **Next.js 16** (`^16.4.2`, App Router) + **React 19** + **TypeScript 5.8+** (`strict: true`), managed strictly with **`pnpm` (`10.33.0`)** on **Node.js `26.12.0`**.
+  - **Next.js 16** (`^16.4.2`, App Router, 9 dedicated routes) + **React 19** + **TypeScript 5.8+** (`strict: true`), managed strictly with **`pnpm` (`10.33.0`)** on **Node.js `26.12.0`**.
   - **Tailwind CSS v4** with HCL/OKLCH-calibrated warm editorial tokens (`--canvas`, `--paper`, `--ink`, `--clay`, `--moss`, `--ochre`, `Newsreader` + `Instrument Sans` + `tabular-nums`).
   - **Custom Inline SVGs Only**: Zero external icon libraries (`lucide-react`, `@heroicons`, `react-icons` are banned) and aggressive reuse of shared primitives (`Button`, `Icon`, `SliderField`, `SegmentedControl`, `Toggle`, `Modal`, `BottomSheet`, `StatusBadge`, `DropZone`, `Waveform`, `SpectrumChart`, `DeepTimeline`, `Transport`, `MetricStrip`).
+  - **State Reducer Control Isolation**: `src/lib/store.tsx` enforces per-module action dispatches so changes to one DSP module never mutate adjacent parameters.
+  - **Client DSP & WAV Export**: `src/lib/audio-dsp.ts` provides real-time client DSP preview and 16/24/32-bit TPDF-dithered WAV audio export.
   - **Mobile-First & Responsive (`320px–1440px+`)**: Designed for `320px–390px` phones first (top bar, 4-item bottom nav, sticky mini-transport, bottom-sheet editors, `>=44×44px` touch targets) and scaled cleanly to tablet (`768px`) and desktop workstation (`1024px–1440px+`) with full WCAG 2.2 AA & keyboard-only operability.
+
+---
+
+## Quickstart & Single-Binary Build
+
+### 1. Build the Single Self-Contained Binary
+
+Ensure Node `26.12.0` and Go `1.26.2` are on `PATH`:
+
+```bash
+export PATH="$HOME/.nvm/versions/node/v26.12.0/bin:$PATH"
+
+# Step A: Compile Go WebAssembly DSP module
+GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp
+
+# Step B: Build Next.js 16 static export & sync to internal/webui
+pnpm install --frozen-lockfile
+pnpm run build
+node scripts/sync-webui.mjs
+
+# Step C: Compile native host binary embedding Next.js & WASM assets
+go build -o aurialis ./cmd/aurialis
+
+# Step D: Launch single binary on localhost
+./aurialis -addr 127.0.0.1:8080 -workers 4 -max-upload-bytes 209715200
+```
+
+Open `http://127.0.0.1:8080` in any modern browser.
+
+### 2. CLI Flags & Environment Variables
+
+| Flag | Default | Environment Override | Description |
+|---|---|---|---|
+| `-addr` | `127.0.0.1:8080` | `AURIALIS_ADDR` or `PORT` | HTTP listen address (bound to loopback by default for security). |
+| `-workers` | `0` (auto) | — | Concurrent audio DSP worker goroutines (`0` detects CPU core count). |
+| `-max-upload-bytes` | `209715200` (200 MB) | `MAX_UPLOAD_BYTES_OVERRIDE` | Maximum allowable multipart upload payload in bytes. |
 
 ---
 
@@ -82,7 +121,7 @@ govulncheck ./...
 go test -race -count=1 ./...
 GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp
 
-# 2. Next.js 16 / TypeScript Gate (pnpm only)
+# 2. Next.js 16 / TypeScript & Vitest Gate (pnpm only)
 pnpm exec tsc --noEmit
 pnpm run lint
 pnpm exec knip
@@ -90,31 +129,34 @@ pnpm exec cspell lint "**/*.{ts,tsx,go,md}"
 pnpm test
 pnpm run build
 
-# 3. API (Postman/Newman + cURL) & Playwright Responsive/A11y Gate
-MAX_UPLOAD_BYTES_OVERRIDE=209715200 pnpm run test:backend:postman
+# 3. Backend API Gate (Newman TS-001..TS-015 + raw cURL 413 & DNS-rebinding probes)
+pnpm run test:backend:postman
+
+# 4. Playwright Responsive (320px–1440px), WCAG 2.2 AA axe, Control-Isolation & WAV Export Gate
 pnpm exec playwright test
 
-# 4. Multi-Model War Room Agent Sync Gate
+# 5. Multi-Model War Room Agent Sync Gate
 python3 scripts/sync-agents.py --check
 ```
 
 ### GitHub Actions CI/CD (`.github/workflows/ci.yml`)
 
-Every commit pushed to `main` or any feature/war-room branch (`branches: ['**']`) and every pull request triggers [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+Every commit pushed to any branch (`branches: ['**']`) and every pull request triggers [`.github/workflows/ci.yml`](.github/workflows/ci.yml) with all skip guards removed so all quality gates run unconditionally:
 1. **`repo-and-agent-hygiene`** — Enforces `pnpm`-only lockfiles, bans external icon libraries in `src/`, verifies multi-model agent synchronization (`python3 scripts/sync-agents.py --check`), smoke-tests `.claude/hooks/scrutinise.py`, and validates GitHub Actions YAML with `actionlint`.
-2. **`go-wasm`** — Runs `gofmt`, `go mod verify`, `go vet`, `golangci-lint` v2 (`staticcheck` all, `revive`, `gosec`, `nakedret`), `identypo`, `govulncheck`, `go test -race`, and `GOOS=js GOARCH=wasm` compilation.
+2. **`go-wasm`** — Runs `gofmt`, `go mod verify`, `go vet`, `golangci-lint` v2, `identypo`, `govulncheck`, `go test -race`, and `GOOS=js GOARCH=wasm` compilation.
 3. **`frontend-quality`** — Runs `pnpm install --frozen-lockfile`, `tsc --noEmit`, `pnpm run lint`, `knip`, `cspell`, `pnpm test`, and `pnpm run build`.
-4. **`backend-newman`** — Runs the Postman/Newman backend suite (`TS-001`–`TS-013`) with `MAX_UPLOAD_BYTES_OVERRIDE=209715200`.
-5. **`playwright-e2e`** — Runs mobile-first responsive (`320px`–`1440px`) and axe WCAG 2.2 AA E2E checks.
+4. **`backend-newman`** — Runs `pnpm run test:backend:postman` executing Newman `TS-001`–`TS-015` and raw `curl` 413 / DNS-rebinding probes against a live single binary.
+5. **`playwright-e2e`** — Runs mobile-first responsive (`320px`–`1440px`), axe WCAG 2.2 AA, control-isolation, and WAV export verification.
 6. **`ci-passed`** — Unified gate that fails if any upstream job fails or is cancelled.
 
-War Room agents inspect branch/PR health and automatically diagnose & repair broken runs via:
+---
 
-```bash
-gh run list --branch "$(git branch --show-current)" --limit 5
-gh pr checks
-gh run view <run-id> --log-failed
-```
+## Honest Implementation Caveats & Known Discrepancies
+
+1. **Client TS DSP vs. Go/WASM Reference Engine**: The browser client includes a per-sample TypeScript DSP chain (`src/lib/audio-dsp.ts`) featuring a 1-pole mono-bass crossover and sample-peak limiter for low-latency interactive UI adjustments, whereas the Go/WASM engine (`internal/audio/dsp`, `wasm/dsp`) is the calibrated reference implementation featuring ZDF/TPT SVF filters, 4th-order Linkwitz-Riley crossover, and 4× oversampled True-Peak limiting.
+2. **AudioWorklet Live Playback**: Interactive preview playback currently runs through `HTMLAudioElement` and client TypeScript DSP; routing real-time browser playback directly through the compiled WASM `AudioWorklet` processor (`public/worklets/aurialis-dsp-worklet.js`) is scheduled for a subsequent integration slice.
+3. **Simple-Mode Metrics Estimation**: Simple-mode UI metrics are parameter-estimated approximations rather than measured directly from decoded PCM waveforms.
+4. **Vulnerability Gate (`govulncheck`)**: `govulncheck ./...` reports Go standard library finding `GO-2026-6617` on Go `1.26.2`, which is remediated in Go `1.26.9`.
 
 ---
 
@@ -126,6 +168,7 @@ gh run view <run-id> --log-failed
 - [`.claude/war-room/cross-model-guide.md`](.claude/war-room/cross-model-guide.md) — Best practices for Gemini Argon, Claude Code, and OpenAI Codex + Go/TypeScript linter mapping.
 - [`.claude/war-room/ledger.md`](.claude/war-room/ledger.md) — Persistent War Room backlog and iteration log.
 - [`docs/architecture.md`](docs/architecture.md) — Single-binary Go + Next.js 16 + WASM technical architecture.
-- [`docs/api.md`](docs/api.md) — HTTP/JSON API contract and Postman/Newman test suite (`TS-001`–`TS-013`).
+- [`docs/api.md`](docs/api.md) — HTTP/JSON API contract and Postman/Newman test suite (`TS-001`–`TS-015`).
 - [`docs/tasks.md`](docs/tasks.md) — Developer task tracker synchronized by `aurialis-tech-writer`.
 - [`docs/design/aurialis-redesign.md`](docs/design/aurialis-redesign.md) — Warm editorial UI/UX & HCL/OKLCH design specification.
+

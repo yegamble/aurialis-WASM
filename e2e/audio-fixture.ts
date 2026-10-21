@@ -46,7 +46,7 @@ export function decode(wav: Buffer): { left: number[]; right: number[]; rate: nu
   return { left, right, rate, bits };
 }
 
-export function rms(samples: number[]): number {
+function rms(samples: number[]): number {
   return Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length);
 }
 

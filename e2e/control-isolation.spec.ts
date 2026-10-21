@@ -38,39 +38,22 @@ test.describe("End-to-End Parameter Orthogonality & Control Isolation", () => {
     await expect(stereoWidthSlider).toHaveValue("106")
   })
 
-  test("Deep MasteringScript move editor and Smart Split stems operate orthogonally", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1280, height: 800 })
+  test("unavailable Deep and Smart Split cannot report simulated success", async ({ page }) => {
+    const mutationRequests: string[] = []
+    page.on("request", request => {
+      if (request.method() === "POST") mutationRequests.push(request.url())
+    })
     await page.goto("/master/demo-1")
-
-    // Switch to Deep mode and generate MasteringScript v1
-    await page.getByRole("tab", { name: "deep" }).click()
-    await page.getByRole("button", { name: "Analyze deeply" }).click()
-    await expect(page.getByText("Script v1")).toBeVisible()
-
-    // Open first Volume move and mute it
-    const firstMoveBtn = page
-      .getByRole("button", { name: /Edit input_gain_db/i })
-      .first()
-    await firstMoveBtn.click()
-    await expect(page.getByText("Move editor")).toBeVisible()
-    await page.getByRole("button", { name: "Mute", exact: true }).click()
-    await expect(
-      page.getByRole("button", { name: "Unmute", exact: true }),
-    ).toBeVisible()
-
-    // Navigate to Smart Split and separate into 4 stems
+    await expect(page.getByRole("tab", { name: "deep", exact: true })).toHaveCount(0)
+    await expect(page.getByRole("button", { name: "Analyze deeply", exact: true })).toHaveCount(0)
+    await expect(page.getByText("Script v1", { exact: true })).toHaveCount(0)
     await page.goto("/split/demo-1")
-    await page.getByRole("button", { name: "Separate into stems" }).click()
-    await expect(page.getByText("4 stem mix")).toBeVisible()
-
-    // Adjust Vocals level and verify Drums level stays at 0 dB
-    const vocalsLevel = page.getByRole("slider", { name: "Vocals level" })
-    const drumsLevel = page.getByRole("slider", { name: "Drums level" })
-    await vocalsLevel.fill("-6")
-    await vocalsLevel.dispatchEvent("change")
-    await expect(vocalsLevel).toHaveValue("-6")
-    await expect(drumsLevel).toHaveValue("0")
+    await expect(page.getByRole("heading", { name: "Stem separation", exact: true })).toBeVisible()
+    await expect(page.getByText("Not available yet", { exact: true })).toBeVisible()
+    await expect(page.getByText("Instrument separation is not connected to an audio model. No stems are generated here.", { exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Separate into stems", exact: true })).toHaveCount(0)
+    await expect(page.getByRole("slider", { name: "Vocals level", exact: true })).toHaveCount(0)
+    await expect(page.getByRole("link", { name: "Import a track", exact: true })).toHaveAttribute("href", "/")
+    expect(mutationRequests).toEqual([])
   })
 })

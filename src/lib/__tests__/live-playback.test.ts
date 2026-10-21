@@ -12,11 +12,12 @@ describe("per-track live audio lifecycle", () => {
     vi.stubGlobal("AudioContext", context);
     vi.stubGlobal("Worker", worker);
     const controller = createLivePlayback(source(), createDefaultAdvancedParams());
-    expect(controller.getState()).toMatchObject({ original: false, playing: false, ready: false, loading: false, position: 0 });
+    expect(controller.getState()).toMatchObject({ original: false, repeat: false, playing: false, ready: false, loading: false, position: 0 });
     controller.setBypass(true);
+    controller.setRepeat(true);
     controller.setVolume(0.25);
     controller.seek(0.5);
-    expect(controller.getState()).toMatchObject({ original: true, volume: 0.25, position: 0.5 });
+    expect(controller.getState()).toMatchObject({ original: true, repeat: true, volume: 0.25, position: 0.5 });
     expect(context).not.toHaveBeenCalled();
     expect(worker).not.toHaveBeenCalled();
     controller.dispose();

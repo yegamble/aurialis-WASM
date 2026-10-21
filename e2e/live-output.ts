@@ -17,9 +17,10 @@ export async function observeOutput(page: Page): Promise<void> {
     const nativeConnect = AudioNode.prototype.connect;
     let generation = 0;
     const connected = new WeakSet<AudioNode>();
-    AudioNode.prototype.connect = function (...args: Parameters<typeof nativeConnect>) {
-      const result = Reflect.apply(nativeConnect, this, args) as AudioNode;
-      const destination = args[0];
+    function connect(this: AudioNode, destination: AudioNode, output?: number, input?: number): AudioNode;
+    function connect(this: AudioNode, destination: AudioParam, output?: number): void;
+    function connect(this: AudioNode, destination: AudioNode | AudioParam, ...ports: (number | undefined)[]): AudioNode | void {
+      const result: unknown = Reflect.apply(nativeConnect, this, [destination, ...ports]);
       if (destination instanceof AudioDestinationNode && !connected.has(this)) {
         connected.add(this);
         const context = this.context as AudioContext;
@@ -41,8 +42,9 @@ export async function observeOutput(page: Page): Promise<void> {
         Reflect.apply(nativeConnect, capture, [silent]);
         Reflect.apply(nativeConnect, silent, [destination]);
       }
-      return result;
-    } as typeof nativeConnect;
+      return result instanceof AudioNode ? result : undefined;
+    }
+    AudioNode.prototype.connect = connect;
   });
 }
 

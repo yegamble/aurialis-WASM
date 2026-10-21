@@ -18,13 +18,9 @@ import type {
   EQBandId,
   EQBandParams,
   LimiterParams,
-  MasteringScript,
-  Move,
   ProfileId,
   RepairParams,
   SaturationParams,
-  Stem,
-  StemProject,
   StereoParams,
   Track,
 } from "./types";
@@ -60,7 +56,7 @@ export const profiles: { id: ProfileId; name: string; note: string }[] = [
 type StoreState = {
   tracks: Track[];
   albums: Album[];
-  stems: StemProject[];
+  stems: never[];
 };
 
 type StoreAction =
@@ -94,15 +90,6 @@ type StoreAction =
   | { type: "UPDATE_INPUT_GAIN"; trackId: string; input: number }
   | { type: "RESET_ADVANCED"; trackId: string }
   | { type: "DELETE_TRACK"; id: string }
-  | { type: "SAVE_SCRIPT"; id: string; script: MasteringScript }
-  | { type: "UPDATE_MOVE"; trackId: string; move: Move }
-  | { type: "SAVE_STEMS"; project: StemProject }
-  | {
-      type: "UPDATE_STEM";
-      trackId: string;
-      stemId: string;
-      patch: Partial<Omit<Stem, "id">>;
-    }
   | { type: "ADD_ALBUM"; album: Album }
   | { type: "UPDATE_ALBUM"; id: string; patch: Partial<Album> }
   | { type: "DELETE_ALBUM"; id: string }
@@ -308,63 +295,7 @@ export function reduceStoreState(
           ...album,
           trackIds: album.trackIds.filter((id) => id !== action.id),
         })),
-        stems: state.stems.filter((project) => project.trackId !== action.id),
-      };
-
-    case "SAVE_SCRIPT":
-      return {
-        ...state,
-        tracks: updateTrackInList(state.tracks, action.id, (track) => ({
-          ...track,
-          profile: action.script.profile,
-          script: action.script,
-          updatedAt: new Date().toISOString(),
-        })),
-      };
-
-    case "UPDATE_MOVE":
-      return {
-        ...state,
-        tracks: updateTrackInList(state.tracks, action.trackId, (track) => {
-          if (!track.script) return track;
-          const updatedScript: MasteringScript = {
-            ...track.script,
-            moves: track.script.moves.map((m) =>
-              m.id === action.move.id ? action.move : m,
-            ),
-          };
-          return {
-            ...track,
-            script: updatedScript,
-            updatedAt: new Date().toISOString(),
-          };
-        }),
-      };
-
-    case "SAVE_STEMS":
-      return {
-        ...state,
-        stems: [
-          ...state.stems.filter((p) => p.trackId !== action.project.trackId),
-          action.project,
-        ],
-      };
-
-    case "UPDATE_STEM":
-      return {
-        ...state,
-        stems: state.stems.map((project) =>
-          project.trackId === action.trackId
-            ? {
-                ...project,
-                stems: project.stems.map((stem) =>
-                  stem.id === action.stemId
-                    ? { ...stem, ...action.patch }
-                    : stem,
-                ),
-              }
-            : project,
-        ),
+        stems: [],
       };
 
     case "ADD_ALBUM":
@@ -392,20 +323,20 @@ export function reduceStoreState(
   }
 }
 
-function normalizeHydratedState(raw: unknown): StoreState | null {
+export function normalizeHydratedState(raw: unknown): StoreState | null {
   if (typeof raw !== "object" || raw === null) return null;
   const candidate = raw as {
     tracks?: (Omit<Track, "advanced"> & {
       advanced?: Partial<AdvancedParams>;
     })[];
     albums?: Album[];
-    stems?: StemProject[];
+    stems?: unknown;
   };
   if (!Array.isArray(candidate.tracks)) return null;
   const tracks: Track[] = candidate.tracks.filter((track) => track.source !== "demo").map((track) => {
     const baseAdv = createDefaultAdvancedParams(track.advanced);
     const storedBands: unknown = track.advanced?.eqBands;
-    const restored = { ...track };
+    const restored: Track & { script?: unknown } = { ...track, advanced: createDefaultAdvancedParams() };
     delete restored.script;
     delete restored.releaseScore;
     return {
@@ -443,7 +374,7 @@ function normalizeHydratedState(raw: unknown): StoreState | null {
   });
   return {
     tracks,
-    albums: Array.isArray(candidate.albums) ? candidate.albums : [],
+    albums: Array.isArray(candidate.albums) ? candidate.albums.map((album) => ({ ...album, mastered: false, trackIds: album.trackIds.filter((id) => tracks.some((track) => track.id === id)) })) : [],
     stems: [],
   };
 }

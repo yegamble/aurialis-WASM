@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { initialStoreState as emptyStore, reduceStoreState } from "../store";
+import { initialStoreState as emptyStore, normalizeHydratedState, reduceStoreState } from "../store";
 import { testStore as initialStoreState } from "./fixtures";
-import type { EQBandId, Stem } from "../types";
+import type { EQBandId } from "../types";
 
 describe("Aurialis Control Isolation & Parameter Orthogonality", () => {
   it("starts with an empty production workspace", () => {
@@ -131,39 +131,22 @@ describe("Aurialis Control Isolation & Parameter Orthogonality", () => {
     expect(limTrack.advanced.stereo).toEqual(stereoTrack.advanced.stereo);
   });
 
-  it("isolates Smart Split stem controls across 2-6 stems", () => {
-    const trackId = "demo-1";
-    const stems: Stem[] = [
-      { id: "s0", name: "Vocals", level: 0, pan: 0, muted: false, solo: false },
-      { id: "s1", name: "Drums", level: 0, pan: 0, muted: false, solo: false },
-      { id: "s2", name: "Bass", level: 0, pan: 0, muted: false, solo: false },
-      { id: "s3", name: "Other", level: 0, pan: 0, muted: false, solo: false },
-    ];
-    const withStems = reduceStoreState(initialStoreState, {
-      type: "SAVE_STEMS",
-      project: { trackId, count: 4, complete: true, stems },
-    });
 
-    const afterUpdate = reduceStoreState(withStems, {
-      type: "UPDATE_STEM",
-      trackId,
-      stemId: "s1",
-      patch: { level: -4, pan: 25, solo: true },
-    });
-    const updatedStems = afterUpdate.stems[0]?.stems;
-    if (!updatedStems) throw new Error("Missing updatedStems");
-
-    expect(updatedStems[0]).toEqual(stems[0]);
-    expect(updatedStems[1]).toEqual({
-      id: "s1",
-      name: "Drums",
-      level: -4,
-      pan: 25,
-      muted: false,
-      solo: true,
-    });
-    expect(updatedStems[2]).toEqual(stems[2]);
-    expect(updatedStems[3]).toEqual(stems[3]);
+  it("migrates uploaded metadata while clearing former design examples and simulated completion", () => {
+    const source = initialStoreState.tracks[0];
+    if (!source) throw new Error("Missing test source");
+    const saved = {
+      tracks: [{ ...source, mode: "deep", script: { moves: ["invented"] }, releaseScore: 95 }, { ...source, id: "old-example", source: "demo" }],
+      albums: [{ id: "album", title: "User album", artist: "Artist", target: "Streaming", trackIds: [source.id, "old-example"], mastered: true }],
+      stems: [{ trackId: source.id, complete: true, stems: ["metadata only"] }],
+    };
+    const result = normalizeHydratedState(saved);
+    expect(result?.tracks).toHaveLength(1);
+    expect(result?.tracks[0]).toMatchObject({ id: source.id, title: source.title, mode: "advanced" });
+    expect(result?.tracks[0]).not.toHaveProperty("script");
+    expect(result?.tracks[0]).not.toHaveProperty("releaseScore");
+    expect(result?.albums[0]).toMatchObject({ mastered: false, trackIds: [source.id] });
+    expect(result?.stems).toEqual([]);
   });
 
   it("reset restores neutral settings without changing another track", () => {

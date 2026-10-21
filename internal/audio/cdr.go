@@ -42,6 +42,9 @@ var pcmSlicePool = sync.Pool{
 	},
 }
 
+// MaxDecodedFrames bounds the memory expansion of compressed-width PCM input.
+const MaxDecodedFrames = 4 * 1024 * 1024
+
 // AcquirePCM returns a pooled float32 slice of length n.
 func AcquirePCM(n int) []float32 {
 	ptr, ok := pcmSlicePool.Get().(*[]float32)
@@ -129,9 +132,6 @@ func ScanPolyglotPayloads(data []byte) error {
 
 	// Scan header/trailer regions (and full buffer up to 8 MB) for ZIP/JAR/HTML/script polyglot markers
 	scanSlice := data
-	if len(scanSlice) > 8*1024*1024 {
-		scanSlice = data[:8*1024*1024]
-	}
 	if bytes.Contains(scanSlice, []byte("PK\x03\x04")) || bytes.Contains(scanSlice, []byte("PK\x05\x06")) {
 		return fmt.Errorf("%w: embedded ZIP/JAR archive signature (PK) detected", ErrPolyglotPayload)
 	}
@@ -162,7 +162,7 @@ func DecodeAndDisarm(filename string, raw []byte) (*Buffer, error) {
 	switch {
 	case len(raw) >= 12 && string(raw[0:4]) == "RIFF" && string(raw[8:12]) == "WAVE":
 		return decodeAndDisarmWAV(raw)
-	case len(raw) >= 12 && string(raw[0:4]) == "FORM" && (string(raw[8:12]) == "AIFF" || string(raw[8:12]) == "AIFC"):
+	case len(raw) >= 12 && string(raw[0:4]) == "FORM" && string(raw[8:12]) == "AIFF":
 		return decodeAndDisarmAIFF(raw)
 	default:
 		return nil, fmt.Errorf("%w: unrecognized or spoofed audio container magic bytes", ErrCorruptContainer)
@@ -174,7 +174,7 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 		return nil, fmt.Errorf("%w: WAV shorter than 44-byte minimum header", ErrCorruptContainer)
 	}
 	riffSize := binary.LittleEndian.Uint32(raw[4:8])
-	if riffSize == 0xFFFFFFFF || int64(riffSize) > int64(len(raw))*2 {
+	if riffSize < 36 || uint64(riffSize)+8 != uint64(len(raw)) {
 		return nil, fmt.Errorf("%w: invalid RIFF chunk size %d", ErrCorruptContainer, riffSize)
 	}
 
@@ -186,6 +186,8 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 		bitsPerSample uint16
 		pcmData       []byte
 		dataEndOffset int
+		blockAlign    uint16
+		byteRate      uint32
 	)
 
 	offset := 12
@@ -201,6 +203,9 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 
 		switch chunkID {
 		case "fmt ":
+			if hasFmt {
+				return nil, fmt.Errorf("%w: duplicate fmt chunk", ErrCorruptContainer)
+			}
 			if chunkSize < 16 {
 				return nil, fmt.Errorf("%w: fmt chunk smaller than 16 bytes", ErrCorruptContainer)
 			}
@@ -208,11 +213,13 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 			numChannels = binary.LittleEndian.Uint16(chunkBytes[2:4])
 			sampleRate = binary.LittleEndian.Uint32(chunkBytes[4:8])
 			bitsPerSample = binary.LittleEndian.Uint16(chunkBytes[14:16])
-			if audioFormat == 0xFFFE && chunkSize >= 40 {
-				audioFormat = binary.LittleEndian.Uint16(chunkBytes[24:26])
-			}
+			blockAlign = binary.LittleEndian.Uint16(chunkBytes[12:14])
+			byteRate = binary.LittleEndian.Uint32(chunkBytes[8:12])
 			hasFmt = true
 		case "data":
+			if dataEndOffset != 0 {
+				return nil, fmt.Errorf("%w: duplicate data chunk", ErrCorruptContainer)
+			}
 			pcmData = chunkBytes
 			dataEndOffset = offset + int(chunkSize)
 		default:
@@ -229,6 +236,9 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 			offset++
 		}
 	}
+	if offset != len(raw) {
+		return nil, fmt.Errorf("%w: incomplete RIFF chunk", ErrCorruptContainer)
+	}
 
 	if !hasFmt {
 		return nil, fmt.Errorf("%w: missing fmt chunk", ErrCorruptContainer)
@@ -244,6 +254,13 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 	}
 	if bitsPerSample != 8 && bitsPerSample != 16 && bitsPerSample != 24 && bitsPerSample != 32 {
 		return nil, fmt.Errorf("%w: unsupported bit depth %d", ErrCorruptContainer, bitsPerSample)
+	}
+	if audioFormat == 3 && bitsPerSample != 32 {
+		return nil, fmt.Errorf("%w: floating point WAV requires 32 bits", ErrCorruptContainer)
+	}
+	expectedAlign := uint32(numChannels) * uint32(bitsPerSample/8)
+	if uint32(blockAlign) != expectedAlign || byteRate != sampleRate*expectedAlign {
+		return nil, fmt.Errorf("%w: inconsistent PCM layout", ErrCorruptContainer)
 	}
 	if len(pcmData) == 0 {
 		return nil, ErrEmptyAudio
@@ -263,6 +280,9 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 		return nil, ErrEmptyAudio
 	}
 	numFrames := len(pcmData) / frameSize
+	if len(pcmData)%frameSize != 0 || numFrames > MaxDecodedFrames {
+		return nil, fmt.Errorf("%w: partial frame or decoded audio exceeds frame limit", ErrCorruptContainer)
+	}
 	if numFrames < 8 {
 		return nil, ErrEmptyAudio
 	}
@@ -330,6 +350,9 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 	if len(raw) < 54 {
 		return nil, fmt.Errorf("%w: AIFF header too short", ErrCorruptContainer)
 	}
+	if uint64(binary.BigEndian.Uint32(raw[4:8]))+8 != uint64(len(raw)) {
+		return nil, fmt.Errorf("%w: invalid FORM size", ErrCorruptContainer)
+	}
 	var (
 		numChannels   uint16
 		numFrames     uint32
@@ -348,6 +371,9 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 		chunkBytes := raw[offset : offset+int(chunkSize)]
 		switch chunkID {
 		case "COMM":
+			if numChannels != 0 {
+				return nil, fmt.Errorf("%w: duplicate COMM chunk", ErrCorruptContainer)
+			}
 			if len(chunkBytes) < 18 {
 				return nil, fmt.Errorf("%w: AIFF COMM chunk too short", ErrCorruptContainer)
 			}
@@ -356,6 +382,9 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 			bitsPerSample = binary.BigEndian.Uint16(chunkBytes[6:8])
 			sampleRate = parseIEEE80SampleRate(chunkBytes[8:18])
 		case "SSND":
+			if ssndData != nil {
+				return nil, fmt.Errorf("%w: duplicate SSND chunk", ErrCorruptContainer)
+			}
 			if len(chunkBytes) < 8 {
 				return nil, fmt.Errorf("%w: AIFF SSND chunk too short", ErrCorruptContainer)
 			}
@@ -370,13 +399,16 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 			offset++
 		}
 	}
+	if offset != len(raw) {
+		return nil, fmt.Errorf("%w: incomplete AIFF chunk", ErrCorruptContainer)
+	}
 	if numChannels < 1 || numChannels > 8 || sampleRate < 8000 || sampleRate > 192000 || bitsPerSample != 16 || len(ssndData) == 0 {
 		return nil, fmt.Errorf("%w: invalid AIFF parameters", ErrCorruptContainer)
 	}
 	frameSize := 2 * int(numChannels)
 	availFrames := len(ssndData) / frameSize
-	if int(numFrames) < availFrames {
-		availFrames = int(numFrames)
+	if uint64(numFrames) != uint64(availFrames) || len(ssndData)%frameSize != 0 || availFrames > MaxDecodedFrames {
+		return nil, fmt.Errorf("%w: inconsistent or excessive AIFF frames", ErrCorruptContainer)
 	}
 	if availFrames < 8 {
 		return nil, ErrEmptyAudio
@@ -404,21 +436,21 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 }
 
 func parseIEEE80SampleRate(b []byte) int {
-	if len(b) < 10 {
-		return 48000
+	if len(b) < 10 || b[0]&0x80 != 0 {
+		return 0
 	}
 	exp := int(binary.BigEndian.Uint16(b[0:2])&0x7FFF) - 16383
 	mant := binary.BigEndian.Uint64(b[2:10])
-	if exp < 0 || exp > 30 {
-		return 48000
+	if exp < 0 || exp > 30 || mant&(uint64(1)<<63) == 0 {
+		return 0
 	}
 	shift := 63 - exp
 	if shift < 33 || shift >= 64 {
-		return 48000
+		return 0
 	}
 	shifted := mant >> shift
 	if shifted < 8000 || shifted > 192000 {
-		return 48000
+		return 0
 	}
 	return int(shifted) // #nosec G115 -- bounded to [8000, 192000]
 }

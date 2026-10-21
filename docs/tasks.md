@@ -74,3 +74,10 @@ For the isolated five-minute render plus canonical re-upload, observed maximum r
 | Final binary empty-directory smoke | Exit 0 for the same `32ae175` production binary after the final browser probes | `compiled-binary-smoke` |
 | Product Engineer gate | Conditional acceptance of the corrective PR after reviewing final runtime evidence; documentation commit, a clean packaging checkpoint and owner merge remain the integration conditions. Full product requirements stay open. | Independent product review |
 | Documentation and merge state | Owned-file spelling passed for five files with zero issues; 45 local links resolved and the whitespace check passed before this corrective commit. The locally verified corrective subset is open — awaiting merge; full product requirements and remote PR checks remain open. | No release, remote green-CI or owner-merge claim |
+
+
+### Draft PR and remote CI follow-up
+
+[Draft PR #2](https://github.com/yegamble/aurialis-WASM/pull/2) is **open — awaiting merge**, with owner approval required. Its [initial remote CI run](https://github.com/yegamble/aurialis-WASM/actions/runs/39551701995) failed the generated-agent synchronization gate: `.agents/plugins/aurialis-war-room/rules/AGENTS.md` still named Go 1.26.2 while canonical `AGENTS.md` named Go 1.26.10.
+
+Regenerating with `python3 scripts/sync-agents.py` changes that one mirrored toolchain line. `python3 scripts/sync-agents.py --check` then exited 0, confirming all 11 agent definitions are synchronized. This is a generated-rule correction; application code and the locally tested behavior did not change. The corrected remote CI rerun is pending; no green remote-CI or owner-merge result is claimed.

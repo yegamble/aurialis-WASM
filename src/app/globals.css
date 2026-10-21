@@ -1069,11 +1069,6 @@ p {
   display: block;
 }
 
-.eq-handle {
-  cursor: pointer;
-  transition: r 0.12s ease;
-}
-
 .axis {
   display: flex;
   justify-content: space-between;
@@ -1592,12 +1587,6 @@ input[type="range"] {
 
 .album-art--2 {
   background: linear-gradient(145deg, var(--moss-dark), var(--ochre-dark));
-}
-
-.album-card > div {
-  display: grid;
-  gap: 10px;
-  align-content: space-between;
 }
 
 .album-meta {
@@ -2567,6 +2556,7 @@ input[type="range"] {
   }
 }
 .metric-strip {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 0;
   border-top: 1px solid var(--line-dark);
   border-bottom: 1px solid var(--line-dark);
@@ -3113,3 +3103,23 @@ input[type="range"] {
   .check-item { grid-template-columns: 36px minmax(0, 1fr) minmax(0, 0.6fr) minmax(0, 1.5fr); }
   .check-item > span:nth-child(3), .check-item p { grid-column: auto; }
 }
+
+.spectrum-plot { position: relative; height: 190px; }
+.spectrum-plot > svg { display: block; width: 100%; height: 100%; }
+.eq-handle {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: grab;
+  touch-action: none;
+}
+.eq-handle:active { cursor: grabbing; }
+.eq-handle:focus-visible { outline: 2px solid var(--clay-dark); outline-offset: -2px; }
+.eq-handle:disabled { cursor: not-allowed; }
+.waveform--empty { min-height: 130px; display: grid; place-items: center; text-align: center; }
+.waveform--empty p { max-width: 34ch; font-size: 13px; }

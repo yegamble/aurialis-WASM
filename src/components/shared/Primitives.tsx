@@ -8,6 +8,7 @@ import {
   type ButtonHTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { computeEqMagnitudeDb } from "@/lib/audio-dsp";
@@ -323,15 +324,7 @@ export function BottomSheet({
   );
 }
 
-function bars(seed: number, count = 84): number[] {
-  return Array.from(
-    { length: count },
-    (_, index) => 14 + ((seed * (index + 3) * 17 + index * index * 3) % 72),
-  );
-}
-
 export function Waveform({
-  seed,
   duration,
   compact = false,
   peaks,
@@ -345,7 +338,7 @@ export function Waveform({
   playheadRatio?: number;
   onSeekRatio?: (ratio: number) => void;
 }) {
-  const [internalRatio, setInternalRatio] = useState(0.28);
+  const [internalRatio, setInternalRatio] = useState(0);
   const ratio = controlledRatio ?? internalRatio;
   const currentSec = Math.round(ratio * duration);
 
@@ -370,6 +363,14 @@ export function Waveform({
       setRatio(1);
     }
   };
+
+  if (!peaks?.length) {
+    return (
+      <div className="waveform waveform--empty" role="status">
+        <p>Source waveform unavailable. Load audio to see its waveform.</p>
+      </div>
+    );
+  }
 
   return (
     <div className={`waveform ${compact ? "waveform--compact" : ""}`.trim()}>
@@ -400,11 +401,8 @@ export function Waveform({
           }
         }}
       >
-        {(peaks
-          ? peaks.map((peak) => Math.max(1, Math.min(100, peak * 100)))
-          : bars(seed, compact ? 52 : 96)
-        ).map((height, i) => (
-          <i key={i} style={{ height: `${String(height)}%` }} />
+        {peaks.map((peak, i) => (
+          <i key={i} style={{ height: `${String(Math.max(1, Math.min(100, peak * 100)))}%` }} />
         ))}
         <span
           className="playhead"
@@ -415,10 +413,10 @@ export function Waveform({
   );
 }
 
-function freqToX(freqHz: number): number {
+function freqToX(freqHz: number, maxFrequency = 20000): number {
   const minLog = Math.log10(20);
-  const maxLog = Math.log10(20000);
-  const clamped = Math.max(20, Math.min(20000, freqHz));
+  const maxLog = Math.log10(maxFrequency);
+  const clamped = Math.max(20, Math.min(maxFrequency, freqHz));
   return ((Math.log10(clamped) - minLog) / (maxLog - minLog)) * 100;
 }
 
@@ -428,21 +426,52 @@ function gainToY(gainDb: number): number {
 }
 
 export function SpectrumChart({
-  seed,
   eqBands,
   activeBandId,
+  sampleRate = 48000,
+  onSelectBand,
+  onBandChange,
 }: {
-  seed: number;
+  seed?: number;
   eqBands?: readonly EQBandParams[];
   activeBandId?: EQBandId;
+  sampleRate?: number;
+  onSelectBand?: (id: EQBandId) => void;
+  onBandChange?: (id: EQBandId, patch: Partial<EQBandParams>) => void;
 }) {
   const gradientId = useId();
+  const instructionsId = useId();
+  const plotRef = useRef<HTMLDivElement>(null);
+  const maxFrequency = Math.min(20000, sampleRate * 0.49);
+  const updateFromPointer = (id: EQBandId, event: ReactPointerEvent<HTMLButtonElement>) => {
+    const rect = plotRef.current?.getBoundingClientRect();
+    if (!rect?.width || !rect.height) return;
+    const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+    const y = Math.max(0, Math.min(60, ((event.clientY - rect.top) / rect.height) * 60));
+    onBandChange?.(id, {
+      freqHz: Math.round(Math.min(maxFrequency, 20 * Math.pow(maxFrequency / 20, x))),
+      gainDb: Math.max(-12, Math.min(12, Math.round(((30 - y) / 24) * 15 * 10) / 10)),
+    });
+  };
+  const updateFromKey = (band: EQBandParams, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const gainStep = event.shiftKey ? 1 : 0.5;
+    const frequencyFactor = Math.pow(2, event.shiftKey ? 1 : 1 / 12);
+    let patch: Partial<EQBandParams>;
+    switch (event.key) {
+      case "ArrowUp": patch = { gainDb: Math.min(12, band.gainDb + gainStep) }; break;
+      case "ArrowDown": patch = { gainDb: Math.max(-12, band.gainDb - gainStep) }; break;
+      case "ArrowLeft": patch = { freqHz: Math.max(20, Math.round(band.freqHz / frequencyFactor)) }; break;
+      case "ArrowRight": patch = { freqHz: Math.min(maxFrequency, Math.round(band.freqHz * frequencyFactor)) }; break;
+      default: return;
+    }
+    event.preventDefault();
+    onBandChange?.(band.id, patch);
+  };
   const basePoints = Array.from({ length: 25 }, (_, i) => {
     const x = (i / 24) * 100;
-    const freq = 20 * Math.pow(1000, i / 24);
-    const baseY = eqBands ? 30 : 38 - ((seed * (i + 2) * 7 + i * 11) % 20);
-    const eqDb = eqBands ? computeEqMagnitudeDb(freq, eqBands, 48000) : 0;
-    const y = Math.max(4, Math.min(56, baseY - eqDb * 1.4));
+    const freq = 20 * Math.pow(maxFrequency / 20, i / 24);
+    const eqDb = eqBands ? computeEqMagnitudeDb(freq, eqBands, sampleRate) : 0;
+    const y = Math.max(4, Math.min(56, 30 - eqDb * 1.4));
     return `${x.toFixed(2)},${y.toFixed(2)}`;
   }).join(" ");
 
@@ -453,16 +482,17 @@ export function SpectrumChart({
             `${b.label} (${String(b.freqHz)} Hz): ${b.gainDb >= 0 ? "+" : ""}${b.gainDb.toFixed(1)} dB`,
         )
         .join(", ")
-    : "Tonal balance across 20 Hz to 20 kHz";
+    : "No EQ settings loaded";
 
   return (
     <div className="spectrum">
       <div className="chart-label">
         <span>
-          {eqBands ? "Approximate EQ response" : "Illustrative tonal curve"}
+          {eqBands ? "Approximate EQ response" : "EQ response unavailable"}
         </span>
-        <span>20 Hz — 20 kHz</span>
+        <span>20 Hz — {String(Number((maxFrequency / 1000).toFixed(1)))} kHz</span>
       </div>
+      <div className="spectrum-plot" ref={plotRef}>
       <svg
         viewBox="0 0 100 60"
         preserveAspectRatio="none"
@@ -488,7 +518,7 @@ export function SpectrumChart({
           vectorEffect="non-scaling-stroke"
         />
         {eqBands?.map((band) => {
-          const cx = freqToX(band.freqHz);
+          const cx = freqToX(band.freqHz, maxFrequency);
           const cy = gainToY(band.gainDb);
           const isSelected = activeBandId === band.id;
           return (
@@ -504,6 +534,48 @@ export function SpectrumChart({
           );
         })}
       </svg>
+        {onBandChange && eqBands?.map((band) => (
+          <button
+            key={band.id}
+            type="button"
+            className="eq-handle"
+            disabled={!band.enabled}
+            aria-label={`${band.label} EQ: ${String(band.freqHz)} Hz, ${band.gainDb.toFixed(1)} dB`}
+            aria-describedby={instructionsId}
+            aria-pressed={activeBandId === band.id}
+            style={{
+              left: `clamp(22px, ${String(freqToX(band.freqHz, maxFrequency))}%, calc(100% - 22px))`,
+              top: `clamp(22px, ${String((gainToY(band.gainDb) / 60) * 100)}%, calc(100% - 22px))`,
+            }}
+            onFocus={() => onSelectBand?.(band.id)}
+            onClick={() => onSelectBand?.(band.id)}
+            onPointerDown={(event) => {
+              onSelectBand?.(band.id);
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }}
+            onPointerMove={(event) => {
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                updateFromPointer(band.id, event);
+              }
+            }}
+            onPointerUp={(event) => {
+              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                event.currentTarget.releasePointerCapture(event.pointerId);
+              }
+            }}
+            onKeyDown={(event) => { updateFromKey(band, event); }}
+          >
+            <span className="sr-only">{band.label}</span>
+          </button>
+        ))}
+      </div>
+      {onBandChange && (
+        <p className="sr-only" id={instructionsId}>
+          Drag to change frequency and gain. Arrow left and right change frequency;
+          arrow up and down change gain. Hold Shift for larger steps. The band
+          controls provide another way to enter exact values.
+        </p>
+      )}
       <div className="axis">
         <span>Sub</span>
         <span>Low</span>

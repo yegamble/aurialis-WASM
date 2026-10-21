@@ -74,7 +74,7 @@ test("actual Go WASM bridge matches native PCM for independent parameter changes
       for (const channel of ["left", "right"] as const) {
         // Signed zero has the same audio amplitude; the DSP may canonicalize it.
         const expected = decoded[channel].map(sample => Math.fround(sample * gain) || 0)
-        expect(native[channel], "float headroom must survive canonicalization and export").toEqual(expected)
+        expect(native[channel].map(sample => sample || 0), "float headroom must survive canonicalization and export").toEqual(expected)
       }
     }
     const wasm = await page.evaluate(({ left, right, params }) => {

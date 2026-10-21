@@ -1,4 +1,4 @@
-import type { AdvancedParams } from "./types";
+import type { AdvancedParams, MeasuredAudioMetrics } from "./types";
 
 export interface StereoPCM {
   left: Float32Array<ArrayBuffer>;
@@ -25,6 +25,10 @@ declare global {
   }
 }
 export function engineParams(advanced: AdvancedParams) {
+  if (advanced.limiter.enabled && advanced.limiter.truePeak)
+    throw new Error("True-peak limiting is unavailable. Use the sample-peak limiter.");
+  if (advanced.repair.enabled)
+    throw new Error("Audio repair is unavailable. Disable repair to render.");
   return {
     bypass: false,
     abOriginal: false,
@@ -40,7 +44,7 @@ export function engineParams(advanced: AdvancedParams) {
           ? "low_shelf"
           : band.type === "highshelf"
             ? "high_shelf"
-            : "peaking",
+            : band.type === "highpass" ? "high_pass" : "peaking",
       enabled: band.enabled,
     })),
     compressor: {
@@ -309,4 +313,115 @@ export function sourcePeaks(pcm: StereoPCM): number[] {
       );
     return peak;
   });
+}
+
+export type AudioMeasurement = {
+  sampleRate: number;
+  frames: number;
+  duration: number;
+  beforeMetrics: MeasuredAudioMetrics;
+  afterMetrics: MeasuredAudioMetrics;
+};
+
+function metricObject(value: unknown): MeasuredAudioMetrics {
+  if (typeof value !== "object" || value === null)
+    throw new Error("The server returned invalid audio measurements.");
+  const number = (key: keyof MeasuredAudioMetrics): number => {
+    // Keys are the fixed measurement schema below, never user-provided keys.
+    // eslint-disable-next-line security/detect-object-injection
+    const result: unknown = (value as Record<string, unknown>)[key];
+    if (typeof result !== "number" || !Number.isFinite(result))
+      throw new Error("The server returned incomplete audio measurements.");
+    return result;
+  };
+  return {
+    integratedLufs: number("integratedLufs"),
+    shortTermLufs: number("shortTermLufs"),
+    truePeakDbtp: number("truePeakDbtp"),
+    samplePeakDbfs: number("samplePeakDbfs"),
+    dynamicRangeDb: number("dynamicRangeDb"),
+    correlation: number("correlation"),
+    lowBassCorrelation: number("lowBassCorrelation"),
+    dcLeftDbfs: number("dcLeftDbfs"),
+    dcRightDbfs: number("dcRightDbfs"),
+    clippingSamples: number("clippingSamples"),
+    gainReductionDb: number("gainReductionDb"),
+  };
+}
+
+export async function measureAudio(
+  file: Blob,
+  params: object = { bypass: true },
+  signal?: AbortSignal,
+): Promise<AudioMeasurement> {
+  const form = new FormData();
+  form.append("file", file, "source.wav");
+  form.append("params", JSON.stringify(params));
+  form.append("format", "json");
+  const response = await fetch("/api/master/render", {
+    method: "POST",
+    headers: { Accept: "application/json" },
+    body: form,
+    ...(signal ? { signal } : {}),
+  });
+  const body: unknown = await response.json();
+  if (!response.ok) {
+    const detail = typeof body === "object" && body !== null && "detail" in body
+      && typeof body.detail === "string" ? body.detail : "Audio measurement failed.";
+    throw new Error(detail);
+  }
+  if (typeof body !== "object" || body === null || !("sampleRate" in body)
+    || !("frames" in body) || !("duration" in body)
+    || !("beforeMetrics" in body) || !("afterMetrics" in body)
+    || typeof body.sampleRate !== "number" || !Number.isFinite(body.sampleRate)
+    || body.sampleRate < 8000 || body.sampleRate > 192000
+    || typeof body.frames !== "number" || !Number.isSafeInteger(body.frames) || body.frames < 1
+    || typeof body.duration !== "number" || !Number.isFinite(body.duration) || body.duration <= 0
+    || Math.abs(body.duration - body.frames / body.sampleRate) > 0.001)
+    throw new Error("The server returned invalid audio measurements.");
+  return {
+    sampleRate: body.sampleRate,
+    frames: body.frames,
+    duration: body.duration,
+    beforeMetrics: metricObject(body.beforeMetrics),
+    afterMetrics: metricObject(body.afterMetrics),
+  };
+}
+
+// range/dynamics are legacy display slots for measured crest factor, not LRA.
+export function trackMetrics(metrics: MeasuredAudioMetrics) {
+  return {
+    lufs: metrics.integratedLufs,
+    peak: metrics.truePeakDbtp,
+    range: metrics.dynamicRangeDb,
+    dynamics: metrics.dynamicRangeDb,
+    correlation: metrics.correlation,
+  };
+}
+
+// Explicit Simple-mode automatic gain. Advanced rendering never calls this.
+// Fail rather than claiming a target when nonlinear processing or available
+// sample-peak limiting cannot meet both loudness and the measured peak ceiling.
+export async function normalizeSimpleAudio(
+  file: Blob,
+  settings: AdvancedParams,
+  targetLufs: number,
+  signal?: AbortSignal,
+): Promise<AdvancedParams> {
+  if (!Number.isFinite(targetLufs) || targetLufs < -36 || targetLufs > -5)
+    throw new Error("Choose a loudness target between −36 and −5 LUFS.");
+  let candidate = structuredClone(settings);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const { afterMetrics } = await measureAudio(file, engineParams(candidate), signal);
+    const difference = targetLufs - afterMetrics.integratedLufs;
+    if (afterMetrics.integratedLufs <= -69.9)
+      throw new Error("The source is too quiet to normalize reliably.");
+    if (Math.abs(difference) <= 0.2) {
+      if (afterMetrics.truePeakDbtp > candidate.limiter.ceiling + 0.2)
+        throw new Error("This loudness target exceeds the measured peak ceiling. Choose a quieter target.");
+      return candidate;
+    }
+    candidate = { ...candidate, input: Math.max(-36, Math.min(36, candidate.input + difference)) };
+  }
+  throw new Error("This loudness target could not be reached safely. Choose a quieter target or adjust dynamics.");
 }

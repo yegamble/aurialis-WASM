@@ -1,7 +1,6 @@
 import type {
   AdvancedParams,
   EQBandParams,
-  MasteringScript,
   ProfileId,
 } from "./types";
 
@@ -356,6 +355,7 @@ export function mapSimpleToDSP(
 
   return {
     ...base,
+    repair: { ...base.repair, enabled: false },
     input: 0,
     threshold: compThresh,
     ratio: compRatio,
@@ -390,93 +390,13 @@ export function mapSimpleToDSP(
       enabled: true,
       targetLufs,
       ceiling,
-    },
-  };
-}
-
-function applyScriptMovesToDSP(
-  script: MasteringScript,
-  base: AdvancedParams,
-): AdvancedParams {
-  let inputDelta = 0;
-  let eqHighDelta = 0;
-  let compThreshDelta = 0;
-  let widthDelta = 0;
-  let repairAmount = 0;
-
-  for (const move of script.moves) {
-    if (move.muted) continue;
-    if (move.parameter === "input_gain_db") {
-      inputDelta += move.value;
-    } else if (move.parameter === "eq_high_shelf_db") {
-      eqHighDelta += move.value;
-    } else if (move.parameter === "compressor_threshold_db") {
-      compThreshDelta += move.value;
-    } else if (move.parameter === "stereo_width_percent") {
-      widthDelta += move.value;
-    } else if (move.parameter === "ai_repair_amount") {
-      repairAmount = Math.max(repairAmount, move.value);
-    }
-  }
-
-  // Average over moves or clamp deltas to safe studio ranges
-  const clampedInput = Math.max(-12, Math.min(12, base.input + inputDelta * 0.25));
-  const bands: [
-    EQBandParams,
-    EQBandParams,
-    EQBandParams,
-    EQBandParams,
-    EQBandParams,
-  ] = [
-    { ...base.eqBands[0] },
-    { ...base.eqBands[1] },
-    { ...base.eqBands[2] },
-    { ...base.eqBands[3] },
-    {
-      ...base.eqBands[4],
-      gainDb: Math.max(
-        -12,
-        Math.min(12, Math.round((base.eqBands[4].gainDb + eqHighDelta * 0.3) * 10) / 10),
-      ),
-    },
-  ];
-
-  const clampedThresh = Math.max(
-    -40,
-    Math.min(0, Math.round((base.compressor.threshold + compThreshDelta * 0.2) * 10) / 10),
-  );
-  const clampedWidth = Math.max(
-    0,
-    Math.min(200, Math.round(base.stereo.width + widthDelta * 0.25)),
-  );
-
-  return {
-    ...base,
-    input: Math.round(clampedInput * 10) / 10,
-    threshold: clampedThresh,
-    width: clampedWidth,
-    eqBands: bands,
-    compressor: {
-      ...base.compressor,
-      threshold: clampedThresh,
-    },
-    stereo: {
-      ...base.stereo,
-      width: clampedWidth,
-    },
-    repair: {
-      ...base.repair,
-      enabled: base.repair.enabled || repairAmount > 0,
-      declick: base.repair.declick || repairAmount > 3,
-      declip: base.repair.declip || repairAmount > 6,
-      phaseAlign: base.repair.phaseAlign || repairAmount > 0,
+      truePeak: false,
     },
   };
 }
 
 export function mapProfileToDSP(
   profile: ProfileId,
-  script?: MasteringScript,
   baseParams?: AdvancedParams,
 ): AdvancedParams {
   const base = baseParams ?? createDefaultAdvancedParams();
@@ -599,6 +519,7 @@ export function mapProfileToDSP(
 
   const profileDSP: AdvancedParams = {
     ...base,
+    repair: { ...base.repair, enabled: false },
     input: 0,
     threshold: compThresh,
     ratio: compRatio,
@@ -633,11 +554,9 @@ export function mapProfileToDSP(
       enabled: true,
       targetLufs,
       ceiling,
+      truePeak: false,
     },
   };
 
-  if (script) {
-    return applyScriptMovesToDSP(script, profileDSP);
-  }
   return profileDSP;
 }

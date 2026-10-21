@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdvancedParams } from "../audio-dsp";
 import {
   engineParams,
+  measureAudio,
+  normalizeSimpleAudio,
+  trackMetrics,
   measuredLevels,
   previewWAV,
   processPreview,
@@ -142,5 +145,116 @@ describe("shared engine browser boundary", () => {
       ),
     ).rejects.toThrow("cancelled");
     expect(init).not.toHaveBeenCalled();
+  });
+});
+
+// Mapping assertions complement compiled native/WASM signal tests: changing one
+// persisted control must change only its explicit engine field.
+describe("complete supported control mapping", () => {
+  it("preserves every EQ band's frequency, gain, Q, type and bypass independently", () => {
+    const settings = createDefaultAdvancedParams();
+    settings.eqBands[0].type = "highpass";
+    for (const [index, band] of settings.eqBands.entries()) {
+      band.freqHz = 100 + index * 400;
+      band.gainDb = index - 3;
+      band.q = 0.5 + index;
+      band.enabled = index % 2 === 0;
+    }
+    const params = engineParams(settings);
+    expect(params.bands.map((band) => band.type)).toEqual([
+      "high_pass", "low_shelf", "peaking", "peaking", "high_shelf",
+    ]);
+    for (const [index, band] of settings.eqBands.entries()) {
+      expect(params.bands.at(index)).toMatchObject({
+        freqHz: band.freqHz, gainDb: band.gainDb, q: band.q, enabled: band.enabled,
+      });
+    }
+    settings.eqEnabled = false;
+    expect(engineParams(settings).eqEnabled).toBe(false);
+    expect(engineParams(settings).bands).toEqual(params.bands);
+  });
+  it("maps individual compressor, saturation, stereo and supported limiter fields", () => {
+    const settings = createDefaultAdvancedParams();
+    settings.compressor = { enabled: false, threshold: -22, ratio: 4.1, attack: 17, release: 340, knee: 8, makeup: 2 };
+    settings.saturationModule = { enabled: false, drive: 42, character: "Thick" };
+    settings.stereo = { enabled: false, width: 127, monoBass: true };
+    settings.limiter = { enabled: true, ceiling: -2, release: 137, truePeak: false, targetLufs: -15 };
+    const snapshot = structuredClone(settings);
+    expect(engineParams(settings)).toMatchObject({
+      compressor: { enabled: false, thresholdDb: -22, ratio: 4.1, attackMs: 17, releaseMs: 340, kneeDb: 8, makeupDb: 2 },
+      saturation: { enabled: false, amount: 42, character: "Thick" },
+      stereo: { enabled: false, widthPct: 127, monoBass: true },
+      limiter: { enabled: true, ceilingDbtp: -2, releaseMs: 137, truePeak: false, targetLufs: -15 },
+    });
+    expect(settings).toEqual(snapshot);
+  });
+  it("rejects unavailable repair and true-peak limiting instead of silently dropping enabled settings", () => {
+    const settings = createDefaultAdvancedParams();
+    settings.repair.enabled = true;
+    expect(() => engineParams(settings)).toThrow("repair is unavailable");
+    settings.repair.enabled = false;
+    settings.limiter.enabled = true;
+    settings.limiter.truePeak = true;
+    expect(() => engineParams(settings)).toThrow("True-peak limiting is unavailable");
+  });
+});
+
+const measured = {
+  integratedLufs: -20, shortTermLufs: -20, truePeakDbtp: -12,
+  samplePeakDbfs: -12.2, dynamicRangeDb: 4, correlation: 0.8,
+  lowBassCorrelation: 0.9, dcLeftDbfs: -100, dcRightDbfs: -100,
+  clippingSamples: 0, gainReductionDb: 1,
+};
+function measurementResponse(metrics = measured) {
+  return { sampleRate: 48000, frames: 48000, duration: 1,
+    beforeMetrics: measured, afterMetrics: metrics };
+}
+describe("actual audio measurement and explicit Simple normalization", () => {
+  it("requests JSON measurements for the supplied source/settings and maps actual readings", async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(measurementResponse()) });
+    vi.stubGlobal("fetch", fetch);
+    const result = await measureAudio(new Blob(["fixture"]), { inputGainDb: 2 });
+    expect(result.afterMetrics).toEqual(measured);
+    expect(trackMetrics(result.afterMetrics)).toEqual({ lufs: -20, peak: -12, range: 4, dynamics: 4, correlation: 0.8 });
+    const request = fetch.mock.calls[0]?.[1] as { body: FormData; headers: object };
+    expect(request.headers).toEqual({ Accept: "application/json" });
+    expect(request.body.get("format")).toBe("json");
+    expect(request.body.get("params")).toBe('{"inputGainDb":2}');
+  });
+  it("rejects incomplete, non-finite and inconsistent measurements instead of creating zero metrics", async () => {
+    const bodies = [
+      { ...measurementResponse(), frames: 2 },
+      { ...measurementResponse(), afterMetrics: { ...measured, integratedLufs: Number.NaN } },
+      { ...measurementResponse(), beforeMetrics: {} },
+    ];
+    for (const body of bodies) {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(body) }));
+      await expect(measureAudio(new Blob(["fixture"]))).rejects.toThrow("measurements");
+    }
+  });
+  it("preserves server validation errors", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, json: () => Promise.resolve({ detail: "Corrupt source WAV" }) }));
+    await expect(measureAudio(new Blob(["fixture"]))).rejects.toThrow("Corrupt source WAV");
+  });
+  it("normalizes only through an explicit returned settings snapshot and checks measured output", async () => {
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(measurementResponse()) })
+      .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve(measurementResponse({ ...measured, integratedLufs: -14.1, truePeakDbtp: -2 })) });
+    vi.stubGlobal("fetch", fetch);
+    const settings = createDefaultAdvancedParams();
+    const original = structuredClone(settings);
+    const next = await normalizeSimpleAudio(new Blob(["fixture"]), settings, -14);
+    expect(next.input).toBe(6);
+    expect(settings).toEqual(original);
+    expect(next.compressor).toEqual(original.compressor);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it("rejects unreachable targets, silence and peak violations", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(measurementResponse()) }));
+    await expect(normalizeSimpleAudio(new Blob(["fixture"]), createDefaultAdvancedParams(), -14)).rejects.toThrow("could not be reached");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(measurementResponse({ ...measured, integratedLufs: -70 })) }));
+    await expect(normalizeSimpleAudio(new Blob(["fixture"]), createDefaultAdvancedParams(), -14)).rejects.toThrow("too quiet");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(measurementResponse({ ...measured, integratedLufs: -14, truePeakDbtp: 0 })) }));
+    await expect(normalizeSimpleAudio(new Blob(["fixture"]), createDefaultAdvancedParams(), -14)).rejects.toThrow("peak ceiling");
   });
 });

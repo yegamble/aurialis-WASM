@@ -83,6 +83,20 @@ export type AdvancedParams = {
   repair: RepairParams;
 };
 
+export type MeasuredAudioMetrics = {
+  integratedLufs: number;
+  shortTermLufs: number;
+  truePeakDbtp: number;
+  samplePeakDbfs: number;
+  dynamicRangeDb: number;
+  correlation: number;
+  lowBassCorrelation: number;
+  dcLeftDbfs: number;
+  dcRightDbfs: number;
+  clippingSamples: number;
+  gainReductionDb: number;
+};
+
 export type Metrics = {
   lufs: number;
   peak: number;
@@ -150,6 +164,7 @@ export type TrackStatus = "draft" | "ready" | "mastered" | "needs-review";
 
 export type Track = {
   persistenceWarning?: string;
+  measurements?: MeasuredAudioMetrics;
   id: string;
   title: string;
   filename: string;

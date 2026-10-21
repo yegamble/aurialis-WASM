@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { generateScript, initialStoreState, reduceStoreState } from "../store";
+import { initialStoreState as emptyStore, reduceStoreState } from "../store";
+import { testStore as initialStoreState } from "./fixtures";
 import type { EQBandId, Stem } from "../types";
 
 describe("Aurialis Control Isolation & Parameter Orthogonality", () => {
+  it("starts with an empty production workspace", () => {
+    expect(emptyStore).toEqual({ tracks: [], albums: [], stems: [] });
+  });
   it("isolates Simple mode controls without mutating Advanced DSP or other tracks", () => {
     const beforeTrack1 = structuredClone(initialStoreState.tracks[0]);
     const beforeTrack2 = structuredClone(initialStoreState.tracks[1]);
@@ -125,43 +129,6 @@ describe("Aurialis Control Isolation & Parameter Orthogonality", () => {
     if (!limTrack) throw new Error("Missing limTrack");
     expect(limTrack.advanced.limiter.ceiling).toBe(-0.8);
     expect(limTrack.advanced.stereo).toEqual(stereoTrack.advanced.stereo);
-  });
-
-  it("isolates individual Deep MasteringScript moves without cross-coupling", () => {
-    const baseTrack = initialStoreState.tracks[0];
-    if (!baseTrack) throw new Error("Missing baseTrack");
-    const script = generateScript(baseTrack, "modern_pop_polish");
-    const withScript = reduceStoreState(initialStoreState, {
-      type: "SAVE_SCRIPT",
-      id: baseTrack.id,
-      script,
-    });
-
-    const targetMove = script.moves[2];
-    if (!targetMove) throw new Error("Missing targetMove");
-    const editedMove = {
-      ...targetMove,
-      value: 4.2,
-      edited: true,
-      muted: true,
-    };
-    const afterMove = reduceStoreState(withScript, {
-      type: "UPDATE_MOVE",
-      trackId: baseTrack.id,
-      move: editedMove,
-    });
-    const updatedScript = afterMove.tracks[0]?.script;
-    if (!updatedScript) throw new Error("Missing updatedScript");
-
-    updatedScript.moves.forEach((m, index) => {
-      if (index === 2) {
-        expect(m.value).toBe(4.2);
-        expect(m.edited).toBe(true);
-        expect(m.muted).toBe(true);
-      } else {
-        expect(m).toEqual(script.moves.at(index));
-      }
-    });
   });
 
   it("isolates Smart Split stem controls across 2-6 stems", () => {

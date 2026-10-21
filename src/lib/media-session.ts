@@ -1,5 +1,7 @@
 import type { LivePlaybackState } from "./live-playback";
 
+// cspell:words contenteditable seekto seekbackward seekforward previoustrack nexttrack
+
 type PlaybackActions = {
   getState: () => LivePlaybackState;
   available: () => boolean;

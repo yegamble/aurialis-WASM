@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bindPlaybackControls } from "../media-session";
 import type { LivePlaybackState } from "../live-playback";
 
+// cspell:words contenteditable seekto seekbackward seekforward previoustrack nexttrack
+
 const bindings: ReturnType<typeof bindPlaybackControls>[] = [];
 let state: LivePlaybackState;
 const handlers = new Map<MediaSessionAction, MediaSessionActionHandler | null>();

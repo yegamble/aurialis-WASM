@@ -400,7 +400,7 @@ function freqToX(freqHz: number, maxFrequency = 20000): number {
 
 function gainToY(gainDb: number): number {
   const clamped = Math.max(-15, Math.min(15, gainDb));
-  return 30 - (clamped / 15) * 24;
+  return 30 - clamped * 2;
 }
 
 function eqCurvePoints(
@@ -459,7 +459,7 @@ export function SpectrumChart({
     const y = Math.max(0, Math.min(60, ((event.clientY - rect.top) / rect.height) * 60));
     onBandChange?.(id, {
       freqHz: Math.round(Math.min(maxFrequency, 20 * Math.pow(maxFrequency / 20, x))),
-      gainDb: Math.max(-12, Math.min(12, Math.round(((30 - y) / 24) * 15 * 10) / 10)),
+      gainDb: Math.max(-12, Math.min(12, Math.round(((30 - y) / 2) * 10) / 10)),
     });
   };
   const updateFromKey = (band: EQBandParams, event: ReactKeyboardEvent<HTMLButtonElement>) => {
@@ -487,102 +487,108 @@ export function SpectrumChart({
     : "";
   const summaryText = `Source EQ: ${sourceSummary}${referenceSummary ? `. ${referenceSummary}` : ""}`;
 
+  const frequencyTicks = [...new Set([
+    ...[20, 50, 100, 200, 500, 1000, 2000, 5000, 10000].filter((frequency) => frequency < maxFrequency),
+    maxFrequency,
+  ])];
+  const labeledFrequencies = new Set([20, 100, 1000, maxFrequency]);
+  const gainTicks = [12, 6, 0, -6, -12];
+  const frequencyLabel = (frequency: number) => frequency >= 1000
+    ? `${String(Number((frequency / 1000).toFixed(1)))}k`
+    : String(Math.round(frequency));
+
   return (
-    <div className="spectrum rounded-[18px] border border-line bg-paper p-[22px]">
-      <div className={chartLabelClassName}>
-        <span>
-          {eqBands ? "Approximate EQ response" : "EQ response unavailable"}
-        </span>
+    <div className="spectrum rounded-[18px] border border-line bg-paper p-3 md:p-4">
+      <div className="chart-label mb-2 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 text-[11px] text-ink-soft">
+        <span>{eqBands ? "Approximate EQ response" : "EQ response unavailable"}</span>
         <span>20 Hz — {String(Number((maxFrequency / 1000).toFixed(1)))} kHz</span>
       </div>
-      <div className="spectrum-plot relative h-[190px] [&>svg]:block [&>svg]:size-full" ref={plotRef}>
-      <svg
-        viewBox="0 0 100 60"
-        preserveAspectRatio="none"
-        role="img"
-        aria-label={`Tonal balance curve: ${summaryText}`}
-      >
-        <title>{`Tonal balance curve: ${summaryText}`}</title>
-        <defs>
-          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="var(--clay)" stopOpacity=".22" />
-            <stop offset="1" stopColor="var(--clay)" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        <polygon
-          points={`0,60 ${basePoints} 100,60`}
-          fill={`url(#${gradientId})`}
-        />
-        <polyline
-          points={basePoints}
-          fill="none"
-          stroke="var(--clay)"
-          strokeWidth="1.4"
-          vectorEffect="non-scaling-stroke"
-        />
-        {referencePoints !== undefined && (
-          <polyline
-            points={referencePoints}
-            fill="none"
-            stroke="var(--moss)"
-            strokeWidth="1.8"
-            strokeDasharray="5 3"
-            vectorEffect="non-scaling-stroke"
+      <div className="spectrum-plot relative h-[148px] md:h-[176px]">
+        <span aria-hidden="true" className="absolute top-0 left-0 text-[9px] text-ink-soft">dB</span>
+        <div aria-hidden="true" className="absolute top-3 bottom-6 left-0 w-6 text-[9px] text-ink-soft tabular-nums">
+          {gainTicks.map((gain) => (
+            <span key={gain} className="absolute right-0 -translate-y-1/2" style={{ top: `${String((gainToY(gain) / 60) * 100)}%` }}>
+              {gain > 0 ? `+${String(gain)}` : String(gain)}
+            </span>
+          ))}
+        </div>
+        <div className="eq-plot-bounds absolute top-3 right-[22px] bottom-6 left-8" ref={plotRef}>
+          <svg
+            className="absolute inset-0 block size-full overflow-visible"
+            viewBox="0 0 100 60"
+            preserveAspectRatio="none"
+            role="img"
+            aria-label={`Approximate EQ response, logarithmic frequency axis, gain range minus 15 to plus 15 dB. ${summaryText}`}
           >
-            <title>{referenceSummary}</title>
-          </polyline>
-        )}
-        {eqBands?.map((band) => {
-          const cx = freqToX(band.freqHz, maxFrequency);
-          const cy = gainToY(band.gainDb);
-          const isSelected = activeBandId === band.id;
-          return (
-            <circle
-              key={band.id}
-              cx={cx}
-              cy={cy}
-              r={isSelected ? 2.6 : 1.9}
-              fill={band.enabled ? "var(--clay)" : "var(--ink-soft)"}
-              stroke="var(--paper)"
-              strokeWidth="0.8"
-            />
-          );
-        })}
-      </svg>
-        {onBandChange && eqBands?.map((band) => (
-          <button
-            key={band.id}
-            type="button"
-            className="eq-handle absolute size-[44px] -translate-x-1/2 -translate-y-1/2 touch-none cursor-grab rounded-full border-0 bg-transparent p-0 active:cursor-grabbing focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-clay-dark disabled:cursor-not-allowed"
-            disabled={!band.enabled}
-            aria-label={`${band.label} EQ: ${String(band.freqHz)} Hz, ${band.gainDb.toFixed(1)} dB`}
-            aria-describedby={instructionsId}
-            aria-pressed={activeBandId === band.id}
-            style={{
-              left: `clamp(22px, ${String(freqToX(band.freqHz, maxFrequency))}%, calc(100% - 22px))`,
-              top: `clamp(22px, ${String((gainToY(band.gainDb) / 60) * 100)}%, calc(100% - 22px))`,
-            }}
-            onFocus={() => onSelectBand?.(band.id)}
-            onClick={() => onSelectBand?.(band.id)}
-            onPointerDown={(event) => {
-              onSelectBand?.(band.id);
-              event.currentTarget.setPointerCapture(event.pointerId);
-            }}
-            onPointerMove={(event) => {
-              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                updateFromPointer(band.id, event);
-              }
-            }}
-            onPointerUp={(event) => {
-              if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                event.currentTarget.releasePointerCapture(event.pointerId);
-              }
-            }}
-            onKeyDown={(event) => { updateFromKey(band, event); }}
-          >
-            <span className="sr-only">{band.label}</span>
-          </button>
-        ))}
+            <title>{`Approximate EQ response: ${summaryText}`}</title>
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stopColor="var(--clay)" stopOpacity=".12" />
+                <stop offset="1" stopColor="var(--clay)" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <g aria-hidden="true">
+              {frequencyTicks.map((frequency) => (
+                <line key={frequency} x1={freqToX(frequency, maxFrequency)} x2={freqToX(frequency, maxFrequency)} y1="0" y2="60" stroke="var(--line)" strokeWidth="0.6" vectorEffect="non-scaling-stroke" />
+              ))}
+              {gainTicks.map((gain) => (
+                <line key={gain} x1="0" x2="100" y1={gainToY(gain)} y2={gainToY(gain)} stroke={gain === 0 ? "var(--line-dark)" : "var(--line)"} strokeWidth={gain === 0 ? "1" : "0.6"} vectorEffect="non-scaling-stroke" />
+              ))}
+            </g>
+            <polygon points={`0,60 ${basePoints} 100,60`} fill={`url(#${gradientId})`} />
+            <polyline points={basePoints} fill="none" stroke="var(--clay)" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
+            {referencePoints !== undefined && (
+              <polyline points={referencePoints} fill="none" stroke="var(--moss)" strokeWidth="1.8" strokeDasharray="5 3" vectorEffect="non-scaling-stroke">
+                <title>{referenceSummary}</title>
+              </polyline>
+            )}
+          </svg>
+          {eqBands?.map((band) => {
+            const isSelected = activeBandId === band.id;
+            const position = {
+              left: `${String(freqToX(band.freqHz, maxFrequency))}%`,
+              top: `${String((gainToY(band.gainDb) / 60) * 100)}%`,
+            };
+            const marker = (
+              <span aria-hidden="true" className={`eq-marker block shrink-0 rounded-full border-2 border-paper ${isSelected ? "size-[12px] ring-2 ring-clay-dark ring-offset-2 ring-offset-paper" : "size-[10px] ring-1 ring-clay-dark"} ${band.enabled ? "bg-clay" : "bg-ink-soft"}`} />
+            );
+            if (!onBandChange) {
+              return <span key={band.id} className="absolute -translate-x-1/2 -translate-y-1/2" style={position}>{marker}</span>;
+            }
+            return (
+              <button
+                key={band.id}
+                type="button"
+                className="eq-handle absolute grid size-[44px] -translate-x-1/2 -translate-y-1/2 touch-none cursor-grab place-items-center rounded-full border-0 bg-transparent p-0 hover:bg-clay-wash/30 active:cursor-grabbing focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-clay-dark disabled:cursor-not-allowed"
+                disabled={!band.enabled}
+                aria-label={`${band.label} EQ: ${String(band.freqHz)} Hz, ${band.gainDb.toFixed(1)} dB`}
+                aria-describedby={instructionsId}
+                aria-pressed={isSelected}
+                style={position}
+                onFocus={() => onSelectBand?.(band.id)}
+                onClick={() => onSelectBand?.(band.id)}
+                onPointerDown={(event) => {
+                  onSelectBand?.(band.id);
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                }}
+                onPointerMove={(event) => {
+                  if (event.currentTarget.hasPointerCapture(event.pointerId)) updateFromPointer(band.id, event);
+                }}
+                onPointerUp={(event) => {
+                  if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+                }}
+                onKeyDown={(event) => { updateFromKey(band, event); }}
+              >
+                {marker}
+              </button>
+            );
+          })}
+        </div>
+        <div aria-hidden="true" className="absolute right-[22px] bottom-0 left-8 h-[14px] text-[9px] text-ink-soft tabular-nums">
+          {frequencyTicks.filter((frequency) => labeledFrequencies.has(frequency)).map((frequency) => (
+            <span key={frequency} className="absolute -translate-x-1/2 whitespace-nowrap" style={{ left: `${String(freqToX(frequency, maxFrequency))}%` }}>{frequencyLabel(frequency)} Hz</span>
+          ))}
+        </div>
       </div>
       {onBandChange && (
         <p className="sr-only" id={instructionsId}>
@@ -597,13 +603,6 @@ export function SpectrumChart({
           {referenceMaxFrequency < maxFrequency && ` Reference ends at ${String(Math.round(referenceMaxFrequency))} Hz for its source sample rate.`}
         </p>
       )}
-      <div className="axis mt-1.5 flex justify-between text-[11px] text-ink-soft tabular-nums">
-        <span>Sub</span>
-        <span>Low</span>
-        <span>Mid</span>
-        <span>Presence</span>
-        <span>Air</span>
-      </div>
     </div>
   );
 }

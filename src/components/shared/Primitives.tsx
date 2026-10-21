@@ -403,10 +403,38 @@ function gainToY(gainDb: number): number {
   return 30 - (clamped / 15) * 24;
 }
 
+function eqCurvePoints(
+  bands: readonly EQBandParams[],
+  sampleRate: number,
+  axisMaxFrequency: number,
+): string {
+  const visibleMaxFrequency = Math.min(axisMaxFrequency, sampleRate * 0.47);
+  const frequencies = Array.from(
+    { length: 65 },
+    (_, i) => 20 * Math.pow(axisMaxFrequency / 20, i / 64),
+  ).filter((frequency) => frequency <= visibleMaxFrequency);
+  if ((frequencies.at(-1) ?? 0) < visibleMaxFrequency) {
+    frequencies.push(visibleMaxFrequency);
+  }
+  return frequencies.map((frequency) => {
+    const gainDb = computeEqMagnitudeDb(frequency, bands, sampleRate);
+    return `${freqToX(frequency, axisMaxFrequency).toFixed(2)},${gainToY(gainDb).toFixed(2)}`;
+  }).join(" ");
+}
+
+function describeEqBands(bands: readonly EQBandParams[]): string {
+  return bands.map((band) =>
+    `${band.label} (${String(band.freqHz)} Hz): ${band.gainDb >= 0 ? "+" : ""}${band.gainDb.toFixed(1)} dB${band.enabled ? "" : " (bypassed)"}`,
+  ).join(", ");
+}
+
 export function SpectrumChart({
   eqBands,
   activeBandId,
   sampleRate = 48000,
+  referenceBands,
+  referenceSampleRate = sampleRate,
+  referenceLabel = "Reference EQ",
   onSelectBand,
   onBandChange,
 }: {
@@ -414,6 +442,9 @@ export function SpectrumChart({
   eqBands?: readonly EQBandParams[];
   activeBandId?: EQBandId;
   sampleRate?: number;
+  referenceBands?: readonly EQBandParams[];
+  referenceSampleRate?: number;
+  referenceLabel?: string;
   onSelectBand?: (id: EQBandId) => void;
   onBandChange?: (id: EQBandId, patch: Partial<EQBandParams>) => void;
 }) {
@@ -445,22 +476,16 @@ export function SpectrumChart({
     event.preventDefault();
     onBandChange?.(band.id, patch);
   };
-  const basePoints = Array.from({ length: 25 }, (_, i) => {
-    const x = (i / 24) * 100;
-    const freq = 20 * Math.pow(maxFrequency / 20, i / 24);
-    const eqDb = eqBands ? computeEqMagnitudeDb(freq, eqBands, sampleRate) : 0;
-    const y = Math.max(4, Math.min(56, 30 - eqDb * 1.4));
-    return `${x.toFixed(2)},${y.toFixed(2)}`;
-  }).join(" ");
-
-  const summaryText = eqBands
-    ? eqBands
-        .map(
-          (b) =>
-            `${b.label} (${String(b.freqHz)} Hz): ${b.gainDb >= 0 ? "+" : ""}${b.gainDb.toFixed(1)} dB`,
-        )
-        .join(", ")
-    : "No EQ settings loaded";
+  const basePoints = eqCurvePoints(eqBands ?? [], sampleRate, maxFrequency);
+  const referencePoints = referenceBands
+    ? eqCurvePoints(referenceBands, referenceSampleRate, maxFrequency)
+    : undefined;
+  const referenceMaxFrequency = Math.min(maxFrequency, referenceSampleRate * 0.47);
+  const sourceSummary = eqBands ? describeEqBands(eqBands) : "No EQ settings loaded";
+  const referenceSummary = referenceBands
+    ? `${referenceLabel}: ${describeEqBands(referenceBands)}. Evaluated at ${String(referenceSampleRate)} Hz; shown up to ${String(Math.round(referenceMaxFrequency))} Hz`
+    : "";
+  const summaryText = `Source EQ: ${sourceSummary}${referenceSummary ? `. ${referenceSummary}` : ""}`;
 
   return (
     <div className="spectrum rounded-[18px] border border-line bg-paper p-[22px]">
@@ -495,6 +520,18 @@ export function SpectrumChart({
           strokeWidth="1.4"
           vectorEffect="non-scaling-stroke"
         />
+        {referencePoints !== undefined && (
+          <polyline
+            points={referencePoints}
+            fill="none"
+            stroke="var(--moss)"
+            strokeWidth="1.8"
+            strokeDasharray="5 3"
+            vectorEffect="non-scaling-stroke"
+          >
+            <title>{referenceSummary}</title>
+          </polyline>
+        )}
         {eqBands?.map((band) => {
           const cx = freqToX(band.freqHz, maxFrequency);
           const cy = gainToY(band.gainDb);
@@ -552,6 +589,12 @@ export function SpectrumChart({
           Drag to change frequency and gain. Arrow left and right change frequency;
           arrow up and down change gain. Hold Shift for larger steps. The band
           controls provide another way to enter exact values.
+        </p>
+      )}
+      {referenceBands && (
+        <p className="mt-2 text-[11px] text-ink-soft">
+          Source EQ: solid line. {referenceLabel}: dashed line.
+          {referenceMaxFrequency < maxFrequency && ` Reference ends at ${String(Math.round(referenceMaxFrequency))} Hz for its source sample rate.`}
         </p>
       )}
       <div className="axis mt-1.5 flex justify-between text-[11px] text-ink-soft tabular-nums">

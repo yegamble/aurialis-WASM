@@ -164,7 +164,9 @@ export async function serverRender(
   file: Blob,
   params: object,
   bitDepth: 16 | 24 | 32,
+  signal?: AbortSignal,
 ): Promise<Blob> {
+  signal?.throwIfAborted();
   const data = new FormData();
   data.append("file", file, "source.wav");
   data.append("params", JSON.stringify(params));
@@ -172,6 +174,7 @@ export async function serverRender(
   const response = await fetch("/api/master/render", {
     method: "POST",
     body: data,
+    ...(signal ? { signal } : {}),
   });
   if (!response.ok) {
     const body: unknown = await response.json();
@@ -186,7 +189,9 @@ export async function serverRender(
     }
     throw new Error(message);
   }
-  return response.blob();
+  const blob = await response.blob();
+  signal?.throwIfAborted();
+  return blob;
 }
 export async function readCanonicalWAV(blob: Blob): Promise<StereoPCM> {
   const data = new DataView(await blob.arrayBuffer());
@@ -411,8 +416,13 @@ export async function normalizeSimpleAudio(
   if (!Number.isFinite(targetLufs) || targetLufs < -36 || targetLufs > -5)
     throw new Error("Choose a loudness target between −36 and −5 LUFS.");
   let candidate = structuredClone(settings);
-  for (let attempt = 0; attempt < 5; attempt++) {
+  let previous: { input: number; loudness: number } | undefined;
+  let lower = -36;
+  let upper = 36;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    signal?.throwIfAborted();
     const { afterMetrics } = await measureAudio(file, engineParams(candidate), signal);
+    signal?.throwIfAborted();
     const difference = targetLufs - afterMetrics.integratedLufs;
     if (afterMetrics.integratedLufs <= -69.9)
       throw new Error("The source is too quiet to normalize reliably.");
@@ -421,7 +431,23 @@ export async function normalizeSimpleAudio(
         throw new Error("This loudness target exceeds the measured peak ceiling. Choose a quieter target.");
       return candidate;
     }
-    candidate = { ...candidate, input: Math.max(-36, Math.min(36, candidate.input + difference)) };
+    // Input gain precedes compression and saturation, so one dB of input does
+    // not necessarily produce one LU of output. Estimate that response from
+    // measured renders, retaining a bracket when the slope changes or flattens.
+    if (difference > 0) lower = Math.max(lower, candidate.input);
+    else upper = Math.min(upper, candidate.input);
+    let nextInput = candidate.input + difference;
+    if (previous) {
+      const slope = (afterMetrics.integratedLufs - previous.loudness) / (candidate.input - previous.input);
+      nextInput = Number.isFinite(slope) && slope > 0.01
+        ? candidate.input + difference / slope
+        : (lower + upper) / 2;
+      if (nextInput <= lower || nextInput >= upper) nextInput = (lower + upper) / 2;
+    }
+    nextInput = Math.max(-36, Math.min(36, nextInput));
+    if (Math.abs(nextInput - candidate.input) < 0.001) break;
+    previous = { input: candidate.input, loudness: afterMetrics.integratedLufs };
+    candidate = { ...candidate, input: nextInput };
   }
   throw new Error("This loudness target could not be reached safely. Choose a quieter target or adjust dynamics.");
 }

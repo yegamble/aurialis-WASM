@@ -10,10 +10,24 @@ import {
   previewWAV,
   processPreview,
   readCanonicalWAV,
+  serverRender,
 } from "../browser-engine";
 
 afterEach(() => vi.unstubAllGlobals());
 describe("shared engine browser boundary", () => {
+  it("cancels native renders before dispatch and while consuming their response", async () => {
+    const controller = new AbortController();
+    const fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: () => { controller.abort(); return Promise.resolve(new Blob(["rendered"])); },
+    });
+    vi.stubGlobal("fetch", fetch);
+    await expect(serverRender(new Blob(["source"]), {}, 32, controller.signal)).rejects.toThrow();
+    expect((fetch.mock.calls[0]?.[1] as { signal: AbortSignal }).signal).toBe(controller.signal);
+    fetch.mockClear();
+    await expect(serverRender(new Blob(["source"]), {}, 32, controller.signal)).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it("preserves every uploaded frame and both channels in a float WAV roundtrip", async () => {
     vi.stubGlobal("Blob", NodeBlob);
     const source = {
@@ -256,6 +270,45 @@ describe("actual audio measurement and explicit Simple normalization", () => {
     await expect(normalizeSimpleAudio(new Blob(["fixture"]), createDefaultAdvancedParams(), -14)).rejects.toThrow("too quiet");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(measurementResponse({ ...measured, integratedLufs: -14, truePeakDbtp: 0 })) }));
     await expect(normalizeSimpleAudio(new Blob(["fixture"]), createDefaultAdvancedParams(), -14)).rejects.toThrow("peak ceiling");
+  });
+  it("converges using measured compressor response instead of assuming one LU per input dB", async () => {
+    const inputs: number[] = [];
+    vi.stubGlobal("fetch", vi.fn((_url: string, request: { body: FormData }) => {
+      const params = JSON.parse(String(request.body.get("params"))) as { inputGainDb: number };
+      inputs.push(params.inputGainDb);
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(measurementResponse({
+        ...measured, integratedLufs: -20 + params.inputGainDb / 4, truePeakDbtp: -2,
+      })) });
+    }));
+    const settings = createDefaultAdvancedParams();
+    const before = structuredClone(settings);
+    const next = await normalizeSimpleAudio(new Blob(["fixture"]), settings, -14);
+    expect(next.input).toBeCloseTo(24);
+    expect(inputs).toEqual([0, 6, 24]);
+    expect(settings).toEqual(before);
+    expect({ ...next, input: before.input }).toEqual(before);
+  });
+  it("bounds plateau attempts and never returns an unmeasured candidate", async () => {
+    const inputs: number[] = [];
+    const fetch = vi.fn((_url: string, request: { body: FormData }) => {
+      const params = JSON.parse(String(request.body.get("params"))) as { inputGainDb: number };
+      inputs.push(params.inputGainDb);
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(measurementResponse()) });
+    });
+    vi.stubGlobal("fetch", fetch);
+    await expect(normalizeSimpleAudio(new Blob(["fixture"]), createDefaultAdvancedParams(), -14)).rejects.toThrow("could not be reached");
+    expect(inputs.length).toBeLessThanOrEqual(8);
+    expect(inputs.every((input) => Number.isFinite(input) && input >= -36 && input <= 36)).toBe(true);
+  });
+  it("does not dispatch another normalization request after cancellation during a response", async () => {
+    const controller = new AbortController();
+    const fetch = vi.fn().mockImplementation(() => {
+      controller.abort();
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(measurementResponse()) });
+    });
+    vi.stubGlobal("fetch", fetch);
+    await expect(normalizeSimpleAudio(new Blob(["fixture"]), createDefaultAdvancedParams(), -14, controller.signal)).rejects.toThrow();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
 

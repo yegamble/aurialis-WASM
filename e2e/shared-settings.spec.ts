@@ -114,7 +114,8 @@ test("Simple and Advanced share one audible settings snapshot without changing s
   expect(preset.advanced.saturationModule).toMatchObject({ drive: 6.5, character: "Crisp" });
   await expect(page.getByRole("button", { name: "Rock", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Clean", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.waitForTimeout(650);
+  // Capture the preset's steady output after compressor/filter ballistics settle.
+  await page.waitForTimeout(2000);
   await views(await snapshot(page, id), ["advanced", "simple", "advanced"]);
   await page.getByRole("slider", { name: "Input gain", exact: true }).fill("4");
   await mode(page, id, "simple");

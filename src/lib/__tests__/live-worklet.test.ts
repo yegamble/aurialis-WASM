@@ -24,7 +24,7 @@ function workletFixture() {
 }
 
 describe("worklet stream lifecycle", () => {
-  it("keeps an unstarted graph dormant and preserves real active deadline failures", () => {
+  it("keeps an idle graph dormant and preserves real active deadline failures", () => {
     const { context, header, processor } = workletFixture();
     const wake = vi.fn();
     processor.port.onmessage({ data: { type: "connect", port: { start: vi.fn(), postMessage: wake } } });

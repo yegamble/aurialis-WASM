@@ -1,9 +1,9 @@
-import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import { decode, fixture } from "./audio-fixture";
 
 type Parameters = Record<string, unknown>;
+type CapturedWindow = Window & { qaNativeParameters?: string | null };
 
 // Independent stereo bursts expose frequency, envelope and stereo changes.
 function controlFixture() {
@@ -39,18 +39,15 @@ async function exported(page: Page) {
   await page.getByRole("button", { name: "Export", exact: true }).click();
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("button", { name: "32-bit Float", exact: true }).click();
+  await page.evaluate(() => { (window as CapturedWindow).qaNativeParameters = null; });
   const responsePending = page.waitForResponse((response) => response.url().endsWith("/api/master/render") && response.request().method() === "POST");
   const downloadPending = page.waitForEvent("download");
   await dialog.getByRole("button", { name: "Render & download WAV", exact: true }).click();
   const response = await responsePending;
   expect(response.status()).toBe(200);
-  const request = response.request();
-  const body = request.postDataBuffer();
-  if (!body) throw new Error("Missing native render request");
-  const form = await new Response(new Uint8Array(body), {
-    headers: { "Content-Type": request.headers()["content-type"] ?? "" },
-  }).formData();
-  const raw = form.get("params");
+  // Chromium may omit file-upload postData. Capture the actual outgoing form
+  // before native fetch consumes it; the wrapper preserves request and response.
+  const raw = await page.evaluate(() => (window as CapturedWindow).qaNativeParameters);
   if (typeof raw !== "string") throw new Error("Missing native render parameters");
   const params = JSON.parse(raw) as Parameters;
   const download = await downloadPending;
@@ -68,6 +65,16 @@ async function exported(page: Page) {
 
 test("all 31 visible audio controls independently change actual exported PCM", async ({ page }, testInfo) => {
   test.setTimeout(300_000);
+  await page.addInitScript(() => {
+    const nativeFetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      if (typeof input === "string" && input.endsWith("/api/master/render") && init?.body instanceof FormData) {
+        const params = init.body.get("params");
+        if (typeof params === "string") (window as CapturedWindow).qaNativeParameters = params;
+      }
+      return nativeFetch(input, init);
+    };
+  });
   await page.goto("/");
   await page.getByLabel("Upload audio file").setInputFiles({ name: "qa-control-bursts.wav", mimeType: "audio/wav", buffer: controlFixture() });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });

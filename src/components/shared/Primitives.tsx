@@ -399,7 +399,7 @@ export function Waveform({
   }
 
   return (
-    <div className={`waveform ${compact ? "waveform--compact my-[13px] border-0 bg-transparent px-0 py-[5px]" : "rounded-[18px] border border-line bg-paper p-[18px]"}`}>
+    <div className={`waveform min-w-0 ${compact ? "waveform--compact my-[13px] border-0 bg-transparent px-0 py-[5px]" : "rounded-[18px] border border-line bg-paper p-[18px]"}`}>
       {!compact && (
         <div className={chartLabelClassName}>
           <span>Source waveform</span>
@@ -410,7 +410,7 @@ export function Waveform({
       )}
       <div
         ref={barsRef}
-        className={`wave-bars relative flex cursor-pointer items-center gap-px ${compact ? "h-[52px]" : "h-[140px]"}`}
+        className={`wave-bars relative flex min-w-0 cursor-pointer items-center gap-px overflow-hidden ${compact ? "h-[52px]" : "h-[140px]"}`}
         role="slider"
         tabIndex={0}
         aria-label={

@@ -5,7 +5,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p public/wasm
 GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp
-cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" public/wasm/wasm_exec.js
+# Go's downloaded toolchain is read-only. Replace the runtime atomically so a
+# second build also works when an older copy retained the source's 0444 mode.
+runtime_copy="$(mktemp public/wasm/wasm_exec.XXXXXX)"
+trap 'rm -f "$runtime_copy"' EXIT
+cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" "$runtime_copy"
+chmod 0644 "$runtime_copy"
+mv -f "$runtime_copy" public/wasm/wasm_exec.js
 pnpm run build
 test -s internal/webui/embedded/wasm/aurialis-dsp.wasm
 go build -trimpath -o aurialis ./cmd/aurialis

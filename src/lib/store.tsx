@@ -10,7 +10,7 @@ import {
   type Dispatch,
   type ReactNode,
 } from "react";
-import { createDefaultAdvancedParams } from "./audio-dsp";
+import { createDefaultAdvancedParams, mapProfileToDSP } from "./audio-dsp";
 import type {
   Album,
   AdvancedParams,
@@ -33,7 +33,7 @@ import type {
 
 const INITIAL_TIMESTAMP = "2026-10-20T00:00:00.000Z";
 
-const profiles: { id: ProfileId; name: string; note: string }[] = [
+export const profiles: { id: ProfileId; name: string; note: string }[] = [
   {
     id: "modern_pop_polish",
     name: "Modern Pop Polish",
@@ -431,7 +431,13 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.id, (track) => ({
           ...track,
+          profile: action.script.profile,
           script: action.script,
+          advanced: mapProfileToDSP(
+            action.script.profile,
+            action.script,
+            track.advanced,
+          ),
           updatedAt: new Date().toISOString(),
         })),
       };
@@ -439,20 +445,25 @@ export function reduceStoreState(
     case "UPDATE_MOVE":
       return {
         ...state,
-        tracks: updateTrackInList(state.tracks, action.trackId, (track) =>
-          track.script
-            ? {
-                ...track,
-                script: {
-                  ...track.script,
-                  moves: track.script.moves.map((m) =>
-                    m.id === action.move.id ? action.move : m,
-                  ),
-                },
-                updatedAt: new Date().toISOString(),
-              }
-            : track,
-        ),
+        tracks: updateTrackInList(state.tracks, action.trackId, (track) => {
+          if (!track.script) return track;
+          const updatedScript: MasteringScript = {
+            ...track.script,
+            moves: track.script.moves.map((m) =>
+              m.id === action.move.id ? action.move : m,
+            ),
+          };
+          return {
+            ...track,
+            script: updatedScript,
+            advanced: mapProfileToDSP(
+              track.profile,
+              updatedScript,
+              track.advanced,
+            ),
+            updatedAt: new Date().toISOString(),
+          };
+        }),
       };
 
     case "SAVE_STEMS":

@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer"
 import { expect, test } from "@playwright/test"
 import { decode, fixture, dbRatio } from "./audio-fixture"
 
@@ -6,6 +7,22 @@ const neutral = {
   compressor: { enabled: false }, saturation: { enabled: false },
   stereo: { enabled: false }, limiter: { enabled: false }, repair: { enabled: false },
   ditherBits: 0,
+}
+
+// Float WAV legitimately carries headroom above 0 dBFS; values must survive import/export.
+function headroomFixture(): Buffer {
+  const samples = [1.25, -1.25, 1.5, -1.5, 0.5, -0.5, 0, 0]
+  const wav = Buffer.alloc(44 + samples.length * 8)
+  wav.write("RIFF"); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8)
+  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(3, 20); wav.writeUInt16LE(2, 22)
+  wav.writeUInt32LE(48000, 24); wav.writeUInt32LE(48000 * 8, 28)
+  wav.writeUInt16LE(8, 32); wav.writeUInt16LE(32, 34); wav.write("data", 36)
+  wav.writeUInt32LE(samples.length * 8, 40)
+  samples.forEach((sample, index) => {
+    wav.writeFloatLE(sample, 44 + index * 8)
+    wav.writeFloatLE(-sample, 48 + index * 8)
+  })
+  return wav
 }
 
 test("native render preserves uploaded PCM, applies gain and honors bypass", async ({ request }) => {
@@ -43,12 +60,22 @@ test("actual Go WASM bridge matches native PCM for independent parameter changes
     const result = await WebAssembly.instantiateStreaming(response, go.importObject)
     void go.run(result.instance)
   })
-  const source = fixture()
+  for (const source of [fixture(), headroomFixture()]) {
   const decoded = decode(source)
-  for (const params of [neutral, { ...neutral, inputGainDb: 6 }, { ...neutral, inputGainDb: 6, bypass: true }, { ...neutral, stereo: { enabled: true, widthPct: 0, monoBass: false } }, { ...neutral, eqEnabled: true, bands: Array.from({ length: 5 }, (_, index) => ({ freqHz: 1000, gainDb: index === 2 ? 6 : 0, q: 1, type: "peaking", enabled: index === 2 })) }]) {
+  const hasHeadroom = Math.max(...decoded.left) > 1
+  const cases = hasHeadroom ? [neutral, { ...neutral, inputGainDb: 6 }] : [neutral, { ...neutral, inputGainDb: 6 }, { ...neutral, inputGainDb: 6, bypass: true }, { ...neutral, stereo: { enabled: true, widthPct: 0, monoBass: false } }, { ...neutral, eqEnabled: true, bands: Array.from({ length: 5 }, (_, index) => ({ freqHz: 1000, gainDb: index === 2 ? 6 : 0, q: 1, type: "peaking", enabled: index === 2 })) }]
+  for (const params of cases) {
     const nativeResponse = await request.post("/api/master/render", { multipart: { file: { name: "tone.wav", mimeType: "audio/wav", buffer: source }, bitDepth: "32", params: JSON.stringify(params) } })
     expect(nativeResponse.status()).toBe(200)
     const native = decode(await nativeResponse.body())
+    expect(native.left).toHaveLength(decoded.left.length)
+    if (hasHeadroom) {
+      const gain = 10 ** ((params.inputGainDb ?? 0) / 20)
+      for (const channel of ["left", "right"] as const) {
+        const expected = decoded[channel].map(sample => Math.fround(sample * gain))
+        expect(native[channel], "float headroom must survive canonicalization and export").toEqual(expected)
+      }
+    }
     const wasm = await page.evaluate(({ left, right, params }) => {
       const dsp = globalThis as unknown as { aurialisDSPInit: (rate: number) => boolean; aurialisDSPSetParams: (params: string) => boolean; aurialisDSPProcessBlock: (left: Float32Array, right: Float32Array) => number }
       if (!dsp.aurialisDSPInit(48000) || !dsp.aurialisDSPSetParams(JSON.stringify(params))) throw new Error("WASM initialization failed")
@@ -61,5 +88,6 @@ test("actual Go WASM bridge matches native PCM for independent parameter changes
       const error = Math.max(...native[channel].map((sample, i) => Math.abs(sample - (wasm[channel][i] ?? Infinity))))
       expect(error, `native/WASM ${channel}: ${JSON.stringify(params)}`).toBeLessThan(1e-6)
     }
+  }
   }
 })

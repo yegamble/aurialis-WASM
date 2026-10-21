@@ -25,8 +25,11 @@ import (
 	"github.com/yegamble/Aurialis-WASM/internal/mastering"
 )
 
-// DefaultMaxUploadBytes is the hard 32 MiB in-memory multipart request ceiling.
-const DefaultMaxUploadBytes int64 = 32 * 1024 * 1024
+// DefaultMaxUploadBytes allows a maximum canonical stereo-float WAV plus bounded multipart fields.
+const DefaultMaxUploadBytes int64 = 129 * 1024 * 1024
+
+// MaxAudioFileBytes bounds one file at the decoded-frame ceiling, including its WAV header.
+const MaxAudioFileBytes int64 = int64(audio.MaxDecodedFrames)*8 + 44
 
 // Config configures the Aurialis HTTP server.
 type Config struct {
@@ -55,7 +58,7 @@ func New(cfg Config) *Server {
 	s := &Server{
 		cfg:     cfg,
 		jobs:    jobs.NewManager(cfg.Workers),
-		uploads: make(chan struct{}, 2),
+		uploads: make(chan struct{}, 1),
 		csp:     buildCSP(cfg.StaticFS),
 	}
 
@@ -146,7 +149,7 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 				return
 			default:
 				w.Header().Set("Retry-After", "1")
-				writeErrorJSON(w, http.StatusTooManyRequests, "busy", "Audio request capacity reached")
+				writeErrorJSON(w, http.StatusServiceUnavailable, "busy", "One audio request is already running; retry after it completes")
 				return
 			}
 			ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
@@ -219,17 +222,20 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":           "ok",
-		"service":          "aurialis-wasm",
-		"version":          "0.1.0",
-		"wasmDsp":          true,
-		"wasmDspReady":     ready,
-		"gpu":              false,
-		"models":           []string{"deterministic-frequency-split"},
-		"separationMethod": "deterministic-frequency-split",
-		"analysisMethod":   "deterministic-energy-heuristics",
-		"maxUploadBytes":   s.cfg.MaxUploadBytes,
-		"maxDecodedFrames": audio.MaxDecodedFrames,
+		"status":                     "ok",
+		"service":                    "aurialis-wasm",
+		"version":                    "0.1.0",
+		"wasmDsp":                    true,
+		"wasmDspReady":               ready,
+		"gpu":                        false,
+		"models":                     []string{"deterministic-frequency-split"},
+		"separationMethod":           "deterministic-frequency-split",
+		"analysisMethod":             "deterministic-energy-heuristics",
+		"maxUploadBytes":             s.cfg.MaxUploadBytes,
+		"maxDecodedFrames":           audio.MaxDecodedFrames,
+		"maxAudioFileBytes":          min(MaxAudioFileBytes, s.cfg.MaxUploadBytes),
+		"maxConcurrentAudioRequests": 1,
+		"jobMemoryBudgetBytes":       jobs.MaxMemoryBytes,
 		"profiles": []string{
 			"Warm Analog",
 			"Punchy Commercial",
@@ -289,7 +295,12 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request) (*a
 				writeErrorJSON(w, http.StatusBadRequest, "invalid_audio", "Invalid audio filename")
 				return nil, false
 			}
-			rawBytes, err = io.ReadAll(part)
+			rawBytes, err = io.ReadAll(io.LimitReader(part, MaxAudioFileBytes+1))
+			if int64(len(rawBytes)) > MaxAudioFileBytes {
+				_ = part.Close()
+				writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Audio file exceeds the decoded-frame storage limit")
+				return nil, false
+			}
 		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "format") && disposition["filename"] == "" && values[name] == nil:
 			var value []byte
 			value, err = io.ReadAll(io.LimitReader(part, 64*1024+1))

@@ -30,7 +30,8 @@ func TestCloseAndSubmitAreRaceSafe(t *testing.T) {
 func TestAdmissionReservesInputAndOutputMemory(t *testing.T) {
 	manager := NewManager(1)
 	defer manager.Close()
-	buf := &audio.Buffer{SampleRate: 48000, Channels: 2, Frames: audio.MaxDecodedFrames, Left: make([]float32, audio.MaxDecodedFrames), Right: make([]float32, audio.MaxDecodedFrames)}
+	frames := int((MaxMemoryBytes - 16*1024*1024 - 6*44) / (8 + 6*12))
+	buf := &audio.Buffer{SampleRate: 48000, Channels: 2, Frames: frames, Left: make([]float32, frames), Right: make([]float32, frames)}
 	job, err := manager.SubmitSeparate(buf, 6)
 	if err != nil {
 		t.Fatal(err)
@@ -53,4 +54,28 @@ func TestExpiredArtifactsReleaseBudget(t *testing.T) {
 		t.Fatal("expired artifacts retained")
 	}
 	manager.mu.Unlock()
+}
+
+func TestReservationIncludesLiveFloatStemsAndDeepOutput(t *testing.T) {
+	manager := NewManager(1)
+	defer manager.Close()
+	const frames = 100
+	buf := &audio.Buffer{SampleRate: 48000, Channels: 2, Frames: frames, Left: make([]float32, frames), Right: make([]float32, frames)}
+	for _, stems := range []int{0, 2, 6} {
+		job := &Job{ID: newJobID()}
+		manager.mu.Lock()
+		err := manager.admitLocked(job, buf, stems)
+		manager.mu.Unlock()
+		if err != nil {
+			t.Fatal(err)
+		}
+		bytesPerFrame := int64(16)
+		if stems > 0 {
+			bytesPerFrame = 8 + int64(stems)*12
+		}
+		expected := frames*bytesPerFrame + int64(stems)*44 + 16*1024*1024
+		if job.reservedBytes != expected {
+			t.Fatalf("stems%d reservation %d want%d", stems, job.reservedBytes, expected)
+		}
+	}
 }

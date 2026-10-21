@@ -173,7 +173,9 @@ export async function serverRender(
     const body: unknown = await response.json();
     let message = "Audio processing failed. Please try again.";
     if (typeof body === "object" && body !== null) {
-      if ("message" in body && typeof body.message === "string")
+      if ("detail" in body && typeof body.detail === "string")
+        message = body.detail;
+      else if ("message" in body && typeof body.message === "string")
         message = body.message;
       else if ("error" in body && typeof body.error === "string")
         message = body.error;

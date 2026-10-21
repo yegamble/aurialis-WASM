@@ -91,7 +91,7 @@ export function AurialisWorkstation({
   paramId?: string;
 }) {
   const pathname = usePathname();
-  const { state, dispatch } = useStore();
+  const { state } = useStore();
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [livePath, setLivePath] = useState<string | null>(pathname);
@@ -278,16 +278,6 @@ export function AurialisWorkstation({
         actions={
           <>
             <Button
-              variant="secondary"
-              icon={<Icon name="rotate-ccw" />}
-              onClick={() => {
-                dispatch({ type: "RESET_WORKSPACE" });
-                setPrefsOpen(false);
-              }}
-            >
-              Reset demo workspace
-            </Button>
-            <Button
               variant="primary"
               onClick={() => {
                 setPrefsOpen(false);
@@ -299,8 +289,9 @@ export function AurialisWorkstation({
         }
       >
         <p style={{ color: "var(--ink-soft)", margin: "0 0 12px" }}>
-          Aurialis runs locally with an embedded WebAssembly 64-bit DSP engine
-          and IndexedDB project storage.
+          Aurialis processes audio with a shared Go engine in your browser and
+          local server. Audio is stored in IndexedDB; project settings are
+          stored in this browser.
         </p>
         <div className="metric-mini">
           <span>
@@ -2351,28 +2342,28 @@ function ToolsView() {
       <PageTitle
         eyebrow="Focused utilities"
         title="Tools"
-        copy="Different ways to listen to the same source more closely."
+        copy="These planned tools are not available in this build. WAV mastering is available from Home and Library."
       />
       <div className="tools-grid">
         <ToolCard
           icon="scissors"
           eyebrow="Separation"
           title="Smart stem splitter"
-          copy="Open a mix into an exact two-to-six-stem layout."
+          copy="Instrument separation is not available. No stems will be generated."
           href={`/split/${targetId}`}
         />
         <ToolCard
           icon="refresh-cw"
           eyebrow="Direction"
           title="Reference match"
-          copy="Compare tone, dynamics, and width to another local track."
+          copy="Reference audio analysis and automatic matching are not available."
           href={`/reference/${targetId}`}
         />
         <ToolCard
           icon="check"
           eyebrow="Delivery"
           title="Release check"
-          copy="Review common technical concerns before the handoff."
+          copy="Certified loudness, true-peak, and delivery checks are not available."
           href={`/release-check/${targetId}`}
         />
       </div>

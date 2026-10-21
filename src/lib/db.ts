@@ -34,6 +34,9 @@ function openDb(): Promise<IDBDatabase> {
     request.onsuccess = () => {
       resolve(request.result);
     };
+    request.onblocked = () => {
+      reject(new Error("Browser storage is blocked by another Aurialis tab."));
+    };
     request.onerror = () => {
       reject(request.error ?? new Error("Failed to open IndexedDB"));
     };
@@ -55,6 +58,7 @@ export async function saveAudio(id: string, file: Blob): Promise<void> {
         reject(transaction.error ?? new Error("Failed to store audio blob"));
       };
     });
+    memoryAudio.delete(id);
   } finally {
     db.close();
   }

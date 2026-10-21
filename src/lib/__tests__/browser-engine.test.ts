@@ -85,4 +85,62 @@ describe("shared engine browser boundary", () => {
       ),
     ).rejects.toThrow("rejected");
   });
+  it("serializes yielding previews so concurrent projects cannot share engine parameters", async () => {
+    let gain = 1;
+    vi.stubGlobal("window", {
+      aurialisDSPReady: true,
+      aurialisDSPInit: () => true,
+      aurialisDSPSetParams: (json: string) => {
+        const params = JSON.parse(json) as { inputGainDb: number };
+        gain = params.inputGainDb;
+        return true;
+      },
+      aurialisDSPReset: () => true,
+      aurialisDSPProcessBlock: (
+        left: Float32Array,
+        right: Float32Array,
+        outLeft: Float32Array,
+        outRight: Float32Array,
+      ) => {
+        outLeft.set(left.map((value) => value * gain));
+        outRight.set(right.map((value) => value * gain));
+        return left.length;
+      },
+    });
+    const source = {
+      left: new Float32Array(20000).fill(0.25),
+      right: new Float32Array(20000).fill(-0.125),
+      sampleRate: 48000,
+    };
+    const first = createDefaultAdvancedParams();
+    first.input = 2;
+    const second = createDefaultAdvancedParams();
+    second.input = 3;
+    const [a, b] = await Promise.all([
+      processPreview(source, first),
+      processPreview(source, second),
+    ]);
+    expect(a.left.every((value) => value === 0.5)).toBe(true);
+    expect(a.right.every((value) => value === -0.25)).toBe(true);
+    expect(b.left.every((value) => value === 0.75)).toBe(true);
+    expect(b.right.every((value) => value === -0.375)).toBe(true);
+  });
+  it("rejects a cancelled project before initializing the shared engine", async () => {
+    const init = vi.fn(() => true);
+    vi.stubGlobal("window", { aurialisDSPReady: true, aurialisDSPInit: init });
+    const controller = new AbortController();
+    controller.abort();
+    await expect(
+      processPreview(
+        {
+          left: new Float32Array(2),
+          right: new Float32Array(2),
+          sampleRate: 48000,
+        },
+        createDefaultAdvancedParams(),
+        controller.signal,
+      ),
+    ).rejects.toThrow("cancelled");
+    expect(init).not.toHaveBeenCalled();
+  });
 });

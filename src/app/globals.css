@@ -2603,10 +2603,9 @@ input[type="range"] {
 .library-list-head,
 .library-item {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(
-      0,
-      1fr
-    ) 44px;
+  grid-template-columns:
+    minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)
+    44px;
   align-items: center;
   gap: 14px;
 }
@@ -2750,5 +2749,19 @@ input[type="range"] {
   }
   .storage-note {
     align-items: start;
+  }
+}
+@media (max-width: 767px) {
+  .master-page {
+    padding-bottom: 240px;
+  }
+  .master-page .transport {
+    position: fixed;
+    bottom: 82px;
+    left: 14px;
+    right: 14px;
+  }
+  .master-page :is(button, input, select, a) {
+    scroll-margin-bottom: 240px;
   }
 }

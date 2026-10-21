@@ -55,5 +55,96 @@ assert.equal(globalThis.aurialisDSPInit(48000), true);
 const one = Float32Array.of(0.125);
 assert.equal(globalThis.aurialisDSPProcessBlock(one, one), 1);
 assert.equal(one[0], 0.125);
+// Byte transfers must honor typed-array offsets and retain the old interleaved
+// write order when destination views overlap. Compare full backing buffers so
+// writes outside the requested frame count cannot hide behind matching audio.
+const frames = 17;
+const sourceL = Float32Array.from({ length: frames }, (_, i) => i === 0 ? -0 : Math.sin(i * 0.71) * 0.21);
+const sourceR = Float32Array.from({ length: frames }, (_, i) => Math.cos(i * 0.31) * -0.17);
+const expectedL = new Float32Array(frames);
+const expectedR = new Float32Array(frames);
+assert.equal(globalThis.aurialisDSPInit(48000), true);
+assert.equal(globalThis.aurialisDSPProcessBlock(sourceL, sourceR, expectedL, expectedR), frames);
+assert.equal(Object.is(expectedL[0], -0), false, "preserve numeric bridge zero canonicalization");
+for (const [leftOffset, rightOffset] of [[1, 2], [2, 1], [1, 1], [1, frames + 1]]) {
+  const length = Math.max(leftOffset, rightOffset) + frames + 3;
+  const backing = new Float32Array(length).fill(0.3125);
+  const expected = backing.slice();
+  const outputL = backing.subarray(leftOffset, leftOffset + frames + 2);
+  const outputR = backing.subarray(rightOffset, rightOffset + frames + 2);
+  for (let i = 0; i < frames; i++) {
+    expected[leftOffset + i] = expectedL[i];
+    expected[rightOffset + i] = expectedR[i];
+  }
+  const paddedL = new Float32Array(frames + 4).fill(0.75);
+  const paddedR = new Float32Array(frames + 6).fill(-0.75);
+  paddedL.set(sourceL, 1);
+  paddedR.set(sourceR, 3);
+  assert.equal(globalThis.aurialisDSPReset(), true);
+  assert.equal(globalThis.aurialisDSPProcessBlock(paddedL.subarray(1, frames + 1), paddedR.subarray(3, frames + 3), outputL, outputR), frames);
+  assert.deepEqual(backing, expected, `destination alias ordering ${leftOffset}/${rightOffset}`);
+  assert.equal(paddedL[0], 0.75);
+  assert.equal(paddedR[frames + 3], -0.75);
+}
+// Reading shared typed-array subviews must also preserve their byte offsets.
+const sharedInput = new SharedArrayBuffer((frames * 2 + 4) * 4);
+const sharedL = new Float32Array(sharedInput, 4, frames);
+const sharedR = new Float32Array(sharedInput, (frames + 3) * 4, frames);
+sharedL.set(sourceL); sharedR.set(sourceR);
+const sharedOutL = new Float32Array(frames), sharedOutR = new Float32Array(frames);
+assert.equal(globalThis.aurialisDSPReset(), true);
+assert.equal(globalThis.aurialisDSPProcessBlock(sharedL, sharedR, sharedOutL, sharedOutR), frames);
+assert.deepEqual(sharedOutL, expectedL);
+assert.deepEqual(sharedOutR, expectedR);
+// Offline callers on a non-isolated page need no shared-buffer constructor.
+const sharedConstructor = globalThis.SharedArrayBuffer;
+try {
+  globalThis.SharedArrayBuffer = undefined;
+  assert.equal(globalThis.aurialisDSPReset(), true);
+  assert.equal(globalThis.aurialisDSPProcessBlock(sourceL, sourceR, sharedOutL, sharedOutR), frames);
+  assert.deepEqual(sharedOutL, expectedL);
+  assert.deepEqual(sharedOutR, expectedR);
+} finally {
+  globalThis.SharedArrayBuffer = sharedConstructor;
+}
+// Cloned shared-buffer wrappers have different JS identities but may address
+// the same memory. They must retain the same overlapping-destination contract.
+for (const [leftOffset, rightOffset] of [[1, 2], [2, 1]]) {
+  const shared = new SharedArrayBuffer((frames + 4) * 4);
+  const cloned = structuredClone(shared);
+  assert.notEqual(shared, cloned);
+  const backing = new Float32Array(shared).fill(0.3125);
+  const expected = Float32Array.from(backing);
+  for (let i = 0; i < frames; i++) {
+    expected[leftOffset + i] = expectedL[i];
+    expected[rightOffset + i] = expectedR[i];
+  }
+  assert.equal(globalThis.aurialisDSPReset(), true);
+  assert.equal(globalThis.aurialisDSPProcessBlock(sourceL, sourceR,
+    new Float32Array(shared, leftOffset * 4, frames), new Float32Array(cloned, rightOffset * 4, frames)), frames);
+  assert.deepEqual(backing, expected, `cloned shared-buffer ordering ${leftOffset}/${rightOffset}`);
+}
+// Crossed in-place destinations still consume both entire inputs first.
+const crossedL = sourceL.slice(), crossedR = sourceR.slice();
+assert.equal(globalThis.aurialisDSPReset(), true);
+assert.equal(globalThis.aurialisDSPProcessBlock(crossedL, crossedR, crossedR, crossedL), frames);
+assert.deepEqual(crossedR, expectedL);
+assert.deepEqual(crossedL, expectedR);
+for (const [left, right] of [[Float32Array.of(NaN), Float32Array.of(0)],
+  [Float32Array.of(0), Float32Array.of(Infinity)], [Float32Array.of(-Infinity), Float32Array.of(0)]]) {
+  const untouchedL = Float32Array.of(0.25), untouchedR = Float32Array.of(-0.25);
+  assert.equal(globalThis.aurialisDSPProcessBlock(left, right, untouchedL, untouchedR), 0);
+  assert.equal(untouchedL[0], 0.25);
+  assert.equal(untouchedR[0], -0.25);
+}
+const maximumInput = new Float32Array(65536).fill(0.0625);
+const maximumL = new Float32Array(65537).fill(0.5);
+const maximumR = new Float32Array(65537).fill(-0.5);
+assert.equal(globalThis.aurialisDSPReset(), true);
+assert.equal(globalThis.aurialisDSPProcessBlock(maximumInput, maximumInput, maximumL, maximumR), 65536);
+assert.equal(maximumL[0], 0.0625);
+assert.equal(maximumL[65535], 0.0625);
+assert.equal(maximumL[65536], 0.5);
+assert.equal(maximumR[65536], -0.5);
 console.log(`wasm-bridge: ${fixtures.length} native/WASM fixtures passed at 44.1/48/96 kHz; max absolute error ${maximumError}; adversarial boundary checks passed`);
 process.exit(0);

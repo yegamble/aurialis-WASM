@@ -75,7 +75,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: ">=1.24.0"
+          go-version: "1.26.9"
           check-latest: true
 
       - name: Check gofmt formatting
@@ -95,12 +95,12 @@ jobs:
       - name: Run golangci-lint v2 (staticcheck all, revive, gosec, nakedret)
         uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.6.2
+          version: v2.15.0
           args: --timeout=5m
 
       - name: Run identypo & govulncheck
         run: |
-          go run github.com/AlexsJones/identypo@latest ./...
+          go run github.com/alexkohler/identypo/cmd/identypo@latest ./...
           go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
       - name: Run Go unit & concurrency race tests
@@ -128,7 +128,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "26.12.0"
           cache: "pnpm"
 
       - name: Install dependencies (pnpm frozen-lockfile)
@@ -148,8 +148,15 @@ jobs:
       - name: Run Vitest unit & component suite
         run: pnpm test
 
-      - name: Build Next.js 16 production bundle
-        run: pnpm run build
+      - name: Set up Go for embedded binary
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.9"
+
+      - name: Build and smoke-test embedded production binary
+        run: |
+          pnpm run build:binary
+          pnpm run test:binary
 
   backend-newman:
     name: Backend API & Postman/Newman Gate
@@ -163,7 +170,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: ">=1.24.0"
+          go-version: "1.26.9"
           check-latest: true
 
       - name: Set up pnpm
@@ -174,13 +181,14 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "26.12.0"
           cache: "pnpm"
 
       - name: Install dependencies & run Postman/Newman PR Suite
         run: |
           pnpm install --frozen-lockfile
-          MAX_UPLOAD_BYTES_OVERRIDE=209715200 pnpm run test:backend:postman
+          pnpm run build:binary
+          pnpm run test:backend:postman
 
   playwright-e2e:
     name: Playwright Responsive (320px-1440px) & WCAG 2.2 AA Gate
@@ -194,7 +202,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: ">=1.24.0"
+          go-version: "1.26.9"
           check-latest: true
 
       - name: Set up pnpm
@@ -205,7 +213,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "26.12.0"
           cache: "pnpm"
 
       - name: Install dependencies & Playwright Chromium
@@ -213,8 +221,10 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm exec playwright install --with-deps chromium
 
-      - name: Run Playwright E2E, Responsive & Accessibility tests
-        run: pnpm exec playwright test
+      - name: Run Playwright E2E against fresh embedded assets
+        run: |
+          pnpm run build:binary
+          pnpm exec playwright test
 
   ci-passed:
     name: CI Passed
@@ -236,7 +246,7 @@ jobs:
           RES_PLAYWRIGHT: ${{ needs.playwright-e2e.result }}
         run: |
           for r in "$RES_HYGIENE" "$RES_GO" "$RES_FRONTEND" "$RES_NEWMAN" "$RES_PLAYWRIGHT"; do
-            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+            if [ "$r" != "success" ]; then
               echo "::error::One or more CI jobs failed or were cancelled ($r)."
               exit 1
             fi

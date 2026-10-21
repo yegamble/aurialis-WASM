@@ -15,6 +15,7 @@ import { computeEqMagnitudeDb, createDefaultAdvancedParams } from "@/lib/audio-d
 import type { EQBandId, EQBandParams, Track } from "@/lib/types";
 import type { LiveSpectrum } from "@/lib/live-playback";
 import { Icon } from "./Icon";
+import { SpectrumTrace } from "./SpectrumTrace";
 
 export const formatTime = (seconds: number): string =>
   `${String(Math.floor(seconds / 60))}:${Math.floor(seconds % 60)
@@ -725,10 +726,7 @@ export function LiveSpectrumChart({ frame, playing }: { frame?: LiveSpectrum | n
               </linearGradient>
             </defs>
             <FrequencyGrid maxFrequency={maxFrequency} levels={levels} levelToY={spectrumLevelToY} />
-            {measured && <>
-              <polygon points={`0,60 ${measured.points} 100,60`} fill={`url(#${gradientId})`} />
-              <polyline points={measured.points} fill="none" stroke="var(--clay)" strokeWidth="1.8" vectorEffect="non-scaling-stroke" />
-            </>}
+            {measured && <SpectrumTrace points={measured.points} playing={playing} gradientId={gradientId} />}
           </svg>
           {!measured && <div className="absolute inset-0 grid place-items-center"><p className="max-w-[28ch] bg-paper/90 p-2 text-center text-[11px] text-ink-soft">Play audio to see the live output spectrum.</p></div>}
         </div>

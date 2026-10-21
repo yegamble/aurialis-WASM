@@ -1,9 +1,9 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LiveSpectrum } from "@/lib/live-playback";
 import { LiveSpectrumChart, Waveform } from "../Primitives";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 function frame(level = -80): LiveSpectrum {
   return { dbBins: new Float32Array(2048).fill(level), sampleRate: 48000, fftSize: 4096 };
@@ -58,6 +58,59 @@ describe("measured output spectrum", () => {
     const { container } = render(<LiveSpectrumChart frame={data} playing />);
     expect(container.querySelector("polyline")).toBeNull();
     expect(screen.getByText("Waiting for analyser data")).toBeDefined();
+  });
+
+  it("interpolates measured frames on animation frames and stops when paused or removed", () => {
+    const callbacks = new Map<number, FrameRequestCallback>();
+    let sequence = 0;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callbacks.set(++sequence, callback); return sequence;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => callbacks.delete(id));
+    const tick = (time: number) => { act(() => {
+      const queued = Array.from(callbacks.values()); callbacks.clear();
+      for (const callback of queued) callback(time);
+    }); };
+    const { container, rerender, unmount } = render(<LiveSpectrumChart frame={frame(-80)} playing />);
+    tick(1);
+    rerender(<LiveSpectrumChart frame={frame(-20)} playing />);
+    expect(points(container)[0]?.[1]).toBe(48);
+    tick(17);
+    const first = points(container)[0]?.[1] ?? 0;
+    expect(first).toBeGreaterThan(12); expect(first).toBeLessThan(48);
+    tick(33);
+    expect(points(container)[0]?.[1]).toBeLessThan(first);
+    expect(callbacks.size).toBe(1);
+    rerender(<LiveSpectrumChart frame={frame(-20)} playing={false} />);
+    expect(points(container)[0]?.[1]).toBe(12);
+    expect(callbacks.size).toBe(0);
+    rerender(<LiveSpectrumChart frame={frame(-40)} playing />);
+    expect(callbacks.size).toBe(1);
+    unmount();
+    expect(callbacks.size).toBe(0);
+  });
+
+  it("honors reduced motion and changes the preference without stale animation callbacks", () => {
+    const callbacks = new Map<number, FrameRequestCallback>();
+    let sequence = 0;
+    let changed: (() => void) | undefined;
+    const preference = { matches: true, addEventListener: (_: string, listener: () => void) => { changed = listener; }, removeEventListener: vi.fn() };
+    vi.stubGlobal("matchMedia", () => preference);
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callbacks.set(++sequence, callback); return sequence; });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => callbacks.delete(id));
+    const { container, rerender, unmount } = render(<LiveSpectrumChart frame={frame(-80)} playing />);
+    rerender(<LiveSpectrumChart frame={frame(-20)} playing />);
+    expect(points(container)[0]?.[1]).toBe(12);
+    expect(callbacks.size).toBe(0);
+    act(() => { preference.matches = false; changed?.(); });
+    expect(callbacks.size).toBe(1);
+    rerender(<LiveSpectrumChart frame={frame(-40)} playing />);
+    expect(points(container)[0]?.[1]).toBe(12);
+    act(() => { preference.matches = true; changed?.(); });
+    expect(points(container)[0]?.[1]).toBe(24);
+    expect(callbacks.size).toBe(0);
+    unmount();
+    expect(preference.removeEventListener).toHaveBeenCalled();
   });
 });
 

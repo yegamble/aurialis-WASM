@@ -191,10 +191,23 @@ type svfState struct {
 	ic2eq float64
 }
 
+// stageCoeffs contains only settings/sample-rate-derived values. Keeping them
+// outside sample loops preserves the exact formulas without repeating expensive
+// transcendental functions at the audio sample rate.
+type stageCoeffs struct {
+	compPeakDecay, compAttack, compRelease               float64
+	satAmount, satDrive, satNorm, satDCR                 float64
+	stereoWidth                                          float64
+	limiterCeiling, limiterRelease, limiterSampleCeiling float64
+	repairDeEssAlpha, repairDeEssMaxAtten                float64
+	repairTransientFast, repairTransientSlow             float64
+}
+
 // Engine executes the real-time and offline mastering DSP chain with zero heap allocations per block.
 type Engine struct {
 	sampleRate float64
 	params     Params
+	stages     stageCoeffs
 
 	eqCoeffs [NumEQBands]svfCoeffs
 	eqState  [NumEQBands][2]svfState
@@ -279,6 +292,9 @@ func (e *Engine) SetParams(next Params) {
 	}
 	prev := e.params
 	e.params = next
+	if prev.Compressor != next.Compressor || prev.Saturation != next.Saturation || prev.Stereo != next.Stereo || prev.Limiter != next.Limiter || prev.Repair != next.Repair {
+		e.recomputeStageCoeffs()
+	}
 	for i := 0; i < NumEQBands; i++ {
 		if prev.Bands[i] != next.Bands[i] {
 			e.eqCoeffs[i] = computeBandCoeffs(e.sampleRate, next.Bands[i])
@@ -350,7 +366,51 @@ func (e *Engine) LastGainReductionDB() float64 {
 	return e.lastGRDB + e.lastLimGRDB
 }
 
+func (e *Engine) recomputeStageCoeffs() {
+	c := &e.params.Compressor
+	e.stages.compPeakDecay = math.Exp(-1.0 / (0.025 * e.sampleRate))
+	attMS := math.Max(0.02, c.AttackMS)
+	relMS := math.Max(5.0, c.ReleaseMS)
+	e.stages.compAttack = math.Exp(-2.5 / (attMS * 0.001 * e.sampleRate))
+	e.stages.compRelease = math.Exp(-2.5 / (relMS * 0.001 * e.sampleRate))
+
+	e.stages.satAmount = math.Min(100.0, math.Max(0.0, e.params.Saturation.Amount)) / 100.0
+	e.stages.satDrive = 1.0 + e.stages.satAmount*3.2
+	e.stages.satNorm = 1.0 / math.Tanh(e.stages.satDrive)
+	if e.stages.satNorm > 1.2 {
+		e.stages.satNorm = 1.2
+	}
+	e.stages.satDCR = 1.0 - (2.0 * math.Pi * 20.0 / e.sampleRate)
+	if e.stages.satDCR < 0.96 {
+		e.stages.satDCR = 0.96
+	}
+	e.stages.stereoWidth = math.Max(0.0, math.Min(200.0, e.params.Stereo.WidthPct)) / 100.0
+
+	ceilingLin := dbToLin(e.params.Limiter.CeilingDBTP)
+	if ceilingLin <= 0.0 {
+		ceilingLin = dbToLin(-1.0)
+	}
+	if e.params.Limiter.TruePeak {
+		ceilingLin *= 0.995
+	}
+	e.stages.limiterCeiling = ceilingLin
+	limRelMS := math.Max(10.0, e.params.Limiter.ReleaseMS)
+	e.stages.limiterRelease = math.Exp(-1.0 / (limRelMS * 0.001 * e.sampleRate))
+	ceiling64 := dbToLin(e.params.Limiter.CeilingDBTP)
+	ceiling32 := float32(ceiling64)
+	if float64(ceiling32) > ceiling64 {
+		ceiling32 = math.Nextafter32(ceiling32, 0)
+	}
+	e.stages.limiterSampleCeiling = float64(ceiling32)
+
+	e.stages.repairDeEssAlpha = math.Exp(-1.0 / (0.004 * e.sampleRate))
+	e.stages.repairDeEssMaxAtten = 1.0 - dbToLin(-e.params.Repair.DeEssDB)
+	e.stages.repairTransientFast = math.Exp(-1.0 / (0.002 * e.sampleRate))
+	e.stages.repairTransientSlow = math.Exp(-1.0 / (0.035 * e.sampleRate))
+}
+
 func (e *Engine) recomputeAllCoeffs() {
+	e.recomputeStageCoeffs()
 	for i := 0; i < NumEQBands; i++ {
 		e.eqCoeffs[i] = computeBandCoeffs(e.sampleRate, e.params.Bands[i])
 	}
@@ -709,12 +769,7 @@ func (e *Engine) ProcessBlock(inL, inR, outL, outR []float32) {
 		// a linked sample ceiling to mastered B so those stages cannot exceed it.
 		// Original A and explicit bypass retain the unprocessed source.
 		if limActive && !e.params.ABOriginal {
-			ceiling64 := dbToLin(e.params.Limiter.CeilingDBTP)
-			ceiling32 := float32(ceiling64)
-			if float64(ceiling32) > ceiling64 {
-				ceiling32 = math.Nextafter32(ceiling32, 0)
-			}
-			ceiling := float64(ceiling32)
+			ceiling := e.stages.limiterSampleCeiling
 			peak := math.Max(math.Abs(l), math.Abs(r))
 			if peak > ceiling {
 				multiplier := ceiling / peak
@@ -754,10 +809,10 @@ func (e *Engine) processRepairSample(l, r float64) (float64, float64) {
 		sibL := processSVF(e.deEssCoeffs, &e.deEssState[0], l)
 		sibR := processSVF(e.deEssCoeffs, &e.deEssState[1], r)
 		sibPeak := math.Max(math.Abs(sibL), math.Abs(sibR))
-		alpha := math.Exp(-1.0 / (0.004 * e.sampleRate))
+		alpha := e.stages.repairDeEssAlpha
 		e.deEssEnv = alpha*e.deEssEnv + (1.0-alpha)*sibPeak
 		if e.deEssEnv > 0.05 {
-			maxAtten := 1.0 - dbToLin(-rep.DeEssDB)
+			maxAtten := e.stages.repairDeEssMaxAtten
 			ratio := math.Min(1.0, (e.deEssEnv-0.05)/0.25)
 			l -= sibL * maxAtten * ratio
 			r -= sibR * maxAtten * ratio
@@ -766,8 +821,8 @@ func (e *Engine) processRepairSample(l, r float64) (float64, float64) {
 
 	if math.Abs(rep.TransientDB) > 1e-5 {
 		peak := math.Max(math.Abs(l), math.Abs(r))
-		aFast := math.Exp(-1.0 / (0.002 * e.sampleRate))
-		aSlow := math.Exp(-1.0 / (0.035 * e.sampleRate))
+		aFast := e.stages.repairTransientFast
+		aSlow := e.stages.repairTransientSlow
 		e.transFast = aFast*e.transFast + (1.0-aFast)*peak
 		e.transSlow = aSlow*e.transSlow + (1.0-aSlow)*peak
 		diff := e.transFast - e.transSlow
@@ -794,7 +849,7 @@ func (e *Engine) processCompressorSample(l, r float64) (float64, float64) {
 
 	// Linked peak-envelope detector so sine/program crests read accurately without zero-crossing ripple
 	instPeak := math.Max(math.Abs(scL), math.Abs(scR))
-	peakDecay := math.Exp(-1.0 / (0.025 * e.sampleRate))
+	peakDecay := e.stages.compPeakDecay
 	if instPeak >= e.compPeakEnv {
 		e.compPeakEnv = instPeak
 	} else {
@@ -815,12 +870,10 @@ func (e *Engine) processCompressorSample(l, r float64) (float64, float64) {
 		}
 	}
 
-	attMS := math.Max(0.02, c.AttackMS)
-	relMS := math.Max(5.0, c.ReleaseMS)
 	// Attack/release specify 91.8% gain-reduction settling (1-exp(-2.5)).
 	// Detector peak decay adds a separate 25 ms release response.
-	attCoeff := math.Exp(-2.5 / (attMS * 0.001 * e.sampleRate))
-	relCoeff := math.Exp(-2.5 / (relMS * 0.001 * e.sampleRate))
+	attCoeff := e.stages.compAttack
+	relCoeff := e.stages.compRelease
 
 	if targetGRDB > e.compEnvDB {
 		e.compEnvDB = attCoeff*e.compEnvDB + (1.0-attCoeff)*targetGRDB
@@ -868,21 +921,15 @@ func adaaWarmWave(x, drive float64) (float64, float64) {
 }
 
 func (e *Engine) processSaturationSample(l, r float64) (float64, float64) {
-	amt := math.Min(100.0, math.Max(0.0, e.params.Saturation.Amount)) / 100.0
-	drive := 1.0 + amt*3.2
-	norm := 1.0 / math.Tanh(drive)
-	if norm > 1.2 {
-		norm = 1.2
-	}
+	amt := e.stages.satAmount
+	drive := e.stages.satDrive
+	norm := e.stages.satNorm
 
 	inSamples := [2]float64{l, r}
 	var outSamples [2]float64
 
 	// 20 Hz subsonic DC blocker coefficient so asymmetric triode DC settles within 15 ms
-	dcR := 1.0 - (2.0 * math.Pi * 20.0 / e.sampleRate)
-	if dcR < 0.96 {
-		dcR = 0.96
-	}
+	dcR := e.stages.satDCR
 
 	for ch := 0; ch < 2; ch++ {
 		xCurr := inSamples[ch]
@@ -955,7 +1002,7 @@ func (e *Engine) processSaturationSample(l, r float64) (float64, float64) {
 }
 
 func (e *Engine) processStereoSample(l, r float64) (float64, float64) {
-	width := math.Max(0.0, math.Min(200.0, e.params.Stereo.WidthPct)) / 100.0
+	width := e.stages.stereoWidth
 	mid := 0.5 * (l + r)
 	side := 0.5 * (l - r)
 
@@ -999,14 +1046,7 @@ func estimateTruePeak4x(hm1, h0, h1, h2 float64) float64 {
 }
 
 func (e *Engine) processLimiterSample(l, r float64) (float64, float64) {
-	ceilingLin := dbToLin(e.params.Limiter.CeilingDBTP)
-	if ceilingLin <= 0.0 {
-		ceilingLin = dbToLin(-1.0)
-	}
-	if e.params.Limiter.TruePeak {
-		// Provide 0.04 dB headroom guard for 4x cubic vssinc true-peak detector
-		ceilingLin *= 0.995
-	}
+	ceilingLin := e.stages.limiterCeiling
 
 	peakL := math.Abs(l)
 	peakR := math.Abs(r)
@@ -1029,8 +1069,7 @@ func (e *Engine) processLimiterSample(l, r float64) (float64, float64) {
 		reqGain = ceilingLin / peak
 	}
 
-	relMS := math.Max(10.0, e.params.Limiter.ReleaseMS)
-	relCoeff := math.Exp(-1.0 / (relMS * 0.001 * e.sampleRate))
+	relCoeff := e.stages.limiterRelease
 
 	if reqGain < e.limEnvLin {
 		// Instant sample-peak attack. This cannot guarantee reconstructed peaks.

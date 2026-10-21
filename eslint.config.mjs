@@ -1,6 +1,8 @@
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import jsxA11y from "eslint-plugin-jsx-a11y";
+import nextPlugin from "@next/eslint-plugin-next";
+import security from "eslint-plugin-security";
 
 export default tseslint.config(
   {
@@ -16,12 +18,17 @@ export default tseslint.config(
     ],
   },
   js.configs.recommended,
-  ...tseslint.configs.recommended,
+  ...tseslint.configs.strictTypeChecked,
   {
+    languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } },
     plugins: {
+      "@next/next": nextPlugin,
+      security,
       "jsx-a11y": jsxA11y,
     },
     rules: {
+      ...nextPlugin.configs["core-web-vitals"].rules,
+      ...security.configs.recommended.rules,
       "no-restricted-imports": [
         "error",
         {

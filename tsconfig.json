@@ -29,7 +29,8 @@
       "@/*": [
         "./src/*"
       ]
-    }
+    },
+    "exactOptionalPropertyTypes": true
   },
   "include": [
     "next-env.d.ts",

@@ -344,10 +344,15 @@ function HomeView() {
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const importAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => { importAbort.current?.abort(); }, []);
 
   const importFile = async (file?: File) => {
     if (!file) return;
-    if (loading) return;
+    importAbort.current?.abort();
+    const controller = new AbortController();
+    importAbort.current = controller;
+    const active = () => !controller.signal.aborted && importAbort.current === controller;
     if (
       !/\.wav$/i.test(file.name) ||
       file.size === 0 ||
@@ -356,6 +361,7 @@ function HomeView() {
       setMessage(
         "Choose a nonempty PCM WAV file up to 128 MiB. Other codecs are not supported.",
       );
+      setLoading(false);
       return;
     }
     setLoading(true);
@@ -370,11 +376,15 @@ function HomeView() {
     let storageWarning = "";
     try {
       const capacity = await wavCapacity(file);
+      if (!active()) return;
       if (capacity && capacity.frames > MAX_SOURCE_FRAMES) throw new Error(`This WAV exceeds the ${formatTime(MAX_SOURCE_FRAMES / capacity.sampleRate)} duration limit at ${String(capacity.sampleRate / 1000)} kHz. Use a shorter track or a lower source sample rate.`);
-      canonical = await serverRender(file, { bypass: true }, 32);
+      canonical = await serverRender(file, { bypass: true }, 32, controller.signal);
+      if (!active()) return;
       pcm = await readCanonicalWAV(canonical);
-      measurement = await measureAudio(canonical);
+      if (!active()) return;
+      measurement = await measureAudio(canonical, { bypass: true }, controller.signal);
     } catch (error) {
+      if (!active()) return;
       setMessage(
         error instanceof Error
           ? error.message
@@ -383,11 +393,16 @@ function HomeView() {
       setLoading(false);
       return;
     }
+    if (!active()) return;
     try {
       await saveAudio(id, canonical);
     } catch {
       storageWarning =
         "Browser storage is unavailable; keep this tab open and export before leaving.";
+    }
+    if (!active()) {
+      await deleteAudio(id);
+      return;
     }
     const duration = pcm.left.length / pcm.sampleRate;
 
@@ -796,6 +811,7 @@ function MasterView({ trackId }: { trackId: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     setSource(null);
     setPreview(null);
     setSourceBlob(null);
@@ -809,7 +825,8 @@ function MasterView({ trackId }: { trackId: string }) {
           throw new Error(
             "The source audio is missing. Import the file again to create a new project.",
           );
-        const canonical = await serverRender(blob, { bypass: true }, 32);
+        if (controller.signal.aborted) return;
+        const canonical = await serverRender(blob, { bypass: true }, 32, controller.signal);
         const pcm = await readCanonicalWAV(canonical);
         if (!cancelled) {
           setSource(pcm);
@@ -830,6 +847,7 @@ function MasterView({ trackId }: { trackId: string }) {
     void prepare();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [track?.id]);
 
@@ -891,6 +909,9 @@ function MasterView({ trackId }: { trackId: string }) {
   }
   async function download() {
     if (!track || !sourceBlob || (track.mode === "simple" && !fresh)) return;
+    renderAbort.current?.abort();
+    const controller = new AbortController();
+    renderAbort.current = controller;
     setProcessing(true);
     setMessage("Rendering WAV from the uploaded source…");
     try {
@@ -898,7 +919,9 @@ function MasterView({ trackId }: { trackId: string }) {
         sourceBlob,
         engineParams(track.advanced),
         bitDepth,
+        controller.signal,
       );
+      if (controller.signal.aborted || renderAbort.current !== controller) return;
       const url = URL.createObjectURL(blob),
         anchor = document.createElement("a");
       anchor.href = url;
@@ -911,12 +934,17 @@ function MasterView({ trackId }: { trackId: string }) {
         `Exported ${bitDepth === 32 ? "32-bit float" : `${String(bitDepth)}-bit PCM`} WAV at the source rate using the same Go DSP parameters.`,
       );
     } catch (error) {
-      setMessage(
+      if (!controller.signal.aborted) setMessage(
         error instanceof Error ? error.message : "Export failed. Please retry.",
       );
     } finally {
-      setProcessing(false);
+      if (!controller.signal.aborted && renderAbort.current === controller) setProcessing(false);
     }
+  }
+  function closeExport() {
+    renderAbort.current?.abort();
+    setProcessing(false);
+    setExportOpen(false);
   }
   if (!track)
     return (
@@ -1118,16 +1146,12 @@ function MasterView({ trackId }: { trackId: string }) {
         open={exportOpen}
         eyebrow="Master delivery"
         title={`Export “${track.title}”`}
-        onClose={() => {
-          setExportOpen(false);
-        }}
+        onClose={closeExport}
         actions={
           <>
             <Button
               variant="secondary"
-              onClick={() => {
-                setExportOpen(false);
-              }}
+              onClick={closeExport}
             >
               Close
             </Button>
@@ -1870,7 +1894,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                 const advanced = await normalizeSimpleAudio(file, track.advanced, -14, controller.signal);
                 const measurement = await measureAudio(file, engineParams(advanced), controller.signal);
                 if (totalBytes + measurement.frames * 6 + 44 > 128 * 1024 * 1024) throw new Error("The rendered album exceeds the 128 MiB download cache. Export a smaller sequence or render tracks individually.");
-                const blob = await serverRender(file, engineParams(advanced), 24);
+                const blob = await serverRender(file, engineParams(advanced), 24, controller.signal);
                 if (controller.signal.aborted) return;
                 totalBytes += blob.size;
                 files.push({ id: track.id, title: track.title, blob });

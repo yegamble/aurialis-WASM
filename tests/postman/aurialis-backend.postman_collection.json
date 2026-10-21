@@ -303,7 +303,46 @@
             },
             {
               "key": "params",
-              "value": "{\"inputGainDb\":2.5,\"limiter\":{\"enabled\":true,\"ceilingDb\":-1.0,\"targetLufs\":-14.0,\"releaseMs\":85,\"truePeak\":true}}",
+              "value": "{\"inputGainDb\":2.5,\"limiter\":{\"enabled\":true,\"ceilingDbtp\":-1.0,\"targetLufs\":-14.0,\"releaseMs\":85,\"truePeak\":true}}",
+              "type": "text"
+            }
+          ]
+        },
+        "url": "{{baseUrl}}/api/master/render"
+      }
+    },
+    {
+      "name": "TS-008b Reject Unknown DSP Parameter Name",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Unknown parameter is rejected with 400', function () { pm.response.to.have.status(400); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "bitDepth",
+              "value": "24",
+              "type": "text"
+            },
+            {
+              "key": "params",
+              "value": "{\"limiter\":{\"ceilingDb\":-1}}",
               "type": "text"
             }
           ]

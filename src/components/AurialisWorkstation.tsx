@@ -155,6 +155,7 @@ export function AurialisWorkstation({
               key={item.href}
               href={item.href}
               className={item.active ? "active" : ""}
+              aria-label={item.label}
               aria-current={item.active ? "page" : undefined}
             >
               <Icon name={item.icon} /> <span>{item.label}</span>

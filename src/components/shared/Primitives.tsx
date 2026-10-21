@@ -46,7 +46,7 @@ const buttonVariants = new Map<ButtonVariant, string>([
 ]);
 
 export function buttonClassName(variant: ButtonVariant = "primary", className = ""): string {
-  return `button button--${variant} inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-[13px] font-semibold transition enabled:hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-55 [&_svg]:size-4 ${buttonVariants.get(variant) ?? ""} ${className}`.trim();
+  return `button button--${variant} inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-[13px] font-semibold transition enabled:hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-55 [&_svg]:size-4 ${buttonVariants.get(variant) ?? ""} ${className}`.trim();
 }
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -166,7 +166,7 @@ export function SliderField({
       <input
         id={inputId}
         type="range"
-        className="min-h-11 w-full cursor-pointer accent-clay-dark"
+        className="min-h-[44px] w-full cursor-pointer accent-clay-dark"
         min={min}
         max={max}
         step={step}
@@ -553,7 +553,7 @@ export function SpectrumChart({
           <button
             key={band.id}
             type="button"
-            className="eq-handle absolute size-11 -translate-x-1/2 -translate-y-1/2 touch-none cursor-grab rounded-full border-0 bg-transparent p-0 active:cursor-grabbing focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-clay-dark disabled:cursor-not-allowed"
+            className="eq-handle absolute size-[44px] -translate-x-1/2 -translate-y-1/2 touch-none cursor-grab rounded-full border-0 bg-transparent p-0 active:cursor-grabbing focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-clay-dark disabled:cursor-not-allowed"
             disabled={!band.enabled}
             aria-label={`${band.label} EQ: ${String(band.freqHz)} Hz, ${band.gainDb.toFixed(1)} dB`}
             aria-describedby={instructionsId}

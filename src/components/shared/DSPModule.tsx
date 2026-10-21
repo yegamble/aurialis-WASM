@@ -5,7 +5,7 @@ import { Icon } from "./Icon";
 export function DSPModule({ title, children }: { title: string; children: ReactNode }) {
   return (
     <details className="module-disclosure group min-w-0 rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-4" open>
-      <summary className="flex min-h-11 cursor-pointer items-center justify-between gap-3 font-semibold">
+      <summary className="flex min-h-[44px] cursor-pointer items-center justify-between gap-3 font-semibold">
         {title}
         <Icon name="chevron-down" className="transition-transform group-open:rotate-180 motion-reduce:transition-none" />
       </summary>

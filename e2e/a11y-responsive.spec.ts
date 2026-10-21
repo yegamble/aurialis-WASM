@@ -35,6 +35,21 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
     await expect.poll(() => meters.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
   })
 
+  test("audio touch targets retain 44 CSS pixels at the editorial font size", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 640 })
+    await uploadProject(page)
+    for (const selector of [".eq-handle", 'input[type="range"]', ".module-disclosure > summary", ".button"]) {
+      const controls = page.locator(selector)
+      expect(await controls.count(), `${selector} must exercise rendered controls`).toBeGreaterThan(0)
+      for (const control of await controls.all()) {
+        if (!(await control.isVisible())) continue
+        const box = await control.boundingBox()
+        expect(box?.width, `${selector} width`).toBeGreaterThanOrEqual(44)
+        expect(box?.height, `${selector} height`).toBeGreaterThanOrEqual(44)
+      }
+    }
+  })
+
   test("serves COOP/COEP headers and zero horizontal overflow across 320px-1440px", async ({
     page,
   }) => {

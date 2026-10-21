@@ -12,7 +12,7 @@ describe("canonical value resets", () => {
       <SliderField label="Threshold" value={-24} defaultValue={0} min={-42} max={0} onChange={threshold} />
       <SliderField label="Ratio" value={4} defaultValue={1} min={1} max={10} onChange={ratio} />
     </>);
-    const slider = screen.getByRole("slider", { name: "Threshold", exact: true });
+    const slider = screen.getByRole("slider", { name: "Threshold" });
     fireEvent.doubleClick(slider);
     expect(threshold).toHaveBeenLastCalledWith(0);
     fireEvent.keyDown(slider, { key: "Backspace" });
@@ -27,7 +27,7 @@ describe("canonical value resets", () => {
       <SliderField label="Air frequency" value={2000} defaultValue={12000} min={20} max={3760} onChange={change} />
     </>);
     expect(screen.getByText("0.707")).toBeDefined();
-    fireEvent.doubleClick(screen.getByRole("slider", { name: "Air frequency", exact: true }));
+    fireEvent.doubleClick(screen.getByRole("slider", { name: "Air frequency" }));
     expect(change).toHaveBeenCalledExactlyOnceWith(3760);
   });
 
@@ -46,7 +46,7 @@ describe("canonical value resets", () => {
   it("uses precise time nudges and resets the waveform position", () => {
     const seek = vi.fn();
     render(<Waveform seed={0} duration={10} peaks={[0.2, 0.4]} playheadRatio={0.5} onSeekRatio={seek} />);
-    const waveform = screen.getByRole("slider", { name: "Track playback position", exact: true });
+    const waveform = screen.getByRole("slider", { name: "Track playback position" });
     fireEvent.keyDown(waveform, { key: "ArrowRight", altKey: true });
     expect(seek).toHaveBeenLastCalledWith(0.51);
     fireEvent.keyDown(waveform, { key: "ArrowLeft" });

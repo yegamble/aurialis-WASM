@@ -2207,8 +2207,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
                         width: nextWidth,
                       },
                     },
-                    tone: `Match: ${reference.title}`,
-                    intensity: amount,
+                    mode: "advanced",
                   },
                 });
               } else {

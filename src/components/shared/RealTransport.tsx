@@ -131,7 +131,7 @@ export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal,
             return (
               <button key={String(isOriginal)} type="button" disabled={unavailable} aria-label={isOriginal ? "B Original" : "A Processed"}
                 title={isOriginal ? "B · Original source" : "A · Processed output"} aria-pressed={selected}
-                className={`min-h-[44px] min-w-[44px] rounded-full border-0 px-2.5 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45 ${selected ? "is-active bg-clay-dark text-white" : "bg-transparent text-ink-soft hover:enabled:bg-paper"}`}
+                className={`min-h-[44px] min-w-[44px] rounded-full border-0 px-2.5 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${selected ? "is-active bg-clay-dark text-white" : "bg-transparent text-ink-soft hover:enabled:bg-paper"}`}
                 onClick={() => { onOriginal(isOriginal); }}>
                 {isOriginal ? "B" : "A"} <span className="@min-[520px]:hidden @min-[700px]:inline">{isOriginal ? "Original" : "Processed"}</span>
               </button>

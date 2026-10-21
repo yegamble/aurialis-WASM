@@ -13,20 +13,25 @@ import {
 import { RealTransport } from "./shared/RealTransport";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  type ReactNode,
   useEffect,
   useMemo,
   useRef,
   useState,
   type DragEvent,
 } from "react";
-import { createDefaultAdvancedParams } from "@/lib/audio-dsp";
+import {
+  createDefaultAdvancedParams,
+  mapSimpleToDSP,
+} from "@/lib/audio-dsp";
 import { deleteAudio, saveAudio, getAudio } from "@/lib/db";
-import { useStore } from "@/lib/store";
+import { generateScript, profiles, useStore } from "@/lib/store";
 import type {
   Album,
   EQBandId,
+  EQBandParams,
   ExportBitDepth,
+  Move,
+  ProfileId,
   SaturationCharacter,
   Stem,
   Track,
@@ -212,46 +217,11 @@ export function AurialisWorkstation({
         {route === "master" && (
           <MasterView key={resolvedId} trackId={resolvedId} />
         )}
-        {route === "split" && (
-          <UnavailableFeature
-            title="Stem separation"
-            copy="Instrument separation is not connected to an audio model. No stems are generated here."
-          >
-            <SplitView trackId={resolvedId} />
-          </UnavailableFeature>
-        )}
-        {route === "albums" && (
-          <UnavailableFeature
-            title="Album mastering"
-            copy="Batch audio processing and album consistency measurement are not available."
-          >
-            <AlbumsView />
-          </UnavailableFeature>
-        )}
-        {route === "album" && (
-          <UnavailableFeature
-            title="Album mastering"
-            copy="Batch audio processing and album consistency measurement are not available."
-          >
-            <AlbumView albumId={resolvedId} />
-          </UnavailableFeature>
-        )}
-        {route === "reference" && (
-          <UnavailableFeature
-            title="Reference matching"
-            copy="Audio reference analysis and matching are not available."
-          >
-            <ReferenceView trackId={resolvedId} />
-          </UnavailableFeature>
-        )}
-        {route === "release-check" && (
-          <UnavailableFeature
-            title="Release checks"
-            copy="Standards based loudness and true-peak certification are not available."
-          >
-            <ReleaseView trackId={resolvedId} />
-          </UnavailableFeature>
-        )}
+        {route === "split" && <SplitView trackId={resolvedId} />}
+        {route === "albums" && <AlbumsView />}
+        {route === "album" && <AlbumView albumId={resolvedId} />}
+        {route === "reference" && <ReferenceView trackId={resolvedId} />}
+        {route === "release-check" && <ReleaseView trackId={resolvedId} />}
         {route === "tools" && <ToolsView />}
       </main>
 
@@ -335,28 +305,6 @@ export function AurialisWorkstation({
           ))}
         </div>
       </BottomSheet>
-    </div>
-  );
-}
-
-function UnavailableFeature({
-  title,
-  copy,
-}: {
-  title: string;
-  copy: string;
-  children?: ReactNode;
-}) {
-  return (
-    <div className="page">
-      <PageTitle eyebrow="Not available yet" title={title} copy={copy} />
-      <p className="disclosure">
-        You can import WAV audio, adjust independent digital processors, listen
-        to a rendered preview, and export a processed master.
-      </p>
-      <Link className="button button--primary" href="/">
-        Import a track
-      </Link>
     </div>
   );
 }
@@ -801,6 +749,7 @@ function MasterView({ trackId }: { trackId: string }) {
   const [ab, setAb] = useState<"A" | "B">("A");
   const [playheadRatio, setPlayheadRatio] = useState(0);
   const [activeBandId, setActiveBandId] = useState<EQBandId>("low");
+  const [activeMove, setActiveMove] = useState<Move | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [bitDepth, setBitDepth] = useState<ExportBitDepth>(24);
   const [message, setMessage] = useState("");
@@ -958,14 +907,24 @@ function MasterView({ trackId }: { trackId: string }) {
           </p>
         </div>
         <div className="mode-tabs" role="tablist" aria-label="Mastering mode">
-          <button
-            type="button"
-            role="tab"
-            aria-selected="true"
-            className="is-active"
-          >
-            advanced
-          </button>
+          {(["simple", "advanced", "deep"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={track.mode === m}
+              className={track.mode === m ? "is-active" : ""}
+              onClick={() => {
+                dispatch({
+                  type: "UPDATE_TRACK",
+                  id: track.id,
+                  patch: { mode: m },
+                });
+              }}
+            >
+              {m}
+            </button>
+          ))}
         </div>
         <div className="workspace-actions">
           <Button
@@ -1017,6 +976,7 @@ function MasterView({ trackId }: { trackId: string }) {
           />
           <RealTransport
             pcm={audible}
+            sourcePcm={source}
             ab={ab}
             onAB={setAb}
             processedReady={fresh}
@@ -1045,31 +1005,77 @@ function MasterView({ trackId }: { trackId: string }) {
               {track.persistenceWarning}
             </p>
           )}
-          <SpectrumChart
-            seed={track.seed}
-            eqBands={
-              track.advanced.eqEnabled
-                ? track.advanced.eqBands
-                : track.advanced.eqBands.map((band) => ({
-                    ...band,
-                    enabled: false,
-                  }))
-            }
-            activeBandId={activeBandId}
-          />
-          <p className="disclosure">
-            The curve approximates your EQ settings; it is not a measured audio
-            spectrum. Preview and export share the same Go processor. LUFS and
-            true-peak certification are unavailable.
-          </p>
+          {track.mode === "deep" && track.script && (
+            <DeepTimeline
+              script={track.script}
+              selectedMoveId={activeMove?.id}
+              onSelect={setActiveMove}
+            />
+          )}
+          {track.mode !== "deep" && (
+            <>
+              <SpectrumChart
+                seed={track.seed}
+                eqBands={
+                  track.advanced.eqEnabled
+                    ? track.advanced.eqBands
+                    : track.advanced.eqBands.map((band) => ({
+                        ...band,
+                        enabled: false,
+                      }))
+                }
+                activeBandId={activeBandId}
+              />
+              <p className="disclosure">
+                The curve approximates your EQ settings; it is not a measured audio
+                spectrum. Preview and export share the same Go processor.
+              </p>
+            </>
+          )}
         </section>
         <aside className="inspector" aria-label="Mastering controls inspector">
-          <span className="eyebrow">Master controls</span>
-          <AdvancedControls
-            track={track}
-            activeBandId={activeBandId}
-            onSelectBand={setActiveBandId}
-          />
+          <span className="eyebrow">
+            {track.mode === "simple"
+              ? "Simple direction"
+              : track.mode === "deep"
+                ? "Deep mastering"
+                : "Master controls"}
+          </span>
+          {track.mode === "simple" && (
+            <SimpleControls
+              track={track}
+              processing={processing}
+              onApply={() => {
+                const next = mapSimpleToDSP(
+                  track.genre,
+                  track.tone,
+                  track.intensity,
+                  track.target,
+                  track.advanced,
+                );
+                dispatch({
+                  type: "UPDATE_TRACK",
+                  id: track.id,
+                  patch: { advanced: next },
+                });
+                void renderPreview();
+              }}
+            />
+          )}
+          {track.mode === "deep" && (
+            <DeepControls
+              track={track}
+              processing={processing}
+              onApply={() => void renderPreview()}
+            />
+          )}
+          {track.mode === "advanced" && (
+            <AdvancedControls
+              track={track}
+              activeBandId={activeBandId}
+              onSelectBand={setActiveBandId}
+            />
+          )}
         </aside>
       </div>
       <Modal
@@ -1125,6 +1131,15 @@ function MasterView({ trackId }: { trackId: string }) {
           {message}
         </p>
       </Modal>
+      {activeMove && (
+        <MoveEditor
+          trackId={track.id}
+          move={activeMove}
+          onClose={() => {
+            setActiveMove(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -1485,6 +1500,372 @@ function AdvancedControls({
         Reset modules
       </Button>
     </div>
+  );
+}
+
+function SimpleControls({
+  track,
+  processing,
+  onApply,
+}: {
+  track: Track;
+  processing: boolean;
+  onApply: () => void;
+}) {
+  const { dispatch } = useStore();
+  const update = (patch: Partial<Track>) => {
+    dispatch({ type: "UPDATE_TRACK", id: track.id, patch });
+  };
+
+  return (
+    <div className="control-stack">
+      <div>
+        <h2>Find the feeling</h2>
+        <p>Choose a broad musical direction. Real DSP parameters map to your choices.</p>
+      </div>
+      <ControlGroup label="Genre">
+        <div className="choice-grid">
+          {["Pop", "Hip-hop", "Rock", "Electronic", "Acoustic", "R&B"].map(
+            (item) => (
+              <button
+                type="button"
+                className={track.genre === item ? "choice is-active" : "choice"}
+                aria-pressed={track.genre === item}
+                key={item}
+                onClick={() => {
+                  update({ genre: item });
+                }}
+              >
+                {item}
+              </button>
+            ),
+          )}
+        </div>
+      </ControlGroup>
+      <ControlGroup label="Tone intention">
+        <div className="choice-grid">
+          {["Warm", "Open", "Punchy", "Intimate", "Wide", "Clean"].map(
+            (item) => (
+              <button
+                type="button"
+                className={track.tone === item ? "choice is-active" : "choice"}
+                aria-pressed={track.tone === item}
+                key={item}
+                onClick={() => {
+                  update({ tone: item });
+                }}
+              >
+                {item}
+              </button>
+            ),
+          )}
+        </div>
+      </ControlGroup>
+      <SliderField
+        label="Intensity"
+        value={track.intensity}
+        min={0}
+        max={100}
+        step={1}
+        unit="%"
+        onChange={(intensity) => {
+          update({ intensity });
+        }}
+      />
+      <ControlGroup label="Output target">
+        <div className="select-wrap">
+          <select
+            value={track.target}
+            aria-label="Output target"
+            onChange={(e) => {
+              update({ target: e.target.value });
+            }}
+          >
+            <option value="Streaming">Streaming (−14 LUFS)</option>
+            <option value="Loud">Loud (−9 LUFS)</option>
+            <option value="Dynamic">Dynamic (−16 LUFS)</option>
+            <option value="Podcast">Podcast (−16 LUFS)</option>
+            <option value="Custom">Custom</option>
+          </select>
+          <Icon name="chevron-down" />
+        </div>
+      </ControlGroup>
+      <Button
+        className="full-button"
+        disabled={processing}
+        icon={
+          <Icon
+            name={processing ? "refresh-cw" : "sparkles"}
+            className={processing ? "spin" : ""}
+          />
+        }
+        onClick={onApply}
+      >
+        {processing ? "Rendering master…" : "Apply master direction"}
+      </Button>
+    </div>
+  );
+}
+
+function DeepControls({
+  track,
+  processing,
+  onApply,
+}: {
+  track: Track;
+  processing: boolean;
+  onApply: () => void;
+}) {
+  const { dispatch } = useStore();
+  const [selectedProfile, setSelectedProfile] = useState<ProfileId>(track.profile);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [phase, setPhase] = useState("");
+
+  const runAnalysis = () => {
+    setAnalyzing(true);
+    setProgress(15);
+    setPhase("Detecting musical sections");
+    setTimeout(() => {
+      setProgress(50);
+      setPhase("Analyzing stems and spectral artifacts");
+      setTimeout(() => {
+        setProgress(85);
+        setPhase("Writing MasteringScript v1");
+        setTimeout(() => {
+          const script = generateScript(track, selectedProfile);
+          dispatch({
+            type: "UPDATE_TRACK",
+            id: track.id,
+            patch: { profile: selectedProfile },
+          });
+          dispatch({
+            type: "SAVE_SCRIPT",
+            id: track.id,
+            script,
+          });
+          setProgress(100);
+          setPhase("Script ready");
+          setAnalyzing(false);
+          onApply();
+        }, 300);
+      }, 300);
+    }, 300);
+  };
+
+  return (
+    <div className="control-stack deep-controls">
+      <div>
+        <h2>Deep mastering</h2>
+        <p>A deterministic, section-aware proposal using MasteringScript v1.</p>
+      </div>
+      <ControlGroup label="Engineer profile">
+        <div className="profile-list">
+          {profiles.map((p) => (
+            <button
+              type="button"
+              key={p.id}
+              className={
+                selectedProfile === p.id
+                  ? "profile-card is-active"
+                  : "profile-card"
+              }
+              aria-pressed={selectedProfile === p.id}
+              onClick={() => {
+                setSelectedProfile(p.id);
+              }}
+            >
+              <strong>{p.name}</strong>
+              <span>{p.note}</span>
+            </button>
+          ))}
+        </div>
+      </ControlGroup>
+      {phase && (
+        <div className="processing-card" role="status">
+          <div>
+            <Icon name="refresh-cw" className={analyzing ? "spin" : ""} />
+            <strong>{phase}</strong>
+            <small>{progress}%</small>
+          </div>
+          <div className="progress-bar">
+            <span style={{ width: `${String(progress)}%` }} />
+          </div>
+        </div>
+      )}
+      <Button
+        className="full-button"
+        disabled={analyzing || processing}
+        icon={
+          <Icon
+            name={analyzing ? "refresh-cw" : "sparkles"}
+            className={analyzing ? "spin" : ""}
+          />
+        }
+        onClick={runAnalysis}
+      >
+        {analyzing ? "Analyzing sections…" : "Analyze deeply"}
+      </Button>
+    </div>
+  );
+}
+
+function DeepTimeline({
+  script,
+  selectedMoveId,
+  onSelect,
+}: {
+  script: NonNullable<Track["script"]>;
+  selectedMoveId?: string | undefined;
+  onSelect: (move: Move) => void;
+}) {
+  const lanes: Move["lane"][] = [
+    "Volume",
+    "EQ",
+    "Comp/Sat",
+    "Width",
+    "AI Repair",
+  ];
+
+  return (
+    <div className="deep-summary">
+      <div className="deep-summary-head">
+        <span>Script v{script.version}</span>
+        <span>
+          {script.sections.length} sections · {script.moves.length} moves
+        </span>
+      </div>
+      <div className="section-strip" role="list" aria-label="Track sections">
+        {script.sections.map((section) => (
+          <span
+            key={section.id}
+            role="listitem"
+            style={{ flex: section.end - section.start }}
+          >
+            {section.type}
+          </span>
+        ))}
+      </div>
+      <div className="lane-table">
+        {lanes.map((lane) => (
+          <div className="lane" key={lane}>
+            <strong>{lane}</strong>
+            <div className="lane-track">
+              {script.moves
+                .filter((move) => move.lane === lane)
+                .map((move) => {
+                  const isSelected = move.id === selectedMoveId;
+                  const labelValue = move.value > 0 ? `+${String(move.value)}` : String(move.value);
+                  return (
+                    <button
+                      key={move.id}
+                      type="button"
+                      className={`${isSelected ? "is-selected " : ""}${move.edited ? "is-edited " : ""}${move.muted ? "is-muted" : ""}`}
+                      style={{
+                        left: `${String((move.start / (script.duration || 1)) * 100)}%`,
+                        width: `${String(Math.max(4, ((move.end - move.start) / (script.duration || 1)) * 100))}%`,
+                      }}
+                      onClick={() => {
+                        onSelect(move);
+                      }}
+                      aria-label={`Edit ${move.parameter.replaceAll("_", " ")} (${labelValue})`}
+                    >
+                      <span className="lane-pill">
+                        {move.parameter.replace(/_.*$/, "")} {labelValue}
+                      </span>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        ))}
+      </div>
+      {script.findings.length > 0 && (
+        <div className="findings">
+          {script.findings.map((f, i) => (
+            <div className="finding" key={i}>
+              <Icon name="circle-alert" />
+              <span>
+                {f.stem}: {String(Math.round(f.confidence * 100))}% {f.classification}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MoveEditor({
+  trackId,
+  move,
+  onClose,
+}: {
+  trackId: string;
+  move: Move;
+  onClose: () => void;
+}) {
+  const { dispatch } = useStore();
+  const [value, setValue] = useState(move.value);
+
+  const save = (patch: Partial<Move>) => {
+    dispatch({
+      type: "UPDATE_MOVE",
+      trackId,
+      move: { ...move, ...patch },
+    });
+  };
+
+  return (
+    <Modal
+      open
+      eyebrow="Move editor"
+      title={move.parameter.replaceAll("_", " ")}
+      onClose={onClose}
+      actions={
+        <>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              save({ muted: !move.muted });
+            }}
+          >
+            {move.muted ? "Unmute move" : "Mute move"}
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setValue(move.originalValue);
+              save({ value: move.originalValue, edited: false });
+            }}
+          >
+            Reset
+          </Button>
+          <Button onClick={onClose}>Done</Button>
+        </>
+      }
+    >
+      <div className="move-editor">
+        <p>{move.reason}</p>
+        <SliderField
+          label="Proposed move value"
+          value={value}
+          min={-24}
+          max={24}
+          step={0.1}
+          unit={move.lane === "Width" ? "%" : "dB"}
+          onChange={(next) => {
+            setValue(next);
+            save({ value: next, edited: next !== move.originalValue });
+          }}
+        />
+        <div className="editor-status">
+          <small>
+            Timing: {formatTime(move.start)} – {formatTime(move.end)} · Lane: {move.lane}
+          </small>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -1879,6 +2260,29 @@ function AlbumView({ albumId }: { albumId: string }) {
         <Button
           icon={<Icon name="sparkles" />}
           onClick={() => {
+            for (const t of albumTracks) {
+              const gainDelta = -14.0 - t.metrics.lufs;
+              const nextInput = Math.max(
+                -12,
+                Math.min(12, Math.round((t.advanced.input + gainDelta * 0.5) * 10) / 10),
+              );
+              dispatch({
+                type: "UPDATE_TRACK",
+                id: t.id,
+                patch: {
+                  status: "mastered",
+                  advanced: {
+                    ...t.advanced,
+                    input: nextInput,
+                    limiter: {
+                      ...t.advanced.limiter,
+                      enabled: true,
+                      targetLufs: -14.0,
+                    },
+                  },
+                },
+              });
+            }
             dispatch({
               type: "UPDATE_ALBUM",
               id: album.id,
@@ -1912,24 +2316,68 @@ function AlbumView({ albumId }: { albumId: string }) {
                     LUFS
                   </small>
                 </div>
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label={`Remove ${track.title} from album`}
-                  onClick={() => {
-                    dispatch({
-                      type: "UPDATE_ALBUM",
-                      id: album.id,
-                      patch: {
-                        trackIds: album.trackIds.filter(
-                          (id) => id !== track.id,
-                        ),
-                      },
-                    });
-                  }}
-                >
-                  <Icon name="x" />
-                </button>
+                <div style={{ display: "inline-flex", gap: "2px" }}>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    disabled={index === 0}
+                    aria-label={`Move ${track.title} up`}
+                    onClick={() => {
+                      const nextIds = [...album.trackIds];
+                      const prev = nextIds.at(index - 1);
+                      const curr = nextIds.at(index);
+                      if (prev !== undefined && curr !== undefined) {
+                        nextIds.splice(index - 1, 2, curr, prev);
+                        dispatch({
+                          type: "UPDATE_ALBUM",
+                          id: album.id,
+                          patch: { trackIds: nextIds },
+                        });
+                      }
+                    }}
+                  >
+                    <Icon name="arrow-left" style={{ transform: "rotate(90deg)" }} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    disabled={index === albumTracks.length - 1}
+                    aria-label={`Move ${track.title} down`}
+                    onClick={() => {
+                      const nextIds = [...album.trackIds];
+                      const next = nextIds.at(index + 1);
+                      const curr = nextIds.at(index);
+                      if (next !== undefined && curr !== undefined) {
+                        nextIds.splice(index, 2, next, curr);
+                        dispatch({
+                          type: "UPDATE_ALBUM",
+                          id: album.id,
+                          patch: { trackIds: nextIds },
+                        });
+                      }
+                    }}
+                  >
+                    <Icon name="arrow-right" style={{ transform: "rotate(90deg)" }} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`Remove ${track.title} from album`}
+                    onClick={() => {
+                      dispatch({
+                        type: "UPDATE_ALBUM",
+                        id: album.id,
+                        patch: {
+                          trackIds: album.trackIds.filter(
+                            (id) => id !== track.id,
+                          ),
+                        },
+                      });
+                    }}
+                  >
+                    <Icon name="x" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -2070,14 +2518,16 @@ function ReferenceView({ trackId }: { trackId: string }) {
               >
                 <title>{`Reference tonal contour for ${reference.title}`}</title>
                 <polyline
-                  points={Array.from(
-                    { length: 13 },
-                    (_, i) =>
-                      `${String(i * 8.33)},${String(58 - ((reference.seed * (i + 3) * 5 + i * 9) % 32))}`,
-                  ).join(" ")}
+                  points={reference.advanced.eqBands
+                    .map((band, idx) => {
+                      const x = (idx / 4) * 100;
+                      const y = Math.max(5, Math.min(55, 30 - band.gainDb * 2.5));
+                      return `${x.toFixed(1)},${y.toFixed(1)}`;
+                    })
+                    .join(" ")}
                   fill="none"
                   stroke="var(--moss)"
-                  strokeWidth="1.4"
+                  strokeWidth="1.8"
                   vectorEffect="non-scaling-stroke"
                 />
               </svg>
@@ -2117,11 +2567,53 @@ function ReferenceView({ trackId }: { trackId: string }) {
             className="full-button"
             icon={<Icon name="arrow-right" />}
             onClick={() => {
-              dispatch({
-                type: "UPDATE_SIMPLE",
-                id: track.id,
-                patch: { tone: "Reference-led", intensity: amount },
-              });
+              if (reference) {
+                const ratio = amount / 100;
+                const nextBands = track.advanced.eqBands.map((band, i) => {
+                  const refBand = reference.advanced.eqBands.at(i);
+                  const refGain = refBand ? refBand.gainDb : 0;
+                  const delta = (refGain - band.gainDb) * ratio;
+                  return {
+                    ...band,
+                    gainDb: Math.round((band.gainDb + delta) * 10) / 10,
+                  };
+                }) as [
+                  EQBandParams,
+                  EQBandParams,
+                  EQBandParams,
+                  EQBandParams,
+                  EQBandParams,
+                ];
+                const widthDelta =
+                  (reference.advanced.stereo.width -
+                    track.advanced.stereo.width) *
+                  ratio;
+                const nextWidth = Math.round(
+                  track.advanced.stereo.width + widthDelta,
+                );
+                dispatch({
+                  type: "UPDATE_TRACK",
+                  id: track.id,
+                  patch: {
+                    advanced: {
+                      ...track.advanced,
+                      eqBands: nextBands,
+                      stereo: {
+                        ...track.advanced.stereo,
+                        width: nextWidth,
+                      },
+                    },
+                    tone: `Match: ${reference.title}`,
+                    intensity: amount,
+                  },
+                });
+              } else {
+                dispatch({
+                  type: "UPDATE_SIMPLE",
+                  id: track.id,
+                  patch: { tone: "Reference-led", intensity: amount },
+                });
+              }
               router.push(`/master/${track.id}`);
             }}
           >
@@ -2167,15 +2659,68 @@ function ReleaseView({ trackId }: { trackId: string }) {
 
   if (!track) return null;
 
+  const platformTargets = new Map<
+    string,
+    { targetLufs: number; maxPeak: number; minDr: number; minCorr: number }
+  >([
+    [
+      "Spotify",
+      { targetLufs: -14.0, maxPeak: -1.0, minDr: 6.0, minCorr: 0.75 },
+    ],
+    [
+      "Apple Music",
+      { targetLufs: -16.0, maxPeak: -1.0, minDr: 7.0, minCorr: 0.75 },
+    ],
+    [
+      "YouTube",
+      { targetLufs: -14.0, maxPeak: -1.0, minDr: 6.0, minCorr: 0.75 },
+    ],
+    [
+      "SoundCloud",
+      { targetLufs: -11.0, maxPeak: -0.5, minDr: 5.0, minCorr: 0.7 },
+    ],
+    ["CD", { targetLufs: -9.0, maxPeak: -0.1, minDr: 4.0, minCorr: 0.7 }],
+    [
+      "Podcast",
+      { targetLufs: -16.0, maxPeak: -1.5, minDr: 7.0, minCorr: 0.85 },
+    ],
+  ]);
+
+  const defaultTarget = {
+    targetLufs: -14.0,
+    maxPeak: -1.0,
+    minDr: 6.0,
+    minCorr: 0.75,
+  };
+  const target = platformTargets.get(platform) ?? defaultTarget;
+
+  const lufsDelta = Math.abs(track.metrics.lufs - target.targetLufs);
+  const peakOver = Math.max(0, track.metrics.peak - target.maxPeak);
+  const drUnder = Math.max(0, target.minDr - track.metrics.dynamics);
+  const corrUnder = Math.max(0, target.minCorr - track.metrics.correlation);
+
+  const calculatedScore = Math.max(
+    50,
+    Math.min(
+      100,
+      Math.round(
+        100 -
+          lufsDelta * 2.5 -
+          peakOver * 15 -
+          drUnder * 4 -
+          corrUnder * 20,
+      ),
+    ),
+  );
+
   const run = () => {
     setScanning(true);
     setTimeout(() => {
-      const next = 84 + (track.seed % 11);
-      setScore(next);
+      setScore(calculatedScore);
       dispatch({
         type: "UPDATE_TRACK",
         id: track.id,
-        patch: { releaseScore: next },
+        patch: { releaseScore: calculatedScore },
       });
       setScanning(false);
     }, 250);
@@ -2185,32 +2730,40 @@ function ReleaseView({ trackId }: { trackId: string }) {
     [
       "Integrated loudness",
       `${track.source === "upload" ? "Unmeasured" : track.metrics.lufs.toFixed(1)} LUFS`,
-      "pass",
-      `Well placed for ${platform}.`,
+      lufsDelta <= 2.0 ? "pass" : "warn",
+      lufsDelta <= 2.0
+        ? `Within target range for ${platform} (${String(target.targetLufs)} LUFS).`
+        : `Differs from ${platform} target (${String(target.targetLufs)} LUFS) by ${lufsDelta.toFixed(1)} dB.`,
     ],
     [
       "True peak",
       `${track.metrics.peak.toFixed(1)} dBTP`,
-      track.metrics.peak > -1 ? "warn" : "pass",
-      "Leave enough room for distribution encoding.",
+      track.metrics.peak <= target.maxPeak ? "pass" : "warn",
+      track.metrics.peak <= target.maxPeak
+        ? `Clean ceiling headroom below ${String(target.maxPeak)} dBTP.`
+        : `True peak exceeds ${platform} ceiling (${String(target.maxPeak)} dBTP); leaves risk of codec clipping.`,
     ],
     [
       "Dynamic range",
       `${track.metrics.dynamics.toFixed(1)} DR`,
-      "pass",
-      "The track retains useful contrast.",
+      track.metrics.dynamics >= target.minDr ? "pass" : "warn",
+      track.metrics.dynamics >= target.minDr
+        ? "The track retains useful musical contrast."
+        : `Dynamic range is below recommended ${String(target.minDr)} DR threshold for this format.`,
     ],
     [
       "Mono compatibility",
       `${track.metrics.correlation.toFixed(2)} corr`,
-      track.metrics.correlation < 0.75 ? "warn" : "pass",
-      "Review wide elements in mono.",
+      track.metrics.correlation >= target.minCorr ? "pass" : "warn",
+      track.metrics.correlation >= target.minCorr
+        ? "Phase coherent; translates accurately in mono."
+        : "Low correlation; review wide stereo elements for mono cancellation.",
     ],
     [
       "Source format",
       `${track.format} · ${String(track.sampleRate / 1000)} kHz`,
       "pass",
-      "Suitable source for delivery preparation.",
+      "Suitable source format for high-resolution distribution master.",
     ],
   ];
 

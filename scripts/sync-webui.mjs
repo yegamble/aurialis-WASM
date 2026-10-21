@@ -16,9 +16,9 @@ fs.cpSync(outDir, targetDir, { recursive: true });
 
 const publicWasmDir = path.join(rootDir, "public", "wasm");
 const embeddedWasmDir = path.join(targetDir, "wasm");
-if (fs.existsSync(publicWasmDir)) {
+if (fs.existsSync(publicWasmDir) && !fs.existsSync(embeddedWasmDir)) {
   fs.mkdirSync(embeddedWasmDir, { recursive: true });
-  fs.cpSync(publicWasmDir, embeddedWasmDir, { recursive: true });
+  fs.cpSync(publicWasmDir, embeddedWasmDir, { recursive: true, force: true });
 }
 
 fs.writeFileSync(path.join(targetDir, ".gitkeep"), "");

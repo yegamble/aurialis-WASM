@@ -1,6 +1,10 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { previewWAV, type StereoPCM } from "@/lib/browser-engine";
+import {
+  computeRmsValue,
+  previewWAV,
+  type StereoPCM,
+} from "@/lib/browser-engine";
 import { Icon } from "./Icon";
 import { formatTime } from "./Primitives";
 export function RealTransport({
@@ -10,6 +14,7 @@ export function RealTransport({
   processedReady,
   playheadRatio,
   onSeekRatio,
+  sourcePcm,
 }: {
   pcm: StereoPCM | null;
   ab: "A" | "B";
@@ -17,14 +22,34 @@ export function RealTransport({
   processedReady: boolean;
   playheadRatio: number;
   onSeekRatio: (value: number) => void;
+  sourcePcm?: StereoPCM | null;
 }) {
   const ref = useRef<HTMLAudioElement>(null),
     previousRatio = useRef(playheadRatio);
   const [src, setSrc] = useState(""),
     [playing, setPlaying] = useState(false),
     [error, setError] = useState(""),
-    [volume, setVolume] = useState(0.8);
+    [volume, setVolume] = useState(0.8),
+    [matchLoudness, setMatchLoudness] = useState(false);
   const duration = pcm ? pcm.left.length / pcm.sampleRate : 0;
+
+  const gainTrim =
+    matchLoudness && ab === "B" && sourcePcm && pcm
+      ? (() => {
+          const rmsA = computeRmsValue(sourcePcm);
+          const rmsB = computeRmsValue(pcm);
+          return rmsB > 0.0001 && rmsA > 0.0001
+            ? Math.min(2.0, Math.max(0.2, rmsA / rmsB))
+            : 1.0;
+        })()
+      : 1.0;
+  const effectiveVolume = Math.min(1.0, Math.max(0, volume * gainTrim));
+
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.volume = effectiveVolume;
+    }
+  }, [effectiveVolume]);
   useEffect(() => {
     if (!pcm) {
       setSrc("");
@@ -112,6 +137,19 @@ export function RealTransport({
             }}
           >
             B <span>Processed</span>
+          </button>
+          <button
+            type="button"
+            disabled={!processedReady}
+            className={matchLoudness ? "is-active" : ""}
+            aria-pressed={matchLoudness}
+            title="Match perceived loudness between A and B"
+            onClick={() => {
+              setMatchLoudness(!matchLoudness);
+            }}
+            style={{ fontSize: "11px", padding: "0 8px" }}
+          >
+            Match level
           </button>
         </div>
         <button

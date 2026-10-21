@@ -14,6 +14,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.delay = config.delayBlocks;
     this.generation = Atomics.load(this.header, GENERATION);
     this.sequence = 0;
+    this.active = false;
     this.original = false;
     this.mix = 0;
     this.volume = 1;
@@ -35,6 +36,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         this.inputPort.start();
       } else if (message.type === "reset") {
         this.generation = message.generation;
+        this.active = true;
         this.sequence = 0;
         this.endTime = Infinity;
         this.missing = 0;
@@ -52,7 +54,9 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     const output = outputs[0];
     if (!output || output.length < 2) return true;
     const outL = output[0], outR = output[1];
-    if (outL.length !== QUANTUM || this.failed || Atomics.load(this.header, ERROR)) {
+    // Connecting a graph is not a playback deadline: the controller can still
+    // be allocating/copying its source. Only its explicit reset starts a stream.
+    if (!this.active || outL.length !== QUANTUM || this.failed || Atomics.load(this.header, ERROR)) {
       outL.fill(0); outR.fill(0); return true;
     }
     const input = inputs[0], inL = input?.[0], inR = input?.[1] || inL;

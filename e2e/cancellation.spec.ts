@@ -2,6 +2,8 @@ import { expect, test, type Page, type Request } from "@playwright/test";
 import { fixture } from "./audio-fixture";
 import { uploadProject } from "./workflow-fixture";
 
+// cspell:words requestfailed
+
 // Keep the response pending so cancellation cannot accidentally pass because
 // a tiny fixture finished processing before the navigation or close action.
 async function holdRender(page: Page) {

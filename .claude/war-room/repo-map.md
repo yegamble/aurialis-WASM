@@ -1,4 +1,5 @@
 # Aurialis-WASM Repo Map — Binding Context for Every War-Room Seat
+<!-- cspell:words buildmode trimpath -->
 
 Read this once before forming any opinion. Then read `AGENTS.md`, `.claude/review-loop.md`, `.claude/war-room/finding-format.md`, `.claude/war-room/protocol.md`, and the Round 0 evidence pack provided by the chair.
 
@@ -10,14 +11,14 @@ Read this once before forming any opinion. Then read `AGENTS.md`, `.claude/revie
 |---|---|
 | `cmd/aurialis/` | Single compiled Go entrypoint: CLI flags, HTTP/API server, `//go:embed` static/standalone Next.js & `.wasm` asset serving, COOP/COEP middleware, graceful shutdown |
 | `internal/server/` | HTTP routes, multipart upload streaming, magic-byte validation, rate/size caps (`413`/`400`), CORS, SSE/polling job progress |
-| `internal/jobs/` | Concurrent job scheduler, bounded worker pools, semaphores, context cancellation, backpressure, zero-copy buffer pooling, deterministic cleanup |
-| `internal/audio/` | Go native audio decoding/encoding (WAV 16/24/32-bit, TPDF dither, AIFF, MP3, FLAC, OGG), LUFS/True-Peak/DR/Correlation metering, spectral & section analysis |
-| `internal/mastering/` | In-house AI/LLM & deterministic `MasteringScript` v1 engine (`modern_pop_polish`, `hip_hop_low_end`, `indie_warmth`, `metal_wall`, `pop_punk_air`), stem separation (`2–6` stems), AI-artifact detection (`AI Repair` lane), Reference Match, Album Consistency batch mastering, Release Check |
+| `internal/jobs/` | Concurrent job scheduler, bounded worker pools, semaphores, context cancellation, back pressure, zero-copy buffer pooling, deterministic cleanup |
+| `internal/audio/` | Bounded mono/stereo PCM/float WAV and 16-bit PCM AIFF reconstruction/encoding; unsupported compressed formats are rejected. Native diagnostic loudness/peak/crest/correlation meters are not hardware or platform certification |
+| `internal/mastering/` | Experimental deterministic `MasteringScript` analysis/render helpers and frequency decomposition; these do not provide trained AI, instrument separation or enabled automation. Product workflows expose static profiles and honest unavailable states |
 | `wasm/dsp/` | Go/WASM DSP modules (`GOOS=js GOARCH=wasm` and `GOOS=wasip1 GOARCH=wasm`): biquad parametric EQ, compressor, limiter, saturation, stereo width, real-time block processor for `AudioWorklet` + `SharedArrayBuffer` |
 | `src/app/` | Next.js 16 App Router pages/routes faithfully matching `docs/design/figma-make-reference/src/App.tsx` (`/`, `/library`, `/master/[trackId]`, `/split/[trackId]`, `/albums`, `/albums/[albumId]`, `/reference/[trackId]`, `/release-check/[trackId]`, `/tools`) |
 | `src/components/` | Reusable Tailwind CSS v4 + custom inline SVG primitives (`layout/`, `audio/`, `controls/`, `shared/`) — zero external icon libraries |
-| `src/lib/` | AudioWorklet + WASM bridge, IndexedDB persistence (`projects`, `audio` Blobs, `albums`, `stemProjects`), state store, deterministic simulation fallback |
-| `public/worklets/` & `public/wasm/` | AudioWorklet processors and compiled `.wasm` DSP binaries |
+| `src/lib/` | Direct Go WASI AudioWorklet controller/numeric controls, legacy offline WASM bridge, IndexedDB audio persistence and canonical project/settings store; production simulation fallback removed |
+| `public/worklets/` & `public/wasm/` | Direct Go WASI AudioWorklet, restricted initialization host, live reactor and legacy offline `.wasm` DSP assets |
 | `tests/postman/` | Postman collections (`aurialis-backend.postman_collection.json`), Newman runner (`run-newman.sh`), and deterministic audio fixture generator (`TS-001` through `TS-013+`) |
 | `e2e/` | Playwright E2E, mobile-first responsive (`320px`, `375px`, `768px`, `1024px`, `1440px`), and axe WCAG 2.2 AA accessibility suites |
 | `docs/` | `architecture.md`, `api.md`, `tasks.md`, and canonical Figma design artifacts in `docs/design/` (`aurialis-redesign.md`, `aurialis-redesign-d7a69d24.md`, and `figma-make-reference/src/{index.css,App.tsx,store.tsx,types.ts,db.ts}`) |
@@ -27,11 +28,13 @@ Read this once before forming any opinion. Then read `AGENTS.md`, `.claude/revie
 
 ## 2. Non-Negotiable Invariants
 
+These are product requirements, not claims that every workflow is enabled or certified. Current implemented scope and evidence are in `docs/tasks.md`.
+
 1. **Single Self-Contained Go + Next.js + WASM Binary**:
    - Production compiles into a single Go binary (`aurialis`) that serves the Next.js UI, `.wasm` modules, AudioWorklets, and JSON/multipart APIs in-house without requiring an external Python FastAPI container at runtime.
    - All responses serving the app shell and worklets must include `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` so `SharedArrayBuffer` and WASM `AudioWorklet` pipelines work in Chrome, Firefox, and Safari.
 2. **Latest Node, Next.js 16, and `pnpm` Only**:
-   - Node `26.12.0` (`>=24.0.0`), `pnpm@10.33.0`, Next.js `^16.4.2`, React 19, TypeScript 5.8+, Go `1.26.2`.
+   - Node `26.12.0` (`>=24.0.0`), `pnpm@10.33.0`, Next.js `^16.4.2`, React 19, TypeScript 5.8+, Go `1.26.10`.
    - Any use of `npm` or `yarn`, or committing `package-lock.json` / `yarn.lock`, is a **BLOCKER**.
 3. **Zero External Icon Libraries & Low Bundle Weight**:
    - All styling uses **Tailwind CSS v4**.
@@ -62,10 +65,10 @@ Read this once before forming any opinion. Then read `AGENTS.md`, `.claude/revie
 |---|---|
 | **Toolchain Preflight** | `export PATH="$HOME/.nvm/versions/node/v26.12.0/bin:$PATH" && node -v && pnpm -v && go version` |
 | **Go Backend, Static Quality & Concurrency** | `"$(go env GOROOT)/bin/gofmt" -l cmd internal wasm` (empty) · `go mod verify` · `go vet ./...` · `golangci-lint run ./...` (runs `staticcheck -checks all`, `revive`, `gosec`, `nakedret`, `misspell`, `dupword`, `gocritic`, `errorlint`, `bodyclose`, `noctx`, `exhaustive` via `.golangci.yml`; use `--fix` locally only, never in CI) · `identypo ./...` · `govulncheck ./...` · `go test -race -count=1 -timeout 10m ./...` |
-| **WASM Compilation & Audio Transformation Verification** | `GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp` · `go test -race -v ./wasm/... ./internal/audio/...` (proving EQ FFT magnitude deltas, Compressor transfer/ballistics, Saturation $H_2/H_3$ harmonics & ADAA anti-aliasing, Mid/Side & `<120 Hz` mono-bass correlation, 4× oversampled True-Peak ceiling, LUFS targets, and `MasteringScript` section envelopes change the audio in the exact physically expected way) |
+| **WASM Compilation & Audio Transformation Verification** | `GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp` · `GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -trimpath -o public/wasm/aurialis-realtime.wasm ./wasm/dsp` · `go test -race -v ./wasm/... ./internal/audio/...` (scoped signal transformation fixtures; hardware, anti-aliasing and true-peak certification remain separate open requirements) |
 | **Frontend Strict Quality & Zero-Icon-Lib** | `pnpm exec tsc --noEmit` (`staticcheck` equivalent) · `pnpm run lint` (`eslint --max-warnings=0` with `strictTypeChecked`, `@next/next`, `security`, `sonarjs`, `unicorn`, `jsx-a11y`, and `no-restricted-imports` banning `lucide-react`/`@heroicons`/`react-icons`) · `pnpm exec knip` (dead code/unused exports) · `pnpm exec cspell lint "**/*.{ts,tsx,go,md}"` (`identypo` equivalent) · `pnpm test` · `pnpm run build` |
-| **Single Binary Build** | `pnpm run build && go build -trimpath -o aurialis ./cmd/aurialis` |
-| **API (Postman/Newman + cURL)** | `MAX_UPLOAD_BYTES_OVERRIDE=209715200 pnpm run test:backend:postman` + `curl -i` COOP/COEP & edge-case probes |
+| **Single Binary Build** | `pnpm run build:binary` |
+| **API (Postman/Newman + cURL)** | `pnpm run test:backend:postman` + `curl -i` COOP/COEP & edge-case probes |
 | **Responsive & A11y E2E** | `pnpm exec playwright test` (verifying `320px`, `375px`, `768px`, `1024px`, `1440px` viewports + axe WCAG 2.2 AA) |
 | **CI/CD Workflows** | `.github/workflows/ci.yml` all jobs green (`repo-and-agent-hygiene`, `go-wasm`, `frontend-quality`, `backend-newman`, `playwright-e2e`, `ci-passed`); verify with `gh run list --branch "$(git branch --show-current)" --limit 5` and `gh run view <id> --log-failed` |
 

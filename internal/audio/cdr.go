@@ -124,8 +124,9 @@ func ScanPolyglotPayloads(data []byte) error {
 	case "FORM":
 		containerEnd = uint64(binary.BigEndian.Uint32(data[4:8])) + 8
 	}
-	if containerEnd >= 12 && containerEnd < uint64(len(data)) {
-		if err := scanNonAudioPayloads(data[int(containerEnd):]); err != nil {
+	if containerEnd >= 12 && containerEnd < uint64(len(data)) && containerEnd <= uint64(math.MaxInt) {
+		offset := int(containerEnd)
+		if err := scanNonAudioPayloads(data[offset:]); err != nil {
 			return err
 		}
 	}

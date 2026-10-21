@@ -25,8 +25,8 @@ for (const fixture of fixtures) {
   for (let start = 0; start < left.length; start += 128) {
     assert.equal(globalThis.aurialisDSPProcessBlock(left.subarray(start, start + 128), right.subarray(start, start + 128), outL, outR), 128);
     for (let offset = 0; offset < 128; offset++) {
-      const errorL = Math.abs(outL[offset] - fixture.outputLeft[start + offset]);
-      const errorR = Math.abs(outR[offset] - fixture.outputRight[start + offset]);
+      const errorL = Math.abs(outL[offset] - Math.fround(fixture.outputLeft[start + offset]));
+      const errorR = Math.abs(outR[offset] - Math.fround(fixture.outputRight[start + offset]));
       maximumError = Math.max(maximumError, errorL, errorR);
       assert.ok(errorL <= 2e-6 && errorR <= 2e-6, `native/WASM mismatch at ${fixture.rate} Hz frame ${start + offset}`);
     }

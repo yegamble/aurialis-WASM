@@ -31,6 +31,18 @@ func MeasureStereo(left, right []float32, sampleRate float64) Metrics {
 	return m
 }
 
+// MeasureStereoContext computes the same metrics as MeasureStereo with
+// cancellation checks every 4096 frames. The context must not be nil.
+func MeasureStereoContext(ctx context.Context, left, right []float32, sampleRate float64) (Metrics, error) {
+	if ctx == nil {
+		return Metrics{}, errors.New("measurement context must not be nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return Metrics{}, err
+	}
+	return measureStereoContext(ctx, left, right, sampleRate)
+}
+
 func measureStereoContext(ctx context.Context, left, right []float32, sampleRate float64) (Metrics, error) {
 	n := len(left)
 	if len(right) < n {

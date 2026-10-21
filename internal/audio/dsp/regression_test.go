@@ -228,3 +228,57 @@ func TestWholeBufferAndPreviewBlocksMatchWithLimiter(t *testing.T) {
 		}
 	}
 }
+
+func TestWarmAntiderivativeRemainsConsistentAboveFullScale(t *testing.T) {
+	for _, x := range []float64{-20, -2, -1.49, -0.2, 0, 0.2, 1.49, 2, 20} {
+		const delta = 1e-5
+		transfer, _ := adaaWarmWave(x, 3)
+		_, above := adaaWarmWave(x+delta, 3)
+		_, below := adaaWarmWave(x-delta, 3)
+		numericalDerivative := (above - below) / (2 * delta)
+		if math.Abs(numericalDerivative-transfer) > 1e-8 {
+			t.Fatalf("F1 derivative %g != transfer %g at %g", numericalDerivative, transfer, x)
+		}
+	}
+}
+
+func TestShelfQChangesOnlyTheRequestedBand(t *testing.T) {
+	for _, kind := range []FilterType{FilterLowShelf, FilterHighShelf} {
+		p := DefaultParams()
+		p.Bands[2] = BandParams{FreqHz: 1000, GainDB: 6, Q: 0.5, Type: kind, Enabled: true}
+		engine := NewEngine(48000)
+		engine.SetParams(p)
+		before := engine.Params()
+		first := engine.eqCoeffs[2]
+		band := p.Bands[2]
+		band.Q = 2
+		engine.SetBand(2, band)
+		if first == engine.eqCoeffs[2] {
+			t.Fatal("shelf Q control has no effect")
+		}
+		after := engine.Params()
+		after.Bands[2] = before.Bands[2]
+		if before != after {
+			t.Fatal("shelf Q control changed unrelated parameters")
+		}
+	}
+}
+
+func TestLimiterBoundsAfterLevelMatchingAndDither(t *testing.T) {
+	left, right := generateToneStereo(48000, 1000, 1.2, 0.2, 0.2)
+	for _, bits := range []int{0, 16, 24} {
+		p := DefaultParams()
+		p.InputGainDB = -12
+		p.LoudnessMatchAB = true
+		p.Limiter.Enabled = true
+		p.Limiter.CeilingDBTP = -6
+		p.DitherBits = bits
+		outL, outR, _ := RenderBuffer(left, right, 48000, p)
+		ceiling := math.Pow(10, -6.0/20)
+		for i := range outL {
+			if math.Abs(float64(outL[i])) > ceiling || math.Abs(float64(outR[i])) > ceiling {
+				t.Fatalf("levelmatch/dither exceeded ceiling bits=%d frame=%d", bits, i)
+			}
+		}
+	}
+}

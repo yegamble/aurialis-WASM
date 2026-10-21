@@ -80,7 +80,7 @@ func (b *Bridge) ProcessBlock(inL, inR, outL, outR []float32) {
 	b.engine.ProcessBlock(inL, inR, outL, outR)
 }
 
-// Measure computes diagnostic weighted loudness, cubic inter-sample peak,
+// Measure computes gated K-weighted loudness, FIR inter-sample peak,
 // crest factor, and stereo correlation estimates.
 func (b *Bridge) Measure(left, right []float32) dsp.Metrics {
 	b.mu.Lock()

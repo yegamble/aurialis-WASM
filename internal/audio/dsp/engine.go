@@ -18,29 +18,30 @@ const (
 	FilterHighShelf FilterType = "high_shelf"
 )
 
-// SatCharacter identifies the analog harmonic saturation circuit model.
+// SatCharacter identifies a heuristic harmonic transfer shape.
 type SatCharacter string
 
 const (
-	// SatWarm models an asymmetric triode vacuum tube stage rich in even-order H2 harmonics.
+	// SatWarm selects an asymmetric polynomial with even-order harmonics.
 	SatWarm SatCharacter = "Warm"
-	// SatThick models symmetric mastering tape hysteresis rich in odd-order H3 harmonics.
+	// SatThick selects symmetric tanh saturation with odd-order harmonics.
 	SatThick SatCharacter = "Thick"
-	// SatCrisp models an iron output transformer with subtle high-frequency harmonic sheen.
+	// SatCrisp selects frequency-weighted tanh saturation.
 	SatCrisp SatCharacter = "Crisp"
 )
 
-// CompTopology selects the analog compressor detector and release ballistics.
+// CompTopology retains legacy preset labels. All values currently use the
+// same peak detector and gain-reduction ballistics; hardware models are not implemented.
 type CompTopology string
 
 const (
-	// CompOptical models a program-dependent two-stage optical attenuator (LA-2A style).
+	// CompOptical is the legacy optical preset label.
 	CompOptical CompTopology = "optical"
-	// CompVariableMu models a vari-mu tube gain stage (Fairchild/Manley style).
+	// CompVariableMu is the legacy variable-mu preset label.
 	CompVariableMu CompTopology = "vari_mu"
-	// CompFET models a fast field-effect transistor limiter/compressor (1176 style).
+	// CompFET is the legacy FET preset label.
 	CompFET CompTopology = "fet"
-	// CompVCA models a precision bus VCA compressor (SSL/Shadow Hills style).
+	// CompVCA is the legacy VCA preset label.
 	CompVCA CompTopology = "vca"
 )
 
@@ -76,7 +77,7 @@ type SaturationParams struct {
 	Character SatCharacter `json:"character"`
 }
 
-// StereoParams configures Mid/Side width and the Linkwitz-Riley mono-bass crossover.
+// StereoParams configures mid/side width and cascaded side high-pass bass narrowing.
 type StereoParams struct {
 	Enabled     bool    `json:"enabled"`
 	WidthPct    float64 `json:"widthPct"`
@@ -94,7 +95,8 @@ type LimiterParams struct {
 	TruePeak    bool    `json:"truePeak"`
 }
 
-// RepairParams configures spectral sibilance control, transient shaping, and de-clipping.
+// RepairParams configures spectral sibilance control, transient shaping, and
+// soft peak conditioning. DeClip softens peaks; it cannot reconstruct clipped audio.
 type RepairParams struct {
 	Enabled     bool    `json:"enabled"`
 	DeEssDB     float64 `json:"deEssDb"`
@@ -377,10 +379,10 @@ func computeBandCoeffs(sampleRate float64, b BandParams) svfCoeffs {
 	amp := math.Pow(10.0, b.GainDB/40.0)
 	switch b.Type {
 	case FilterLowShelf:
-		// Calibrated TPT shelf slope (k = 1.22) so gain at 60 Hz is within 0.35 dB of target and skirt at 250 Hz is < 0.05 dB.
+		// Legacy corner scaling with Q-controlled shelf damping.
 		fc := clampFreq(sampleRate, b.FreqHz*1.85)
 		g := math.Tan(math.Pi*fc/sampleRate) / math.Sqrt(amp)
-		k := 1.22
+		k := 1.22 * 0.707 / q
 		a1 := 1.0 / (1.0 + g*(g+k))
 		a2 := g * a1
 		a3 := g * a2
@@ -394,10 +396,10 @@ func computeBandCoeffs(sampleRate float64, b BandParams) svfCoeffs {
 			active: true,
 		}
 	case FilterHighShelf:
-		// Calibrated TPT shelf slope (k = 1.23) so gain at 12 kHz is within 0.30 dB of target and skirt at 4 kHz is < 0.05 dB.
+		// Legacy corner scaling with Q-controlled shelf damping.
 		fc := clampFreq(sampleRate, b.FreqHz/1.54)
 		g := math.Tan(math.Pi*fc/sampleRate) * math.Sqrt(amp)
-		k := 1.23
+		k := 1.23 * 0.707 / q
 		a1 := 1.0 / (1.0 + g*(g+k))
 		a2 := g * a1
 		a3 := g * a2
@@ -415,7 +417,7 @@ func computeBandCoeffs(sampleRate float64, b BandParams) svfCoeffs {
 	default:
 		fc := clampFreq(sampleRate, b.FreqHz)
 		g := math.Tan(math.Pi * fc / sampleRate)
-		// Proportional-Q (Manley Massive Passive style) narrows skirts as gain increases.
+		// Gain-dependent Q narrows skirts as gain increases.
 		qEff := q * (1.0 + 0.25*math.Abs(b.GainDB))
 		k := 1.0 / (qEff * amp)
 		a1 := 1.0 / (1.0 + g*(g+k))
@@ -479,8 +481,8 @@ func processSVF(c svfCoeffs, s *svfState, v0 float64) float64 {
 	v3 := v0 - s.ic2eq
 	v1 := c.a1*s.ic1eq + c.a2*v3
 	v2 := s.ic2eq + c.a2*s.ic1eq + c.a3*v3
-	s.ic1eq = 2.0*v1 - s.ic1eq
-	s.ic2eq = 2.0*v2 - s.ic2eq
+	s.ic1eq = sanitizeSample(2.0*v1 - s.ic1eq)
+	s.ic2eq = sanitizeSample(2.0*v2 - s.ic2eq)
 	return c.m0*v0 + c.m1*v1 + c.m2*v2
 }
 
@@ -488,8 +490,8 @@ func processSVFLowHigh(c svfCoeffs, s *svfState, v0 float64) (float64, float64) 
 	v3 := v0 - s.ic2eq
 	v1 := c.a1*s.ic1eq + c.a2*v3
 	v2 := s.ic2eq + c.a2*s.ic1eq + c.a3*v3
-	s.ic1eq = 2.0*v1 - s.ic1eq
-	s.ic2eq = 2.0*v2 - s.ic2eq
+	s.ic1eq = sanitizeSample(2.0*v1 - s.ic1eq)
+	s.ic2eq = sanitizeSample(2.0*v2 - s.ic2eq)
 	low := v2
 	high := v0 - c.m1*v1 - v2
 	return low, high
@@ -623,7 +625,7 @@ func (e *Engine) ProcessBlock(inL, inR, outL, outR []float32) {
 		l := rawL * inGain
 		r := rawR * inGain
 
-		// Stage 1: AI Repair (De-Clip, De-Ess, Transient Shaper)
+		// Stage 1: Deterministic soft clipping, de-essing, and transient shaping
 		if repairActive {
 			l, r = e.processRepairSample(l, r)
 		}
@@ -651,7 +653,7 @@ func (e *Engine) ProcessBlock(inL, inR, outL, outR []float32) {
 			l, r = e.processSaturationSample(l, r)
 		}
 
-		// Stage 5: Mid/Side Stereo Width + Linkwitz-Riley 4th-order Mono-Bass Crossover
+		// Stage 5: Mid/Side Stereo Width + cascaded Side high-pass bass narrowing
 		if stereoActive {
 			l, r = e.processStereoSample(l, r)
 		}
@@ -696,6 +698,24 @@ func (e *Engine) ProcessBlock(inL, inR, outL, outR []float32) {
 			r = e.applyTPDFDither(r, e.params.DitherBits)
 		}
 
+		// Monitor level matching and dither occur after the main limiter. Reapply
+		// a linked sample ceiling to mastered B so those stages cannot exceed it.
+		// Original A and explicit bypass retain the unprocessed source.
+		if limActive && !e.params.ABOriginal {
+			ceiling64 := dbToLin(e.params.Limiter.CeilingDBTP)
+			ceiling32 := float32(ceiling64)
+			if float64(ceiling32) > ceiling64 {
+				ceiling32 = math.Nextafter32(ceiling32, 0)
+			}
+			ceiling := float64(ceiling32)
+			peak := math.Max(math.Abs(l), math.Abs(r))
+			if peak > ceiling {
+				multiplier := ceiling / peak
+				l *= multiplier
+				r *= multiplier
+				e.lastLimGRDB -= linToDB(multiplier)
+			}
+		}
 		outL[i] = finiteFloat32(l)
 		outR[i] = finiteFloat32(r)
 	}
@@ -788,7 +808,7 @@ func (e *Engine) processCompressorSample(l, r float64) (float64, float64) {
 		}
 	}
 
-	attMS := math.Max(0.2, c.AttackMS)
+	attMS := math.Max(0.02, c.AttackMS)
 	relMS := math.Max(5.0, c.ReleaseMS)
 	// Attack/release specify 91.8% gain-reduction settling (1-exp(-2.5)).
 	// Detector peak decay adds a separate 25 ms release response.
@@ -827,13 +847,16 @@ func adaaThickWave(x, drive float64) (float64, float64) {
 }
 
 func adaaWarmWave(x, drive float64) (float64, float64) {
-	// Single-ended Class-A triode transfer function: dominant quadratic H2 (x^2) with mild cubic H3
+	// Heuristic asymmetric polynomial: quadratic H2 with mild cubic H3.
 	g := 0.35 + 0.15*drive
 	xClamped := math.Max(-1.5, math.Min(1.5, x))
 	x2 := xClamped * xClamped
 	x3 := x2 * xClamped
 	f0 := xClamped + 0.42*g*x2 - 0.04*g*x3
 	f1 := 0.5*x2 + (0.42*g/3.0)*x3 - 0.01*g*x2*x2
+	// Outside the polynomial interval f0 is constant, so its antiderivative
+	// continues linearly. Clamping F1 would incorrectly halve changing hot inputs.
+	f1 += f0 * (x - xClamped)
 	return f0, f1
 }
 
@@ -910,7 +933,8 @@ func (e *Engine) processSaturationSample(l, r float64) (float64, float64) {
 			subOutputs[s] = y
 		}
 
-		// Downsample 2x -> 1x via half-band average and blend with dry signal
+		// Downsample 2x -> 1x via two-point averaging and blend with dry signal.
+		// This is not a designed half-band anti-alias filter.
 		wet := 0.5 * (subOutputs[0] + subOutputs[1])
 		mixed := (1.0-amt)*xCurr + amt*wet
 
@@ -933,7 +957,8 @@ func (e *Engine) processStereoSample(l, r float64) (float64, float64) {
 		return mid + side, mid - side
 	}
 
-	// 8th-order Linkwitz-Riley (4 cascaded 2nd-order Butterworth SVFs) high-pass on Side channel
+	// Four cascaded second-order Butterworth high-passes on the Side channel.
+	// This heuristic is not a textbook Linkwitz-Riley crossover.
 	_, s1 := processSVFLowHigh(e.xoverCoeffs, &e.xoverSide[0], side)
 	_, s2 := processSVFLowHigh(e.xoverCoeffs, &e.xoverSide[1], s1)
 	_, s3 := processSVFLowHigh(e.xoverCoeffs, &e.xoverSide[2], s2)

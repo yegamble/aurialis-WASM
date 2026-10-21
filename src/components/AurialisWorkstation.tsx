@@ -4,6 +4,9 @@ import Link from "next/link";
 import {
   engineParams,
   measuredLevels,
+  measureAudio,
+  trackMetrics,
+  normalizeSimpleAudio,
   processPreview,
   readCanonicalWAV,
   serverRender,
@@ -22,18 +25,18 @@ import {
 import {
   createDefaultAdvancedParams,
   mapSimpleToDSP,
+  mapProfileToDSP,
 } from "@/lib/audio-dsp";
 import { deleteAudio, saveAudio, getAudio } from "@/lib/db";
-import { generateScript, profiles, useStore } from "@/lib/store";
+import { profiles, useStore } from "@/lib/store";
 import type {
   Album,
+  AdvancedParams,
   EQBandId,
   EQBandParams,
   ExportBitDepth,
-  Move,
   ProfileId,
   SaturationCharacter,
-  Stem,
   Track,
 } from "@/lib/types";
 import { Icon, type IconName } from "./shared/Icon";
@@ -69,6 +72,11 @@ const stemNames = new Map<number, string[]>([
   [5, ["Vocals", "Drums", "Bass", "Melody", "Other"]],
   [6, ["Vocals", "Drums", "Bass", "Guitar", "Piano", "Other"]],
 ]);
+
+function paramsAtSampleRate(params: AdvancedParams, sampleRate: number): AdvancedParams {
+  const maximum = Math.min(18000, Math.floor(sampleRate * 0.47));
+  return { ...params, eqBands: params.eqBands.map((band) => ({ ...band, freqHz: Math.min(maximum, Math.max(20, band.freqHz)) })) as AdvancedParams["eqBands"] };
+}
 
 function resolveDynamicId(
   propId: string | undefined,
@@ -106,7 +114,7 @@ export function AurialisWorkstation({
   }, [pathname]);
 
   const inWorkspace = route === "master";
-  const defaultTrackId = state.tracks[0]?.id ?? "demo-1";
+  const defaultTrackId = state.tracks[0]?.id ?? "placeholder";
   const resolvedId = resolveDynamicId(paramId, livePath, defaultTrackId);
 
   const navItems: {
@@ -338,10 +346,12 @@ function HomeView() {
     const title = file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ");
     let canonical: Blob;
     let pcm: StereoPCM;
+    let measurement: Awaited<ReturnType<typeof measureAudio>>;
     let storageWarning = "";
     try {
       canonical = await serverRender(file, { bypass: true }, 32);
       pcm = await readCanonicalWAV(canonical);
+      measurement = await measureAudio(canonical);
     } catch (error) {
       setMessage(
         error instanceof Error
@@ -381,14 +391,9 @@ function HomeView() {
       tone: "Warm",
       intensity: 50,
       target: "Streaming",
-      metrics: {
-        lufs: 0,
-        peak: Number(measuredLevels(pcm).peak),
-        range: 0,
-        dynamics: 0,
-        correlation: 0,
-      },
-      advanced: createDefaultAdvancedParams(),
+      metrics: trackMetrics(measurement.afterMetrics),
+      measurements: measurement.afterMetrics,
+      advanced: paramsAtSampleRate(createDefaultAdvancedParams(), pcm.sampleRate),
       profile: "modern_pop_polish",
       persistenceWarning: storageWarning,
     };
@@ -487,6 +492,7 @@ function HomeView() {
             View library <Icon name="arrow-right" />
           </Link>
         </div>
+        {state.tracks.length === 0 && <p className="empty-state">Your library starts with your own audio. Import a WAV to create your first project.</p>}
         <div className="track-row-grid">
           {state.tracks.slice(0, 3).map((track, index) => (
             <TrackCard key={track.id} track={track} index={index} />
@@ -555,9 +561,7 @@ function TrackCard({ track, index = 0 }: { track: Track; index?: number }) {
       <Artwork seed={track.seed} index={index} />
       <div className="track-card-copy">
         <span className={`status status--${track.status}`}>
-          {track.source === "demo"
-            ? "Design example"
-            : statusLabel(track.status)}
+          {statusLabel(track.status)}
         </span>
         <h3>{track.title}</h3>
         <p>
@@ -646,9 +650,7 @@ function LibraryView() {
                 <small>
                   {formatTime(track.duration)} ·{" "}
                   <span className={`status status--${track.status}`}>
-                    {track.source === "demo"
-                      ? "Design example"
-                      : statusLabel(track.status)}
+                    {statusLabel(track.status)}
                   </span>
                 </small>
               </span>
@@ -658,13 +660,11 @@ function LibraryView() {
               <small>{track.sampleRate / 1000} kHz</small>
             </span>
             <span className="metric-number">
-              {track.source === "upload"
-                ? "Unmeasured"
-                : track.metrics.lufs.toFixed(1)}
+              {track.measurements ? track.metrics.lufs.toFixed(1) : "Unmeasured"}
               <small>LUFS</small>
             </span>
             <span>
-              Today<small>Local</small>
+              {new Date(track.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}<small>Local</small>
             </span>
             <button
               type="button"
@@ -749,7 +749,6 @@ function MasterView({ trackId }: { trackId: string }) {
   const [ab, setAb] = useState<"A" | "B">("A");
   const [playheadRatio, setPlayheadRatio] = useState(0);
   const [activeBandId, setActiveBandId] = useState<EQBandId>("low");
-  const [activeMove, setActiveMove] = useState<Move | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [bitDepth, setBitDepth] = useState<ExportBitDepth>(24);
   const [message, setMessage] = useState("");
@@ -783,15 +782,16 @@ function MasterView({ trackId }: { trackId: string }) {
         const blob = await getAudio(track.id);
         if (!blob)
           throw new Error(
-            track.source === "demo"
-              ? "This design example has no uploaded audio. Import a WAV to create a real master."
-              : "The source audio is missing. Import the file again to create a new project.",
+            "The source audio is missing. Import the file again to create a new project.",
           );
         const canonical = await serverRender(blob, { bypass: true }, 32);
         const pcm = await readCanonicalWAV(canonical);
         if (!cancelled) {
           setSource(pcm);
           setSourceBlob(canonical);
+          const advanced = paramsAtSampleRate(track.advanced, pcm.sampleRate);
+          if (JSON.stringify(advanced) !== JSON.stringify(track.advanced)) dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced } });
+          setMessage("Source ready. Adjust settings and render a preview.");
         }
       } catch (error) {
         if (!cancelled)
@@ -808,7 +808,7 @@ function MasterView({ trackId }: { trackId: string }) {
     };
   }, [track?.id]);
 
-  async function renderPreview() {
+  async function renderPreview(params: AdvancedParams = track?.advanced ?? createDefaultAdvancedParams()) {
     if (!track || !source) return;
     renderAbort.current?.abort();
     const controller = new AbortController();
@@ -820,12 +820,12 @@ function MasterView({ trackId }: { trackId: string }) {
     try {
       const pcm = await processPreview(
         source,
-        track.advanced,
+        params,
         controller.signal,
       );
       if (controller.signal.aborted) return;
       setPreview(pcm);
-      setRenderedKey(settingsKey);
+      setRenderedKey(JSON.stringify(engineParams(params)));
       setAb("B");
       setMessage("Preview ready. Playback uses the shared Go DSP engine.");
       dispatch({
@@ -977,6 +977,7 @@ function MasterView({ trackId }: { trackId: string }) {
           <RealTransport
             pcm={audible}
             sourcePcm={source}
+            processedPcm={preview}
             ab={ab}
             onAB={setAb}
             processedReady={fresh}
@@ -1005,13 +1006,6 @@ function MasterView({ trackId }: { trackId: string }) {
               {track.persistenceWarning}
             </p>
           )}
-          {track.mode === "deep" && track.script && (
-            <DeepTimeline
-              script={track.script}
-              selectedMoveId={activeMove?.id}
-              onSelect={setActiveMove}
-            />
-          )}
           {track.mode !== "deep" && (
             <>
               <SpectrumChart
@@ -1025,6 +1019,11 @@ function MasterView({ trackId }: { trackId: string }) {
                       }))
                 }
                 activeBandId={activeBandId}
+                sampleRate={track.sampleRate}
+                onSelectBand={setActiveBandId}
+                onBandChange={(bandId, patch) => {
+                  dispatch({ type: "UPDATE_EQ_BAND", trackId: track.id, bandId, patch });
+                }}
               />
               <p className="disclosure">
                 The curve approximates your EQ settings; it is not a measured audio
@@ -1045,28 +1044,34 @@ function MasterView({ trackId }: { trackId: string }) {
             <SimpleControls
               track={track}
               processing={processing}
-              onApply={() => {
-                const next = mapSimpleToDSP(
+              onApply={() => void (async () => {
+                if (!sourceBlob) return;
+                setProcessing(true);
+                try {
+                const mapped = mapSimpleToDSP(
                   track.genre,
                   track.tone,
                   track.intensity,
                   track.target,
                   track.advanced,
                 );
-                dispatch({
-                  type: "UPDATE_TRACK",
-                  id: track.id,
-                  patch: { advanced: next },
-                });
-                void renderPreview();
-              }}
+                const next = await normalizeSimpleAudio(sourceBlob, paramsAtSampleRate(mapped, track.sampleRate), mapped.limiter.targetLufs);
+                dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next } });
+                await renderPreview(next);
+                } catch (error) {
+                  setMessage(error instanceof Error ? error.message : "Could not prepare this master.");
+                } finally { setProcessing(false); }
+              })()}
             />
           )}
           {track.mode === "deep" && (
             <DeepControls
               track={track}
               processing={processing}
-              onApply={() => void renderPreview()}
+              onApply={(next) => {
+                dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next } });
+                void renderPreview(next);
+              }}
             />
           )}
           {track.mode === "advanced" && (
@@ -1131,15 +1136,6 @@ function MasterView({ trackId }: { trackId: string }) {
           {message}
         </p>
       </Modal>
-      {activeMove && (
-        <MoveEditor
-          trackId={track.id}
-          move={activeMove}
-          onClose={() => {
-            setActiveMove(null);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -1165,6 +1161,21 @@ function AdvancedControls({
         <p>Adjust a module, then render a preview to hear your settings.</p>
       </div>
 
+      <SliderField
+        label="Input gain"
+        value={adv.input}
+        min={-6}
+        max={6}
+        step={0.5}
+        unit="dB"
+        onChange={(input) => {
+          dispatch({ type: "UPDATE_INPUT_GAIN", trackId: track.id, input });
+        }}
+      />
+
+      <details className="module-disclosure" open>
+        <summary>Equalizer</summary>
+        <div className="control-stack">
       <label className="check-row">
         <input
           type="checkbox"
@@ -1182,86 +1193,6 @@ function AdvancedControls({
         </span>
         Enable EQ
       </label>
-      <label className="check-row">
-        <input
-          type="checkbox"
-          checked={adv.compressor.enabled}
-          onChange={(event) => {
-            dispatch({
-              type: "UPDATE_COMPRESSOR",
-              trackId: track.id,
-              patch: { enabled: event.target.checked },
-            });
-          }}
-        />
-        <span>
-          <Icon name="check" />
-        </span>
-        Enable compressor
-      </label>
-      <label className="check-row">
-        <input
-          type="checkbox"
-          checked={adv.saturationModule.enabled}
-          onChange={(event) => {
-            dispatch({
-              type: "UPDATE_SATURATION",
-              trackId: track.id,
-              patch: { enabled: event.target.checked },
-            });
-          }}
-        />
-        <span>
-          <Icon name="check" />
-        </span>
-        Enable saturation
-      </label>
-      <label className="check-row">
-        <input
-          type="checkbox"
-          checked={adv.stereo.enabled}
-          onChange={(event) => {
-            dispatch({
-              type: "UPDATE_STEREO",
-              trackId: track.id,
-              patch: { enabled: event.target.checked },
-            });
-          }}
-        />
-        <span>
-          <Icon name="check" />
-        </span>
-        Enable stereo
-      </label>
-      <label className="check-row">
-        <input
-          type="checkbox"
-          checked={adv.limiter.enabled}
-          onChange={(event) => {
-            dispatch({
-              type: "UPDATE_LIMITER",
-              trackId: track.id,
-              patch: { enabled: event.target.checked },
-            });
-          }}
-        />
-        <span>
-          <Icon name="check" />
-        </span>
-        Enable limiter
-      </label>
-      <SliderField
-        label="Input gain"
-        value={adv.input}
-        min={-6}
-        max={6}
-        step={0.5}
-        unit="dB"
-        onChange={(input) => {
-          dispatch({ type: "UPDATE_INPUT_GAIN", trackId: track.id, input });
-        }}
-      />
-
       <div className="control-group">
         <div className="control-label">
           <span>5-Band Parametric EQ</span>
@@ -1305,9 +1236,9 @@ function AdvancedControls({
       />
       <SliderField
         label={`${selectedBand.label} frequency`}
-        value={selectedBand.freqHz}
+        value={Math.min(selectedBand.freqHz, Math.floor(track.sampleRate * 0.47))}
         min={20}
-        max={18000}
+        max={Math.min(18000, Math.floor(track.sampleRate * 0.47))}
         step={10}
         unit="Hz"
         onChange={(freqHz) => {
@@ -1335,6 +1266,28 @@ function AdvancedControls({
         }}
       />
 
+        </div>
+      </details>
+      <details className="module-disclosure" open>
+        <summary>Compressor</summary>
+        <div className="control-stack">
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={adv.compressor.enabled}
+          onChange={(event) => {
+            dispatch({
+              type: "UPDATE_COMPRESSOR",
+              trackId: track.id,
+              patch: { enabled: event.target.checked },
+            });
+          }}
+        />
+        <span>
+          <Icon name="check" />
+        </span>
+        Enable compressor
+      </label>
       <SliderField
         label="Threshold"
         value={adv.compressor.threshold}
@@ -1396,6 +1349,28 @@ function AdvancedControls({
         }}
       />
 
+        </div>
+      </details>
+      <details className="module-disclosure" open>
+        <summary>Stereo image</summary>
+        <div className="control-stack">
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={adv.stereo.enabled}
+          onChange={(event) => {
+            dispatch({
+              type: "UPDATE_STEREO",
+              trackId: track.id,
+              patch: { enabled: event.target.checked },
+            });
+          }}
+        />
+        <span>
+          <Icon name="check" />
+        </span>
+        Enable stereo
+      </label>
       <SliderField
         label="Stereo width"
         value={adv.stereo.width}
@@ -1429,6 +1404,28 @@ function AdvancedControls({
         Mono bass below 110 Hz
       </label>
 
+        </div>
+      </details>
+      <details className="module-disclosure" open>
+        <summary>Saturation</summary>
+        <div className="control-stack">
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={adv.saturationModule.enabled}
+          onChange={(event) => {
+            dispatch({
+              type: "UPDATE_SATURATION",
+              trackId: track.id,
+              patch: { enabled: event.target.checked },
+            });
+          }}
+        />
+        <span>
+          <Icon name="check" />
+        </span>
+        Enable saturation
+      </label>
       <SliderField
         label="Saturation"
         value={adv.saturationModule.drive}
@@ -1474,6 +1471,28 @@ function AdvancedControls({
         </div>
       </ControlGroup>
 
+        </div>
+      </details>
+      <details className="module-disclosure" open>
+        <summary>Sample-peak limiter</summary>
+        <div className="control-stack">
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={adv.limiter.enabled}
+          onChange={(event) => {
+            dispatch({
+              type: "UPDATE_LIMITER",
+              trackId: track.id,
+              patch: { enabled: event.target.checked },
+            });
+          }}
+        />
+        <span>
+          <Icon name="check" />
+        </span>
+        Enable limiter
+      </label>
       <SliderField
         label="Limiter ceiling"
         value={adv.limiter.ceiling}
@@ -1490,6 +1509,8 @@ function AdvancedControls({
         }}
       />
 
+        </div>
+      </details>
       <Button
         variant="secondary"
         icon={<Icon name="rotate-ccw" />}
@@ -1585,7 +1606,6 @@ function SimpleControls({
             <option value="Loud">Loud (−9 LUFS)</option>
             <option value="Dynamic">Dynamic (−16 LUFS)</option>
             <option value="Podcast">Podcast (−16 LUFS)</option>
-            <option value="Custom">Custom</option>
           </select>
           <Icon name="chevron-down" />
         </div>
@@ -1607,519 +1627,68 @@ function SimpleControls({
   );
 }
 
-function DeepControls({
-  track,
-  processing,
-  onApply,
-}: {
+function DeepControls({ track, processing, onApply }: {
   track: Track;
   processing: boolean;
-  onApply: () => void;
+  onApply: (params: AdvancedParams) => void;
 }) {
   const { dispatch } = useStore();
   const [selectedProfile, setSelectedProfile] = useState<ProfileId>(track.profile);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [phase, setPhase] = useState("");
-
-  const runAnalysis = () => {
-    setAnalyzing(true);
-    setProgress(15);
-    setPhase("Detecting musical sections");
-    setTimeout(() => {
-      setProgress(50);
-      setPhase("Analyzing stems and spectral artifacts");
-      setTimeout(() => {
-        setProgress(85);
-        setPhase("Writing MasteringScript v1");
-        setTimeout(() => {
-          const script = generateScript(track, selectedProfile);
-          dispatch({
-            type: "UPDATE_TRACK",
-            id: track.id,
-            patch: { profile: selectedProfile },
-          });
-          dispatch({
-            type: "SAVE_SCRIPT",
-            id: track.id,
-            script,
-          });
-          setProgress(100);
-          setPhase("Script ready");
-          setAnalyzing(false);
-          onApply();
-        }, 300);
-      }, 300);
-    }, 300);
-  };
-
   return (
     <div className="control-stack deep-controls">
       <div>
-        <h2>Deep mastering</h2>
-        <p>A deterministic, section-aware proposal using MasteringScript v1.</p>
+        <h2>Engineer profiles</h2>
+        <p>Apply a static tonal starting point, then refine it in Advanced mode.</p>
       </div>
       <ControlGroup label="Engineer profile">
         <div className="profile-list">
-          {profiles.map((p) => (
-            <button
-              type="button"
-              key={p.id}
-              className={
-                selectedProfile === p.id
-                  ? "profile-card is-active"
-                  : "profile-card"
-              }
-              aria-pressed={selectedProfile === p.id}
-              onClick={() => {
-                setSelectedProfile(p.id);
-              }}
-            >
-              <strong>{p.name}</strong>
-              <span>{p.note}</span>
+          {profiles.map((profile) => (
+            <button type="button" key={profile.id}
+              className={selectedProfile === profile.id ? "profile-card is-active" : "profile-card"}
+              aria-pressed={selectedProfile === profile.id}
+              onClick={() => { setSelectedProfile(profile.id); }}>
+              <strong>{profile.name}</strong><span>{profile.note}</span>
             </button>
           ))}
         </div>
       </ControlGroup>
-      {phase && (
-        <div className="processing-card" role="status">
-          <div>
-            <Icon name="refresh-cw" className={analyzing ? "spin" : ""} />
-            <strong>{phase}</strong>
-            <small>{progress}%</small>
-          </div>
-          <div className="progress-bar">
-            <span style={{ width: `${String(progress)}%` }} />
-          </div>
-        </div>
-      )}
-      <Button
-        className="full-button"
-        disabled={analyzing || processing}
-        icon={
-          <Icon
-            name={analyzing ? "refresh-cw" : "sparkles"}
-            className={analyzing ? "spin" : ""}
-          />
-        }
-        onClick={runAnalysis}
-      >
-        {analyzing ? "Analyzing sections…" : "Analyze deeply"}
+      <p className="disclosure">Musical section detection, timeline automation and AI repair are not available. These profiles apply the same settings throughout your track.</p>
+      <Button className="full-button" disabled={processing} icon={<Icon name="sparkles" />}
+        onClick={() => {
+          const params = paramsAtSampleRate(mapProfileToDSP(selectedProfile), track.sampleRate);
+          dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { profile: selectedProfile } });
+          onApply(params);
+        }}>
+        {processing ? "Rendering profile…" : "Apply profile"}
       </Button>
     </div>
   );
 }
 
-function DeepTimeline({
-  script,
-  selectedMoveId,
-  onSelect,
-}: {
-  script: NonNullable<Track["script"]>;
-  selectedMoveId?: string | undefined;
-  onSelect: (move: Move) => void;
-}) {
-  const lanes: Move["lane"][] = [
-    "Volume",
-    "EQ",
-    "Comp/Sat",
-    "Width",
-    "AI Repair",
-  ];
-
-  return (
-    <div className="deep-summary">
-      <div className="deep-summary-head">
-        <span>Script v{script.version}</span>
-        <span>
-          {script.sections.length} sections · {script.moves.length} moves
-        </span>
-      </div>
-      <div className="section-strip" role="list" aria-label="Track sections">
-        {script.sections.map((section) => (
-          <span
-            key={section.id}
-            role="listitem"
-            style={{ flex: section.end - section.start }}
-          >
-            {section.type}
-          </span>
-        ))}
-      </div>
-      <div className="lane-table">
-        {lanes.map((lane) => (
-          <div className="lane" key={lane}>
-            <strong>{lane}</strong>
-            <div className="lane-track">
-              {script.moves
-                .filter((move) => move.lane === lane)
-                .map((move) => {
-                  const isSelected = move.id === selectedMoveId;
-                  const labelValue = move.value > 0 ? `+${String(move.value)}` : String(move.value);
-                  return (
-                    <button
-                      key={move.id}
-                      type="button"
-                      className={`${isSelected ? "is-selected " : ""}${move.edited ? "is-edited " : ""}${move.muted ? "is-muted" : ""}`}
-                      style={{
-                        left: `${String((move.start / (script.duration || 1)) * 100)}%`,
-                        width: `${String(Math.max(4, ((move.end - move.start) / (script.duration || 1)) * 100))}%`,
-                      }}
-                      onClick={() => {
-                        onSelect(move);
-                      }}
-                      aria-label={`Edit ${move.parameter.replaceAll("_", " ")} (${labelValue})`}
-                    >
-                      <span className="lane-pill">
-                        {move.parameter.replace(/_.*$/, "")} {labelValue}
-                      </span>
-                    </button>
-                  );
-                })}
-            </div>
-          </div>
-        ))}
-      </div>
-      {script.findings.length > 0 && (
-        <div className="findings">
-          {script.findings.map((f, i) => (
-            <div className="finding" key={i}>
-              <Icon name="circle-alert" />
-              <span>
-                {f.stem}: {String(Math.round(f.confidence * 100))}% {f.classification}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MoveEditor({
-  trackId,
-  move,
-  onClose,
-}: {
-  trackId: string;
-  move: Move;
-  onClose: () => void;
-}) {
-  const { dispatch } = useStore();
-  const [value, setValue] = useState(move.value);
-
-  const save = (patch: Partial<Move>) => {
-    dispatch({
-      type: "UPDATE_MOVE",
-      trackId,
-      move: { ...move, ...patch },
-    });
-  };
-
-  return (
-    <Modal
-      open
-      eyebrow="Move editor"
-      title={move.parameter.replaceAll("_", " ")}
-      onClose={onClose}
-      actions={
-        <>
-          <Button
-            variant="secondary"
-            onClick={() => {
-              save({ muted: !move.muted });
-            }}
-          >
-            {move.muted ? "Unmute move" : "Mute move"}
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => {
-              setValue(move.originalValue);
-              save({ value: move.originalValue, edited: false });
-            }}
-          >
-            Reset
-          </Button>
-          <Button onClick={onClose}>Done</Button>
-        </>
-      }
-    >
-      <div className="move-editor">
-        <p>{move.reason}</p>
-        <SliderField
-          label="Proposed move value"
-          value={value}
-          min={-24}
-          max={24}
-          step={0.1}
-          unit={move.lane === "Width" ? "%" : "dB"}
-          onChange={(next) => {
-            setValue(next);
-            save({ value: next, edited: next !== move.originalValue });
-          }}
-        />
-        <div className="editor-status">
-          <small>
-            Timing: {formatTime(move.start)} – {formatTime(move.end)} · Lane: {move.lane}
-          </small>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
 function SplitView({ trackId }: { trackId: string }) {
-  const { state, dispatch } = useStore();
-  const router = useRouter();
-  const track =
-    state.tracks.find((item) => item.id === trackId) ?? state.tracks[0];
-  const existing = state.stems.find((item) => item.trackId === track?.id);
-  const [count, setCount] = useState(existing?.count ?? 4);
-  const [working, setWorking] = useState(false);
-  const [pendingCount, setPendingCount] = useState<number | null>(null);
-
-  if (!track) return null;
-
-  const stems: Stem[] = existing?.stems ?? [];
-  const currentStemNames = stemNames.get(count) ?? stemNames.get(4) ?? [];
-
-  const split = () => {
-    setWorking(true);
-    setTimeout(() => {
-      const names = stemNames.get(count) ?? stemNames.get(4) ?? [];
-      const generated: Stem[] = names.map((name, index) => ({
-        id: `${track.id}-${String(index)}`,
-        name,
-        level: 0,
-        pan: 0,
-        muted: false,
-        solo: false,
-      }));
-      dispatch({
-        type: "SAVE_STEMS",
-        project: { trackId: track.id, count, complete: true, stems: generated },
-      });
-      setWorking(false);
-    }, 250);
-  };
-
-  const updateStem = (id: string, patch: Partial<Omit<Stem, "id">>) => {
-    dispatch({
-      type: "UPDATE_STEM",
-      trackId: track.id,
-      stemId: id,
-      patch,
-    });
-  };
-
+  const { state } = useStore();
+  const track = state.tracks.find((item) => item.id === trackId);
+  const [count, setCount] = useState(4);
   return (
     <div className="page">
-      <PageTitle
-        eyebrow="Smart stem splitter"
-        title={`Open up “${track.title}”`}
-        copy="Separate into an exact 2-to-6 phase-coherent stem layout."
-        action={
-          <Button
-            variant="secondary"
-            icon={<Icon name="arrow-left" />}
-            onClick={() => {
-              router.push(`/master/${track.id}`);
-            }}
-          >
-            Back to master
-          </Button>
-        }
-      />
+      <PageTitle eyebrow="Smart stem splitter" title="A closer look inside the mix"
+        copy="Instrument separation is still in development. No stem audio is generated in this build."
+        action={<Link className="button button--secondary" href={track ? `/master/${track.id}` : "/"}>
+          {track ? "Back to master" : "Import a track"}
+        </Link>} />
       <section className="split-intro paper-panel">
-        <div>
-          <span className="eyebrow">Output layout</span>
-          <h2>How many stems do you need?</h2>
-          <p>Labels adapt to the selected count before separation begins.</p>
-        </div>
+        <div><span className="eyebrow">Planned output layouts</span><h2>Choose a stem layout</h2>
+          <p>Preview the intended layout. Separation, stem playback and downloads are unavailable.</p></div>
         <div className="stem-count" role="group" aria-label="Stem count">
-          {[2, 3, 4, 5, 6].map((number) => (
-            <button
-              type="button"
+          {[2,3,4,5,6].map((number) => (
+            <button type="button" key={number} aria-pressed={count === number}
               className={count === number ? "is-active" : ""}
-              aria-pressed={count === number}
-              key={number}
-              onClick={() => {
-                if (stems.length > 0 && number !== count) {
-                  setPendingCount(number);
-                } else {
-                  setCount(number);
-                }
-              }}
-            >
-              {number}
-            </button>
+              onClick={() => { setCount(number); }}>{number}</button>
           ))}
         </div>
-        <div className="stem-preview">
-          {currentStemNames.map((name) => (
-            <span key={name}>{name}</span>
-          ))}
-        </div>
-        <Button
-          onClick={split}
-          disabled={working}
-          icon={
-            working ? (
-              <Icon name="refresh-cw" className="spin" />
-            ) : (
-              <Icon name="scissors" />
-            )
-          }
-        >
-          {working
-            ? "Separating source…"
-            : stems.length > 0
-              ? "Run split again"
-              : "Separate into stems"}
-        </Button>
+        <div className="stem-preview">{(stemNames.get(count) ?? []).map((name) => <span key={name}>{name}</span>)}</div>
+        <p className="disclosure" role="status">Separation unavailable — your original audio is unchanged.</p>
       </section>
-
-      {stems.length > 0 && (
-        <section className="stem-workspace">
-          <div className="section-heading">
-            <div>
-              <span className="eyebrow">Separated stems</span>
-              <h2>{count} stem mix</h2>
-            </div>
-            <Button
-              icon={<Icon name="arrow-right" />}
-              onClick={() => {
-                router.push(`/master/${track.id}`);
-              }}
-            >
-              Send to mastering
-            </Button>
-          </div>
-          <div className="stem-lanes">
-            {stems.map((stem, index) => (
-              <article className="stem-card" key={stem.id}>
-                <div className="stem-card-head">
-                  <i className={`stem-color stem-color--${String(index)}`} />
-                  <input
-                    value={stem.name}
-                    aria-label={`Stem ${String(index + 1)} name`}
-                    onChange={(e) => {
-                      updateStem(stem.id, { name: e.target.value });
-                    }}
-                  />
-                </div>
-                <Waveform
-                  seed={track.seed + index * 11}
-                  duration={track.duration}
-                  compact
-                />
-                <SliderField
-                  label="Level"
-                  ariaLabel={`${stem.name} level`}
-                  value={stem.level}
-                  min={-24}
-                  max={6}
-                  step={1}
-                  unit="dB"
-                  onChange={(level) => {
-                    updateStem(stem.id, { level });
-                  }}
-                />
-                <ControlGroup
-                  label="Pan"
-                  value={
-                    stem.pan === 0
-                      ? "C"
-                      : stem.pan < 0
-                        ? `${String(-stem.pan)} L`
-                        : `${String(stem.pan)} R`
-                  }
-                >
-                  <input
-                    type="range"
-                    min={-100}
-                    max={100}
-                    value={stem.pan}
-                    aria-label={`${stem.name} pan`}
-                    onChange={(e) => {
-                      updateStem(stem.id, { pan: Number(e.target.value) });
-                    }}
-                  />
-                </ControlGroup>
-                <div className="mute-solo">
-                  <button
-                    type="button"
-                    className={stem.muted ? "is-active" : ""}
-                    aria-pressed={stem.muted}
-                    onClick={() => {
-                      updateStem(stem.id, { muted: !stem.muted });
-                    }}
-                  >
-                    Mute
-                  </button>
-                  <button
-                    type="button"
-                    className={stem.solo ? "is-active" : ""}
-                    aria-pressed={stem.solo}
-                    onClick={() => {
-                      updateStem(stem.id, { solo: !stem.solo });
-                    }}
-                  >
-                    Solo
-                  </button>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <Modal
-        open={pendingCount !== null}
-        eyebrow="Change stem layout"
-        title={`Switch to ${String(pendingCount ?? count)} stems?`}
-        onClose={() => {
-          setPendingCount(null);
-        }}
-        actions={
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setPendingCount(null);
-              }}
-            >
-              Keep current stems
-            </Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                if (pendingCount !== null) {
-                  setCount(pendingCount);
-                  dispatch({
-                    type: "SAVE_STEMS",
-                    project: {
-                      trackId: track.id,
-                      count: pendingCount,
-                      complete: false,
-                      stems: [],
-                    },
-                  });
-                  setPendingCount(null);
-                }
-              }}
-            >
-              Replace layout
-            </Button>
-          </>
-        }
-      >
-        <p style={{ color: "var(--ink-soft)", margin: 0 }}>
-          Replacing the stem count will clear the current stem mix for this
-          project so you can separate again.
-        </p>
-      </Modal>
     </div>
   );
 }
@@ -2182,7 +1751,7 @@ function AlbumsView() {
               <p>Target {album.target}</p>
               <div className="album-score">
                 <span>Consistency</span>
-                <strong>{album.trackIds.length > 0 ? 86 : "—"}</strong>
+                <strong>—</strong>
               </div>
             </Link>
           ))}
@@ -2194,8 +1763,11 @@ function AlbumsView() {
 
 function AlbumView({ albumId }: { albumId: string }) {
   const { state, dispatch } = useStore();
+  const [working, setWorking] = useState(false);
+  const [message, setMessage] = useState("");
+  const [rendered, setRendered] = useState<{ key: string; files: { id: string; title: string; blob: Blob }[] } | null>(null);
   const album =
-    state.albums.find((item) => item.id === albumId) ?? state.albums[0];
+    state.albums.find((item) => item.id === albumId);
 
   if (!album) {
     return (
@@ -2217,9 +1789,12 @@ function AlbumView({ albumId }: { albumId: string }) {
   const albumTracks = album.trackIds
     .map((id) => state.tracks.find((track) => track.id === id))
     .filter((t): t is Track => t !== undefined);
+  const artifactKey = JSON.stringify(albumTracks.map((track) => [track.id, engineParams(track.advanced)]));
+  const artifacts = rendered?.key === artifactKey ? rendered.files : [];
 
   return (
     <div className="page">
+      <h1 className="sr-only">Album mastering workspace</h1>
       <section className="album-hero">
         <div className="album-art-large">
           <Icon name="disc" />
@@ -2254,45 +1829,58 @@ function AlbumView({ albumId }: { albumId: string }) {
           <div className="album-meta">
             <span>{albumTracks.length} tracks</span>
             <span>{album.target}</span>
-            <span>{album.mastered ? "Sequence mastered" : "In progress"}</span>
+            <span>{artifacts.length > 0 ? "Masters ready to download" : "In progress"}</span>
           </div>
         </div>
         <Button
           icon={<Icon name="sparkles" />}
-          onClick={() => {
-            for (const t of albumTracks) {
-              const gainDelta = -14.0 - t.metrics.lufs;
-              const nextInput = Math.max(
-                -12,
-                Math.min(12, Math.round((t.advanced.input + gainDelta * 0.5) * 10) / 10),
-              );
-              dispatch({
-                type: "UPDATE_TRACK",
-                id: t.id,
-                patch: {
-                  status: "mastered",
-                  advanced: {
-                    ...t.advanced,
-                    input: nextInput,
-                    limiter: {
-                      ...t.advanced.limiter,
-                      enabled: true,
-                      targetLufs: -14.0,
-                    },
-                  },
-                },
-              });
-            }
-            dispatch({
-              type: "UPDATE_ALBUM",
-              id: album.id,
-              patch: { mastered: true },
-            });
-          }}
+          disabled={working || albumTracks.length === 0}
+          onClick={() => void (async () => {
+            setWorking(true);
+            setMessage("Measuring and rendering each track in sequence…");
+            setRendered(null);
+            try {
+              const prepared: { track: Track; advanced: AdvancedParams; measurement: Awaited<ReturnType<typeof measureAudio>> }[] = [];
+              const files: { id: string; title: string; blob: Blob }[] = [];
+              let totalBytes = 0;
+              for (const track of albumTracks) {
+                const file = await getAudio(track.id);
+                if (!file) throw new Error(`The source for “${track.title}” is missing. Import it again.`);
+                const advanced = await normalizeSimpleAudio(file, track.advanced, -14);
+                const measurement = await measureAudio(file, engineParams(advanced));
+                if (totalBytes + measurement.frames * 6 + 44 > 64 * 1024 * 1024) throw new Error("The rendered album exceeds the 64 MiB download cache. Export a smaller sequence or render tracks individually.");
+                const blob = await serverRender(file, engineParams(advanced), 24);
+                totalBytes += blob.size;
+                files.push({ id: track.id, title: track.title, blob });
+                prepared.push({ track, advanced, measurement });
+              }
+              for (const item of prepared) {
+                dispatch({ type: "UPDATE_TRACK", id: item.track.id, patch: {
+                  advanced: item.advanced,
+                  metrics: trackMetrics(item.measurement.afterMetrics),
+                  measurements: item.measurement.afterMetrics,
+                } });
+              }
+              dispatch({ type: "UPDATE_ALBUM", id: album.id, patch: { mastered: true } });
+              setRendered({ key: JSON.stringify(prepared.map((item) => [item.track.id, engineParams(item.advanced)])), files });
+              setMessage("Rendered 24-bit WAV masters are ready below. Original source files are preserved. Downloads remain available until settings change or you leave this page.");
+            } catch (error) {
+              setMessage(error instanceof Error ? error.message : "The sequence could not be prepared.");
+            } finally { setWorking(false); }
+          })()}
         >
-          Master album
+          {working ? "Rendering sequence…" : "Render album masters"}
         </Button>
       </section>
+      <p className="disclosure" role="status">{message || "Render a measured master for each song, then download the WAV files individually."}</p>
+      {artifacts.length > 0 && <section className="paper-panel" aria-label="Rendered album downloads">
+        <h2>Your album masters</h2>
+        {artifacts.map((file) => <Button key={file.id} variant="secondary" icon={<Icon name="arrow-down-to-line" />} onClick={() => {
+          const url = URL.createObjectURL(file.blob);
+          const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${file.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-album-master.wav`; anchor.click();
+          setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
+        }}>Download {file.title}</Button>)}
+      </section>}
       <div className="album-layout">
         <section className="paper-panel">
           <div className="section-heading">
@@ -2307,12 +1895,10 @@ function AlbumView({ albumId }: { albumId: string }) {
                 <span>{String(index + 1).padStart(2, "0")}</span>
                 <Artwork seed={track.seed} />
                 <div>
-                  <strong>{track.title}</strong>
+                  <Link href={`/master/${track.id}`}><strong>{track.title}</strong></Link>
                   <small>
                     {formatTime(track.duration)} ·{" "}
-                    {track.source === "upload"
-                      ? "Unmeasured"
-                      : track.metrics.lufs.toFixed(1)}{" "}
+                    {track.measurements ? track.metrics.lufs.toFixed(1) : "Unmeasured"}{" "}
                     LUFS
                   </small>
                 </div>
@@ -2425,9 +2011,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                     }}
                   >
                     <i>
-                      {track.source === "upload"
-                        ? "Unmeasured"
-                        : track.metrics.lufs.toFixed(1)}
+                      {track.measurements ? track.metrics.lufs.toFixed(1) : "Unmeasured"}
                     </i>
                   </span>
                   <small>{index + 1}</small>
@@ -2447,13 +2031,15 @@ function ReferenceView({ trackId }: { trackId: string }) {
   const { state, dispatch } = useStore();
   const router = useRouter();
   const track =
-    state.tracks.find((item) => item.id === trackId) ?? state.tracks[0];
+    state.tracks.find((item) => item.id === trackId);
   const [referenceId, setReferenceId] = useState(
     state.tracks.find((item) => item.id !== track?.id)?.id ?? "",
   );
   const [amount, setAmount] = useState(62);
+  const [protectLowEnd, setProtectLowEnd] = useState(true);
+  const [includeWidth, setIncludeWidth] = useState(false);
 
-  if (!track) return null;
+  if (!track) return <div className="page"><PageTitle eyebrow="Reference settings" title="Choose your audio first" copy="Import a track, then compare its EQ settings with another project." /><Link className="button button--primary" href="/">Import audio</Link></div>;
   const reference = state.tracks.find((item) => item.id === referenceId);
 
   return (
@@ -2461,7 +2047,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
       <PageTitle
         eyebrow="Reference direction"
         title="Compare without copying"
-        copy="Use another track as a tonal compass while preserving your source identity."
+        copy="Compare two projects and blend their EQ settings. Audio spectrum matching remains in development."
         action={
           <Button
             variant="secondary"
@@ -2493,6 +2079,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
                     setReferenceId(e.target.value);
                   }}
                 >
+                  <option value="">Choose a reference project</option>
                   {state.tracks
                     .filter((item) => item.id !== track.id)
                     .map((item) => (
@@ -2538,7 +2125,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
           <span className="eyebrow">Match direction</span>
           <h2>Keep what matters</h2>
           <p>
-            Move toward the reference while protecting the source character.
+            Blend the other project’s EQ settings into this project. This does not measure or match the source audio spectrum.
           </p>
           <SliderField
             label="Match amount"
@@ -2549,22 +2136,17 @@ function ReferenceView({ trackId }: { trackId: string }) {
             unit="%"
             onChange={setAmount}
           />
-          {[
-            "Prioritize tone",
-            "Protect low end",
-            "Protect transients",
-            "Include width",
-          ].map((item, i) => (
-            <label className="check-row" key={item}>
-              <input type="checkbox" defaultChecked={i !== 3} />
-              <span>
-                <Icon name="check" />
-              </span>
-              {item}
-            </label>
-          ))}
+          <label className="check-row">
+            <input type="checkbox" checked={protectLowEnd} onChange={(event) => { setProtectLowEnd(event.target.checked); }} />
+            <span><Icon name="check" /></span>Protect low end
+          </label>
+          <label className="check-row">
+            <input type="checkbox" checked={includeWidth} onChange={(event) => { setIncludeWidth(event.target.checked); }} />
+            <span><Icon name="check" /></span>Include width
+          </label>
           <Button
             className="full-button"
+            disabled={!reference}
             icon={<Icon name="arrow-right" />}
             onClick={() => {
               if (reference) {
@@ -2572,7 +2154,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
                 const nextBands = track.advanced.eqBands.map((band, i) => {
                   const refBand = reference.advanced.eqBands.at(i);
                   const refGain = refBand ? refBand.gainDb : 0;
-                  const delta = (refGain - band.gainDb) * ratio;
+                  const delta = protectLowEnd && i < 2 ? 0 : (refGain - band.gainDb) * ratio;
                   return {
                     ...band,
                     gainDb: Math.round((band.gainDb + delta) * 10) / 10,
@@ -2588,9 +2170,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
                   (reference.advanced.stereo.width -
                     track.advanced.stereo.width) *
                   ratio;
-                const nextWidth = Math.round(
-                  track.advanced.stereo.width + widthDelta,
-                );
+                const nextWidth = includeWidth ? Math.round(track.advanced.stereo.width + widthDelta) : track.advanced.stereo.width;
                 dispatch({
                   type: "UPDATE_TRACK",
                   id: track.id,
@@ -2617,7 +2197,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
               router.push(`/master/${track.id}`);
             }}
           >
-            Apply reference direction
+            Apply EQ settings
           </Button>
         </aside>
       </div>
@@ -2630,15 +2210,13 @@ function MetricMini({ track }: { track: Track }) {
     <div className="metric-mini">
       <span>
         <strong>
-          {track.source === "upload"
-            ? "Unmeasured"
-            : track.metrics.lufs.toFixed(1)}
+          {track.measurements ? track.metrics.lufs.toFixed(1) : "Unmeasured"}
         </strong>
         <small>LUFS</small>
       </span>
       <span>
         <strong>{track.metrics.dynamics.toFixed(1)}</strong>
-        <small>DR</small>
+        <small>Crest dB</small>
       </span>
       <span>
         <strong>{track.advanced.stereo.width}%</strong>
@@ -2649,240 +2227,69 @@ function MetricMini({ track }: { track: Track }) {
 }
 
 function ReleaseView({ trackId }: { trackId: string }) {
-  const { state, dispatch } = useStore();
-  const router = useRouter();
-  const track =
-    state.tracks.find((item) => item.id === trackId) ?? state.tracks[0];
-  const [platform, setPlatform] = useState("Spotify");
+  const { state } = useStore();
+  const track = state.tracks.find((item) => item.id === trackId);
+  const [platform, setPlatform] = useState("Streaming");
   const [scanning, setScanning] = useState(false);
-  const [score, setScore] = useState<number | undefined>(track?.releaseScore);
-
-  if (!track) return null;
-
-  const platformTargets = new Map<
-    string,
-    { targetLufs: number; maxPeak: number; minDr: number; minCorr: number }
-  >([
-    [
-      "Spotify",
-      { targetLufs: -14.0, maxPeak: -1.0, minDr: 6.0, minCorr: 0.75 },
-    ],
-    [
-      "Apple Music",
-      { targetLufs: -16.0, maxPeak: -1.0, minDr: 7.0, minCorr: 0.75 },
-    ],
-    [
-      "YouTube",
-      { targetLufs: -14.0, maxPeak: -1.0, minDr: 6.0, minCorr: 0.75 },
-    ],
-    [
-      "SoundCloud",
-      { targetLufs: -11.0, maxPeak: -0.5, minDr: 5.0, minCorr: 0.7 },
-    ],
-    ["CD", { targetLufs: -9.0, maxPeak: -0.1, minDr: 4.0, minCorr: 0.7 }],
-    [
-      "Podcast",
-      { targetLufs: -16.0, maxPeak: -1.5, minDr: 7.0, minCorr: 0.85 },
-    ],
-  ]);
-
-  const defaultTarget = {
-    targetLufs: -14.0,
-    maxPeak: -1.0,
-    minDr: 6.0,
-    minCorr: 0.75,
+  const [error, setError] = useState("");
+  const [scan, setScan] = useState<{ key: string; metrics: Awaited<ReturnType<typeof measureAudio>>["afterMetrics"] } | null>(null);
+  const pending = useRef<AbortController | null>(null);
+  useEffect(() => () => { pending.current?.abort(); }, []);
+  if (!track) return <div className="page"><PageTitle eyebrow="Release check" title="Choose your audio first" copy="Import a track to measure its rendered audio." /><Link className="button button--primary" href="/">Import audio</Link></div>;
+  const key = JSON.stringify(engineParams(track.advanced));
+  const metrics = scan?.key === key ? scan.metrics : null;
+  const targetLufs = platform === "Dynamic" || platform === "Spoken word" ? -16 : -14;
+  const maxPeak = -1;
+  const loudnessDelta = metrics ? Math.abs(metrics.integratedLufs - targetLufs) : 0;
+  const checks: [string, string, "pass" | "warn", string][] = metrics ? [
+    ["Integrated loudness", `${metrics.integratedLufs.toFixed(1)} LUFS`, loudnessDelta <= 1 ? "pass" : "warn", `Working target ${String(targetLufs)} LUFS; measured difference ${loudnessDelta.toFixed(1)} LU.`],
+    ["Reconstructed peak estimate", `${metrics.truePeakDbtp.toFixed(1)} dBTP`, metrics.truePeakDbtp <= maxPeak ? "pass" : "warn", "4× FIR estimate. Leave headroom for delivery codecs; this is not a delivery certification."],
+    ["Sample peak", `${metrics.samplePeakDbfs.toFixed(1)} dBFS`, metrics.clippingSamples === 0 ? "pass" : "warn", `${String(metrics.clippingSamples)} samples at or above the clipping threshold.`],
+    ["Crest factor", `${metrics.dynamicRangeDb.toFixed(1)} dB`, metrics.dynamicRangeDb >= 6 ? "pass" : "warn", "Peak-to-RMS diagnostic; this is not loudness range (LRA) or a DR certification."],
+    ["Stereo correlation", metrics.correlation.toFixed(2), metrics.correlation >= 0 ? "pass" : "warn", "Negative correlation can indicate mono cancellation. Listen to the rendered master in mono."],
+  ] : [];
+  const score = metrics ? Math.round(100 * checks.filter((check) => check[2] === "pass").length / checks.length) : undefined;
+  const run = async () => {
+    pending.current?.abort();
+    const controller = new AbortController();
+    pending.current = controller;
+    setScanning(true); setError("");
+    try {
+      const file = await getAudio(track.id);
+      if (!file) throw new Error("The source audio is missing. Import the track again.");
+      const result = await measureAudio(file, engineParams(track.advanced), controller.signal);
+      if (!controller.signal.aborted) setScan({ key, metrics: result.afterMetrics });
+    } catch (cause) {
+      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Measurement failed. Please retry.");
+    } finally { if (!controller.signal.aborted) setScanning(false); }
   };
-  const target = platformTargets.get(platform) ?? defaultTarget;
-
-  const lufsDelta = Math.abs(track.metrics.lufs - target.targetLufs);
-  const peakOver = Math.max(0, track.metrics.peak - target.maxPeak);
-  const drUnder = Math.max(0, target.minDr - track.metrics.dynamics);
-  const corrUnder = Math.max(0, target.minCorr - track.metrics.correlation);
-
-  const calculatedScore = Math.max(
-    50,
-    Math.min(
-      100,
-      Math.round(
-        100 -
-          lufsDelta * 2.5 -
-          peakOver * 15 -
-          drUnder * 4 -
-          corrUnder * 20,
-      ),
-    ),
-  );
-
-  const run = () => {
-    setScanning(true);
-    setTimeout(() => {
-      setScore(calculatedScore);
-      dispatch({
-        type: "UPDATE_TRACK",
-        id: track.id,
-        patch: { releaseScore: calculatedScore },
-      });
-      setScanning(false);
-    }, 250);
-  };
-
-  const checks: [string, string, "pass" | "warn", string][] = [
-    [
-      "Integrated loudness",
-      `${track.source === "upload" ? "Unmeasured" : track.metrics.lufs.toFixed(1)} LUFS`,
-      lufsDelta <= 2.0 ? "pass" : "warn",
-      lufsDelta <= 2.0
-        ? `Within target range for ${platform} (${String(target.targetLufs)} LUFS).`
-        : `Differs from ${platform} target (${String(target.targetLufs)} LUFS) by ${lufsDelta.toFixed(1)} dB.`,
-    ],
-    [
-      "True peak",
-      `${track.metrics.peak.toFixed(1)} dBTP`,
-      track.metrics.peak <= target.maxPeak ? "pass" : "warn",
-      track.metrics.peak <= target.maxPeak
-        ? `Clean ceiling headroom below ${String(target.maxPeak)} dBTP.`
-        : `True peak exceeds ${platform} ceiling (${String(target.maxPeak)} dBTP); leaves risk of codec clipping.`,
-    ],
-    [
-      "Dynamic range",
-      `${track.metrics.dynamics.toFixed(1)} DR`,
-      track.metrics.dynamics >= target.minDr ? "pass" : "warn",
-      track.metrics.dynamics >= target.minDr
-        ? "The track retains useful musical contrast."
-        : `Dynamic range is below recommended ${String(target.minDr)} DR threshold for this format.`,
-    ],
-    [
-      "Mono compatibility",
-      `${track.metrics.correlation.toFixed(2)} corr`,
-      track.metrics.correlation >= target.minCorr ? "pass" : "warn",
-      track.metrics.correlation >= target.minCorr
-        ? "Phase coherent; translates accurately in mono."
-        : "Low correlation; review wide stereo elements for mono cancellation.",
-    ],
-    [
-      "Source format",
-      `${track.format} · ${String(track.sampleRate / 1000)} kHz`,
-      "pass",
-      "Suitable source format for high-resolution distribution master.",
-    ],
-  ];
-
   return (
     <div className="page">
-      <PageTitle
-        eyebrow="Release check"
-        title="Ready for the handoff?"
-        copy="Technical review for streaming and physical distribution targets."
-        action={
-          <Button
-            variant="secondary"
-            icon={<Icon name="arrow-left" />}
-            onClick={() => {
-              router.push(`/master/${track.id}`);
-            }}
-          >
-            Back to master
-          </Button>
-        }
-      />
+      <PageTitle eyebrow="Release check" title="Ready for the handoff?" copy="Measure your current master against working delivery targets."
+        action={<Link className="button button--secondary" href={`/master/${track.id}`}>Back to master</Link>} />
       <div className="release-top paper-panel">
-        <div className="score-ring" aria-label="Release readiness score">
-          <strong>{score ?? "—"}</strong>
-          <span>readiness</span>
-        </div>
-        <div>
-          <span className="eyebrow">Selected release</span>
-          <h2>{track.title}</h2>
-          <p>
-            {score !== undefined
-              ? score >= 90
-                ? "This track is in strong shape for delivery."
-                : "A few small decisions remain before delivery."
-              : "Run the check to review loudness, peaks, dynamics, compatibility, and format."}
-          </p>
-          <div className="platforms" role="group" aria-label="Target platform">
-            {[
-              "Spotify",
-              "Apple Music",
-              "YouTube",
-              "SoundCloud",
-              "CD",
-              "Podcast",
-            ].map((item) => (
-              <button
-                type="button"
-                className={platform === item ? "chip is-active" : "chip"}
-                aria-pressed={platform === item}
-                onClick={() => {
-                  setPlatform(item);
-                }}
-                key={item}
-              >
-                {item}
-              </button>
-            ))}
+        <div className="score-ring" aria-label="Checks within working targets"><strong>{score ?? "—"}</strong><span>checks passed</span></div>
+        <div><span className="eyebrow">Selected release</span><h2>{track.title}</h2>
+          <p>{metrics ? "Measurements reflect the current rendered settings." : "Run a check to measure actual rendered audio. Settings changes invalidate the previous check."}</p>
+          <div className="platforms" role="group" aria-label="Working delivery target">
+            {["Streaming", "Dynamic", "Spoken word"].map((item) => <button type="button" key={item} className={platform === item ? "chip is-active" : "chip"} aria-pressed={platform === item} onClick={() => { setPlatform(item); }}>{item}</button>)}
           </div>
         </div>
-        <Button
-          icon={
-            scanning ? (
-              <Icon name="refresh-cw" className="spin" />
-            ) : (
-              <Icon name="gauge" />
-            )
-          }
-          onClick={run}
-          disabled={scanning}
-        >
-          {scanning ? "Reviewing release…" : "Run release check"}
-        </Button>
+        <Button onClick={() => void run()} disabled={scanning} icon={<Icon name={scanning ? "refresh-cw" : "gauge"} />}>{scanning ? "Measuring audio…" : "Run release check"}</Button>
       </div>
-      {score !== undefined && (
-        <section className="check-list">
-          <div className="check-list-head">
-            <span>Check</span>
-            <span>Reading</span>
-            <span>Guidance</span>
-          </div>
-          {checks.map(([name, value, status, note]) => (
-            <div className="check-item" key={name}>
-              <span className={`check-icon check-icon--${status}`}>
-                <Icon name={status === "pass" ? "check" : "circle-alert"} />
-              </span>
-              <strong>
-                {name} ({status === "pass" ? "Pass" : "Review"})
-              </strong>
-              <span>{value}</span>
-              <p>{note}</p>
-            </div>
-          ))}
-          <div className="report-actions">
-            <Button
-              variant="secondary"
-              icon={<Icon name="arrow-down-to-line" />}
-              onClick={() => {
-                const blob = new Blob(
-                  [
-                    JSON.stringify(
-                      { track: track.title, platform, score, checks },
-                      null,
-                      2,
-                    ),
-                  ],
-                  { type: "application/json" },
-                );
-                const a = document.createElement("a");
-                a.href = URL.createObjectURL(blob);
-                a.download = `${track.title}-release-report.json`;
-                a.click();
-                URL.revokeObjectURL(a.href);
-              }}
-            >
-              Download JSON report
-            </Button>
-          </div>
-        </section>
-      )}
+      <p className="disclosure" role={error ? "alert" : "status"}>{error || "Targets are working preferences, not platform requirements or delivery certification."}</p>
+      {metrics && <section className="check-list">
+        <div className="check-list-head"><span>Check</span><span>Reading</span><span>Guidance</span></div>
+        {checks.map(([name, value, status, note]) => <div className="check-item" key={name}>
+          <span className={`check-icon check-icon--${status}`}><Icon name={status === "pass" ? "check" : "circle-alert"} /></span>
+          <strong>{name} ({status === "pass" ? "Pass" : "Review"})</strong><span>{value}</span><p>{note}</p>
+        </div>)}
+        <div className="report-actions"><Button variant="secondary" icon={<Icon name="arrow-down-to-line" />} onClick={() => {
+          const url = URL.createObjectURL(new Blob([JSON.stringify({ track: track.title, target: platform, targetLufs, score, metrics, checks, settings: engineParams(track.advanced) }, null, 2)], { type: "application/json" }));
+          const anchor = document.createElement("a"); anchor.href = url; anchor.download = "aurialis-audio-review.json"; anchor.click();
+          setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
+        }}>Download JSON report</Button></div>
+      </section>}
     </div>
   );
 }
@@ -2890,13 +2297,13 @@ function ReleaseView({ trackId }: { trackId: string }) {
 function ToolsView() {
   const { state } = useStore();
   const first = state.tracks[0];
-  const targetId = first?.id ?? "demo-1";
+  const targetId = first?.id ?? "placeholder";
   return (
     <div className="page">
       <PageTitle
         eyebrow="Focused utilities"
         title="Tools"
-        copy="These planned tools are not available in this build. WAV mastering is available from Home and Library."
+        copy="Focused tools for your local audio projects."
       />
       <div className="tools-grid">
         <ToolCard
@@ -2917,7 +2324,7 @@ function ToolsView() {
           icon="check"
           eyebrow="Delivery"
           title="Release check"
-          copy="Certified loudness, true-peak, and delivery checks are not available."
+          copy="Measure rendered loudness, peak estimates, crest factor and stereo correlation."
           href={`/release-check/${targetId}`}
         />
       </div>

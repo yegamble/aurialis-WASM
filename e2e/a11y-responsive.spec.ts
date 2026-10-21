@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
+import { uploadProject } from "./workflow-fixture"
 
 const VIEWPORTS = [
   { width: 320, height: 640, name: "mobile-320" },
@@ -13,11 +14,12 @@ const VIEWPORTS = [
 const ROUTES = [
   "/",
   "/library",
-  "/master/demo-1",
-  "/split/demo-1",
+  "/master/PROJECT",
+  "/split/PROJECT",
   "/albums",
-  "/reference/demo-1",
-  "/release-check/demo-1",
+  "/albums/ALBUM",
+  "/reference/PROJECT",
+  "/release-check/PROJECT",
   "/tools",
 ]
 
@@ -25,6 +27,12 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
   test("serves COOP/COEP headers and zero horizontal overflow across 320px-1440px", async ({
     page,
   }) => {
+    test.setTimeout(120_000)
+    const id = await uploadProject(page)
+    await page.goto("/albums")
+    await page.getByRole("button", { name: "New album", exact: true }).click()
+    await page.getByRole("link", { name: /Untitled sequence 1/ }).click()
+    const album = new URL(page.url()).pathname.split("/")[2] ?? ""
     const response = await page.goto("/")
     expect(response).not.toBeNull()
     const headers = response?.headers() ?? {}
@@ -32,9 +40,14 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
     expect(headers["cross-origin-embedder-policy"]).toBe("require-corp")
 
     for (const vp of VIEWPORTS) {
+      const id = await uploadProject(page)
+      await page.goto("/albums")
+      await page.getByRole("button", { name: "New album", exact: true }).click()
+      await page.getByRole("link", { name: /Untitled sequence 1/ }).click()
+      const album = new URL(page.url()).pathname.split("/")[2] ?? ""
       await page.setViewportSize({ width: vp.width, height: vp.height })
       for (const route of ROUTES) {
-        await page.goto(route)
+        await page.goto(route.replace("PROJECT", id).replace("ALBUM", album))
         await expect(page.locator("main")).toBeVisible()
         const overflow = await page.evaluate(() => {
           return (
@@ -52,9 +65,14 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
 
   for (const vp of VIEWPORTS) {
     test(`passes axe WCAG 2.2 AA at ${vp.width}px`, async ({ page }) => {
+      const id = await uploadProject(page)
+      await page.goto("/albums")
+      await page.getByRole("button", { name: "New album", exact: true }).click()
+      await page.getByRole("link", { name: /Untitled sequence 1/ }).click()
+      const album = new URL(page.url()).pathname.split("/")[2] ?? ""
       await page.setViewportSize({ width: vp.width, height: vp.height })
       for (const route of ROUTES) {
-        await page.goto(route)
+        await page.goto(route.replace("PROJECT", id).replace("ALBUM", album))
         await expect(page.locator("h1")).toBeVisible()
         const results = await new AxeBuilder({ page })
           .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])

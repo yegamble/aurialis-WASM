@@ -9,21 +9,25 @@ Based on [Aurialis](https://aurialis.yosefgamble.com/) ([`yegamble/Aurialis`](ht
 
 ## Current behavior and limits
 
-This branch is an unfinished workstation prototype. The full product vision remains in [`AGENTS.md`](AGENTS.md) and [`docs/tasks.md`](docs/tasks.md); no feature is verified and merged by this session.
+This is an unfinished workstation undergoing corrective recovery. [The audit](docs/reviews/2026-10-21-war-room-audit.md) records the reproduced failures; [the task tracker](docs/tasks.md) separates implemented behavior from outstanding product requirements. The corrective subset is locally verified and **open — awaiting merge**; full-product delivery, owner approval and remote PR checks remain outstanding.
 
-- Upload a WAV file up to 16 MiB. The Go API validates and reconstructs it into canonical PCM before the browser stores its source Blob in IndexedDB. Project metadata and settings use localStorage. If browser storage fails, the session keeps audio in memory and displays a warning.
-- Advanced mode exposes independent gain, EQ, compression, saturation, stereo and limiter controls. Use **Render preview** after edits to process the full source through the shared Go WASM engine. A plays the original and B plays the rendered result; stale B playback is disabled until rendered again. Playback supports play/pause, seek and volume.
-- Export renders the latest settings from the actual source through the native Go API, preserving source sample rate and frame count. WAV output supports 16/24-bit PCM or 32-bit float. Missing sources require a new upload; exports never substitute a synthetic tone.
-- Browser metrics report measured sample peak (dBFS), RMS and crest factor. These are not certified integrated LUFS, true peak or platform compliance results. There is no automatic loudness matching for A/B.
-- Simple and Deep mastering, Smart Split, album processing, Reference Match and Release Check display unavailable states. The older backend Deep and stem routes remain experimental heuristics, without trained separation or AI/LLM inference. Their presence does not constitute working product workflows.
+- The production library starts empty. Import your own PCM WAV; legacy example projects and fabricated analysis/stem results are discarded during migration. The Go server validates and reconstructs audio before it is stored in IndexedDB. Project metadata/settings use localStorage, with an in-memory audio fallback and warning when persistent storage fails.
+- Advanced mode offers independent input, five-band EQ, compressor, saturation, stereo and sample-limiter controls. Render preview processes the source through the shared Go WASM engine. Export processes the current settings through native Go, preserving sample rate/frame count in 16/24-bit PCM or 32-bit float WAV.
+- Simple mode explicitly measures processed output and adjusts input gain toward its selected loudness target. It reports a failure when the available gain/ceiling constraints cannot reach the target. Advanced rendering never adds hidden target gain. The five profile presets apply static settings; musical section analysis, automation and AI repair remain unavailable.
+- A/B comparison uses RMS-based attenuation of the louder buffer, with playback position and monitor level preserved across switches. RMS matching is not an integrated-loudness certification.
+- Albums render actual per-track 24-bit WAV artifacts for download while preserving the original uploads. The browser output cache is bounded; broader album consistency and batch recovery requirements remain open. Reference direction blends another project's EQ settings with effective low-band/width options; it does not analyze or match recorded reference spectra.
+- Release diagnostics measure actual rendered output with native loudness, reconstructed-peak, sample-peak, crest and correlation meters. Streaming, Dynamic and Spoken word are working targets, not platform delivery certification. Smart Split identifies validated instrument separation as unavailable; its old timer-driven success path is removed.
 
-The native server embeds the Next.js static export, WASM module and Go browser runtime. Browser preview currently renders a buffer before playback; direct continuous AudioWorklet/SharedArrayBuffer streaming remains open. The DSP implements useful mathematical transformations, but hardware fidelity, anti-aliasing performance and standards-compliant true-peak limiting require further verification.
+Imports are bounded to **128 MiB plus the 44-byte canonical WAV header** and **16,777,216 decoded frames** (about 5 min 50 s at 48 kHz or 2 min 55 s at 96 kHz; byte limits can be stricter). The multipart request ceiling is 129 MiB, including canonical float WAV and form overhead. One expensive audio request runs at a time; busy requests return a retryable response. Album output cache is limited to 128 MiB total and lasts only while its page remains open; changing the sequence or processing settings invalidates the downloads. These are finite workstation limits, not unlimited batch capacity.
+
+Continuous AudioWorklet/SharedArrayBuffer processing, validated hardware fidelity, trained separation, source-derived AI analysis and certified true-peak limiting remain open. The native binary embeds the frontend, WASM and matching Go browser runtime. Fonts are self-hosted.
 
 ## Quickstart & Single-Binary Build
 
-Use Node `26.12.0`, `pnpm@10.33.0`, Go `1.26.9`, Next.js 16 and React 19, as pinned by this repository. Dependency installation uses pnpm only.
+Use Node `26.12.0`, `pnpm@10.33.0`, Go `1.26.10`, Next.js 16 and React 19, as pinned by this repository. Dependency installation uses pnpm only.
 
 ```bash
+export PATH="$HOME/.nvm/versions/node/v26.12.0/bin:$PATH"
 pnpm install --frozen-lockfile
 pnpm run build:binary
 pnpm run test:binary
@@ -32,11 +36,13 @@ pnpm run test:binary
 
 Open [http://127.0.0.1:8080](http://127.0.0.1:8080). `build:binary` compiles the browser WASM module, copies Go's matching `wasm_exec.js`, builds and synchronizes the static frontend, then builds the host. `pnpm start` runs the built `./aurialis` executable. `test:binary` starts that executable from an empty temporary directory and checks embedded assets and API behavior. A plain `go build` does not rebuild frontend assets.
 
+For integrated local development, run `pnpm dev` and open [http://127.0.0.1:3000](http://127.0.0.1:3000). This command rebuilds and serves the same Go application, including its APIs and isolation headers. Restart it after source changes; it does not provide hot reload. Running Next.js by itself does not provide the Go processing API.
+
 | Flag | Default | Environment override | Meaning |
 |---|---|---|---|
 | `-addr` | `127.0.0.1:8080` | `AURIALIS_ADDR`, then `PORT` | HTTP listen address; environment takes precedence over flag. A numeric `PORT` uses loopback; non-loopback addresses are rejected. |
 | `-workers` | `0` (auto) | — | Worker count; see current bounds in [`docs/architecture.md`](docs/architecture.md). |
-| `-max-upload-bytes` | 32 MiB | `MAX_UPLOAD_BYTES_OVERRIDE` | Multipart request body ceiling, including fields and boundaries; overrides can lower the hard 32 MiB cap. This does not increase the browser's 16 MiB import limit. |
+| `-max-upload-bytes` | 129 MiB | `MAX_UPLOAD_BYTES_OVERRIDE` | Multipart request body ceiling, including fields and boundaries; overrides can lower the hard 129 MiB cap. This does not increase the browser's 128 MiB plus 44-byte file limit. |
 
 ## Multi-Model War Room (`war-room` & `war-room-loop`)
 
@@ -80,7 +86,7 @@ python3 scripts/sync-agents.py
 
 ## Fail-Fast Quality Gates
 
-Always ensure Node `26.12.0` (`$HOME/.nvm/versions/node/v26.12.0/bin`) and Go `1.26.9` are on `PATH`:
+Always ensure Node `26.12.0` (`$HOME/.nvm/versions/node/v26.12.0/bin`) and Go `1.26.10` are on `PATH`:
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v26.12.0/bin:$PATH"
@@ -129,7 +135,7 @@ Every commit pushed to any branch (`branches: ['**']`) and every pull request tr
 
 ## Verification status
 
-Gate commands above are requirements, not claims of passing CI. See [`docs/tasks.md`](docs/tasks.md) and [the ledger](.claude/war-room/ledger.md) for current-session execution evidence and open blockers. In this environment the current `govulncheck` attempt is blocked by a forbidden response from `https://vuln.go.dev`; a historical CVE claim in older docs was not revalidated. A passing browser smoke test does not certify analog hardware fidelity, codec support, platform release compliance or all accessibility interactions.
+Gate commands above are requirements, not claims of passing CI. See [`docs/tasks.md`](docs/tasks.md) and [the ledger](.claude/war-room/ledger.md) for current-session execution evidence and open blockers. The earlier blocked vulnerability lookup was superseded by a successful Go 1.26.10 `govulncheck ./...` run reporting no vulnerabilities. Final local results and failed attempts are recorded in the task tracker; remote PR checks and owner merge remain outstanding. A passing browser smoke test does not certify analog hardware fidelity, codec support, platform release compliance or all accessibility interactions.
 
 ---
 

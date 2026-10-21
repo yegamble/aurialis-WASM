@@ -15,9 +15,9 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 The latest whole-product review audited local and remote `main` at `ade7736` (the only live branch). The blanket verification claims in the historical activation record are withdrawn. The corrected design archive matches the canonical checked-in Figma source exactly.
 
-[The baseline audit](../../docs/reviews/2026-10-21-war-room-audit.md) records 17 evidence-backed recovery items, reproduction steps, acceptance criteria, dissent and retractions. The user subsequently requested implementation, Figma fidelity, removal of prototype examples, and independent verification of every audio setting. Corrective work is on `codex/war-room-product-audit`, using isolated design, audio and workflow worktrees. Default owner merge gate applies; no full-product completion or merge is claimed.
+[The baseline audit](../../docs/reviews/2026-10-21-war-room-audit.md) records 17 evidence-backed recovery items, reproduction steps, acceptance criteria, dissent and retractions. The user subsequently requested implementation, Figma fidelity, removal of prototype examples, and independent verification of every audio setting. Corrective work is on `codex/war-room-product-audit`, using isolated design, audio and workflow checkouts. The bounded corrective subset passed local verification and is **open — awaiting merge (`codex/war-room-product-audit`)**. Default owner merge gate applies; full-product completion and a merge are not claimed.
 
-The current recovery retains real shared Go/WASM processing and replaces misleading success paths. Trained separation, source-derived musical/AI analysis, time automation, continuous worklet streaming and full-song capacity remain requirements; honest unavailable states do not deliver them.
+The current recovery retains real shared Go/WASM processing and replaces misleading success paths. Trained separation, source-derived musical/AI analysis, time automation and continuous worklet streaming remain requirements. Finite 3/5-minute native processing now has representative execution evidence; longer/high-rate/browser-scale capacity remains open; honest unavailable states do not deliver them.
 
 ## Iteration Log
 
@@ -25,7 +25,7 @@ The current recovery retains real shared Go/WASM processing and replaces mislead
 |---|---|---|---|---|
 | 0 | 2026-10-20 | Initial War Room & Multi-Model Agent Architecture Setup (Gemini Argon, Claude Code, OpenAI Codex) | `aurialis-backend`, `aurialis-frontend`, `aurialis-designer`, `aurialis-qa`, `aurialis-devils-advocate`, `aurialis-tech-writer`, `aurialis-product-engineer` | Seeded multi-model War Room roster, `/war-room` & `/war-room-loop` skills/commands, HCL/OKLCH & mobile-first rules, Postman/Newman + cURL QA protocol, and initial `WASM-1`…`WASM-10` product backlog. |
 | 1 | 2026-10-21 | Vertical Slices Implementation & Verification Wave (`feat/war-room-iter1-vertical-slices`) | `aurialis-backend`, `aurialis-dsp-plugin-engineer`, `aurialis-frontend`, `aurialis-designer`, `aurialis-qa`, `aurialis-devils-advocate`, `aurialis-tech-writer`, `aurialis-product-engineer` | Initial vertical slice scaffold: single Go binary embedding (`cmd/aurialis`), Audio CDR, 5-profile mastering engine, 2–6 stem separation, Next.js 16 warm editorial workstation (9 routes), client DSP & WAV export, control-isolation tests, Newman TS-001..TS-015 + curl probes, Playwright a11y/responsive suites, and unconditional CI pipeline. |
-| 2 | 2026-10-21 | 100% Vertical Slice Activation & Honest Verification (`war-room/iter2-validation`) | `aurialis-backend`, `aurialis-dsp-plugin-engineer`, `aurialis-frontend`, `aurialis-designer`, `aurialis-qa`, `aurialis-devils-advocate`, `aurialis-tech-writer`, `aurialis-product-engineer` | Slices S1..S7 fully activated without placeholder wrappers: Simple mode (`mapSimpleToDSP`), Deep mode (`mapProfileToDSP`, `DeepTimeline`, `MoveEditor`), Loudness-Matched A/B (`RealTransport` RMS auto-trim), Smart Split (`SplitView` 2-6 stems), Albums (`AlbumView` sequence reordering & batch normalization), Reference Match (real EQ contour overlay & delta mapping), Release Check (objective platform targets for Spotify/Apple/YouTube/SoundCloud/CD/Podcast). All 14 Playwright tests, Newman TS-001..TS-015, Go race tests, and frontend linters pass. Status: `implemented — open, awaiting merge`. |
+| 2 | 2026-10-21 | Historical activation claim — withdrawn: 100% Vertical Slice Activation & Honest Verification (`war-room/iter2-validation`) | `aurialis-backend`, `aurialis-dsp-plugin-engineer`, `aurialis-frontend`, `aurialis-designer`, `aurialis-qa`, `aurialis-devils-advocate`, `aurialis-tech-writer`, `aurialis-product-engineer` | Slices S1..S7 fully activated without placeholder wrappers: Simple mode (`mapSimpleToDSP`), Deep mode (`mapProfileToDSP`, `DeepTimeline`, `MoveEditor`), Loudness-Matched A/B (`RealTransport` RMS auto-trim), Smart Split (`SplitView` 2-6 stems), Albums (`AlbumView` sequence reordering & batch normalization), Reference Match (real EQ contour overlay & delta mapping), Release Check (objective platform targets for Spotify/Apple/YouTube/SoundCloud/CD/Podcast). All 14 Playwright tests, Newman TS-001..TS-015, Go race tests, and frontend linters pass. Status: `implemented — open, awaiting merge`. |
 
 ---
 
@@ -50,27 +50,27 @@ Acceptance criteria below retain the intended product scope. Test-plan columns n
 
 ## Recovery backlog — current session
 
-Every item below is open until its acceptance criteria in the baseline audit pass current-session QA and Devil’s Advocate checks. Corrective commits alone are not evidence of full feature delivery.
+The corrective subset passed current-session QA and Devil’s Advocate review and is open — awaiting merge. Rows distinguish repaired behavior from full feature requirements that remain open; removal of simulated outcomes is not delivery of analysis, automation or separation.
 
 | ID | Priority | Required recovery | Status |
 |---|---|---|---|
-| R-01 | P1 | Integrated local startup with Go APIs and isolation headers | in-progress (`codex/war-room-product-audit`) |
-| R-02 | P1 | Repeatable binary build with a read-only previous runtime | in-progress (`codex/war-room-product-audit`) |
-| R-03 | P1 | First apply uses current settings, preview/export agree | in-progress (`codex/recovery-workflows`) |
-| R-04 | P1 | Source-derived Deep analysis; remove invented findings meanwhile | open |
-| R-05 | P1 | Shared sample-timed automation and effective repair | open |
-| R-06 | P1 | Validated stem audio, controls, downloads and handoff | open |
-| R-07 | P1 | Measured album processing and actual output | in-progress (`codex/recovery-workflows`) |
-| R-08 | P1 | Measured reference matching and effective protection controls | in-progress (`codex/recovery-workflows`) |
-| R-09 | P1 | Measured, correctly labeled release diagnostics | in-progress (`codex/recovery-workflows`) |
-| R-10 | P1 | Stable A/B trim, seek and playback continuity | in-progress (`codex/recovery-workflows`) |
-| R-11 | P1 | Independent move edits when real automation is delivered | open |
-| R-12 | P1 | Every enabled audio setting maps independently to sample output | in-progress (`codex/recovery-audio`) |
-| R-13 | P1 | Bounded full-song input capacity and visible current limits | open |
-| R-14 | P1 | Complete canonical component/CSS migration | in-progress (`codex/recovery-design`) |
-| R-15 | P1 | Honest synchronized docs; no demo production state; output-based tests | in-progress (`codex/war-room-product-audit`) |
-| R-16 | P2 | Figma identity, metric hierarchy and responsive controls | in-progress (`codex/recovery-design`) |
-| R-17 | P0 | Patched Go native/WASM/CI toolchain; green vulnerability gate | in-progress (`codex/war-room-product-audit`) |
+| R-01 | P1 | Integrated local startup with Go APIs and isolation headers | open — awaiting merge (integrated local startup locally verified) |
+| R-02 | P1 | Repeatable binary build with a read-only previous runtime | open — awaiting merge (repeat builds/runtime replacement and empty-directory smoke passed) |
+| R-03 | P1 | First apply uses current settings, preview/export agree | open — awaiting merge (immutable apply, source readiness and preview/export PCM passed) |
+| R-04 | P1 | Source-derived Deep analysis; remove invented findings meanwhile | open — invented findings removed; static profiles locally verified, source-derived analysis not delivered |
+| R-05 | P1 | Shared sample-timed automation and effective repair | open — misleading timeline removed; shared operational automation and repair not delivered |
+| R-06 | P1 | Validated stem audio, controls, downloads and handoff | open — fabricated stem completion removed; validated separation and handoff not delivered |
+| R-07 | P1 | Measured album processing and actual output | open — awaiting merge (bounded actual album WAV subset verified; wider consistency/batch scope open) |
+| R-08 | P1 | Measured reference matching and effective protection controls | open — EQ-settings blend and protection controls verified; measured spectral matching not delivered |
+| R-09 | P1 | Measured, correctly labeled release diagnostics | open — awaiting merge (actual rendered diagnostics and JSON verified; certification not claimed) |
+| R-10 | P1 | Stable A/B trim, seek and playback continuity | open — awaiting merge (RMS trim, playhead and playback continuity verified) |
+| R-11 | P1 | Independent move edits when real automation is delivered | open — stale simulated editor removed; real automation editing not delivered |
+| R-12 | P1 | Every enabled audio setting maps independently to sample output | open — awaiting merge (42 native control pairs, 267 parity fixtures, 31 real UI/export pairs verified) |
+| R-13 | P1 | Bounded full-song input capacity and visible current limits | open — finite 3/5-minute native capacity verified; general high-rate/browser memory and longer capacity open |
+| R-14 | P1 | Complete canonical component/CSS migration | open — awaiting merge (active route styles and responsive generated states verified) |
+| R-15 | P1 | Honest synchronized docs; no demo production state; output-based tests | open — awaiting merge (honest docs, empty production state and output-based tests synchronized) |
+| R-16 | P2 | Figma identity, metric hierarchy and responsive controls | open — awaiting merge (identity, metric hierarchy, target geometry and hero sizing verified) |
+| R-17 | P0 | Patched Go native/WASM/CI toolchain; green vulnerability gate | open — awaiting merge (Go 1.26.10 and vulnerability gate verified) |
 
 ---
 
@@ -98,9 +98,9 @@ Every item below is open until its acceptance criteria in the baseline audit pas
 
 The original implementation commit history is retained in git (`8470405`, `f565ab3`, `3049756`, `421acca`, `41386c8`, `587731f`, `3875075`, `5e07560`). Earlier prose claiming complete vertical slices and calibrated processing was inaccurate and is superseded above. No historical test result is promoted to current-session evidence.
 
-## Current-session loop — 2026-10-21
+## Historical corrective loop — 2026-10-21
 
-This session uses its own iteration counter (maximum 10), separate from the historical iteration 1 above. Rulings are sequential review/implementation waves; specialist work can overlap. Go/static integration evidence is at `24137c4`; the final browser/frontend/build checkpoint is `c3c15c9`. The session stopped at its maximum 10 iterations with corrective changes verified locally and the full product scope still open.
+This earlier corrective session used its own iteration counter (maximum 10), separate from the historical iteration 1 above. Rulings are sequential review/implementation waves; specialist work can overlap. Go/static integration evidence is at `24137c4`; the final browser/frontend/build checkpoint is `c3c15c9`. The session stopped at its maximum 10 iterations with corrective changes verified locally and the full product scope still open.
 
 | Session iteration | Ruling / work | Current evidence and remaining action |
 |---|---|---|
@@ -117,4 +117,18 @@ This session uses its own iteration counter (maximum 10), separate from the hist
 
 Preliminary evidence is also listed in [`docs/tasks.md`](../../docs/tasks.md). Final command outcomes and checkpoint SHAs are recorded in tasks above; the five owned documentation files passed cspell, local-link validation and diff whitespace checks before commit. QA accepted signed-zero normalization without weakening finite-sample checks; Devil's Advocate found no demonstrated corrective-PR blocker. No historical or preliminary result is promoted to a final passing gate.
 
-The pending-preview track-switch concern was ruled out by code inspection: MasterView is keyed by resolved track ID, so changing tracks remounts it and unmount cleanup aborts pending rendering. The full scope remains open, including unsupported processing workflows and the blocked vulnerability gate.
+The pending-preview track-switch concern was ruled out by code inspection: MasterView is keyed by resolved track ID, so changing tracks remounts it and unmount cleanup aborts pending rendering. This historical checkpoint retained unsupported processing workflows and a blocked vulnerability gate. The recovery record below supersedes its current-state claims; history is not final recovery evidence.
+
+
+## Current recovery loop — four iterations
+
+The user authorized corrective implementation after the baseline review. This recovery counter is separate from the earlier ten-iteration history. All broad `WASM-1`…`WASM-10` requirements remain open; disabled unsupported features do not satisfy their acceptance criteria.
+
+| Iteration | Ruling and implemented subset | Evidence and remaining gate |
+|---|---|---|
+| 1 | Reproduce and rule on the 17 baseline findings; compare the corrected archive with canonical design assets | Baseline `ade7736` failures are preserved in the audit. Only `main` existed locally/remotely at review start. |
+| 2 | Correct integrated startup/runtime replacement; patch Go; remove demo/simulated results; restore real Advanced/Simple processing, profiles, album WAV artifacts, reference settings blend and native release diagnostics | Atomic source changes integrated on `codex/war-room-product-audit`. AI analysis, real time automation, trained separation and spectral matching remain open. |
+| 3 | Reuse Tailwind controls/dialogs/modules; restore Figma structures and responsive hero sizing; add high-pass, source-rate EQ, independent control and finite-capacity regressions | 267 native/WASM fixtures and 42 control pairs are the audio checkpoint scope. Simple mapping starts from neutral defaults; 36 genre/tone regressions prevent repeated Apply from compounding settings. Reference curves share logarithmic axes and retain measurement provenance. Representative 3/5-minute native requests and canonical round-trip passed; observed memory is not a universal or browser budget proof. |
+| 4 | Final integrated static/native/browser/packaging/API/documentation review | Initial 12-pass/8-fail browser evidence exposed a real Simple solver defect and metric-strip keyboard-focus failures; deeper probes found 41.25 px targets and an early profile-Apply race. All gained fixes and regressions. Corrected source passed 69 unit tests, full Go race, 267 fresh native/WASM fixtures, static/build/smoke gates, final 27-case browser suite (174.288 s), 31 UI control pairs/62 WAV exports, nine independent workflows, 30 generated axe/overflow views, hero/low-rate output probes and Newman 17-request/22-assertion coverage. Corrective subset locally verified and open — awaiting merge; owner approval and remote PR checks remain outstanding. Full failure history and precise checkpoint scope are retained in `docs/tasks.md`. |
+
+See [`docs/tasks.md`](../../docs/tasks.md) for the finite capacity, per-control coverage and checkpoint evidence. The earlier failed/blocked attempts remain historical evidence and are not erased by later successful reruns.

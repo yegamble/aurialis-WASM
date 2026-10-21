@@ -11,6 +11,8 @@ import { StoreProvider } from "@/lib/store";
 import { testStore } from "@/lib/__tests__/fixtures";
 import { AurialisWorkstation } from "../AurialisWorkstation";
 
+// cspell:words seekto previoustrack nexttrack
+
 const mocks = vi.hoisted(() => ({ getAudio: vi.fn(), createLivePlayback: vi.fn(), push: vi.fn() }));
 vi.mock("@/lib/db", () => ({ getAudio: mocks.getAudio, saveAudio: vi.fn(), deleteAudio: vi.fn() }));
 vi.mock("@/lib/live-playback", () => ({ createLivePlayback: mocks.createLivePlayback }));
@@ -80,6 +82,56 @@ describe("master live playback lifecycle", () => {
     expect(screen.getByRole("region", { name: "Measured audio levels" }).textContent).toContain("−∞");
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
     expect(screen.getByRole("region", { name: "Measured audio levels" }).textContent).not.toContain("−∞");
+  }, 20000);
+
+  it.each(["Media Session", "Space"])("accepts %s pause and resume while playback initialization is pending", async (input) => {
+    const handlers = new Map<MediaSessionAction, MediaSessionActionHandler | null>();
+    vi.stubGlobal("navigator", { mediaSession: {
+      metadata: null, playbackState: "none", setPositionState: vi.fn(),
+      setActionHandler: (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => { handlers.set(action, handler); },
+    } });
+    mount(); await ready();
+    const instance = latest();
+    let release: (() => void) | undefined;
+    const initialized = new Promise<void>((resolve) => { release = resolve; });
+    let ticket = 0;
+    const update = (patch: Partial<LivePlaybackState>) => {
+      instance.state = { ...instance.state, ...patch };
+      instance.callbacks.onState?.(instance.state);
+    };
+    vi.mocked(instance.controller.play).mockImplementation(async () => {
+      const current = ++ticket;
+      update({ loading: true });
+      await initialized;
+      if (current === ticket) update({ loading: false, playing: true, ready: true });
+    });
+    vi.mocked(instance.controller.pause).mockImplementation(() => { ticket++; update({ loading: false, playing: false }); });
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Starting playback" }).disabled).toBe(true);
+    act(() => {
+      handlers.get("seekto")?.({ action: "seekto", seekTime: 0.05 });
+      handlers.get("previoustrack")?.({ action: "previoustrack" });
+      handlers.get("nexttrack")?.({ action: "nexttrack" });
+    });
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(instance.controller.seek).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
+    function press(action: "play" | "pause") {
+      if (input === "Space") fireEvent.keyDown(document.body, { key: " ", code: "Space" });
+      else act(() => { handlers.get(action)?.({ action }); });
+    }
+    press("pause");
+    expect(instance.controller.pause).toHaveBeenCalledOnce();
+    expect(instance.state.playing).toBe(false);
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Play" }).disabled).toBe(false);
+    press("play");
+    expect(instance.controller.play).toHaveBeenCalledTimes(2);
+    expect(instance.state.loading).toBe(true);
+    expect(instance.state.playing).toBe(false);
+    await act(async () => { release?.(); await initialized; });
+    await screen.findByRole("button", { name: "Pause" });
+    expect(instance.state.playing).toBe(true);
+    expect(instance.controller.play).toHaveBeenCalledTimes(2);
   }, 20000);
 
   it("persists Simple choices to shared params and keeps modes neutral before and after manual edits", async () => {

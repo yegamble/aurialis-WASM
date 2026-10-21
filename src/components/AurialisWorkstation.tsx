@@ -897,7 +897,7 @@ function MasterView({ trackId }: { trackId: string }) {
       setLiveError("");
       controls = bindPlaybackControls(track?.title || "Untitled track", {
         getState: controller.getState,
-        available: () => active && live.current === controller && !handoverActive.current && !controller.getState().loading,
+        available: () => active && live.current === controller && !handoverActive.current,
         play: () => { stopScrub(false); return controller.play(); },
         pause: () => { stopScrub(false); controller.pause(); },
         seek: (seconds) => { stopScrub(false); controller.seek(seconds); },

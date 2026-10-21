@@ -43,11 +43,13 @@ export function bindPlaybackControls(title: string, actions: PlaybackActions) {
   function seek(seconds: number) {
     if (!actions.available()) return;
     const state = actions.getState();
+    if (state.loading) return;
     actions.seek(Math.max(0, Math.min(state.duration, seconds)));
     update(actions.getState(), true);
   }
   function play() { if (actions.available()) void actions.play().catch(actions.onError); }
-  function invoke(action: () => void) { if (actions.available()) { action(); update(actions.getState(), true); } }
+  function pause() { if (actions.available()) { actions.pause(); update(actions.getState(), true); } }
+  function invoke(action: () => void) { if (actions.available() && !actions.getState().loading) { action(); update(actions.getState(), true); } }
 
   function onKeyDown(event: KeyboardEvent) {
     if (event.defaultPrevented || event.ctrlKey || event.metaKey || !active || (session && !ownsSession()) || !actions.available()) return;
@@ -56,8 +58,10 @@ export function bindPlaybackControls(title: string, actions: PlaybackActions) {
     if (event.key === " " || event.code === "Space") {
       event.preventDefault();
       if (event.repeat) return;
-      if (actions.getState().playing) invoke(actions.pause); else play();
+      const state = actions.getState();
+      if (state.playing || state.loading) pause(); else play();
     } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      if (actions.getState().loading) return;
       event.preventDefault();
       const amount = event.altKey ? 0.1 : event.shiftKey ? 10 : 1;
       seek(actions.getState().position + (event.key === "ArrowLeft" ? -amount : amount));
@@ -69,8 +73,8 @@ export function bindPlaybackControls(title: string, actions: PlaybackActions) {
     owners.set(session, token);
     if (typeof MediaMetadata === "function") session.metadata = new MediaMetadata({ title, artist: "Aurialis", album: "Local mastering workspace" });
     const handlers: [MediaSessionAction, MediaSessionActionHandler][] = [
-      ["play", play], ["pause", () => { invoke(actions.pause); }],
-      ["stop", () => { invoke(() => { actions.pause(); actions.seek(0); }); }],
+      ["play", play], ["pause", pause],
+      ["stop", () => { pause(); seek(0); }],
       ["seekto", (details) => { if (details.seekTime !== undefined) seek(details.seekTime); }],
       ["seekbackward", (details) => { seek(actions.getState().position - (details.seekOffset ?? 10)); }],
       ["seekforward", (details) => { seek(actions.getState().position + (details.seekOffset ?? 10)); }],

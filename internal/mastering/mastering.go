@@ -221,24 +221,32 @@ func ProfilePreset(profile ProfileID) dsp.Params {
 	return p
 }
 
-// AnalyzeDeep inspects the audio buffer, segments it into musical sections, builds a
+// AnalyzeDeep measures fixed fractional regions of the audio buffer, builds a
 // profile-calibrated MasteringScript v1, and computes before/after acoustic metrics.
 func AnalyzeDeep(ctx context.Context, buf *audio.Buffer, profile ProfileID, onProgress func(pct int, stage string)) (*Script, error) {
-	if buf == nil || len(buf.Left) == 0 {
-		return nil, audio.ErrEmptyAudio
+	if err := validateStereoBuffer(ctx, buf); err != nil {
+		return nil, err
 	}
+	canonical, profileErr := NormalizeProfile(string(profile))
+	if profileErr != nil {
+		return nil, profileErr
+	}
+	profile = canonical
 	if onProgress != nil {
-		onProgress(15, "Decoding & measuring ITU-R BS.1770-4 loudness...")
+		onProgress(15, "Measuring stereo level estimates...")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 
 	sr := float64(buf.SampleRate)
-	beforeMetrics := dsp.MeasureStereo(buf.Left, buf.Right, sr)
+	beforeMetrics, measureErr := dsp.MeasureStereoContext(ctx, buf.Left, buf.Right, sr)
+	if measureErr != nil {
+		return nil, measureErr
+	}
 
 	if onProgress != nil {
-		onProgress(40, "Detecting musical sections & spectral balance...")
+		onProgress(40, "Measuring fixed timeline regions and energy...")
 	}
 	sections := detectSections(buf)
 	chainParams := ProfilePreset(profile)
@@ -264,7 +272,10 @@ func AnalyzeDeep(ctx context.Context, buf *audio.Buffer, profile ProfileID, onPr
 		BeforeMetrics: beforeMetrics,
 	}
 
-	_, _, afterMetrics := RenderScript(buf, script)
+	_, _, afterMetrics, renderErr := RenderScriptContext(ctx, buf, script)
+	if renderErr != nil {
+		return nil, renderErr
+	}
 	script.AfterMetrics = afterMetrics
 
 	if onProgress != nil {
@@ -342,7 +353,7 @@ func buildProfileMovesAndFindings(buf *audio.Buffer, sections []Section, profile
 		compDrive, satAmt = 3.2, 46.0
 		widthVerse, widthChorus = 108.0, 128.0
 		deEss, transientLift = 2.0, 2.2
-		summary = "Punchy Commercial script: tight VCA transient snap, +1.4 dB Chorus lift, 128% stereo hook expansion, and -9.5 LUFS ceiling."
+		summary = "Punchy Commercial script: tight VCA transient snap, +1.4 dB Chorus lift, 128% stereo hook expansion, and a requested -9.5 LUFS target."
 	case ProfileDynamicOpen:
 		volVerse, volChorus, volBridge = 0.0, 0.7, -0.4
 		eqSub, eqPresence, eqAir = 0.8, 0.5, 1.5
@@ -426,7 +437,7 @@ func buildProfileMovesAndFindings(buf *audio.Buffer, sections []Section, profile
 			ID:       "find-loudness",
 			Severity: "info",
 			Title:    fmt.Sprintf("Source integrated loudness at %0.1f LUFS", before.IntegratedLUFS),
-			Detail:   fmt.Sprintf("Calibrated %s chain targets %0.1f LUFS with %0.1f dBTP true-peak ceiling.", profile, base.Limiter.TargetLUFS, base.Limiter.CeilingDBTP),
+			Detail:   fmt.Sprintf("%s requests %0.1f LUFS with a %0.1f dBTP limiter setting; target metadata does not normalize gain.", profile, base.Limiter.TargetLUFS, base.Limiter.CeilingDBTP),
 			Lane:     "volume",
 		},
 		{
@@ -438,9 +449,9 @@ func buildProfileMovesAndFindings(buf *audio.Buffer, sections []Section, profile
 		},
 		{
 			ID:       "find-stereo",
-			Severity: "pass",
-			Title:    "Sub-110 Hz phase correlation locked",
-			Detail:   fmt.Sprintf("Source correlation %0.2f; Linkwitz-Riley mono-bass crossover keeps club/vinyl low-end phase coherent.", before.Correlation),
+			Severity: "info",
+			Title:    "Mono-bass crossover configured",
+			Detail:   fmt.Sprintf("Source correlation %0.2f; the configured mono-bass crossover is a processing choice, not a phase-translation certification.", before.Correlation),
 			Lane:     "width",
 		},
 	}
@@ -448,104 +459,11 @@ func buildProfileMovesAndFindings(buf *audio.Buffer, sections []Section, profile
 	return moves, findings, summary
 }
 
-// RenderScript renders a stereo buffer through the baseline chain and active MasteringScript v1
-// section moves, returning the mastered Left/Right channels and resulting ITU-R BS.1770-4 metrics.
+// RenderScript renders a validated script. Invalid input returns empty audio;
+// callers that need error or cancellation details should use RenderScriptContext.
 func RenderScript(buf *audio.Buffer, script *Script) ([]float32, []float32, dsp.Metrics) {
-	if buf == nil || len(buf.Left) == 0 {
-		return nil, nil, dsp.Metrics{}
-	}
-	sr := float64(buf.SampleRate)
-	if script == nil {
-		return dsp.RenderBuffer(buf.Left, buf.Right, sr, dsp.DefaultParams())
-	}
-
-	n := len(buf.Left)
-	if len(buf.Right) < n {
-		n = len(buf.Right)
-	}
-	outL := make([]float32, n)
-	outR := make([]float32, n)
-
-	engine := dsp.NewEngine(sr)
-	base := script.ChainParams
-
-	// Calibrate baseline input gain relative to source loudness so section volume moves act as true section faders
-	sourceLUFS := script.BeforeMetrics.IntegratedLUFS
-	if sourceLUFS == 0 {
-		sourceLUFS = dsp.MeasureStereo(buf.Left, buf.Right, sr).IntegratedLUFS
-	}
-	if base.Limiter.Enabled && script.TargetLUFS <= -5.0 && script.TargetLUFS >= -30.0 && sourceLUFS > -60.0 {
-		deltaLU := (script.TargetLUFS - sourceLUFS) * 0.85
-		if deltaLU > 14.0 {
-			deltaLU = 14.0
-		} else if deltaLU < -12.0 {
-			deltaLU = -12.0
-		}
-		base.InputGainDB += deltaLU
-	}
-
-	// Process in 25 ms blocks so section-specific moves modulate the DSP engine smoothly without clicks
-	stepFrames := int(sr * 0.025)
-	if stepFrames < 64 {
-		stepFrames = 64
-	}
-
-	for start := 0; start < n; start += stepFrames {
-		end := minInt(n, start+stepFrames)
-		midSec := (float64(start+end) * 0.5) / sr
-		p := applyMovesAtTime(base, script.Moves, midSec)
-		engine.SetParams(p)
-		engine.ProcessBlock(buf.Left[start:end], buf.Right[start:end], outL[start:end], outR[start:end])
-	}
-
-	metrics := dsp.MeasureStereo(outL, outR, sr)
-	metrics.GainReductionDB = engine.LastGainReductionDB()
-	return outL, outR, metrics
-}
-
-func applyMovesAtTime(base dsp.Params, moves []Move, tSec float64) dsp.Params {
-	p := base
-	for i := range moves {
-		mv := &moves[i]
-		if mv.Muted {
-			continue
-		}
-		if tSec < mv.StartSec || tSec > mv.EndSec {
-			continue
-		}
-		switch mv.ID {
-		case "move-vol-verse", "move-vol-chorus", "move-vol-bridge":
-			p.Compressor.Enabled = true
-			p.Compressor.MakeupDB += mv.Value
-		case "move-eq-sub":
-			p.Bands[0].GainDB = mv.Value
-		case "move-eq-presence":
-			p.Bands[3].GainDB = mv.Value
-		case "move-eq-air":
-			p.Bands[4].GainDB = mv.Value
-		case "move-compsat-verse":
-			p.Compressor.Ratio = math.Max(1.0, mv.Value)
-		case "move-compsat-chorus":
-			p.Saturation.Amount = math.Max(0.0, math.Min(100.0, mv.Value))
-		case "move-width-verse", "move-width-chorus":
-			p.Stereo.WidthPct = math.Max(0.0, math.Min(200.0, mv.Value))
-		case "move-repair-deess":
-			p.Repair.Enabled = true
-			p.Repair.DeEssDB = math.Max(0.0, mv.Value)
-		case "move-repair-transient":
-			p.Repair.Enabled = true
-			p.Repair.TransientDB = mv.Value
-		default:
-			switch mv.Lane {
-			case "volume":
-				p.Compressor.Enabled = true
-				p.Compressor.MakeupDB += mv.Value
-			case "width":
-				p.Stereo.WidthPct = math.Max(0.0, math.Min(200.0, mv.Value))
-			}
-		}
-	}
-	return p
+	left, right, metrics, _ := RenderScriptContext(context.Background(), buf, script)
+	return left, right, metrics
 }
 
 // StemOutput represents a single separated audio stem.
@@ -561,10 +479,11 @@ type StemOutput struct {
 }
 
 // SeparateStems decomposes a stereo buffer into 2..6 phase-coherent stems whose sample-wise
-// sum reconstructs the original mix.
+// sum reconstructs the original mix. This deterministic frequency/transient split
+// does not perform source-model inference or isolate instruments.
 func SeparateStems(ctx context.Context, buf *audio.Buffer, stemCount int, onProgress func(pct int, stage string)) ([]StemOutput, error) {
-	if buf == nil || len(buf.Left) == 0 {
-		return nil, audio.ErrEmptyAudio
+	if err := validateStereoBuffer(ctx, buf); err != nil {
+		return nil, err
 	}
 	if stemCount < 2 || stemCount > 6 {
 		return nil, fmt.Errorf("stem count must be between 2 and 6, got %d", stemCount)
@@ -774,12 +693,16 @@ func SeparateStems(ctx context.Context, buf *audio.Buffer, stemCount int, onProg
 		if err != nil {
 			return nil, err
 		}
+		metrics, measureErr := dsp.MeasureStereoContext(ctx, stemsL[k], stemsR[k], sr)
+		if measureErr != nil {
+			return nil, measureErr
+		}
 		outputs = append(outputs, StemOutput{
 			ID:       defs[k].id,
 			Name:     defs[k].name,
 			Role:     defs[k].role,
 			Color:    defs[k].color,
-			Metrics:  dsp.MeasureStereo(stemsL[k], stemsR[k], sr),
+			Metrics:  metrics,
 			Left:     stemsL[k],
 			Right:    stemsR[k],
 			WAVBytes: wavBytes,
@@ -787,7 +710,7 @@ func SeparateStems(ctx context.Context, buf *audio.Buffer, stemCount int, onProg
 	}
 
 	if onProgress != nil {
-		onProgress(100, "Stem separation complete")
+		onProgress(100, "Deterministic frequency split complete")
 	}
 	return outputs, nil
 }

@@ -155,7 +155,17 @@ func TestAllFiveEngineerProfilesAndSectionScriptOrthogonality(t *testing.T) {
 	}
 
 	// 3. Verify that muting a single Chorus Volume move changes Chorus loudness without mutating any other move
-	sc := scripts[mastering.ProfilePunchyCommercial]
+	sc := new(mastering.Script)
+	*sc = *scripts[mastering.ProfilePunchyCommercial]
+	sc.Moves = append([]mastering.Move(nil), sc.Moves...)
+	// Isolate the fader measurement from intentional compression/limiting and
+	// concurrent tonal automation. Input gain legitimately drives those stages.
+	sc.ChainParams = dsp.DefaultParams()
+	for i := range sc.Moves {
+		if sc.Moves[i].Lane != "volume" {
+			sc.Moves[i].Muted = true
+		}
+	}
 	origMoves := make([]mastering.Move, len(sc.Moves))
 	copy(origMoves, sc.Moves)
 
@@ -169,6 +179,7 @@ func TestAllFiveEngineerProfilesAndSectionScriptOrthogonality(t *testing.T) {
 		if sc.Moves[i].ID == "move-vol-chorus" {
 			targetIdx = i
 			sc.Moves[i].Value = 4.5
+			sc.Moves[i].Points = nil // Explicitly exercise the scalar fallback.
 			sc.Moves[i].Muted = false
 			break
 		}

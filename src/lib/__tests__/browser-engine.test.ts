@@ -274,7 +274,9 @@ describe("actual audio measurement and explicit Simple normalization", () => {
   it("converges using measured compressor response instead of assuming one LU per input dB", async () => {
     const inputs: number[] = [];
     vi.stubGlobal("fetch", vi.fn((_url: string, request: { body: FormData }) => {
-      const params = JSON.parse(String(request.body.get("params"))) as { inputGainDb: number };
+      const raw = request.body.get("params");
+      if (typeof raw !== "string") throw new Error("Missing render parameters");
+      const params = JSON.parse(raw) as { inputGainDb: number };
       inputs.push(params.inputGainDb);
       return Promise.resolve({ ok: true, json: () => Promise.resolve(measurementResponse({
         ...measured, integratedLufs: -20 + params.inputGainDb / 4, truePeakDbtp: -2,
@@ -291,7 +293,9 @@ describe("actual audio measurement and explicit Simple normalization", () => {
   it("bounds plateau attempts and never returns an unmeasured candidate", async () => {
     const inputs: number[] = [];
     const fetch = vi.fn((_url: string, request: { body: FormData }) => {
-      const params = JSON.parse(String(request.body.get("params"))) as { inputGainDb: number };
+      const raw = request.body.get("params");
+      if (typeof raw !== "string") throw new Error("Missing render parameters");
+      const params = JSON.parse(raw) as { inputGainDb: number };
       inputs.push(params.inputGainDb);
       return Promise.resolve({ ok: true, json: () => Promise.resolve(measurementResponse()) });
     });

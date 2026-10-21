@@ -23,7 +23,7 @@ test.describe("End-to-End Parameter Orthogonality & Control Isolation", () => {
     const lowGain = page.getByRole("slider", { name: "Low gain" })
     await expect(lowGain).toHaveValue("0")
 
-    // Verify Threshold and Stereo width remained at demo-1 initial values (-18 dB and 106%)
+    // The uploaded project's neutral compressor and width must remain unchanged.
     const thresholdSlider = page.getByRole("slider", { name: "Threshold" })
     const stereoWidthSlider = page.getByRole("slider", { name: "Stereo width" })
     await expect(thresholdSlider).toHaveValue("0")

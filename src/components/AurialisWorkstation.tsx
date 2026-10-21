@@ -947,7 +947,8 @@ function MasterView({ trackId }: { trackId: string }) {
     if (!session) return;
     cancelAnimationFrame(session.frame);
     scrub.current = null;
-    if (resume && session.wasPlaying && live.current === session.controller) void play();
+    const state = session.controller.getState();
+    if (resume && session.wasPlaying && live.current === session.controller && (state.position < state.duration || state.repeat)) void play();
   }
   function onScrub(direction: -1 | 1, phase: "start" | "end" | "cancel") {
     if (phase !== "start") { stopScrub(true); return; }
@@ -955,10 +956,10 @@ function MasterView({ trackId }: { trackId: string }) {
     if (!controller || handoverActive.current || controller.getState().loading) return;
     stopScrub(false);
     const state = controller.getState();
-    const now = performance.now();
-    const session = { controller, direction, startedAt: now, lastAt: now, position: state.position, wasPlaying: state.playing, frame: 0 };
-    scrub.current = session;
     controller.pause();
+    const now = performance.now();
+    const session = { controller, direction, startedAt: now, lastAt: now, position: controller.getState().position, wasPlaying: state.playing, frame: 0 };
+    scrub.current = session;
     function advance(time: number) {
       if (scrub.current !== session || live.current !== controller) return;
       if (time - session.lastAt >= 50) {

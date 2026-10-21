@@ -190,12 +190,13 @@ describe("master live playback lifecycle", () => {
     expect(instance.state.playing).toBe(false);
   }, 20000);
 
-  it.each([true, false])("scrubs a held direction while paused, suppresses Next, and restores prior playing=%s", async (wasPlaying) => {
+  it.each([{ wasPlaying: true, atEnd: false }, { wasPlaying: false, atEnd: false }, { wasPlaying: true, atEnd: true }])("scrubs without Next and restores playing=$wasPlaying unless reaching the end=$atEnd", async ({ wasPlaying, atEnd }) => {
     localStorage.setItem("aurialis-state-v1", JSON.stringify(testStore));
     mount(); await ready();
     const instance = latest();
     if (wasPlaying) fireEvent.click(screen.getByRole("button", { name: "Play" }));
-    act(() => { instance.state = { ...instance.state, position: 20, duration: 100 }; instance.callbacks.onState?.(instance.state); });
+    const start = atEnd ? 99.95 : 20;
+    act(() => { instance.state = { ...instance.state, position: start, duration: 100 }; instance.callbacks.onState?.(instance.state); });
     const frames = new Map<number, FrameRequestCallback>(); let frameId = 0;
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { frames.set(++frameId, callback); return frameId; });
     vi.stubGlobal("cancelAnimationFrame", (id: number) => { frames.delete(id); });
@@ -206,13 +207,13 @@ describe("master live playback lifecycle", () => {
     act(() => { vi.advanceTimersByTime(300); });
     expect(instance.state.playing).toBe(false);
     function frame(time: number) { clock.mockReturnValue(time); const callbacks = [...frames.values()]; frames.clear(); act(() => { for (const callback of callbacks) callback(time); }); }
-    frame(1050); expect(instance.state.position).toBeCloseTo(20.1);
-    frame(2100); expect(instance.state.position).toBeCloseTo(21.1);
-    frame(4100); expect(instance.state.position).toBeCloseTo(23.1);
+    frame(1050); expect(instance.state.position).toBeCloseTo(Math.min(100, start + 0.1));
+    frame(2100); expect(instance.state.position).toBeCloseTo(Math.min(100, start + 1.1));
+    frame(4100); expect(instance.state.position).toBeCloseTo(Math.min(100, start + 3.1));
     fireEvent.keyUp(button, { key: "Enter" });
     fireEvent.click(button);
-    expect(instance.state.playing).toBe(wasPlaying);
-    expect(instance.controller.play).toHaveBeenCalledTimes(wasPlaying ? 2 : 0);
+    expect(instance.state.playing).toBe(wasPlaying && !atEnd);
+    expect(instance.controller.play).toHaveBeenCalledTimes(wasPlaying ? atEnd ? 1 : 2 : 0);
     expect(mocks.push).not.toHaveBeenCalled();
     expect(frames.size).toBe(0);
   }, 20000);

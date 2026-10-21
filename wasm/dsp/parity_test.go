@@ -84,6 +84,45 @@ func TestWriteNativeParityFixture(t *testing.T) {
 	} // #nosec G703 -- explicit local test fixture path, not a request path.
 }
 
+// Capture before changing ADAA evaluation so tiny-difference and extreme finite
+// source samples have an independent stored-output regression oracle.
+func TestWriteADAABaselineFixture(t *testing.T) {
+	path := os.Getenv("AURIALIS_ADAA_BASELINE_FIXTURE")
+	if path == "" {
+		t.Skip("set AURIALIS_ADAA_BASELINE_FIXTURE to capture pre-change ADAA output")
+	}
+	var fixtures []nativeParityFixture
+	values := []float32{0, float32(math.Copysign(0, -1)), math.SmallestNonzeroFloat32,
+		math.Nextafter32(1e-6, 0), 1e-6, math.Nextafter32(1e-6, float32(math.Inf(1))), 2e-6,
+		-1e-6, -2e-6, 0.1, -0.1, 1.5, -1.5, 20, -20, math.MaxFloat32, -math.MaxFloat32}
+	for _, rate := range []float64{8000, 16000, 44100, 48000, 96000, 192000} {
+		for _, character := range []dsp.SatCharacter{dsp.SatWarm, dsp.SatThick, dsp.SatCrisp} {
+			for _, amount := range []float64{0.001, 6.5, 100} {
+				params := dsp.DefaultParams()
+				params.Saturation = dsp.SaturationParams{Enabled: true, Amount: amount, Character: character}
+				f := nativeParityFixture{Rate: rate, Params: params, Left: make([]float32, 512), Right: make([]float32, 512), OutputLeft: make([]float32, 512), OutputRight: make([]float32, 512)}
+				for i := range f.Left {
+					f.Left[i] = values[(i/3)%len(values)]
+					f.Right[i] = values[(i/5+3)%len(values)]
+				}
+				bridge := NewBridge(rate)
+				bridge.SetParams(params)
+				for start := 0; start < len(f.Left); start += 128 {
+					bridge.ProcessBlock(f.Left[start:start+128], f.Right[start:start+128], f.OutputLeft[start:start+128], f.OutputRight[start:start+128])
+				}
+				fixtures = append(fixtures, f)
+			}
+		}
+	}
+	raw, err := json.Marshal(fixtures)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, raw, 0600); err != nil {
+		t.Fatal(err)
+	} // #nosec G703 -- explicit local test fixture, not a request path.
+}
+
 // This opt-in regression compares against PRE-CHANGE output, rather than
 // regenerating expectations from the implementation currently under test.
 func TestNativeMatchesStoredParityFixture(t *testing.T) {

@@ -143,7 +143,7 @@ export function AurialisWorkstation({
   return (
     <div className="app-shell">
       <aside className="side-nav">
-        <Link className="brand" href="/">
+        <Link className="brand" href="/" aria-label="Aurialis home">
           <span className="brand-mark">
             <span />
           </span>
@@ -184,7 +184,7 @@ export function AurialisWorkstation({
       </aside>
 
       <header className="mobile-header">
-        <Link className="brand" href="/">
+        <Link className="brand" href="/" aria-label="Aurialis home">
           <span className="brand-mark">
             <span />
           </span>

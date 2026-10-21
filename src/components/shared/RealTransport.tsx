@@ -104,7 +104,7 @@ export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal,
   const duration = state?.duration ?? 0;
   const unavailable = !sourceReady || handover;
   const updating = playing && state !== null && state.appliedVersion < state.parameterVersion;
-  const status = handover ? "Loading next track…" : loading ? "Preparing playback…" : updating ? "Updating audio…" : "";
+  const status = handover ? "Loading next track…" : loading ? "Preparing playback…" : updating ? "Updating audio…" : nextTrackTitle ? `Next: ${nextTrackTitle}` : "";
   const forwardLabel = nextTrackTitle ? `Next track: ${nextTrackTitle}` : "Skip forward 10 seconds";
   const backActions = useHoldAction(-1, onScrub, onRestart, unavailable || loading);
   const forwardActions = useHoldAction(1, onScrub, onForward, unavailable || loading);
@@ -156,7 +156,7 @@ export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal,
           </label>
         </div>
       </div>
-      <p role="status" aria-live="polite" aria-atomic="true" className="transport-status m-0 h-4 overflow-hidden text-center text-[10px] leading-4 text-ink-soft">{status}</p>
+      <p role="status" aria-live="polite" aria-atomic="true" title={status || undefined} className="transport-status m-0 h-4 truncate px-2 text-center text-[10px] leading-4 text-ink-soft">{status}</p>
     </div>
   );
 }

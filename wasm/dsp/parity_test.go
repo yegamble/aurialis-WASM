@@ -9,6 +9,15 @@ import (
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
 )
 
+type nativeParityFixture struct {
+	Rate        float64    `json:"rate"`
+	Params      dsp.Params `json:"params"`
+	Left        []float32  `json:"left"`
+	Right       []float32  `json:"right"`
+	OutputLeft  []float32  `json:"outputLeft"`
+	OutputRight []float32  `json:"outputRight"`
+}
+
 // This opt-in fixture generator lets verify.mjs compare a real compiled WASM
 // bridge with native output from the same engine and exact float32 input bytes.
 func TestWriteNativeParityFixture(t *testing.T) {
@@ -16,15 +25,7 @@ func TestWriteNativeParityFixture(t *testing.T) {
 	if path == "" {
 		t.Skip("set AURIALIS_PARITY_FIXTURE for compiled-WASM parity verification")
 	}
-	type fixture struct {
-		Rate        float64    `json:"rate"`
-		Params      dsp.Params `json:"params"`
-		Left        []float32  `json:"left"`
-		Right       []float32  `json:"right"`
-		OutputLeft  []float32  `json:"outputLeft"`
-		OutputRight []float32  `json:"outputRight"`
-	}
-	var fixtures []fixture
+	var fixtures []nativeParityFixture
 	for _, rate := range []float64{44100, 48000, 96000} {
 		for _, mode := range []string{"neutral", "gain", "chain", "bypass", "monitor"} {
 			p := dsp.DefaultParams()
@@ -49,7 +50,7 @@ func TestWriteNativeParityFixture(t *testing.T) {
 				p.Limiter.CeilingDBTP = -12
 				p.DitherBits = 16
 			}
-			f := fixture{Rate: rate, Params: p, Left: make([]float32, 1024), Right: make([]float32, 1024), OutputLeft: make([]float32, 1024), OutputRight: make([]float32, 1024)}
+			f := nativeParityFixture{Rate: rate, Params: p, Left: make([]float32, 1024), Right: make([]float32, 1024), OutputLeft: make([]float32, 1024), OutputRight: make([]float32, 1024)}
 			// Rational integer arithmetic produces exact identical native/JS inputs.
 			for i := range f.Left {
 				f.Left[i] = float32((i*73)%997-498) / 1024
@@ -69,7 +70,7 @@ func TestWriteNativeParityFixture(t *testing.T) {
 			for _, params := range []dsp.Params{control.before, control.after} {
 				l, r := controlInput(rate)
 				outL, outR := renderControl(rate, params, l, r)
-				fixtures = append(fixtures, fixture{Rate: rate, Params: params, Left: l, Right: r, OutputLeft: outL, OutputRight: outR})
+				fixtures = append(fixtures, nativeParityFixture{Rate: rate, Params: params, Left: l, Right: r, OutputLeft: outL, OutputRight: outR})
 			}
 		}
 	}
@@ -81,6 +82,44 @@ func TestWriteNativeParityFixture(t *testing.T) {
 	if err := os.WriteFile(path, raw, 0600); err != nil {
 		t.Fatal(err)
 	} // #nosec G703 -- explicit local test fixture path, not a request path.
+}
+
+// This opt-in regression compares against PRE-CHANGE output, rather than
+// regenerating expectations from the implementation currently under test.
+func TestNativeMatchesStoredParityFixture(t *testing.T) {
+	path := os.Getenv("AURIALIS_BASELINE_PARITY_FIXTURE")
+	if path == "" {
+		t.Skip("set AURIALIS_BASELINE_PARITY_FIXTURE for stored-output regression")
+	}
+	raw, err := os.ReadFile(path) // #nosec G304 -- explicit local test fixture, never an audio/request path.
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixtures []nativeParityFixture
+	if err := json.Unmarshal(raw, &fixtures); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixtures) == 0 {
+		t.Fatal("baseline fixture is empty")
+	}
+	for index, f := range fixtures {
+		if len(f.Left) == 0 || len(f.Left) != len(f.Right) || len(f.Left) != len(f.OutputLeft) || len(f.Left) != len(f.OutputRight) {
+			t.Fatalf("invalid baseline lengths in fixture %d", index)
+		}
+		bridge := NewBridge(f.Rate)
+		bridge.SetParams(f.Params)
+		outL, outR := make([]float32, 128), make([]float32, 128)
+		for start := 0; start < len(f.Left); start += 128 {
+			end := min(start+128, len(f.Left))
+			bridge.ProcessBlock(f.Left[start:end], f.Right[start:end], outL[:end-start], outR[:end-start])
+			for offset := 0; offset < end-start; offset++ {
+				if math.Float32bits(outL[offset]) != math.Float32bits(f.OutputLeft[start+offset]) || math.Float32bits(outR[offset]) != math.Float32bits(f.OutputRight[start+offset]) {
+					t.Fatalf("pre-change output mismatch in fixture %d frame %d", index, start+offset)
+				}
+			}
+		}
+	}
+	t.Logf("matched %d pre-change native fixtures bit for bit", len(fixtures))
 }
 
 func TestWriteNativeMeterFixture(t *testing.T) {

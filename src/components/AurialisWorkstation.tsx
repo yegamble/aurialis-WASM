@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   engineParams,
+  importAudio,
   measureAudio,
   trackMetrics,
   normalizeSimpleAudio,
@@ -388,11 +389,15 @@ function HomeView() {
       const capacity = await wavCapacity(file);
       if (!active()) return;
       if (capacity && capacity.frames > MAX_SOURCE_FRAMES) throw new Error(`This WAV exceeds the ${formatTime(MAX_SOURCE_FRAMES / capacity.sampleRate)} duration limit at ${String(capacity.sampleRate / 1000)} kHz. Use a shorter track or a lower source sample rate.`);
-      canonical = await serverRender(file, { bypass: true }, 32, controller.signal);
+      const imported = await importAudio(file, controller.signal);
+      canonical = imported.canonical;
+      measurement = imported.measurement;
       if (!active()) return;
+      setMessage("Preparing your waveform…");
       pcm = await readCanonicalWAV(canonical);
       if (!active()) return;
-      measurement = await measureAudio(canonical, { bypass: true }, controller.signal);
+      if (pcm.sampleRate !== measurement.sampleRate || pcm.left.length !== measurement.frames)
+        throw new Error("The reconstructed source does not match its measurements. Try importing the file again.");
     } catch (error) {
       if (!active()) return;
       setMessage(
@@ -404,6 +409,7 @@ function HomeView() {
       return;
     }
     if (!active()) return;
+    setMessage("Saving your track in this browser…");
     try {
       await saveAudio(id, canonical);
     } catch {
@@ -501,6 +507,7 @@ function HomeView() {
           }}
           role="region"
           aria-label="Bring in a track: drop audio or choose a file"
+          aria-busy={loading}
         >
           <input
             ref={inputRef}
@@ -517,8 +524,8 @@ function HomeView() {
           <div className="drop-icon">
             <Icon name="upload" />
           </div>
-          <h2>{loading ? "Validating WAV…" : "Bring in a track"}</h2>
-          <p>
+          <h2>{loading ? "Preparing your track…" : "Bring in a track"}</h2>
+          <p role="status">
             {message ||
               "Drop audio here, paste it, or choose a file from your device."}
           </p>
@@ -526,10 +533,14 @@ function HomeView() {
           <Button
             variant="primary"
             icon={<Icon name="file-audio" />}
-            disabled={loading}
-            onClick={() => inputRef.current?.click()}
+            onClick={() => {
+              if (!loading) { inputRef.current?.click(); return; }
+              importAbort.current?.abort();
+              setLoading(false);
+              setMessage("Import cancelled. Choose a file when you’re ready.");
+            }}
           >
-            Choose audio
+            {loading ? "Cancel import" : "Choose audio"}
           </Button>
         </div>
       </section>

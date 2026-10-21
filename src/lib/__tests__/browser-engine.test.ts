@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "../audio-dsp";
 import {
   engineParams,
+  importAudio,
   measureAudio,
   normalizeSimpleAudio,
   trackMetrics,
@@ -252,6 +253,39 @@ function measurementResponse(metrics = measured) {
     beforeMetrics: measured, afterMetrics: metrics };
 }
 describe("actual audio measurement and explicit Simple normalization", () => {
+  it("imports canonical audio and source measurements with one native request", async () => {
+    const canonical = new Blob([new Uint8Array(384044)]);
+    const fetch = vi.fn().mockResolvedValue({ ok: true,
+      headers: new Headers({ "X-Aurialis-Source-Metrics": JSON.stringify(measurementResponse()) }),
+      blob: () => Promise.resolve(canonical),
+    });
+    vi.stubGlobal("fetch", fetch);
+    const result = await importAudio(new Blob(["source"]));
+    expect(result).toEqual({ canonical, measurement: measurementResponse() });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const request = fetch.mock.calls[0]?.[1] as { body: FormData };
+    expect(request.body.get("params")).toBe('{"bypass":true}');
+    expect(request.body.get("bitDepth")).toBe("32");
+    expect(request.body.get("format")).toBeNull();
+  });
+  it("rejects absent, malformed and incomplete source responses without another upload", async () => {
+    const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    for (const value of [null, "invalid", JSON.stringify({ ...measurementResponse(), duration: 5 })]) {
+      fetch.mockResolvedValue({ ok: true, headers: new Headers(value ? { "X-Aurialis-Source-Metrics": value } : {}), blob: () => Promise.resolve(new Blob([])) });
+      await expect(importAudio(new Blob(["source"]))).rejects.toThrow("measurements");
+    }
+    fetch.mockResolvedValue({ ok: true, headers: new Headers({ "X-Aurialis-Source-Metrics": JSON.stringify(measurementResponse()) }), blob: () => Promise.resolve(new Blob(["truncated"])) });
+    await expect(importAudio(new Blob(["source"]))).rejects.toThrow("transfer was incomplete");
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
+  it("retains cancellation while receiving an imported source", async () => {
+    const controller = new AbortController();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true,
+      headers: new Headers({ "X-Aurialis-Source-Metrics": JSON.stringify(measurementResponse()) }),
+      blob: () => { controller.abort(); return Promise.resolve(new Blob([])); },
+    }));
+    await expect(importAudio(new Blob(["source"]), controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+  });
   it("requests JSON measurements for the supplied source/settings and maps actual readings", async () => {
     const fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(measurementResponse()) });
     vi.stubGlobal("fetch", fetch);

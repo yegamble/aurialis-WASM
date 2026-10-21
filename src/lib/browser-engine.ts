@@ -330,6 +330,26 @@ type AudioMeasurement = {
   afterMetrics: MeasuredAudioMetrics;
 };
 
+/** Receive the reconstructed source and its measurements without uploading it twice. */
+export async function importAudio(file: Blob, signal?: AbortSignal): Promise<{ canonical: Blob; measurement: AudioMeasurement }> {
+  const form = new FormData();
+  form.append("file", file, "source.wav");
+  form.append("params", JSON.stringify({ bypass: true }));
+  form.append("bitDepth", "32");
+  const response = await audioRequest(form, signal);
+  if (!response.ok) throw await audioError(response, "Audio import failed.");
+  const header = response.headers.get("X-Aurialis-Source-Metrics");
+  if (!header || header.length > 4096) throw new Error("The local server returned incomplete source measurements. Restart Aurialis and try again.");
+  let body: unknown;
+  try { body = JSON.parse(header) as unknown; }
+  catch { throw new Error("The local server returned invalid source measurements."); }
+  const measurement = audioMeasurement(body);
+  const canonical = await readAudioResponse(() => response.blob(), signal);
+  if (canonical.size !== 44 + measurement.frames * 8)
+    throw new Error("The reconstructed audio transfer was incomplete. Try importing the source again.");
+  return { canonical, measurement };
+}
+
 function metricObject(value: unknown): MeasuredAudioMetrics {
   if (typeof value !== "object" || value === null)
     throw new Error("The server returned invalid audio measurements.");
@@ -368,6 +388,10 @@ export async function measureAudio(
   const response = await audioRequest(form, signal, true);
   if (!response.ok) throw await audioError(response, "Audio measurement failed.");
   const body: unknown = await readAudioResponse(() => response.json() as Promise<unknown>, signal);
+  return audioMeasurement(body);
+}
+
+function audioMeasurement(body: unknown): AudioMeasurement {
   if (typeof body !== "object" || body === null || !("sampleRate" in body)
     || !("frames" in body) || !("duration" in body)
     || !("beforeMetrics" in body) || !("afterMetrics" in body)

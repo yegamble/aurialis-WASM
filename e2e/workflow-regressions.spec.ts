@@ -29,6 +29,12 @@ test("first Simple apply previews exactly the settings exported from the uploade
   await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled();
   await expect(page.getByText("Preview matches your settings.", { exact: true })).toBeVisible();
   await expect.poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.readyState)).toBeGreaterThanOrEqual(2);
+  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Apply master direction", exact: true }).click();
+  await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled();
+  await expect(page.getByText("Preview matches your settings.", { exact: true })).toBeVisible();
+  await expect.poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.readyState)).toBeGreaterThanOrEqual(2);
   const preview = await previewPCM(page);
   const exported = await exportPCM(page);
   expect(preview.left).toHaveLength(exported.left.length);

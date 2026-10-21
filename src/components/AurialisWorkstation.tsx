@@ -54,6 +54,7 @@ import {
   SpectrumChart,
   Waveform,
   formatTime,
+  StatusBadge,
   statusLabel,
 } from "./shared/Primitives";
 
@@ -581,9 +582,7 @@ function TrackCard({ track, index = 0 }: { track: Track; index?: number }) {
     <Link className="track-card" href={`/master/${track.id}`}>
       <Artwork seed={track.seed} index={index} />
       <div className="track-card-copy">
-        <span className={`status status--${track.status}`}>
-          {statusLabel(track.status)}
-        </span>
+        <StatusBadge status={track.status} />
         <h3>{track.title}</h3>
         <p>
           {formatTime(track.duration)} · {track.format} ·{" "}
@@ -670,9 +669,7 @@ function LibraryView() {
                 <strong>{track.title}</strong>
                 <small>
                   {formatTime(track.duration)} ·{" "}
-                  <span className={`status status--${track.status}`}>
-                    {statusLabel(track.status)}
-                  </span>
+                  <StatusBadge status={track.status} />
                 </small>
               </span>
             </Link>
@@ -767,6 +764,7 @@ function MasterView({ trackId }: { trackId: string }) {
   const [source, setSource] = useState<StereoPCM | null>(null);
   const [preview, setPreview] = useState<StereoPCM | null>(null);
   const [renderedKey, setRenderedKey] = useState("");
+  const [renderedDirection, setRenderedDirection] = useState("");
   const [ab, setAb] = useState<"A" | "B">("A");
   const [playheadRatio, setPlayheadRatio] = useState(0);
   const [activeBandId, setActiveBandId] = useState<EQBandId>("low");
@@ -782,7 +780,12 @@ function MasterView({ trackId }: { trackId: string }) {
     [],
   );
   const settingsKey = track ? JSON.stringify(engineParams(track.advanced)) : "";
-  const fresh = renderedKey === settingsKey && preview !== null;
+  const directionKey = track?.mode === "simple" ? JSON.stringify([track.genre, track.tone, track.intensity, track.target]) : "";
+  const fresh = renderedKey === settingsKey && preview !== null && (track?.mode !== "simple" || renderedDirection === directionKey);
+  useEffect(() => {
+    renderAbort.current?.abort();
+    setProcessing(false);
+  }, [track?.mode, directionKey]);
   const audible = ab === "B" && fresh ? preview : source;
   const levels = useMemo(
     () => (audible ? measuredLevels(audible) : null),
@@ -829,10 +832,10 @@ function MasterView({ trackId }: { trackId: string }) {
     };
   }, [track?.id]);
 
-  async function renderPreview(params: AdvancedParams = track?.advanced ?? createDefaultAdvancedParams()) {
+  async function renderPreview(params: AdvancedParams = track?.advanced ?? createDefaultAdvancedParams(), direction = "", pending?: AbortController) {
     if (!track || !source) return;
-    renderAbort.current?.abort();
-    const controller = new AbortController();
+    if (!pending) renderAbort.current?.abort();
+    const controller = pending ?? new AbortController();
     renderAbort.current = controller;
     setProcessing(true);
     setMessage(
@@ -847,6 +850,7 @@ function MasterView({ trackId }: { trackId: string }) {
       if (controller.signal.aborted) return;
       setPreview(pcm);
       setRenderedKey(JSON.stringify(engineParams(params)));
+      setRenderedDirection(direction);
       setAb("B");
       setMessage("Preview ready. Playback uses the shared Go DSP engine.");
       dispatch({
@@ -865,8 +869,27 @@ function MasterView({ trackId }: { trackId: string }) {
       if (!controller.signal.aborted) setProcessing(false);
     }
   }
-  async function download() {
+  async function applySimpleDirection() {
     if (!track || !sourceBlob) return;
+    renderAbort.current?.abort();
+    const controller = new AbortController();
+    renderAbort.current = controller;
+    setProcessing(true);
+    setMessage("Measuring the requested direction and output target…");
+    try {
+      const mapped = mapSimpleToDSP(track.genre, track.tone, track.intensity, track.target, track.advanced);
+      const next = await normalizeSimpleAudio(sourceBlob, clampAdvancedToSampleRate(mapped, track.sampleRate), mapped.limiter.targetLufs, controller.signal);
+      if (controller.signal.aborted) return;
+      dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next } });
+      await renderPreview(next, directionKey, controller);
+    } catch (error) {
+      if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Could not prepare this master.");
+    } finally {
+      if (!controller.signal.aborted && renderAbort.current === controller) setProcessing(false);
+    }
+  }
+  async function download() {
+    if (!track || !sourceBlob || (track.mode === "simple" && !fresh)) return;
     setProcessing(true);
     setMessage("Rendering WAV from the uploaded source…");
     try {
@@ -949,7 +972,7 @@ function MasterView({ trackId }: { trackId: string }) {
         </div>
         <div className="workspace-actions">
           <Button
-            disabled={!sourceBlob || processing}
+            disabled={!sourceBlob || processing || (track.mode === "simple" && !fresh)}
             icon={<Icon name="arrow-down-to-line" />}
             onClick={() => {
               setExportOpen(true);
@@ -1008,7 +1031,7 @@ function MasterView({ trackId }: { trackId: string }) {
           <div className="render-actions">
             <Button
               disabled={!source || processing}
-              onClick={() => void renderPreview()}
+              onClick={() => void (track.mode === "simple" ? applySimpleDirection() : renderPreview())}
               icon={<Icon name={processing ? "refresh-cw" : "play"} />}
             >
               {processing ? "Rendering…" : "Render preview"}
@@ -1016,7 +1039,9 @@ function MasterView({ trackId }: { trackId: string }) {
             <span className="disclosure">
               {fresh
                 ? "Preview matches your settings."
-                : "Apply your settings to hear a fresh preview. Export always renders current settings."}
+                : track.mode === "simple"
+                  ? "Apply the current direction before previewing or exporting this master."
+                  : "Apply your settings to hear a fresh preview. Export always renders current settings."}
             </span>
           </div>
           <p className="disclosure" role="status">
@@ -1066,24 +1091,7 @@ function MasterView({ trackId }: { trackId: string }) {
             <SimpleControls
               track={track}
               processing={processing}
-              onApply={() => void (async () => {
-                if (!sourceBlob) return;
-                setProcessing(true);
-                try {
-                const mapped = mapSimpleToDSP(
-                  track.genre,
-                  track.tone,
-                  track.intensity,
-                  track.target,
-                  track.advanced,
-                );
-                const next = await normalizeSimpleAudio(sourceBlob, clampAdvancedToSampleRate(mapped, track.sampleRate), mapped.limiter.targetLufs);
-                dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next } });
-                await renderPreview(next);
-                } catch (error) {
-                  setMessage(error instanceof Error ? error.message : "Could not prepare this master.");
-                } finally { setProcessing(false); }
-              })()}
+              onApply={() => void applySimpleDirection()}
             />
           )}
           {track.mode === "deep" && (
@@ -1123,7 +1131,7 @@ function MasterView({ trackId }: { trackId: string }) {
               Close
             </Button>
             <Button
-              disabled={!sourceBlob || processing}
+              disabled={!sourceBlob || processing || (track.mode === "simple" && !fresh)}
               onClick={() => void download()}
             >
               {processing ? "Rendering WAV…" : "Render & download WAV"}
@@ -1186,8 +1194,8 @@ function AdvancedControls({
       <SliderField
         label="Input gain"
         value={adv.input}
-        min={-6}
-        max={6}
+        min={-36}
+        max={36}
         step={0.5}
         unit="dB"
         onChange={(input) => {
@@ -1437,7 +1445,7 @@ function AdvancedControls({
         label="Saturation"
         value={adv.saturationModule.drive}
         min={0}
-        max={40}
+        max={100}
         step={1}
         unit="%"
         onChange={(drive) => {

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log"
 	"mime"
 	"mime/multipart"
 	"net"
@@ -30,6 +31,16 @@ const DefaultMaxUploadBytes int64 = 129 * 1024 * 1024
 
 // MaxAudioFileBytes bounds one file at the decoded-frame ceiling, including its WAV header.
 const MaxAudioFileBytes int64 = int64(audio.MaxDecodedFrames)*8 + 44
+
+const maxSourceMetricsHeaderBytes = 4096
+
+type sourceMeasurement struct {
+	SampleRate    int         `json:"sampleRate"`
+	Frames        int         `json:"frames"`
+	Duration      float64     `json:"duration"`
+	BeforeMetrics dsp.Metrics `json:"beforeMetrics"`
+	AfterMetrics  dsp.Metrics `json:"afterMetrics"`
+}
 
 // Config configures the Aurialis HTTP server.
 type Config struct {
@@ -478,8 +489,19 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio measurement canceled or timed out")
 		return
 	}
-	outL, outR, afterMetrics, renderErr := dsp.RenderBufferContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate), params)
-	if renderErr != nil {
+	// A bypass render is the reconstructed source, including finite float
+	// headroom. Reuse it and its measurement instead of copying/measuring the
+	// entire song again. Enabled DSP still follows the existing render path.
+	outL, outR, afterMetrics := buf.Left, buf.Right, beforeMetrics
+	if !params.Bypass {
+		var renderErr error
+		outL, outR, afterMetrics, renderErr = dsp.RenderBufferContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate), params)
+		if renderErr != nil {
+			writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio rendering canceled or timed out")
+			return
+		}
+	}
+	if r.Context().Err() != nil {
 		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio rendering canceled or timed out")
 		return
 	}
@@ -498,19 +520,43 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var sourceMetricsJSON []byte
+	if params.Bypass && bitDepth == 32 {
+		var metadataErr error
+		sourceMetricsJSON, metadataErr = json.Marshal(sourceMeasurement{
+			SampleRate: buf.SampleRate, Frames: buf.Frames, Duration: buf.Duration,
+			BeforeMetrics: beforeMetrics, AfterMetrics: beforeMetrics,
+		})
+		if metadataErr != nil || len(sourceMetricsJSON) > maxSourceMetricsHeaderBytes {
+			writeErrorJSON(w, http.StatusInternalServerError, "metadata_error", "Audio source measurements could not be encoded")
+			return
+		}
+	}
 	wavBytes, err := audio.EncodeWAV(outL, outR, buf.SampleRate, bitDepth)
 	if err != nil {
 		writeErrorJSON(w, http.StatusInternalServerError, "encode_error", err.Error())
 		return
 	}
+	if r.Context().Err() != nil {
+		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio encoding canceled or timed out")
+		return
+	}
 	w.Header().Set("Content-Type", "audio/wav")
+	w.Header().Set("Content-Length", strconv.Itoa(len(wavBytes)))
+	if sourceMetricsJSON != nil {
+		w.Header().Set("X-Aurialis-Source-Metrics", string(sourceMetricsJSON))
+	}
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	w.Header().Set("Content-Disposition", `attachment; filename="aurialis-mastered.wav"`)
 	w.Header().Set("X-Aurialis-Before-LUFS", fmt.Sprintf("%.2f", beforeMetrics.IntegratedLUFS))
 	w.Header().Set("X-Aurialis-After-LUFS", fmt.Sprintf("%.2f", afterMetrics.IntegratedLUFS))
 	w.Header().Set("X-Aurialis-After-Peak-dBTP", fmt.Sprintf("%.2f", afterMetrics.TruePeakDBTP))
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(wavBytes) // #nosec G705 -- canonical PCM WAV synthesized by EncodeWAV; fixed audio/wav and nosniff headers
+	written, writeErr := w.Write(wavBytes) // #nosec G705 -- canonical PCM WAV synthesized by EncodeWAV; fixed audio/wav and nosniff headers
+	if writeErr != nil || written != len(wavBytes) {
+		// No filenames, source samples, or request metadata enter delivery logs.
+		log.Printf("audio response interrupted: bytes=%d/%d error=%v", written, len(wavBytes), writeErr)
+	}
 }
 
 func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {

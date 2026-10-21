@@ -75,7 +75,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           check-latest: true
 
       - name: Check gofmt formatting
@@ -165,7 +165,7 @@ jobs:
       - name: Set up Go for embedded binary
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
 
       - name: Build and smoke-test embedded production binary
         run: |
@@ -184,7 +184,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           check-latest: true
 
       - name: Set up pnpm
@@ -216,7 +216,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           check-latest: true
 
       - name: Set up pnpm

@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+@theme {
+  --font-display: "Newsreader", Georgia, serif;
+  --font-sans: "Instrument Sans", Arial, sans-serif;
+  --color-canvas: #f2eee6;
+  --color-paper: #faf7f0;
+  --color-ink: #29231f;
+  --color-clay: #b4543c;
+  --color-moss: #596c52;
+}
+
 :root {
   color-scheme: light;
   --canvas: #f2eee6;
@@ -133,30 +143,38 @@ button {
 }
 
 .brand-mark {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  background: var(--ink);
+  width: 27px;
+  height: 27px;
   position: relative;
   display: grid;
   place-items: center;
   flex-shrink: 0;
+  border: 1px solid var(--ink);
+  border-radius: 50%;
+}
+
+.brand-mark::before,
+.brand-mark::after,
+.brand-mark span {
+  content: "";
+  position: absolute;
+  display: block;
+  width: 1px;
+  background: var(--ink);
 }
 
 .brand-mark::before {
-  content: "";
-  position: absolute;
-  inset: 7px;
-  border-radius: 50%;
-  border: 1px solid var(--paper);
-  opacity: 0.78;
+  height: 7px;
+  transform: translateX(-5px);
 }
 
 .brand-mark span {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--clay);
+  height: 13px;
+}
+
+.brand-mark::after {
+  height: 5px;
+  transform: translateX(5px);
 }
 
 .brand strong {
@@ -317,9 +335,10 @@ p {
 }
 
 .button--primary {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--paper);
+  background: var(--clay);
+  border-color: var(--clay);
+  color: #ffffff;
+  box-shadow: 0 7px 18px rgba(180, 84, 60, 0.16);
 }
 
 .button--primary:hover:not(:disabled) {
@@ -2326,7 +2345,8 @@ input[type="range"] {
   min-width: 0;
 }
 .workspace-track h1 {
-  font-size: 27px;
+  font: 600 14px/1.2 var(--sans);
+  letter-spacing: 0;
   overflow-wrap: anywhere;
 }
 .workspace-track p {
@@ -2531,7 +2551,7 @@ input[type="range"] {
     padding-inline: 12px;
   }
   .workspace-track h1 {
-    font-size: 22px;
+    font-size: 14px;
   }
   .metric-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2546,12 +2566,19 @@ input[type="range"] {
     padding: 22px 18px;
   }
 }
+.metric-strip {
+  gap: 0;
+  border-top: 1px solid var(--line-dark);
+  border-bottom: 1px solid var(--line-dark);
+}
 .metric-strip > div {
   min-width: 0;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--paper);
+  min-height: 92px;
+  padding: 17px 14px;
+  border-right: 1px solid var(--line);
+}
+.metric-strip > div:last-child {
+  border-right: 0;
 }
 .metric-strip > div > span,
 .metric-strip small {
@@ -2559,11 +2586,25 @@ input[type="range"] {
   font-size: 10px;
   color: var(--ink-soft);
 }
+.metric-strip > div > span {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
 .metric-strip strong {
-  display: block;
-  margin-block: 8px;
-  font: 500 28px/1 var(--serif);
+  display: inline-block;
+  margin-top: 10px;
+  font: 500 27px/1 var(--serif);
   font-variant-numeric: tabular-nums;
+}
+.metric-strip small {
+  display: inline;
+  margin-left: 5px;
+}
+@media (max-width: 767px) {
+  .metric-strip {
+    grid-template-columns: repeat(5, minmax(100px, 1fr));
+    overflow-x: auto;
+  }
 }
 .library-tools {
   display: flex;

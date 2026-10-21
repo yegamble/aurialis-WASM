@@ -56,6 +56,24 @@ test("leaving Home cancels a pending import without creating or opening a stale 
   }
 });
 
+test("Cancel import aborts the pending request and leaves the chooser ready to retry", async ({ page }) => {
+  await page.goto("/");
+  const held = await holdRender(page);
+  try {
+    await page.getByLabel("Upload audio file").setInputFiles({ name: "cancel-button.wav", mimeType: "audio/wav", buffer: fixture() });
+    const request = await held.seen;
+    const canceled = page.waitForEvent("requestfailed", (candidate) => candidate === request);
+    await page.getByRole("button", { name: "Cancel import", exact: true }).click();
+    await canceled;
+    await expect(page.getByText("Import cancelled. Choose a file when you’re ready.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Choose audio", exact: true })).toBeEnabled();
+    expect(await page.evaluate(() => {
+      const raw = localStorage.getItem("aurialis-state-v1");
+      return raw ? (JSON.parse(raw) as { tracks: unknown[] }).tracks.length : 0;
+    })).toBe(0);
+  } finally { held.release(); }
+});
+
 test("closing the export dialog cancels its pending render and keeps the source project open", async ({ page }) => {
   const id = await uploadProject(page, "cancel-export.wav");
   const held = await holdRender(page);

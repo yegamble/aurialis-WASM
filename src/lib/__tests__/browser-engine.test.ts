@@ -15,6 +15,27 @@ import {
 
 afterEach(() => vi.unstubAllGlobals());
 describe("shared engine browser boundary", () => {
+  it("explains unreachable local requests and preserves cancellation", async () => {
+    const fetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    vi.stubGlobal("fetch", fetch);
+    await expect(serverRender(new Blob(["source"]), {}, 32)).rejects.toThrow("Could not reach the local audio server");
+    await expect(measureAudio(new Blob(["source"]))).rejects.toThrow("local-network permission");
+    const controller = new AbortController();
+    controller.abort();
+    fetch.mockClear();
+    await expect(measureAudio(new Blob(["source"]), {}, controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("preserves server rejection details and handles non-JSON errors", async () => {
+    const fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      json: () => Promise.resolve({ detail: "An audio job is already running. Try again shortly." }),
+    });
+    vi.stubGlobal("fetch", fetch);
+    await expect(serverRender(new Blob(["source"]), {}, 32)).rejects.toThrow("already running");
+    fetch.mockResolvedValue({ ok: false, status: 502, json: () => Promise.reject(new SyntaxError("HTML error")) });
+    await expect(measureAudio(new Blob(["source"]))).rejects.toThrow("HTTP 502");
+  });
   it("cancels native renders before dispatch and while consuming their response", async () => {
     const controller = new AbortController();
     const fetch = vi.fn().mockResolvedValue({

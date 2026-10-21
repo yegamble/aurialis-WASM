@@ -119,6 +119,45 @@ async function loadEngine(): Promise<void> {
   return loading;
 }
 let engineQueue: Promise<unknown> = Promise.resolve();
+
+async function audioRequest(
+  data: FormData,
+  signal?: AbortSignal,
+  json = false,
+): Promise<Response> {
+  signal?.throwIfAborted();
+  try {
+    return await fetch("/api/master/render", {
+      method: "POST",
+      body: data,
+      ...(json ? { headers: { Accept: "application/json" } } : {}),
+      ...(signal ? { signal } : {}),
+    });
+  } catch (error: unknown) {
+    signal?.throwIfAborted();
+    const address = typeof location === "undefined" ? "this address" : location.origin;
+    throw new Error(
+      `Could not reach the local audio server at ${address}. Check that Aurialis is running, then try again. If your browser reports a blocked local connection, check this site's local-network permission.`,
+      { cause: error },
+    );
+  }
+}
+
+async function audioError(response: Response, fallback: string): Promise<Error> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return new Error(`${fallback} (HTTP ${String(response.status)}).`);
+  }
+  if (typeof body === "object" && body !== null) {
+    if ("detail" in body && typeof body.detail === "string") return new Error(body.detail);
+    if ("message" in body && typeof body.message === "string") return new Error(body.message);
+    if ("error" in body && typeof body.error === "string") return new Error(body.error);
+  }
+  return new Error(fallback);
+}
+
 export function processPreview(
   source: StereoPCM,
   advanced: AdvancedParams,
@@ -171,24 +210,9 @@ export async function serverRender(
   data.append("file", file, "source.wav");
   data.append("params", JSON.stringify(params));
   data.append("bitDepth", String(bitDepth));
-  const response = await fetch("/api/master/render", {
-    method: "POST",
-    body: data,
-    ...(signal ? { signal } : {}),
-  });
-  if (!response.ok) {
-    const body: unknown = await response.json();
-    let message = "Audio processing failed. Please try again.";
-    if (typeof body === "object" && body !== null) {
-      if ("detail" in body && typeof body.detail === "string")
-        message = body.detail;
-      else if ("message" in body && typeof body.message === "string")
-        message = body.message;
-      else if ("error" in body && typeof body.error === "string")
-        message = body.error;
-    }
-    throw new Error(message);
-  }
+  const response = await audioRequest(data, signal);
+  if (!response.ok)
+    throw await audioError(response, "Audio processing failed. Please try again.");
   const blob = await response.blob();
   signal?.throwIfAborted();
   return blob;
@@ -363,18 +387,10 @@ export async function measureAudio(
   form.append("file", file, "source.wav");
   form.append("params", JSON.stringify(params));
   form.append("format", "json");
-  const response = await fetch("/api/master/render", {
-    method: "POST",
-    headers: { Accept: "application/json" },
-    body: form,
-    ...(signal ? { signal } : {}),
-  });
+  const response = await audioRequest(form, signal, true);
+  if (!response.ok) throw await audioError(response, "Audio measurement failed.");
   const body: unknown = await response.json();
-  if (!response.ok) {
-    const detail = typeof body === "object" && body !== null && "detail" in body
-      && typeof body.detail === "string" ? body.detail : "Audio measurement failed.";
-    throw new Error(detail);
-  }
+  signal?.throwIfAborted();
   if (typeof body !== "object" || body === null || !("sampleRate" in body)
     || !("frames" in body) || !("duration" in body)
     || !("beforeMetrics" in body) || !("afterMetrics" in body)

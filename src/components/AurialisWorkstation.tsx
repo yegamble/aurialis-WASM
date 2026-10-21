@@ -877,7 +877,7 @@ function MasterView({ trackId }: { trackId: string }) {
     setProcessing(true);
     setMessage("Measuring the requested direction and output target…");
     try {
-      const mapped = mapSimpleToDSP(track.genre, track.tone, track.intensity, track.target, track.advanced);
+      const mapped = mapSimpleToDSP(track.genre, track.tone, track.intensity, track.target);
       const next = await normalizeSimpleAudio(sourceBlob, clampAdvancedToSampleRate(mapped, track.sampleRate), mapped.limiter.targetLufs, controller.signal);
       if (controller.signal.aborted) return;
       dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next } });

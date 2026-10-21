@@ -43,6 +43,28 @@ test("first Simple apply previews exactly the settings exported from the uploade
   }
 });
 
+test("re-applying an unchanged Simple direction never compounds EQ or other settings", async ({ page }) => {
+  await uploadProject(page);
+  await page.getByRole("tab", { name: "simple", exact: true }).click();
+  await page.getByRole("button", { name: "Rock", exact: true }).click();
+  await page.getByRole("button", { name: "Clean", exact: true }).click();
+  const snapshots: unknown[] = [];
+  for (let repeat = 0; repeat < 3; repeat++) {
+    const apply = page.getByRole("button", { name: "Apply master direction", exact: true });
+    await apply.click();
+    await expect(apply).toBeEnabled();
+    await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled();
+    snapshots.push(await page.evaluate(() => {
+      const raw = localStorage.getItem("aurialis-state-v1");
+      if (!raw) throw new Error("Missing project settings");
+      return (JSON.parse(raw) as { tracks: { advanced: unknown }[] }).tracks[0]?.advanced;
+    }));
+  }
+  expect(snapshots[0]).toBeDefined();
+  expect(snapshots[1]).toEqual(snapshots[0]);
+  expect(snapshots[2]).toEqual(snapshots[0]);
+});
+
 test("A/B switches preserve playback and retain matched level after repeated metadata events", async ({ page }) => {
   await uploadProject(page, "qa-comparison.wav", 3);
   await page.getByRole("slider", { name: "Input gain", exact: true }).fill("6");

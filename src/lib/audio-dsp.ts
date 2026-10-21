@@ -235,9 +235,10 @@ export function mapSimpleToDSP(
   tone: string,
   intensity: number,
   target: string,
-  baseParams?: AdvancedParams,
 ): AdvancedParams {
-  const base = baseParams ?? createDefaultAdvancedParams();
+  // A direction is a complete preset. Re-applying it must never compound the
+  // previous render's EQ, makeup gain or other module settings.
+  const base = createDefaultAdvancedParams();
   const k = Math.max(0, Math.min(100, intensity)) / 100;
 
   const bands: [

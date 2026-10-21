@@ -64,6 +64,16 @@ func TestWriteNativeParityFixture(t *testing.T) {
 			fixtures = append(fixtures, f)
 		}
 	}
+	for _, rate := range []float64{44100, 48000, 96000} {
+		for _, control := range supportedControlCases() {
+			for _, params := range []dsp.Params{control.before, control.after} {
+				l, r := controlInput(rate)
+				outL, outR := renderControl(rate, params, l, r)
+				fixtures = append(fixtures, fixture{Rate: rate, Params: params, Left: l, Right: r, OutputLeft: outL, OutputRight: outR})
+			}
+		}
+	}
+
 	raw, err := json.Marshal(fixtures)
 	if err != nil {
 		t.Fatal(err)

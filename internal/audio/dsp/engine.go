@@ -10,6 +10,8 @@ import (
 type FilterType string
 
 const (
+	// FilterHighPass is a second-order TPT high-pass filter.
+	FilterHighPass FilterType = "high_pass"
 	// FilterLowShelf is a resonant TPT low-shelf filter.
 	FilterLowShelf FilterType = "low_shelf"
 	// FilterPeaking is a proportional-Q TPT bell/peaking filter.
@@ -369,7 +371,7 @@ func clampFreq(sampleRate, freqHz float64) float64 {
 }
 
 func computeBandCoeffs(sampleRate float64, b BandParams) svfCoeffs {
-	if !b.Enabled || math.Abs(b.GainDB) < 1e-7 {
+	if !b.Enabled || (b.Type != FilterHighPass && math.Abs(b.GainDB) < 1e-7) {
 		return svfCoeffs{active: false}
 	}
 	q := b.Q
@@ -378,6 +380,11 @@ func computeBandCoeffs(sampleRate float64, b BandParams) svfCoeffs {
 	}
 	amp := math.Pow(10.0, b.GainDB/40.0)
 	switch b.Type {
+	case FilterHighPass:
+		g := math.Tan(math.Pi * clampFreq(sampleRate, b.FreqHz) / sampleRate)
+		k := 1 / q
+		a1 := 1 / (1 + g*(g+k))
+		return svfCoeffs{a1: a1, a2: g * a1, a3: g * g * a1, m0: 1, m1: -k, m2: -1, active: true}
 	case FilterLowShelf:
 		// Legacy corner scaling with Q-controlled shelf damping.
 		fc := clampFreq(sampleRate, b.FreqHz*1.85)

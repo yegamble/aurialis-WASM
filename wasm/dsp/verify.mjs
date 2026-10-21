@@ -31,6 +31,12 @@ for (const fixture of fixtures) {
       assert.ok(errorL <= 2e-6 && errorR <= 2e-6, `native/WASM mismatch at ${fixture.rate} Hz frame ${start + offset}`);
     }
   }
+  assert.equal(globalThis.aurialisDSPReset(), true);
+  assert.equal(globalThis.aurialisDSPProcessBlock(left.subarray(0, 128), right.subarray(0, 128), outL, outR), 128);
+  for (let offset = 0; offset < 128; offset++) {
+    assert.ok(Math.abs(outL[offset] - Math.fround(fixture.outputLeft[offset])) <= 2e-6, "left state survived reset");
+    assert.ok(Math.abs(outR[offset] - Math.fround(fixture.outputRight[offset])) <= 2e-6, "right state survived reset");
+  }
 }
 // Wrong JS types, non-finite samples, malformed JSON, and oversized blocks must
 // return failure while preserving a usable bridge rather than panic the runtime.

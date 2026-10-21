@@ -43,7 +43,7 @@ func ValidateParams(p Params) error {
 			return fmt.Errorf("band %d requires frequency 10–40000 Hz, gain -24–24 dB, and Q 0.1–20", i)
 		}
 		switch b.Type {
-		case FilterLowShelf, FilterPeaking, FilterHighShelf:
+		case FilterHighPass, FilterLowShelf, FilterPeaking, FilterHighShelf:
 		default:
 			return fmt.Errorf("band %d has an unsupported filter type", i)
 		}

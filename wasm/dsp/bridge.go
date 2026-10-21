@@ -3,7 +3,6 @@
 package main
 
 import (
-	"encoding/json"
 	"sync"
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
@@ -45,8 +44,8 @@ func (b *Bridge) Reset() {
 func (b *Bridge) SetParamsJSON(rawJSON string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	current := b.engine.Params()
-	if err := json.Unmarshal([]byte(rawJSON), &current); err != nil {
+	current, err := dsp.DecodeParamsJSON([]byte(rawJSON), b.engine.Params())
+	if err != nil {
 		return err
 	}
 	b.engine.SetParams(current)
@@ -81,7 +80,8 @@ func (b *Bridge) ProcessBlock(inL, inR, outL, outR []float32) {
 	b.engine.ProcessBlock(inL, inR, outL, outR)
 }
 
-// Measure computes ITU-R BS.1770-4 loudness, true peak, dynamic range, and stereo correlation.
+// Measure computes diagnostic weighted loudness, cubic inter-sample peak,
+// crest factor, and stereo correlation estimates.
 func (b *Bridge) Measure(left, right []float32) dsp.Metrics {
 	b.mu.Lock()
 	sr := b.engine.SampleRate()

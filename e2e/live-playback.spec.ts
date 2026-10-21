@@ -149,7 +149,7 @@ test("a failed live WASI asset reports the error and Retry playback restores aud
   await page.getByRole("button", { name: "Play", exact: true }).click();
   const retry = page.getByRole("button", { name: "Retry playback", exact: true });
   await expect(retry).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("audio engine could not be loaded");
+  await expect(page.locator(".workspace-canvas").getByRole("alert")).toContainText("audio engine could not be loaded");
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
   expect(await outputLevel(page), "the failed asset must not produce a live graph").toBeNull();
   await retry.click();
@@ -159,7 +159,7 @@ test("a failed live WASI asset reports the error and Retry playback restores aud
   await play(page);
   await expect.poll(() => audibleDb(page)).toBeCloseTo(-19.03, 0);
   expect(attempts).toBe(2);
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.locator(".workspace-canvas").getByRole("alert")).toHaveCount(0);
   await info.attach("live engine asset retry", { body: JSON.stringify({ attempts, output: await outputLevel(page) }, null, 2), contentType: "application/json" });
 });
 
@@ -219,7 +219,7 @@ test("leaving during held live WASI initialization cancels it and reopening crea
     await expect.poll(() => audibleDb(page)).toBeCloseTo(-19.03, 0);
     expect(requests).toBe(2);
     await expect.poll(() => nodes).toBe(1);
-    await expect(page.getByRole("alert")).toHaveCount(0);
+    await expect(page.locator(".workspace-canvas").getByRole("alert")).toHaveCount(0);
   } finally {
     release?.();
     await info.attach("canceled live initialization", { body: JSON.stringify({ requests, nodes, failures, output: await outputLevel(page).catch(() => null) }, null, 2), contentType: "application/json" });

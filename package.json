@@ -1,0 +1,48 @@
+{
+  "name": "aurialis-wasm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Single-binary Go 1.26 + Next.js 16 + WebAssembly (WASM) audio mastering workstation",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build && node scripts/sync-webui.mjs",
+    "start": "next start",
+    "lint": "eslint --max-warnings=0 src",
+    "test": "vitest run",
+    "test:backend:postman": "bash tests/postman/run-newman.sh"
+  },
+  "dependencies": {
+    "next": "^16.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.2",
+    "@eslint/js": "^9.20.0",
+    "@next/eslint-plugin-next": "^16.0.0",
+    "@playwright/test": "^1.50.0",
+    "@tailwindcss/postcss": "^4.0.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.2.0",
+    "@types/node": "^22.13.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "cspell": "^8.17.0",
+    "eslint": "^9.20.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-security": "^3.0.1",
+    "fake-indexeddb": "^6.0.0",
+    "jsdom": "^26.0.0",
+    "knip": "^5.43.0",
+    "newman": "^6.2.1",
+    "postcss": "^8.5.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.24.0",
+    "vitest": "^3.0.5"
+  }
+}

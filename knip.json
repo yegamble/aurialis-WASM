@@ -1,0 +1,23 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "src/app/**/page.tsx",
+    "src/app/**/layout.tsx",
+    "src/**/__tests__/*.{ts,tsx}",
+    "e2e/**/*.spec.ts",
+    "scripts/*.mjs"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "e2e/**/*.ts",
+    "scripts/*.mjs"
+  ],
+  "ignoreDependencies": [
+    "@next/eslint-plugin-next",
+    "@testing-library/jest-dom",
+    "eslint-plugin-security",
+    "fake-indexeddb",
+    "newman",
+    "tailwindcss"
+  ]
+}

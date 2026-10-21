@@ -7,10 +7,10 @@ import (
 	"io/fs"
 )
 
-//go:embed all:dist
-var embeddedDist embed.FS
+//go:embed all:embedded
+var embeddedAssets embed.FS
 
-// DistFS returns the embedded filesystem rooted at dist/.
+// DistFS returns the embedded filesystem rooted at embedded/.
 func DistFS() (fs.FS, error) {
-	return fs.Sub(embeddedDist, "dist")
+	return fs.Sub(embeddedAssets, "embedded")
 }

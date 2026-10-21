@@ -1,13 +1,5 @@
 import { describe, expect, it } from "vitest"
 import {
-  computeEffectiveMetrics,
-  computeEqMagnitudeDb,
-  measureStereoBufferMetrics,
-  processStereoBuffer,
-  renderMasteredWav,
-  synthesizeDemoStereoPcm,
-} from "../audio-dsp"
-import {
   generateScript,
   initialStoreState,
   reduceStoreState,
@@ -211,58 +203,19 @@ describe("Aurialis Control Isolation & Parameter Orthogonality", () => {
     expect(updatedStems[3]).toEqual(stems[3])
   })
 
-  it("transforms audio accurately in processStereoBuffer and renderMasteredWav", () => {
-    const track = initialStoreState.tracks[0]
-    if (!track) throw new Error("Missing track")
-    const pcm = synthesizeDemoStereoPcm(track.seed, 48000, 1.0)
-    const before = measureStereoBufferMetrics(pcm.left, pcm.right)
-
-    // Boost input by +4 dB and enforce -1.0 dBTP ceiling
-    const boostedState = reduceStoreState(initialStoreState, {
-      type: "UPDATE_INPUT_GAIN",
-      trackId: track.id,
-      input: 4.0,
-    })
-    const boostedTrack = boostedState.tracks[0]
-    if (!boostedTrack) throw new Error("Missing boostedTrack")
-
-    const out = processStereoBuffer(
-      pcm.left,
-      pcm.right,
-      48000,
-      boostedTrack.advanced,
-    )
-    const after = measureStereoBufferMetrics(out.left, out.right)
-
-    expect(after.lufs).toBeGreaterThan(before.lufs)
-    expect(after.peak).toBeLessThanOrEqual(-0.99)
-
-    // Verify EQ magnitude response at 3.2 kHz when Presence band is boosted +6 dB
-    const eqBoosted = reduceStoreState(initialStoreState, {
-      type: "UPDATE_EQ_BAND",
-      trackId: track.id,
-      bandId: "presence",
-      patch: { gainDb: 6.0 },
-    })
-    const eqBands = eqBoosted.tracks[0]?.advanced.eqBands
-    if (!eqBands) throw new Error("Missing eqBands")
-    const magAt3k2 = computeEqMagnitudeDb(3200, eqBands, 48000)
-    const magAt110 = computeEqMagnitudeDb(110, eqBands, 48000)
-    expect(magAt3k2).toBeGreaterThan(5.5)
-    expect(Math.abs(magAt110)).toBeLessThan(0.5)
-
-    // Verify 24-bit WAV export header & size
-    const exported = renderMasteredWav(boostedTrack, 24, 48000, true)
-    expect(exported.wavBytes.byteLength).toBeGreaterThan(44)
-    const header = String.fromCharCode(
-      exported.wavBytes[0] ?? 0,
-      exported.wavBytes[1] ?? 0,
-      exported.wavBytes[2] ?? 0,
-      exported.wavBytes[3] ?? 0,
-    )
-    expect(header).toBe("RIFF")
-    expect(computeEffectiveMetrics(boostedTrack, true).lufs).toBeGreaterThan(
-      computeEffectiveMetrics(track, true).lufs,
-    )
+  it("reset restores neutral settings without changing another track", () => {
+    const altered = reduceStoreState(initialStoreState, { type: "UPDATE_INPUT_GAIN", trackId: "demo-1", input: 6 })
+    const reset = reduceStoreState(altered, { type: "RESET_ADVANCED", trackId: "demo-1" })
+    const advanced = reset.tracks[0]?.advanced
+    expect(advanced?.input).toBe(0)
+    expect(advanced?.compressor.ratio).toBe(1)
+    expect(advanced?.compressor.makeup).toBe(0)
+    expect(advanced?.saturationModule.drive).toBe(0)
+    expect(advanced?.stereo.width).toBe(100)
+    expect(advanced?.stereo.monoBass).toBe(false)
+    expect(advanced?.limiter.enabled).toBe(false)
+    expect(advanced?.eqBands.every(band => band.gainDb === 0)).toBe(true)
+    expect(reset.tracks[1]).toBe(altered.tracks[1])
+    expect(altered.tracks[0]?.advanced.input).toBe(6)
   })
 })

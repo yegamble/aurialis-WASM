@@ -6,6 +6,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useState,
   type Dispatch,
   type ReactNode,
 } from "react"
@@ -408,15 +409,7 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
           ...track,
-          advanced: createDefaultAdvancedParams({
-            input: 0,
-            threshold: -18,
-            ratio: 2.5,
-            attack: 25,
-            release: 220,
-            width: 100,
-            saturation: 8,
-          }),
+          advanced: createDefaultAdvancedParams(),
           updatedAt: new Date().toISOString(),
         })),
       }
@@ -565,6 +558,7 @@ const StoreContext = createContext<{
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reduceStoreState, initialStoreState)
+  const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
     try {
@@ -577,20 +571,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }
       }
     } catch {
-      // Ignore invalid localStorage payloads
+      // Invalid or blocked persistence falls back to the current session.
     }
+    setHydrated(true)
   }, [])
 
   useEffect(() => {
+    if (!hydrated) return
     try {
       globalThis.localStorage.setItem("aurialis-state-v1", JSON.stringify(state))
     } catch {
       // Ignore storage quota errors
     }
-  }, [state])
+  }, [state, hydrated])
 
   const value = useMemo(() => ({ state, dispatch }), [state])
-  return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
+  return <StoreContext.Provider value={value}>{hydrated ? children : <p className="page" role="status">Loading your local workspace…</p>}</StoreContext.Provider>
 }
 
 export function useStore() {

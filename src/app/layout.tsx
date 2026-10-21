@@ -1,6 +1,12 @@
 import type { Metadata } from "next"
 import type { ReactNode } from "react"
 import { StoreProvider } from "@/lib/store"
+import "@fontsource/instrument-sans/latin-400.css"
+import "@fontsource/instrument-sans/latin-500.css"
+import "@fontsource/instrument-sans/latin-600.css"
+import "@fontsource/newsreader/latin-400.css"
+import "@fontsource/newsreader/latin-500.css"
+import "@fontsource/newsreader/latin-600.css"
 import "./globals.css"
 
 export const metadata: Metadata = {

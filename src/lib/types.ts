@@ -149,6 +149,7 @@ export type MasteringScript = {
 export type TrackStatus = "draft" | "ready" | "mastered" | "needs-review"
 
 export type Track = {
+  persistenceWarning?: string
   id: string
   title: string
   filename: string

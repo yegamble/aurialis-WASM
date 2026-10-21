@@ -1974,3 +1974,20 @@ input[type="range"] {
     opacity: 0;
   }
 }
+
+/* Real audio controls share the editorial workstation surfaces. */
+.render-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.volume-control { display: flex; align-items: center; gap: 8px; font-size: 12px; min-width: 0; }
+.volume-control input { min-width: 44px; max-width: 100px; }
+.inspector .check-row { display: flex; gap: 10px; align-items: center; padding: 8px 12px; }
+.inspector .check-row input { width: 24px; height: 24px; accent-color: var(--clay-dark); }
+.inspector .check-row > span { display: none; }
+input[type="range"] { min-height: 44px; }
+.transport { grid-template-columns: auto 46px auto minmax(80px, 1fr); }
+@media (max-width: 767px) {
+  .transport { grid-template-columns: minmax(0, 1fr) 46px; gap: 8px; padding: 12px; }
+  .transport-time { grid-column: 1; }
+  .volume-control { grid-column: 2; }
+  .volume-control { font-size: 0; }
+  .volume-control input { width: 44px; }
+}

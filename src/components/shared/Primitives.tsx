@@ -3,7 +3,6 @@
 import {
   useEffect,
   useId,
-  useRef,
   useState,
   type ButtonHTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -11,13 +10,8 @@ import {
   type ReactNode,
 } from "react"
 import {
-  computeEffectiveMetrics,
   computeEqMagnitudeDb,
-  encodeWavFile,
-  processStereoBuffer,
-  synthesizeDemoStereoPcm,
 } from "@/lib/audio-dsp"
-import { getAudio } from "@/lib/db"
 import type {
   EQBandId,
   EQBandParams,
@@ -301,34 +295,6 @@ export function BottomSheet({
   )
 }
 
-export function MetricStrip({
-  track,
-  processed,
-}: {
-  track: Track
-  processed: boolean
-}) {
-  const m = computeEffectiveMetrics(track, processed)
-  const metrics: [string, number, string][] = [
-    ["Integrated", m.lufs, "LUFS"],
-    ["True peak", m.peak, "dBTP"],
-    ["Loudness range", m.range, "LU"],
-    ["Dynamics", m.dynamics, "DR"],
-    ["Stereo", m.correlation, "corr"],
-  ]
-  return (
-    <div className="metric-strip" aria-label="Audio loudness and dynamics metrics">
-      {metrics.map(([label, value, unit]) => (
-        <div key={label}>
-          <span>{label}</span>
-          <strong>{value.toFixed(label === "Stereo" ? 2 : 1)}</strong>
-          <small>{unit}</small>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 function bars(seed: number, count = 84): number[] {
   return Array.from(
     { length: count },
@@ -340,12 +306,14 @@ export function Waveform({
   seed,
   duration,
   compact = false,
+  peaks,
   playheadRatio: controlledRatio,
   onSeekRatio,
 }: {
   seed: number
   duration: number
   compact?: boolean
+  peaks?: number[]
   playheadRatio?: number
   onSeekRatio?: (ratio: number) => void
 }) {
@@ -402,158 +370,11 @@ export function Waveform({
           }
         }}
       >
-        {bars(seed, compact ? 52 : 96).map((height, i) => (
+        {(peaks ? peaks.map(peak => Math.max(1, Math.min(100, peak * 100))) : bars(seed, compact ? 52 : 96)).map((height, i) => (
           <i key={i} style={{ height: `${height}%` }} />
         ))}
         <span className="playhead" style={{ left: `${ratio * 100}%` }} />
       </div>
-    </div>
-  )
-}
-
-export function Transport({
-  track,
-  ab,
-  setAb,
-  playheadRatio,
-  onSeekRatio,
-}: {
-  track: Track
-  ab: "A" | "B"
-  setAb: (value: "A" | "B") => void
-  playheadRatio?: number
-  onSeekRatio?: (ratio: number) => void
-}) {
-  const audioRef = useRef<HTMLAudioElement>(null)
-  const [src, setSrc] = useState("")
-  const [playing, setPlaying] = useState(false)
-  const [time, setTime] = useState(0)
-  const [levelMatched, setLevelMatched] = useState(true)
-
-  useEffect(() => {
-    let url = ""
-    let cancelled = false
-    const prepareAudio = async () => {
-      if (track.source === "upload") {
-        const blob = await getAudio(track.id)
-        if (blob && !cancelled) {
-          url = URL.createObjectURL(blob)
-          setSrc(url)
-          return
-        }
-      }
-      // Synthesize a playable stereo WAV buffer so demo tracks have real audio
-      const raw = synthesizeDemoStereoPcm(track.seed, 22050, 2.5)
-      const processed =
-        ab === "B"
-          ? processStereoBuffer(raw.left, raw.right, 22050, track.advanced)
-          : raw
-      const wavBytes = encodeWavFile(
-        processed.left,
-        processed.right,
-        22050,
-        16,
-        true,
-      )
-      if (!cancelled) {
-        const wavCopy = new Uint8Array(wavBytes.byteLength)
-        wavCopy.set(wavBytes)
-        const blob = new Blob([wavCopy.buffer], { type: "audio/wav" })
-        url = URL.createObjectURL(blob)
-        setSrc(url)
-      }
-    }
-    void prepareAudio()
-    return () => {
-      cancelled = true
-      if (url) URL.revokeObjectURL(url)
-    }
-  }, [track.id, track.source, track.seed, ab, track.advanced])
-
-  useEffect(() => {
-    if (playheadRatio !== undefined) {
-      setTime(Math.round(playheadRatio * track.duration))
-    }
-  }, [playheadRatio, track.duration])
-
-  const toggle = async () => {
-    if (!audioRef.current || !src) {
-      setPlaying((v) => !v)
-      return
-    }
-    try {
-      if (audioRef.current.paused) {
-        await audioRef.current.play()
-      } else {
-        audioRef.current.pause()
-      }
-    } catch {
-      setPlaying((v) => !v)
-    }
-  }
-
-  return (
-    <div className="transport">
-      <audio
-        ref={audioRef}
-        src={src || undefined}
-        onTimeUpdate={(e) => {
-          const cur = e.currentTarget.currentTime
-          setTime(cur)
-          if (track.duration > 0) {
-            onSeekRatio?.(Math.min(1, cur / track.duration))
-          }
-        }}
-        onPlay={() => {
-          setPlaying(true)
-        }}
-        onPause={() => {
-          setPlaying(false)
-        }}
-      />
-      <div className="ab-toggle" role="group" aria-label="A/B direction comparison">
-        <button
-          type="button"
-          className={ab === "A" ? "is-active" : ""}
-          aria-pressed={ab === "A"}
-          onClick={() => {
-            setAb("A")
-          }}
-        >
-          A <span>Original</span>
-        </button>
-        <button
-          type="button"
-          className={ab === "B" ? "is-active" : ""}
-          aria-pressed={ab === "B"}
-          onClick={() => {
-            setAb("B")
-          }}
-        >
-          B <span>Direction</span>
-        </button>
-      </div>
-      <button
-        type="button"
-        className="play-button"
-        onClick={() => void toggle()}
-        aria-label={playing ? "Pause" : "Play"}
-      >
-        <Icon name={playing ? "pause" : "play"} />
-      </button>
-      <span className="transport-time">
-        {formatTime(time)} <i>/</i> {formatTime(track.duration)}
-      </span>
-      <button
-        type="button"
-        className={`chip ${levelMatched ? "is-active" : ""}`.trim()}
-        aria-pressed={levelMatched}
-        onClick={() => {
-          setLevelMatched((v) => !v)
-        }}
-      >
-        Level match
-      </button>
     </div>
   )
 }
@@ -585,7 +406,7 @@ export function SpectrumChart({
   const basePoints = Array.from({ length: 25 }, (_, i) => {
     const x = (i / 24) * 100
     const freq = 20 * Math.pow(1000, i / 24)
-    const baseY = 38 - ((seed * (i + 2) * 7 + i * 11) % 20)
+    const baseY = eqBands ? 30 : 38 - ((seed * (i + 2) * 7 + i * 11) % 20)
     const eqDb = eqBands ? computeEqMagnitudeDb(freq, eqBands, 48000) : 0
     const y = Math.max(4, Math.min(56, baseY - eqDb * 1.4))
     return `${x.toFixed(2)},${y.toFixed(2)}`
@@ -603,7 +424,7 @@ export function SpectrumChart({
   return (
     <div className="spectrum">
       <div className="chart-label">
-        <span>Tonal balance</span>
+        <span>{eqBands ? "Approximate EQ response" : "Illustrative tonal curve"}</span>
         <span>20 Hz — 20 kHz</span>
       </div>
       <svg

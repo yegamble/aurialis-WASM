@@ -1,3 +1,5 @@
+const memoryAudio = new Map<string, Blob>()
+
 const DB_NAME = "aurialis-local"
 const DB_VERSION = 2
 const AUDIO_STORE = "audio"
@@ -39,7 +41,8 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 export async function saveAudio(id: string, file: Blob): Promise<void> {
-  if (!hasIndexedDb()) return
+  memoryAudio.set(id, file)
+  if (!hasIndexedDb()) throw new Error("IndexedDB is unavailable")
   const db = await openDb()
   try {
     await new Promise<void>((resolve, reject) => {
@@ -58,6 +61,7 @@ export async function saveAudio(id: string, file: Blob): Promise<void> {
 }
 
 export async function getAudio(id: string): Promise<Blob | undefined> {
+  if (memoryAudio.has(id)) return memoryAudio.get(id)
   if (!hasIndexedDb()) return undefined
   try {
     const db = await openDb()
@@ -84,6 +88,7 @@ export async function getAudio(id: string): Promise<Blob | undefined> {
 }
 
 export async function deleteAudio(id: string): Promise<void> {
+  memoryAudio.delete(id)
   if (!hasIndexedDb()) return
   try {
     const db = await openDb()

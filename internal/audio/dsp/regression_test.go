@@ -183,11 +183,48 @@ func TestCubicPeakEstimateIsNotTruePeakCertification(t *testing.T) {
 	for i := range left {
 		left[i] = float32(math.Sin(math.Pi*float64(i)/2 + math.Pi/4))
 	}
-	metrics := MeasureStereo(left, left, 48000)
-	if metrics.TruePeakDBTP >= -0.1 {
+	var history [3]float64
+	peak := 0.0
+	for _, x := range left {
+		peak = math.Max(peak, estimateTruePeak4x(history[0], history[1], history[2], float64(x)))
+		history[0], history[1], history[2] = history[1], history[2], float64(x)
+	}
+	if linToDB(peak) >= -0.1 {
 		t.Fatal("fixture no longer demonstrates cubic underestimation; revise the limitation test")
 	}
-	if math.Abs(metrics.SamplePeakDBFS-(-3.0103)) > 0.001 {
+	if math.Abs(linToDB(float64(left[0]))-(-3.0103)) > 0.001 {
 		t.Fatal("fixture sample peak is incorrect")
+	}
+}
+
+func TestWholeBufferAndPreviewBlocksMatchWithLimiter(t *testing.T) {
+	for _, rate := range []float64{44100, 48000, 96000} {
+		left, right := generateToneStereo(rate, 997, 1.4, 0.2, 0.2)
+		p := DefaultParams()
+		p.Limiter.Enabled = true
+		p.Compressor.Ratio = 3
+		p.Compressor.ThresholdDB = -12
+		p.Bands[2].GainDB = 2
+		p.Saturation.Amount = 15
+		p.Stereo.WidthPct = 115
+		renderedL, renderedR, _, err := RenderBufferContext(context.Background(), left, right, rate, p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		previewL, previewR := make([]float32, len(left)), make([]float32, len(left))
+		e := NewEngine(rate)
+		e.SetParams(p)
+		for start := 0; start < len(left); start += 128 {
+			end := min(start+128, len(left))
+			e.ProcessBlock(left[start:end], right[start:end], previewL[start:end], previewR[start:end])
+		}
+		for i := range left {
+			if previewL[i] != renderedL[i] || previewR[i] != renderedR[i] {
+				t.Fatalf("%g Hz preview/render mismatch at %d", rate, i)
+			}
+			if math.Abs(float64(renderedL[i])) > math.Pow(10, -1.0/20)+1e-7 || math.Abs(float64(renderedR[i])) > math.Pow(10, -1.0/20)+1e-7 {
+				t.Fatal("sample ceiling exceeded")
+			}
+		}
 	}
 }

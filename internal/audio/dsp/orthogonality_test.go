@@ -271,22 +271,25 @@ func TestStereoWidthAndMonoBassCrossover(t *testing.T) {
 	}
 }
 
-func TestTruePeakLimiterAndTargetLUFS(t *testing.T) {
+func TestSamplePeakLimiterWithoutImplicitLoudnessGain(t *testing.T) {
 	const sr = 48000.0
-	inL, inR := generateToneStereo(sr, 997.0, dbToLin(-18.0), 1.0, 0.2)
-
+	inL, inR := generateToneStereo(sr, 997, dbToLin(-18), 1, 0.2)
 	p := DefaultParams()
 	p.Limiter.Enabled = true
-	p.Limiter.CeilingDBTP = -1.0
-	p.Limiter.TargetLUFS = -14.0
-	p.Limiter.TruePeak = true
-
-	_, _, m := RenderBuffer(inL, inR, sr, p)
-	if m.TruePeakDBTP > -0.95 {
-		t.Fatalf("True-Peak limiter exceeded -1.0 dBTP ceiling: got %0.3f dBTP", m.TruePeakDBTP)
+	p.Limiter.CeilingDBTP = -1
+	p.Limiter.TargetLUFS = -14
+	outL, outR, _ := RenderBuffer(inL, inR, sr, p)
+	for i := range inL {
+		if outL[i] != inL[i] || outR[i] != inR[i] {
+			t.Fatal("sub-ceiling input received implicit loudness gain")
+		}
 	}
-	if math.Abs(m.IntegratedLUFS-(-14.0)) > 0.45 {
-		t.Fatalf("TargetLUFS calibration missed -14.0 LUFS: got %0.2f LUFS", m.IntegratedLUFS)
+	p.Limiter.TargetLUFS = -9
+	otherL, otherR, _ := RenderBuffer(inL, inR, sr, p)
+	for i := range outL {
+		if otherL[i] != outL[i] || otherR[i] != outR[i] {
+			t.Fatal("legacy target metadata changed audio")
+		}
 	}
 }
 

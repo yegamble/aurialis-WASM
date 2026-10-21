@@ -89,7 +89,7 @@ type StereoParams struct {
 type LimiterParams struct {
 	Enabled     bool    `json:"enabled"`
 	CeilingDBTP float64 `json:"ceilingDbtp"`
-	TargetLUFS  float64 `json:"targetLufs"`
+	TargetLUFS  float64 `json:"targetLufs"` // Legacy metadata; no implicit loudness normalization.
 	ReleaseMS   float64 `json:"releaseMs"`
 	TruePeak    bool    `json:"truePeak"`
 }

@@ -6,9 +6,10 @@ import (
 	"math"
 )
 
-// Metrics contains diagnostic acoustic estimates. The legacy LUFS/DBTP field
-// names do not imply BS.1770 compliance: loudness is ungated approximate weighting
-// and inter-sample peaks use cubic interpolation.
+// Metrics contains stereo BS.1770 gated integrated loudness, trailing 3-second
+// short-term loudness, a 4x windowed-sinc peak estimate, and signal diagnostics.
+// Intervals shorter than 400 ms/3 s use their available duration for loudness;
+// these short-interval values are diagnostic, not standard-duration readings.
 type Metrics struct {
 	IntegratedLUFS     float64 `json:"integratedLufs"`
 	ShortTermLUFS      float64 `json:"shortTermLufs"`
@@ -23,7 +24,7 @@ type Metrics struct {
 	GainReductionDB    float64 `json:"gainReductionDb"`
 }
 
-// MeasureStereo computes approximate weighted loudness, cubic inter-sample peak,
+// MeasureStereo computes gated K-weighted stereo loudness, a 4x FIR peak estimate,
 // crest factor, uncentered stereo correlation, low-bass correlation, and DC offset.
 func MeasureStereo(left, right []float32, sampleRate float64) Metrics {
 	m, _ := measureStereoContext(context.Background(), left, right, sampleRate)
@@ -52,17 +53,7 @@ func measureStereoContext(ctx context.Context, left, right []float32, sampleRate
 		sampleRate = 48000.0
 	}
 
-	// K-weighting pre-filter (High-shelf +4 dB above 1.5 kHz + 60 Hz RLB high-pass)
-	kwShelf := computeBandCoeffs(sampleRate, BandParams{
-		FreqHz:  1681.97,
-		GainDB:  4.0,
-		Q:       0.7071,
-		Type:    FilterHighShelf,
-		Enabled: true,
-	})
-	kwHPF := computeButterworthSVF(sampleRate, 38.135)
-	var kwShelfL, kwShelfR svfState
-	var kwHPFL, kwHPFR svfState
+	shelf, highpass := kWeighting(sampleRate)
 
 	// Low-bass (<110 Hz) correlation filter (4th-order Butterworth LP)
 	lbFilter := computeButterworthSVF(sampleRate, 110.0)
@@ -75,18 +66,15 @@ func measureStereoContext(ctx context.Context, left, right []float32, sampleRate
 	var sumL, sumR float64
 	var corrLL, corrRR, corrLR float64
 	var lbLL, lbRR, lbLR float64
-	var prevL [3]float64
-	var prevR [3]float64
+	var interpolator peakInterpolator
 	var clipping int
 
-	windowLen := int(sampleRate * 0.4)
-	if windowLen < 64 {
-		windowLen = 64
-	}
-	var winEnergy float64
-	var maxShortTermEnergy float64
-	var p95PeakSq float64
-	winCount := 0
+	windowLen := int(math.Round(sampleRate * 0.4))
+	step := int(math.Round(sampleRate * 0.1))
+	shortLen := int(math.Round(sampleRate * 3))
+	energyHistory := make([]float64, min(n, shortLen))
+	blocks := make([]float64, 0, n/step+1)
+	var windowEnergy, shortEnergy float64
 
 	for i := 0; i < n; i++ {
 		if i%4096 == 0 {
@@ -110,14 +98,7 @@ func measureStereoContext(ctx context.Context, left, right []float32, sampleRate
 			maxSamplePeak = sp
 		}
 
-		tpL := estimateTruePeak4x(prevL[0], prevL[1], prevL[2], l)
-		tpR := estimateTruePeak4x(prevR[0], prevR[1], prevR[2], r)
-		prevL[0], prevL[1], prevL[2] = prevL[1], prevL[2], l
-		prevR[0], prevR[1], prevR[2] = prevR[1], prevR[2], r
-		tp := math.Max(tpL, tpR)
-		if tp > maxTruePeak {
-			maxTruePeak = tp
-		}
+		maxTruePeak = math.Max(maxTruePeak, interpolator.sample(l, r))
 
 		corrLL += l * l
 		corrRR += r * r
@@ -135,40 +116,33 @@ func measureStereoContext(ctx context.Context, left, right []float32, sampleRate
 			lbLR += lowL2 * lowR2
 		}
 
-		// K-weighted energy
-		kl := processSVF(kwShelf, &kwShelfL, l)
-		_, kl = processSVFLowHigh(kwHPF, &kwHPFL, kl)
-		kr := processSVF(kwShelf, &kwShelfR, r)
-		_, kr = processSVFLowHigh(kwHPF, &kwHPFR, kr)
-
-		eSample := 0.5 * (kl*kl + kr*kr)
-		sumSqK += eSample
-		winEnergy += eSample
-
-		if (i+1)%windowLen == 0 || i == n-1 {
-			blockItems := windowLen
-			if i == n-1 && (i+1)%windowLen != 0 {
-				blockItems = (i + 1) % windowLen
-			}
-			meanBlock := winEnergy / float64(blockItems)
-			if meanBlock > maxShortTermEnergy {
-				maxShortTermEnergy = meanBlock
-			}
-			p95PeakSq += meanBlock
-			winCount++
-			winEnergy = 0
+		// BS.1770 stereo channel weights are 1+1, not an average of channels.
+		kl := highpass.sample(shelf.sample(l, 0), 0)
+		kr := highpass.sample(shelf.sample(r, 1), 1)
+		energy := kl*kl + kr*kr
+		sumSqK += energy
+		if i >= windowLen {
+			windowEnergy -= energyHistory[(i-windowLen)%len(energyHistory)]
+		}
+		if i >= shortLen {
+			shortEnergy -= energyHistory[i%len(energyHistory)]
+		}
+		windowEnergy += energy
+		shortEnergy += energy
+		energyHistory[i%len(energyHistory)] = energy
+		if i+1 >= windowLen && (i+1-windowLen)%step == 0 {
+			blocks = append(blocks, math.Max(0, windowEnergy)/float64(windowLen))
 		}
 	}
-
-	meanK := sumSqK / float64(n)
-	intLUFS := -70.0
-	if meanK > 1e-12 {
-		intLUFS = -0.691 + 10.0*math.Log10(meanK)
+	// Flush interpolation history to include reconstructed peaks at the final edge.
+	for i := 0; i < 13; i++ {
+		maxTruePeak = math.Max(maxTruePeak, interpolator.sample(0, 0))
 	}
-	stLUFS := intLUFS
-	if maxShortTermEnergy > 1e-12 {
-		stLUFS = -0.691 + 10.0*math.Log10(maxShortTermEnergy)
+	if n < windowLen {
+		blocks = append(blocks, sumSqK/float64(n))
 	}
+	intLUFS := gatedLoudness(blocks)
+	stLUFS := loudness(math.Max(0, shortEnergy) / float64(min(n, shortLen)))
 
 	tpDB := linToDB(maxTruePeak)
 	spDB := linToDB(maxSamplePeak)
@@ -179,8 +153,6 @@ func measureStereoContext(ctx context.Context, left, right []float32, sampleRate
 	if maxTruePeak > 1e-9 && meanRaw > 1e-12 {
 		drDB = math.Max(1.0, tpDB-rmsDB)
 	}
-	_ = p95PeakSq
-	_ = winCount
 
 	corr := 1.0
 	denom := math.Sqrt(corrLL * corrRR)
@@ -259,16 +231,16 @@ func GoertzelMagnitudeDB(samples []float32, sampleRate, targetFreqHz float64) fl
 	return linToDB(mag)
 }
 
-// RenderBuffer runs an offline render with optional approximate loudness
-// calibration. It does not guarantee a target loudness or reconstructed peak
-// ceiling. Invalid inputs return empty audio; use RenderBufferContext for errors.
+// RenderBuffer runs the same stateful chain as ProcessBlock, without implicit
+// loudness calibration or post-render gain changes. Invalid inputs return empty
+// audio; use RenderBufferContext for errors.
 func RenderBuffer(inL, inR []float32, sampleRate float64, params Params) ([]float32, []float32, Metrics) {
 	left, right, m, _ := RenderBufferContext(context.Background(), inL, inR, sampleRate, params)
 	return left, right, m
 }
 
 // RenderBufferContext validates a render and checks cancellation at least every
-// 4096 frames throughout processing and measurement, including calibration passes.
+// 4096 frames throughout processing and measurement.
 func RenderBufferContext(ctx context.Context, inL, inR []float32, sampleRate float64, params Params) ([]float32, []float32, Metrics, error) {
 	if ctx == nil {
 		return nil, nil, Metrics{}, errors.New("render context must not be nil")
@@ -315,45 +287,6 @@ func RenderBufferContext(ctx context.Context, inL, inR []float32, sampleRate flo
 	metrics, err := measureStereoContext(ctx, outL, outR, sampleRate)
 	if err != nil {
 		return nil, nil, Metrics{}, err
-	}
-	// When Limiter is enabled with a valid TargetLUFS, perform loudness calibration pass
-	if params.Limiter.Enabled && !params.Bypass && !params.ABOriginal && params.Limiter.TargetLUFS <= -5.0 && params.Limiter.TargetLUFS >= -30.0 && metrics.IntegratedLUFS > -60.0 {
-		deltaLU := params.Limiter.TargetLUFS - metrics.IntegratedLUFS
-		// Clamp loudness makeup adjustment to [-12 dB, +14 dB]
-		if math.Abs(deltaLU) > 0.15 {
-			if deltaLU > 14.0 {
-				deltaLU = 14.0
-			} else if deltaLU < -12.0 {
-				deltaLU = -12.0
-			}
-			adjParams := params
-			adjParams.InputGainDB = math.Max(-36, math.Min(36, adjParams.InputGainDB+deltaLU))
-			engine.Reset()
-			engine.SetParams(adjParams)
-			if err := renderBlocks(ctx, engine, inL[:n], inR[:n], outL, outR); err != nil {
-				return nil, nil, Metrics{}, err
-			}
-			grDB = engine.LastGainReductionDB()
-			metrics, err = measureStereoContext(ctx, outL, outR, sampleRate)
-			if err != nil {
-				return nil, nil, Metrics{}, err
-			}
-
-			// Fine trim if compression/limiting shifted LUFS slightly
-			remLU := params.Limiter.TargetLUFS - metrics.IntegratedLUFS
-			headroomDB := params.Limiter.CeilingDBTP - metrics.TruePeakDBTP - 0.05
-			if math.Abs(remLU) > 0.1 && remLU <= headroomDB {
-				trimLin := float32(dbToLin(remLU))
-				for i := 0; i < n; i++ {
-					outL[i] *= trimLin
-					outR[i] *= trimLin
-				}
-				metrics, err = measureStereoContext(ctx, outL, outR, sampleRate)
-				if err != nil {
-					return nil, nil, Metrics{}, err
-				}
-			}
-		}
 	}
 
 	metrics.GainReductionDB = grDB

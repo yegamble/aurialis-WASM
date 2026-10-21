@@ -18,6 +18,11 @@ async function savedTrack(page: Page, id: string): Promise<SavedTrack> {
 }
 
 async function snapshot(page: Page, id: string) {
+  await expect.poll(async () => {
+    const transport = page.locator(".transport");
+    return Number(await transport.getAttribute("data-parameter-version"))
+      - Number(await transport.getAttribute("data-applied-version"));
+  }).toBe(0);
   const output = await outputLevel(page);
   if (!output) throw new Error("Missing actual destination signal");
   return {
@@ -61,6 +66,7 @@ test("Simple and Advanced share one audible settings snapshot without changing s
       expect(after.version).toBe(before.version);
       expect(after.applied).toBe(before.applied);
       expect(after.output.generation).toBe(before.output.generation);
+      expect(after.output.instanceId).toBe(before.output.instanceId);
       expect(after.fresh).toBe(before.fresh);
       await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
       await expect.poll(async () => Math.abs(((await outputLevel(page))?.rmsDbfs ?? -Infinity) - before.output.rmsDbfs)).toBeLessThan(0.12);

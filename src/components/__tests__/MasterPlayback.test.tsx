@@ -1,0 +1,148 @@
+import { Blob as NodeBlob } from "node:buffer";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ComponentProps } from "react";
+import { previewWAV, type StereoPCM } from "@/lib/browser-engine";
+import * as engine from "@/lib/browser-engine";
+import { mapSimpleToDSP } from "@/lib/audio-dsp";
+import type { AdvancedParams } from "@/lib/types";
+import type { LiveMeter, LivePlaybackController, LivePlaybackState, LiveSpectrum } from "@/lib/live-playback";
+import { StoreProvider } from "@/lib/store";
+import { testStore } from "@/lib/__tests__/fixtures";
+import { AurialisWorkstation } from "../AurialisWorkstation";
+
+const mocks = vi.hoisted(() => ({ getAudio: vi.fn(), createLivePlayback: vi.fn() }));
+vi.mock("@/lib/db", () => ({ getAudio: mocks.getAudio, saveAudio: vi.fn(), deleteAudio: vi.fn() }));
+vi.mock("@/lib/live-playback", () => ({ createLivePlayback: mocks.createLivePlayback }));
+vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/link", () => ({ default: ({ href, children, ...props }: ComponentProps<"a">) => <a {...props} href={href}>{children}</a> }));
+
+type Callbacks = {
+  onState?: (state: LivePlaybackState) => void;
+  onMeter?: (meter: LiveMeter) => void;
+  onSpectrum?: (spectrum: LiveSpectrum) => void;
+  onError?: (error: Error) => void;
+};
+type Instance = { controller: LivePlaybackController; callbacks: Callbacks; state: LivePlaybackState };
+const instances: Instance[] = [];
+const pcm: StereoPCM = { left: Float32Array.from({ length: 4800 }, (_, index) => 0.25 * Math.sin(index / 13)), right: new Float32Array(4800), sampleRate: 48000 };
+
+function mount() { return render(<StoreProvider><AurialisWorkstation route="master" paramId="demo-1" /></StoreProvider>); }
+async function ready() { await waitFor(() => { expect(screen.getByRole<HTMLButtonElement>("button", { name: "A Processed" }).disabled).toBe(false); }, { timeout: 10000 }); }
+function latest() { const instance = instances.at(-1); if (!instance) throw new Error("No live controller was constructed"); return instance; }
+
+beforeEach(() => {
+  vi.stubGlobal("Blob", NodeBlob);
+  vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Network unavailable")));
+  const storage = new Map([["aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1) })]]);
+  vi.stubGlobal("localStorage", { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value); } });
+  instances.length = 0;
+  mocks.getAudio.mockReset().mockResolvedValue(previewWAV(pcm));
+  mocks.createLivePlayback.mockReset().mockImplementation((_source: StereoPCM, _settings: AdvancedParams, callbacks: Callbacks) => {
+    const instance: Instance = { controller: {} as LivePlaybackController, callbacks,
+      state: { position: 0, duration: 0.1, playing: false, ready: false, loading: false, original: false, volume: 0.8, underruns: 0, parameterVersion: 1, appliedVersion: 1, error: null } };
+    const update = (patch: Partial<LivePlaybackState>) => { instance.state = { ...instance.state, ...patch }; callbacks.onState?.(instance.state); };
+    instance.controller = {
+      play: vi.fn(() => { update({ playing: true, ready: true }); return Promise.resolve(); }),
+      pause: vi.fn(() => { update({ playing: false }); }),
+      seek: vi.fn((position: number) => { update({ position }); }),
+      setParams: vi.fn(), setBypass: vi.fn((original: boolean) => { update({ original }); }),
+      setVolume: vi.fn((volume: number) => { update({ volume }); }),
+      dispose: vi.fn(), getState: () => instance.state,
+    };
+    instances.push(instance);
+    return instance.controller;
+  });
+});
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+describe("master live playback lifecycle", () => {
+  it("loads canonical stored PCM offline, applies settings live, and clears meters on pause", async () => {
+    mount();
+    await ready();
+    expect(fetch).not.toHaveBeenCalled();
+    const instance = latest();
+    expect(mocks.createLivePlayback.mock.calls[0]?.[0]).toEqual(pcm);
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    await screen.findByRole("button", { name: "Pause" });
+    act(() => { instance.callbacks.onMeter?.({ peakDbfs: -12.3, rmsDbfs: -20.1, crestDb: 7.8, correlation: 0.5, position: 0.02, underruns: 0 }); });
+    expect(screen.getByRole("region", { name: "Measured audio levels" }).textContent).toContain("-12.3");
+    fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "6" } });
+    await waitFor(() => { expect(instance.controller.setParams).toHaveBeenLastCalledWith(expect.objectContaining({ input: 6 })); });
+    expect(instance.controller.play).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "B Original" }));
+    expect(instance.controller.setBypass).toHaveBeenCalledWith(true);
+    expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
+    act(() => { instance.callbacks.onMeter?.({ peakDbfs: -120, rmsDbfs: -120, crestDb: 0, correlation: 0, position: 0.03, underruns: 0 }); });
+    expect(screen.getByRole("region", { name: "Measured audio levels" }).textContent).toContain("−∞");
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    expect(screen.getByRole("region", { name: "Measured audio levels" }).textContent).not.toContain("−∞");
+  }, 20000);
+
+  it("auditions Simple changes immediately and retains prepared gain only for the applied direction", async () => {
+    mount();
+    await ready();
+    const instance = latest();
+    const normalize = vi.spyOn(engine, "normalizeSimpleAudio");
+    const offline = vi.spyOn(engine, "processPreview").mockResolvedValue(pcm);
+    fireEvent.click(screen.getByRole("tab", { name: "simple" }));
+    fireEvent.click(screen.getByRole("button", { name: "Warm" }));
+    const mapped = mapSimpleToDSP("Pop", "Warm", 50, "Streaming");
+    await waitFor(() => { expect(instance.controller.setParams).toHaveBeenLastCalledWith(mapped); });
+    expect(offline).not.toHaveBeenCalled();
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Export" }).disabled).toBe(true);
+    const prepared = { ...mapped, input: 4 };
+    normalize.mockResolvedValue(prepared);
+    fireEvent.click(screen.getByRole("button", { name: "Apply master direction" }));
+    await waitFor(() => { expect(screen.getByRole<HTMLButtonElement>("button", { name: "Export" }).disabled).toBe(false); }, { timeout: 10000 });
+    expect(instance.controller.setParams).toHaveBeenLastCalledWith(prepared);
+    expect(offline).toHaveBeenCalledWith(pcm, prepared, expect.any(AbortSignal));
+    fireEvent.change(screen.getByRole("combobox", { name: "Output target" }), { target: { value: "Dynamic" } });
+    await waitFor(() => { expect(instance.controller.setParams).toHaveBeenLastCalledWith(mapSimpleToDSP("Pop", "Warm", 50, "Dynamic")); });
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    await waitFor(() => { expect(instance.controller.setParams).toHaveBeenLastCalledWith(mapSimpleToDSP("Pop", "Open", 50, "Dynamic")); });
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Export" }).disabled).toBe(true);
+  }, 20000);
+
+  it("disposes on leaving and constructs a new playable engine on return without stale callbacks", async () => {
+    const first = mount();
+    await ready();
+    const previous = latest();
+    first.unmount();
+    expect(previous.controller.dispose).toHaveBeenCalledOnce();
+    mount();
+    await ready();
+    const current = latest();
+    expect(current.controller).not.toBe(previous.controller);
+    act(() => { previous.callbacks.onState?.({ ...previous.state, playing: true, position: 0.09, original: true }); previous.callbacks.onError?.(new Error("Disposed engine")); });
+    expect(screen.getByRole("button", { name: "A Processed" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByText("Disposed engine")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    await screen.findByRole("button", { name: "Pause" });
+    expect(current.controller.play).toHaveBeenCalledOnce();
+    expect(previous.controller.play).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  }, 20000);
+
+  it("offers an honest retry for missing audio and enables A/B only after it is restored", async () => {
+    mocks.getAudio.mockResolvedValueOnce(undefined);
+    mount();
+    await screen.findByRole("button", { name: "Retry source" });
+    expect(mocks.createLivePlayback).not.toHaveBeenCalled();
+    for (const name of ["A Processed", "B Original", "Play", "Render offline preview"]) expect(screen.getByRole<HTMLButtonElement>("button", { name }).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Retry source" }));
+    await ready();
+    expect(mocks.createLivePlayback).toHaveBeenCalledOnce();
+    expect(screen.queryByRole("button", { name: "Retry source" })).toBeNull();
+  }, 20000);
+
+  it("does not create an engine when an old source load resolves after navigation", async () => {
+    let resolveSource: ((value: Blob) => void) | undefined;
+    mocks.getAudio.mockReturnValueOnce(new Promise<Blob>((resolve) => { resolveSource = resolve; }));
+    const view = mount();
+    await waitFor(() => { expect(mocks.getAudio).toHaveBeenCalledOnce(); });
+    view.unmount();
+    await act(async () => { resolveSource?.(previewWAV(pcm)); await Promise.resolve(); });
+    expect(mocks.createLivePlayback).not.toHaveBeenCalled();
+  }, 20000);
+});

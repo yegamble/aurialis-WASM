@@ -3,11 +3,11 @@
 import Link from "next/link";
 import {
   engineParams,
-  measuredLevels,
   measureAudio,
   trackMetrics,
   normalizeSimpleAudio,
   processPreview,
+  previewWAV,
   readCanonicalWAV,
   serverRender,
   sourcePeaks,
@@ -15,6 +15,7 @@ import {
 } from "@/lib/browser-engine";
 import { DSPModule } from "./shared/DSPModule";
 import { RealTransport } from "./shared/RealTransport";
+import { createLivePlayback, type LiveMeter, type LivePlaybackController, type LivePlaybackState, type LiveSpectrum } from "@/lib/live-playback";
 import { usePathname, useRouter } from "next/navigation";
 import {
   useEffect,
@@ -52,6 +53,7 @@ import {
   PageTitle,
   SliderField,
   SpectrumChart,
+  LiveSpectrumChart,
   Waveform,
   formatTime,
   StatusBadge,
@@ -772,6 +774,26 @@ function LibraryView() {
   );
 }
 
+async function readStoredSource(blob: Blob, signal: AbortSignal): Promise<{ blob: Blob; pcm: StereoPCM }> {
+  signal.throwIfAborted();
+  const header = new DataView(await blob.slice(0, 44).arrayBuffer());
+  const id = (offset: number) => String.fromCharCode(...Array.from({ length: 4 }, (_, index) => header.getUint8(offset + index)));
+  const canonical = header.byteLength === 44 && blob.size >= 52 && blob.size <= 44 + MAX_SOURCE_FRAMES * 8 &&
+    id(0) === "RIFF" && header.getUint32(4, true) + 8 === blob.size && id(8) === "WAVE" &&
+    id(12) === "fmt " && header.getUint32(16, true) === 16 && header.getUint16(20, true) === 3 &&
+    header.getUint16(22, true) === 2 && header.getUint32(24, true) >= 8000 && header.getUint32(24, true) <= 192000 &&
+    header.getUint32(28, true) === header.getUint32(24, true) * 8 && header.getUint16(32, true) === 8 &&
+    header.getUint16(34, true) === 32 && id(36) === "data" && header.getUint32(40, true) === blob.size - 44 && (blob.size - 44) % 8 === 0;
+  // Imported sources already passed Go reconstruction. Older noncanonical records still go through it.
+  const clean = canonical ? blob : await serverRender(blob, { bypass: true }, 32, signal);
+  const pcm = await readCanonicalWAV(clean);
+  for (let index = 0; index < pcm.left.length; index++) {
+    if (!Number.isFinite(pcm.left.at(index)) || !Number.isFinite(pcm.right.at(index))) throw new Error("The stored audio contains invalid samples. Import the source again.");
+  }
+  signal.throwIfAborted();
+  return { blob: clean, pcm };
+}
+
 function MasterView({ trackId }: { trackId: string }) {
   const { state, dispatch } = useStore();
   const router = useRouter();
@@ -781,8 +803,16 @@ function MasterView({ trackId }: { trackId: string }) {
   const [preview, setPreview] = useState<StereoPCM | null>(null);
   const [renderedKey, setRenderedKey] = useState("");
   const [renderedDirection, setRenderedDirection] = useState("");
-  const [ab, setAb] = useState<"A" | "B">("A");
-  const [playheadRatio, setPlayheadRatio] = useState(0);
+  const live = useRef<LivePlaybackController | null>(null);
+  const [playback, setPlayback] = useState<LivePlaybackState | null>(null);
+  const [meter, setMeter] = useState<LiveMeter | null>(null);
+  const [spectrum, setSpectrum] = useState<LiveSpectrum | null>(null);
+  const [liveError, setLiveError] = useState("");
+  const [sourceError, setSourceError] = useState("");
+  const [sourceLoading, setSourceLoading] = useState(true);
+  const [sourceAttempt, setSourceAttempt] = useState(0);
+  const ab = playback?.original ? "B" : "A";
+  const playheadRatio = playback?.duration ? playback.position / playback.duration : 0;
   const [activeBandId, setActiveBandId] = useState<EQBandId>("low");
   const [exportOpen, setExportOpen] = useState(false);
   const [bitDepth, setBitDepth] = useState<ExportBitDepth>(24);
@@ -802,12 +832,58 @@ function MasterView({ trackId }: { trackId: string }) {
     renderAbort.current?.abort();
     setProcessing(false);
   }, [track?.mode, directionKey]);
-  const audible = ab === "B" && fresh ? preview : source;
-  const levels = useMemo(
-    () => (audible ? measuredLevels(audible) : null),
-    [audible],
-  );
+  const liveSettings = useMemo(() => {
+    if (!track) return createDefaultAdvancedParams();
+    if (track.mode !== "simple") return clampAdvancedToSampleRate(track.advanced, source?.sampleRate ?? track.sampleRate);
+    const mapped = clampAdvancedToSampleRate(mapSimpleToDSP(track.genre, track.tone, track.intensity, track.target), source?.sampleRate ?? track.sampleRate);
+    const stored = clampAdvancedToSampleRate(track.advanced, source?.sampleRate ?? track.sampleRate);
+    // Retain measured input gain only while the complete selected direction, including its target, matches.
+    const sameDirection = JSON.stringify({ ...mapped, input: 0 }) === JSON.stringify({ ...stored, input: 0 });
+    return sameDirection ? stored : mapped;
+  }, [track?.advanced, track?.mode, track?.genre, track?.tone, track?.intensity, track?.target, track?.sampleRate, source?.sampleRate]);
+  const currentSettings = useRef(liveSettings);
+  currentSettings.current = liveSettings;
+  const liveMeter = playback?.playing ? meter : null;
+  const levels = liveMeter ? { peak: liveMeter.peakDbfs <= -119.9 ? "−∞" : liveMeter.peakDbfs.toFixed(1), rms: liveMeter.rmsDbfs <= -119.9 ? "−∞" : liveMeter.rmsDbfs.toFixed(1), crest: liveMeter.peakDbfs <= -119.9 ? "—" : liveMeter.crestDb.toFixed(1) } : null;
   const peaks = useMemo(() => (source ? sourcePeaks(source) : []), [source]);
+
+  useEffect(() => {
+    if (!source) return undefined;
+    let active = true;
+    try {
+      const controller = createLivePlayback(source, currentSettings.current, {
+        onState: (next) => {
+          if (!active) return;
+          setPlayback(next);
+          if (!next.playing) { setMeter(null); setSpectrum(null); }
+        },
+        onMeter: (next) => { if (active && live.current?.getState().playing) setMeter(next); },
+        onSpectrum: (next) => { if (active && live.current?.getState().playing) setSpectrum(next); },
+        onError: (error) => { if (active) setLiveError(error.message); },
+      });
+      live.current = controller;
+      setPlayback(controller.getState());
+      setLiveError("");
+      return () => { active = false; controller.dispose(); if (live.current === controller) live.current = null; };
+    } catch (error) {
+      setLiveError(error instanceof Error ? error.message : "Playback could not be initialized. Retry the source.");
+      return undefined;
+    }
+  }, [source]);
+
+  useEffect(() => {
+    try { live.current?.setParams(liveSettings); }
+    catch (error) { setLiveError(error instanceof Error ? error.message : "The audio settings could not be applied."); }
+  }, [liveSettings]);
+
+  async function play() {
+    const controller = live.current;
+    if (!controller) return;
+    setLiveError("");
+    try { await controller.play(); }
+    catch (error) { if (live.current === controller) setLiveError(error instanceof Error ? error.message : "Playback could not start. Press play to retry."); }
+  }
+  function seek(ratio: number) { live.current?.seek(Math.max(0, Math.min(1, ratio)) * (source ? source.left.length / source.sampleRate : 0)); }
 
   useEffect(() => {
     let cancelled = false;
@@ -817,6 +893,11 @@ function MasterView({ trackId }: { trackId: string }) {
     setSourceBlob(null);
     setRenderedKey("");
     setMessage("");
+    setSourceError("");
+    setSourceLoading(true);
+    setPlayback(null);
+    setMeter(null);
+    setSpectrum(null);
     async function prepare() {
       if (!track) return;
       try {
@@ -826,22 +907,22 @@ function MasterView({ trackId }: { trackId: string }) {
             "The source audio is missing. Import the file again to create a new project.",
           );
         if (controller.signal.aborted) return;
-        const canonical = await serverRender(blob, { bypass: true }, 32, controller.signal);
-        const pcm = await readCanonicalWAV(canonical);
+        const stored = await readStoredSource(blob, controller.signal);
+        const canonical = stored.blob;
+        const pcm = stored.pcm;
         if (!cancelled) {
           setSource(pcm);
           setSourceBlob(canonical);
           const advanced = clampAdvancedToSampleRate(track.advanced, pcm.sampleRate);
           if (JSON.stringify(advanced) !== JSON.stringify(track.advanced)) dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced } });
-          setMessage("Source ready. Adjust settings and render a preview.");
+          setMessage("Source ready. Press play and adjust settings while you listen.");
+          setSourceLoading(false);
         }
       } catch (error) {
-        if (!cancelled)
-          setMessage(
-            error instanceof Error
-              ? error.message
-              : "The source could not be loaded.",
-          );
+        if (!cancelled) {
+          setSourceLoading(false);
+          setSourceError(error instanceof Error ? error.message : "The source could not be loaded. Import the file again or retry.");
+        }
       }
     }
     void prepare();
@@ -849,7 +930,7 @@ function MasterView({ trackId }: { trackId: string }) {
       cancelled = true;
       controller.abort();
     };
-  }, [track?.id]);
+  }, [track?.id, sourceAttempt]);
 
   async function renderPreview(params: AdvancedParams = track?.advanced ?? createDefaultAdvancedParams(), direction = "", pending?: AbortController) {
     if (!track || !source) return;
@@ -870,7 +951,7 @@ function MasterView({ trackId }: { trackId: string }) {
       setPreview(pcm);
       setRenderedKey(JSON.stringify(engineParams(params)));
       setRenderedDirection(direction);
-      setAb("B");
+      live.current?.setBypass(false);
       setMessage("Preview ready. Playback uses the shared Go DSP engine.");
       dispatch({
         type: "UPDATE_TRACK",
@@ -1036,8 +1117,8 @@ function MasterView({ trackId }: { trackId: string }) {
             </div>
             <div>
               <span>Listening to</span>
-              <strong>{ab === "B" && fresh ? "B" : "A"}</strong>
-              <small>{ab === "B" && fresh ? "Processed" : "Original"}</small>
+              <strong>{source ? ab : "—"}</strong>
+              <small>{source ? ab === "A" ? "Processed" : "Original" : "Unavailable"}</small>
             </div>
           </div>
           <Waveform
@@ -1045,67 +1126,50 @@ function MasterView({ trackId }: { trackId: string }) {
             duration={track.duration}
             peaks={peaks}
             playheadRatio={playheadRatio}
-            onSeekRatio={setPlayheadRatio}
+            onSeekRatio={seek}
           />
           <RealTransport
-            pcm={audible}
-            sourcePcm={source}
-            processedPcm={preview}
-            ab={ab}
-            onAB={setAb}
-            processedReady={fresh}
-            playheadRatio={playheadRatio}
-            onSeekRatio={setPlayheadRatio}
+            state={playback}
+            sourceReady={source !== null && live.current !== null}
+            onPlay={play}
+            onPause={() => { live.current?.pause(); }}
+            onOriginal={(original) => { live.current?.setBypass(original); }}
+            onVolume={(volume) => { live.current?.setVolume(volume); }}
           />
+          <LiveSpectrumChart frame={spectrum} playing={playback?.playing ?? false} />
+          {sourceError && <div className="flex flex-wrap items-center gap-3" role="alert">
+            <p className="disclosure">{sourceError}</p>
+            <Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry source</Button>
+          </div>}
+          {liveError && <div className="flex flex-wrap items-center gap-3" role="alert"><p className="disclosure">{liveError}</p><Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry playback</Button></div>}
           <div className="render-actions">
             <Button
               disabled={!source || processing}
               onClick={() => void (track.mode === "simple" ? applySimpleDirection() : renderPreview())}
               icon={<Icon name={processing ? "refresh-cw" : "play"} />}
             >
-              {processing ? "Rendering…" : "Render preview"}
+              {processing ? "Rendering…" : "Render offline preview"}
             </Button>
+            {fresh && <Button variant="secondary" onClick={() => {
+              const url = URL.createObjectURL(previewWAV(preview));
+              const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${track.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-offline-preview.wav`; anchor.click();
+              setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
+            }}>Download offline preview</Button>}
             <span className="disclosure">
               {fresh
-                ? "Preview matches your settings."
+                ? "Offline preview matches your settings. Live playback updates independently."
                 : track.mode === "simple"
-                  ? "Apply the current direction before previewing or exporting this master."
-                  : "Apply your settings to hear a fresh preview. Export always renders current settings."}
+                  ? "Tone updates while you listen. Apply the master direction to measure the output target before exporting."
+                  : "Playback responds to your controls immediately. Render an offline preview for a full-track check; export always uses current settings."}
             </span>
           </div>
           <p className="disclosure" role="status">
-            {message || "Loading source audio…"}
+            {sourceLoading ? "Loading stored audio…" : message}
           </p>
           {track.persistenceWarning && (
             <p className="disclosure" role="alert">
               {track.persistenceWarning}
             </p>
-          )}
-          {track.mode !== "deep" && (
-            <>
-              <SpectrumChart
-                seed={track.seed}
-                eqBands={
-                  track.advanced.eqEnabled
-                    ? track.advanced.eqBands
-                    : track.advanced.eqBands.map((band) => ({
-                        ...band,
-                        enabled: false,
-                      }))
-                }
-                activeBandId={activeBandId}
-                sampleRate={track.sampleRate}
-                onSelectBand={setActiveBandId}
-                onBandChange={(bandId, patch) => {
-                  const bounded = typeof patch.freqHz === "number" ? { ...patch, freqHz: Math.min(Math.floor(track.sampleRate * 0.47), Math.max(20, patch.freqHz)) } : patch;
-                  dispatch({ type: "UPDATE_EQ_BAND", trackId: track.id, bandId, patch: bounded });
-                }}
-              />
-              <p className="disclosure">
-                The curve approximates your EQ settings; it is not a measured audio
-                spectrum. Preview and export share the same Go processor.
-              </p>
-            </>
           )}
         </section>
         <aside className="inspector" aria-label="Mastering controls inspector">
@@ -1131,7 +1195,7 @@ function MasterView({ trackId }: { trackId: string }) {
               sourceReady={source !== null}
               onApply={(next) => {
                 dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next } });
-                void renderPreview(next);
+                setMessage("Profile applied to live playback. Adjust it in Advanced mode while you listen.");
               }}
             />
           )}
@@ -1231,6 +1295,17 @@ function AdvancedControls({
       />
 
       <DSPModule title="Equalizer">
+      <SpectrumChart
+        seed={track.seed}
+        eqBands={adv.eqEnabled ? adv.eqBands : adv.eqBands.map((band) => ({ ...band, enabled: false }))}
+        activeBandId={selectedBand.id}
+        sampleRate={track.sampleRate}
+        onSelectBand={onSelectBand}
+        onBandChange={(bandId, patch) => {
+          const bounded = typeof patch.freqHz === "number" ? { ...patch, freqHz: Math.min(Math.floor(track.sampleRate * 0.47), Math.max(20, patch.freqHz)) } : patch;
+          dispatch({ type: "UPDATE_EQ_BAND", trackId: track.id, bandId, patch: bounded });
+        }}
+      />
       <label className="check-row">
         <input
           type="checkbox"

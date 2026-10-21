@@ -273,6 +273,13 @@
               "  pm.expect(pm.response.headers.get('Content-Type')).to.include('audio/wav');",
               "  pm.expect(pm.response.headers.get('X-Aurialis-After-LUFS')).to.be.a('string');",
               "  pm.expect(pm.response.headers.get('X-Aurialis-After-Peak-dBTP')).to.be.a('string');",
+              "});",
+              "pm.test('WAV contains source-length real PCM frames', function () {",
+              "  const bytes = pm.response.stream;",
+              "  pm.expect(bytes.length).to.eql(44 + 19200 * 6);",
+              "  pm.expect(String.fromCharCode(...Array.from(bytes.slice(0,4)))).to.eql('RIFF');",
+              "  pm.expect(String.fromCharCode(...Array.from(bytes.slice(8,12)))).to.eql('WAVE');",
+              "  pm.expect(bytes[34] + bytes[35] * 256).to.eql(24);",
               "});"
             ]
           }

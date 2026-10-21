@@ -15,6 +15,9 @@ export default defineConfig({
     baseURL: BASE_URL,
     trace: "off",
     headless: true,
+    launchOptions: process.env.PLAYWRIGHT_EXECUTABLE_PATH
+      ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
+      : {},
   },
   projects: [
     {

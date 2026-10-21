@@ -57,3 +57,31 @@ test("closing the export dialog cancels its pending render and keeps the source 
     held.release();
   }
 });
+
+test("Simple and profile Apply wait for the actual source to finish loading", async ({ page }) => {
+  const id = await uploadProject(page, "loading-source.wav");
+  let release = () => {};
+  let capture = () => {};
+  const seen = new Promise<void>((resolve) => { capture = resolve; });
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route("**/api/master/render", async (route) => {
+    capture();
+    await held;
+    await route.continue();
+  });
+  try {
+    await page.goto(`/master/${id}`);
+    await seen;
+    await page.getByRole("tab", { name: "simple", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Apply master direction", exact: true })).toBeDisabled();
+    await page.getByRole("tab", { name: "deep", exact: true }).click();
+    const apply = page.getByRole("button", { name: "Apply profile", exact: true });
+    await expect(apply).toBeDisabled();
+    release();
+    await expect(apply).toBeEnabled({ timeout: 30_000 });
+    await apply.click();
+    await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
+  } finally {
+    release();
+  }
+});

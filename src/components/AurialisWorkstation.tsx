@@ -1120,6 +1120,7 @@ function MasterView({ trackId }: { trackId: string }) {
             <SimpleControls
               track={track}
               processing={processing}
+              sourceReady={source !== null && sourceBlob !== null}
               onApply={() => void applySimpleDirection()}
             />
           )}
@@ -1127,6 +1128,7 @@ function MasterView({ trackId }: { trackId: string }) {
             <DeepControls
               track={track}
               processing={processing}
+              sourceReady={source !== null}
               onApply={(next) => {
                 dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next } });
                 void renderPreview(next);
@@ -1563,10 +1565,12 @@ function AdvancedControls({
 function SimpleControls({
   track,
   processing,
+  sourceReady,
   onApply,
 }: {
   track: Track;
   processing: boolean;
+  sourceReady: boolean;
   onApply: () => void;
 }) {
   const { dispatch } = useStore();
@@ -1648,7 +1652,7 @@ function SimpleControls({
       </ControlGroup>
       <Button
         className="full-button"
-        disabled={processing}
+        disabled={processing || !sourceReady}
         icon={
           <Icon
             name={processing ? "refresh-cw" : "sparkles"}
@@ -1663,9 +1667,10 @@ function SimpleControls({
   );
 }
 
-function DeepControls({ track, processing, onApply }: {
+function DeepControls({ track, processing, sourceReady, onApply }: {
   track: Track;
   processing: boolean;
+  sourceReady: boolean;
   onApply: (params: AdvancedParams) => void;
 }) {
   const { dispatch } = useStore();
@@ -1689,7 +1694,7 @@ function DeepControls({ track, processing, onApply }: {
         </div>
       </ControlGroup>
       <p className="disclosure">Musical section detection, timeline automation and AI repair are not available. These profiles apply the same settings throughout your track.</p>
-      <Button className="full-button" disabled={processing} icon={<Icon name="sparkles" />}
+      <Button className="full-button" disabled={processing || !sourceReady} icon={<Icon name="sparkles" />}
         onClick={() => {
           const params = clampAdvancedToSampleRate(mapProfileToDSP(selectedProfile), track.sampleRate);
           dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { profile: selectedProfile } });

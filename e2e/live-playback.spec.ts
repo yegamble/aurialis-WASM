@@ -135,3 +135,93 @@ test("leave, reopen, reload and switch tracks without losing playable saved audi
   await play(page);
   await expect.poll(() => audibleDb(page)).toBeCloseTo(-13.03, 0);
 });
+
+test("a failed live WASI asset reports the error and Retry playback restores audible output", async ({ page }, info) => {
+  await observeOutput(page);
+  await uploadProject(page, "qa-live-asset-retry.wav", 12);
+  await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");
+  let attempts = 0;
+  await page.route("**/wasm/aurialis-realtime.wasm", async (route) => {
+    attempts++;
+    if (attempts === 1) await route.fulfill({ status: 503, contentType: "text/plain", body: "QA engine asset failure" });
+    else await route.continue();
+  });
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  const retry = page.getByRole("button", { name: "Retry playback", exact: true });
+  await expect(retry).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("audio engine could not be loaded");
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
+  expect(await outputLevel(page), "the failed asset must not produce a live graph").toBeNull();
+  await retry.click();
+  await expect(retry).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeEnabled();
+  await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");
+  await play(page);
+  await expect.poll(() => audibleDb(page)).toBeCloseTo(-19.03, 0);
+  expect(attempts).toBe(2);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await info.attach("live engine asset retry", { body: JSON.stringify({ attempts, output: await outputLevel(page) }, null, 2), contentType: "application/json" });
+});
+
+test("leaving during held live WASI initialization cancels it and reopening creates one playable graph", async ({ page }, info) => {
+  await observeOutput(page);
+  let nodes = 0;
+  await page.exposeBinding("qaLiveNodeCreated", () => { nodes++; });
+  await page.addInitScript(() => {
+    const NativeNode = AudioWorkletNode;
+    window.AudioWorkletNode = class extends NativeNode {
+      constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
+        super(context, name, options);
+        if (name === "aurialis-live") {
+          const observed = window as unknown as Window & { qaLiveNodeCreated: () => Promise<void> };
+          void observed.qaLiveNodeCreated();
+        }
+      }
+    };
+  });
+  const id = await uploadProject(page, "qa-live-asset-cancel.wav", 12);
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  let started: (() => void) | undefined;
+  const requested = new Promise<void>((resolve) => { started = resolve; });
+  let settled: (() => void) | undefined;
+  const completed = new Promise<void>((resolve) => { settled = resolve; });
+  let requests = 0;
+  const failures: string[] = [];
+  // cspell:ignore requestfailed
+  page.on("requestfailed", (request) => {
+    if (request.url().endsWith("/wasm/aurialis-realtime.wasm")) failures.push(request.failure()?.errorText ?? "unknown");
+  });
+  await page.route("**/wasm/aurialis-realtime.wasm", async (route) => {
+    requests++;
+    if (requests === 1) {
+      started?.();
+      await held;
+      await route.continue().catch(() => undefined);
+      settled?.();
+    } else await route.continue();
+  });
+  try {
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await requested;
+    expect(nodes, "the held module must not have constructed a live processor").toBe(0);
+    await page.getByRole("link", { name: "Library", exact: true }).first().click();
+    await expect(page).toHaveURL(/\/library$/);
+    release?.();
+    await completed;
+    await expect.poll(() => failures.length, { message: "navigation must abort the pending live engine fetch" }).toBe(1);
+    expect(nodes, "releasing a canceled initialization must not create a stale processor").toBe(0);
+    await page.goto(`/master/${id}`);
+    await expect(page.getByRole("button", { name: "Play", exact: true })).toBeEnabled();
+    await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
+    await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");
+    await play(page);
+    await expect.poll(() => audibleDb(page)).toBeCloseTo(-19.03, 0);
+    expect(requests).toBe(2);
+    await expect.poll(() => nodes).toBe(1);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  } finally {
+    release?.();
+    await info.attach("canceled live initialization", { body: JSON.stringify({ requests, nodes, failures, output: await outputLevel(page).catch(() => null) }, null, 2), contentType: "application/json" });
+  }
+});

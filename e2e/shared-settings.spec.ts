@@ -53,32 +53,43 @@ test("Simple and Advanced share one audible settings snapshot without changing s
     (window as ObservedWindow).qaSharedDiagnostics = diagnostics;
     let header: Int32Array | undefined;
     let tags: Int32Array | undefined;
-    const nativePost = Worker.prototype.postMessage;
-    Worker.prototype.postMessage = function (message: unknown, ...rest: unknown[]): void {
-      const value = message as { type?: string; header?: SharedArrayBuffer; tags?: SharedArrayBuffer; params?: string; version?: number; generation?: number };
-      if (value.type === "init" && value.header && value.tags) {
-        header = new Int32Array(value.header);
-        tags = new Int32Array(value.tags);
-      }
-      if (["init", "params", "reset", "dispose"].includes(value.type ?? "")) {
-        diagnostics.events.push({ time: performance.now(), type: value.type, params: value.params,
-          version: value.version, generation: value.generation, header: header ? Array.from(header) : null });
-      }
-      Reflect.apply(nativePost, this, [message, ...rest]);
-    };
+    let controls: Int32Array | undefined;
+    let lastControlVersion = -1;
     const NativeNode = AudioWorkletNode;
     window.AudioWorkletNode = class extends NativeNode {
       constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
         super(context, name, options);
+        const buffers = options?.processorOptions as {
+          header?: SharedArrayBuffer; tags?: SharedArrayBuffer; controls?: SharedArrayBuffer;
+        } | undefined;
+        if (name === "aurialis-live" && buffers?.header && buffers.tags) {
+          header = new Int32Array(buffers.header);
+          tags = new Int32Array(buffers.tags);
+          controls = buffers.controls ? new Int32Array(buffers.controls, 0, 4) : undefined;
+          diagnostics.events.push({ time: performance.now(), type: "init", header: Array.from(header) });
+        }
+        const nativePost = this.port.postMessage.bind(this.port);
+        this.port.postMessage = (message: unknown, ...rest: unknown[]): void => {
+          diagnostics.events.push({ time: performance.now(), type: "port-command", data: message,
+            header: header ? Array.from(header) : null });
+          Reflect.apply(nativePost, this.port, [message, ...rest]);
+        };
         this.port.addEventListener("message", (event: MessageEvent<unknown>) => {
           const value = event.data as { type?: string };
-          if (value.type === "error") diagnostics.events.push({ time: performance.now(), type: "worklet-error", data: value,
-            header: header ? Array.from(header) : null });
+          if (value.type === "error" || value.type === "ready") diagnostics.events.push({
+            time: performance.now(), type: value.type === "error" ? "worklet-error" : "ready", data: value,
+            header: header ? Array.from(header) : null,
+          });
         });
       }
     };
     setInterval(() => {
       if (!header || !tags) return;
+      if (controls && Atomics.load(controls, 1) !== lastControlVersion) {
+        lastControlVersion = Atomics.load(controls, 1);
+        diagnostics.events.push({ time: performance.now(), type: "shared-controls", version: lastControlVersion,
+          header: Array.from(header), sequence: Atomics.load(controls, 0) });
+      }
       const values = Array.from(header);
       const slot = (values[1] ?? 0) % 256;
       diagnostics.headers.push({ time: performance.now(), values, slot,

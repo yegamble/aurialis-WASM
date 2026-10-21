@@ -231,15 +231,16 @@ func TestStereoWidthAndMonoBassCrossover(t *testing.T) {
 	const n = 48000
 	inL := make([]float32, n)
 	inR := make([]float32, n)
-	// Out-of-phase 80 Hz bass + 90-degree stereo 4 kHz tone
+	// Centered 40 Hz bass, out-of-phase 80 Hz bass, and 90-degree stereo 4 kHz tone.
 	for i := 0; i < n; i++ {
 		tm := float64(i) / sr
 		bassL := 0.35 * math.Sin(2.0*math.Pi*80.0*tm)
 		bassR := -0.35 * math.Sin(2.0*math.Pi*80.0*tm)
 		highL := 0.25 * math.Sin(2.0*math.Pi*4000.0*tm)
 		highR := 0.25 * math.Cos(2.0*math.Pi*4000.0*tm)
-		inL[i] = float32(bassL + highL)
-		inR[i] = float32(bassR + highR)
+		monoBass := 0.2 * math.Sin(2.0*math.Pi*40.0*tm)
+		inL[i] = float32(monoBass + bassL + highL)
+		inR[i] = float32(monoBass + bassR + highR)
 	}
 
 	// Width = 0% -> mono collapse (correlation >= +0.9999)

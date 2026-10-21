@@ -1,10 +1,14 @@
 package dsp
 
 import (
+	"context"
+	"errors"
 	"math"
 )
 
-// Metrics contains objective acoustic measurements per ITU-R BS.1770-4.
+// Metrics contains diagnostic acoustic estimates. The legacy LUFS/DBTP field
+// names do not imply BS.1770 compliance: loudness is ungated approximate weighting
+// and inter-sample peaks use cubic interpolation.
 type Metrics struct {
 	IntegratedLUFS     float64 `json:"integratedLufs"`
 	ShortTermLUFS      float64 `json:"shortTermLufs"`
@@ -19,9 +23,14 @@ type Metrics struct {
 	GainReductionDB    float64 `json:"gainReductionDb"`
 }
 
-// MeasureStereo computes ITU-R BS.1770-4 loudness, 4x True Peak, Dynamic Range,
-// Pearson stereo correlation, sub-110 Hz correlation, and DC offset.
+// MeasureStereo computes approximate weighted loudness, cubic inter-sample peak,
+// crest factor, uncentered stereo correlation, low-bass correlation, and DC offset.
 func MeasureStereo(left, right []float32, sampleRate float64) Metrics {
+	m, _ := measureStereoContext(context.Background(), left, right, sampleRate)
+	return m
+}
+
+func measureStereoContext(ctx context.Context, left, right []float32, sampleRate float64) (Metrics, error) {
 	n := len(left)
 	if len(right) < n {
 		n = len(right)
@@ -37,9 +46,9 @@ func MeasureStereo(left, right []float32, sampleRate float64) Metrics {
 			DCLeftDBFS:      -120.0,
 			DCRightDBFS:     -120.0,
 			ClippingSamples: 0,
-		}
+		}, nil
 	}
-	if sampleRate < 8000.0 {
+	if !finite(sampleRate) || sampleRate < 8000.0 || sampleRate > 192000.0 {
 		sampleRate = 48000.0
 	}
 
@@ -80,6 +89,11 @@ func MeasureStereo(left, right []float32, sampleRate float64) Metrics {
 	winCount := 0
 
 	for i := 0; i < n; i++ {
+		if i%4096 == 0 {
+			if err := ctx.Err(); err != nil {
+				return Metrics{}, err
+			}
+		}
 		l := sanitizeSample(float64(left[i]))
 		r := sanitizeSample(float64(right[i]))
 
@@ -204,14 +218,14 @@ func MeasureStereo(left, right []float32, sampleRate float64) Metrics {
 		DCLeftDBFS:         dcL,
 		DCRightDBFS:        dcR,
 		ClippingSamples:    clipping,
-	}
+	}, nil
 }
 
 // GoertzelMagnitudeDB computes the exact DFT bin magnitude (in dBFS) at targetFreqHz
 // over the given sample slice using a Hann window after filter-settling warmup.
 func GoertzelMagnitudeDB(samples []float32, sampleRate, targetFreqHz float64) float64 {
 	n := len(samples)
-	if n == 0 || sampleRate <= 0 || targetFreqHz <= 0 {
+	if n < 2 || !finite(sampleRate) || !finite(targetFreqHz) || sampleRate <= 0 || targetFreqHz <= 0 {
 		return -240.0
 	}
 	// Skip initial transient warmup (up to 10% of buffer)
@@ -245,10 +259,42 @@ func GoertzelMagnitudeDB(samples []float32, sampleRate, targetFreqHz float64) fl
 	return linToDB(mag)
 }
 
-// RenderBuffer runs the DSP engine over an entire stereo buffer and optionally
-// calibrates limiter makeup gain so the output reaches Params.Limiter.TargetLUFS
-// while strictly respecting Params.Limiter.CeilingDBTP.
+// RenderBuffer runs an offline render with optional approximate loudness
+// calibration. It does not guarantee a target loudness or reconstructed peak
+// ceiling. Invalid inputs return empty audio; use RenderBufferContext for errors.
 func RenderBuffer(inL, inR []float32, sampleRate float64, params Params) ([]float32, []float32, Metrics) {
+	left, right, m, _ := RenderBufferContext(context.Background(), inL, inR, sampleRate, params)
+	return left, right, m
+}
+
+// RenderBufferContext validates a render and checks cancellation at least every
+// 4096 frames throughout processing and measurement, including calibration passes.
+func RenderBufferContext(ctx context.Context, inL, inR []float32, sampleRate float64, params Params) ([]float32, []float32, Metrics, error) {
+	if ctx == nil {
+		return nil, nil, Metrics{}, errors.New("render context must not be nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, nil, Metrics{}, err
+	}
+	if !finite(sampleRate) || sampleRate < 8000 || sampleRate > 192000 {
+		return nil, nil, Metrics{}, errors.New("sample rate must be finite and within 8000–192000 Hz")
+	}
+	if len(inL) != len(inR) || len(inL) > 16*1024*1024 {
+		return nil, nil, Metrics{}, errors.New("render requires equal channel lengths under 16 million frames")
+	}
+	if err := ValidateParams(params); err != nil {
+		return nil, nil, Metrics{}, err
+	}
+	for i := range inL {
+		if i%4096 == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, nil, Metrics{}, err
+			}
+		}
+		if !finite(float64(inL[i])) || !finite(float64(inR[i])) {
+			return nil, nil, Metrics{}, errors.New("render input contains non-finite samples")
+		}
+	}
 	n := len(inL)
 	if len(inR) < n {
 		n = len(inR)
@@ -256,15 +302,20 @@ func RenderBuffer(inL, inR []float32, sampleRate float64, params Params) ([]floa
 	outL := make([]float32, n)
 	outR := make([]float32, n)
 	if n == 0 {
-		return outL, outR, MeasureStereo(outL, outR, sampleRate)
+		return outL, outR, MeasureStereo(outL, outR, sampleRate), nil
 	}
 
 	engine := NewEngine(sampleRate)
 	engine.SetParams(params)
-	engine.ProcessBlock(inL[:n], inR[:n], outL, outR)
+	if err := renderBlocks(ctx, engine, inL[:n], inR[:n], outL, outR); err != nil {
+		return nil, nil, Metrics{}, err
+	}
 	grDB := engine.LastGainReductionDB()
 
-	metrics := MeasureStereo(outL, outR, sampleRate)
+	metrics, err := measureStereoContext(ctx, outL, outR, sampleRate)
+	if err != nil {
+		return nil, nil, Metrics{}, err
+	}
 	// When Limiter is enabled with a valid TargetLUFS, perform loudness calibration pass
 	if params.Limiter.Enabled && !params.Bypass && !params.ABOriginal && params.Limiter.TargetLUFS <= -5.0 && params.Limiter.TargetLUFS >= -30.0 && metrics.IntegratedLUFS > -60.0 {
 		deltaLU := params.Limiter.TargetLUFS - metrics.IntegratedLUFS
@@ -276,12 +327,17 @@ func RenderBuffer(inL, inR []float32, sampleRate float64, params Params) ([]floa
 				deltaLU = -12.0
 			}
 			adjParams := params
-			adjParams.InputGainDB += deltaLU
+			adjParams.InputGainDB = math.Max(-36, math.Min(36, adjParams.InputGainDB+deltaLU))
 			engine.Reset()
 			engine.SetParams(adjParams)
-			engine.ProcessBlock(inL[:n], inR[:n], outL, outR)
+			if err := renderBlocks(ctx, engine, inL[:n], inR[:n], outL, outR); err != nil {
+				return nil, nil, Metrics{}, err
+			}
 			grDB = engine.LastGainReductionDB()
-			metrics = MeasureStereo(outL, outR, sampleRate)
+			metrics, err = measureStereoContext(ctx, outL, outR, sampleRate)
+			if err != nil {
+				return nil, nil, Metrics{}, err
+			}
 
 			// Fine trim if compression/limiting shifted LUFS slightly
 			remLU := params.Limiter.TargetLUFS - metrics.IntegratedLUFS
@@ -292,11 +348,25 @@ func RenderBuffer(inL, inR []float32, sampleRate float64, params Params) ([]floa
 					outL[i] *= trimLin
 					outR[i] *= trimLin
 				}
-				metrics = MeasureStereo(outL, outR, sampleRate)
+				metrics, err = measureStereoContext(ctx, outL, outR, sampleRate)
+				if err != nil {
+					return nil, nil, Metrics{}, err
+				}
 			}
 		}
 	}
 
 	metrics.GainReductionDB = grDB
-	return outL, outR, metrics
+	return outL, outR, metrics, nil
+}
+
+func renderBlocks(ctx context.Context, e *Engine, inL, inR, outL, outR []float32) error {
+	for start := 0; start < len(inL); start += 4096 {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		end := min(start+4096, len(inL))
+		e.ProcessBlock(inL[start:end], inR[start:end], outL[start:end], outR[start:end])
+	}
+	return ctx.Err()
 }

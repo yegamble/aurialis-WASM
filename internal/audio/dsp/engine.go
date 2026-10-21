@@ -1,4 +1,4 @@
-// Package dsp implements the Waves-grade zero-allocation mastering DSP engine
+// Package dsp implements a digital zero-allocation mastering DSP engine
 // shared between the native Go server and the browser WebAssembly module.
 package dsp
 
@@ -84,7 +84,8 @@ type StereoParams struct {
 	CrossoverHz float64 `json:"crossoverHz"`
 }
 
-// LimiterParams configures the 4x oversampled True-Peak brickwall limiter.
+// LimiterParams configures a sample-peak limiter with an optional cubic
+// inter-sample estimate. Legacy DBTP field names do not imply ITU compliance.
 type LimiterParams struct {
 	Enabled     bool    `json:"enabled"`
 	CeilingDBTP float64 `json:"ceilingDbtp"`
@@ -211,7 +212,7 @@ type Engine struct {
 	ironLP    [2]float64
 	ironHP    [2]float64
 
-	// Stereo Linkwitz-Riley 8th-order Side high-pass crossover state
+	// Stereo eighth-order side high-pass state (heuristic bass narrowing).
 	xoverCoeffs svfCoeffs
 	xoverSide   [4]svfState
 	xoverLow    [2][2]svfState
@@ -241,7 +242,7 @@ type Engine struct {
 
 // NewEngine constructs and pre-allocates a mastering DSP engine for the given sample rate.
 func NewEngine(sampleRate float64) *Engine {
-	if sampleRate < 8000.0 {
+	if !finite(sampleRate) || sampleRate < 8000.0 || sampleRate > 192000.0 {
 		sampleRate = 48000.0
 	}
 	e := &Engine{
@@ -267,7 +268,11 @@ func (e *Engine) Params() Params {
 
 // SetParams updates the engine parameter vector while preserving filter states and only
 // recomputing coefficients for bands or crossovers whose parameters actually changed.
+// Invalid updates are ignored atomically; call ValidateParams to obtain an error.
 func (e *Engine) SetParams(next Params) {
+	if ValidateParams(next) != nil {
+		return
+	}
 	prev := e.params
 	e.params = next
 	for i := 0; i < NumEQBands; i++ {
@@ -287,8 +292,14 @@ func (e *Engine) SetParams(next Params) {
 }
 
 // SetBand updates exclusively EQ band index [0..4] without touching any other band or module.
+// Invalid bands are ignored atomically.
 func (e *Engine) SetBand(index int, band BandParams) {
 	if index < 0 || index >= NumEQBands {
+		return
+	}
+	candidate := e.params
+	candidate.Bands[index] = band
+	if ValidateParams(candidate) != nil {
 		return
 	}
 	if e.params.Bands[index] == band {
@@ -494,6 +505,18 @@ func sanitizeSample(x float64) float64 {
 	return x
 }
 
+// finiteFloat32 also checks after narrowing: finite float64 values can overflow float32.
+func finiteFloat32(x float64) float32 {
+	x = sanitizeSample(x)
+	if x > math.MaxFloat32 {
+		return math.MaxFloat32
+	}
+	if x < -math.MaxFloat32 {
+		return -math.MaxFloat32
+	}
+	return float32(x)
+}
+
 func dbToLin(db float64) float64 {
 	return math.Pow(10.0, db/20.0)
 }
@@ -524,7 +547,7 @@ func (e *Engine) isChainNeutral() bool {
 	if p.Repair.Enabled && (math.Abs(p.Repair.DeEssDB) >= 1e-7 || math.Abs(p.Repair.TransientDB) >= 1e-7 || p.Repair.DeClip) {
 		return false
 	}
-	if p.Compressor.Enabled && p.Compressor.Ratio > 1.0001 && (p.Compressor.ThresholdDB < -1e-5 || math.Abs(p.Compressor.MakeupDB) >= 1e-7) {
+	if p.Compressor.Enabled && p.Compressor.Ratio > 1.0001 {
 		return false
 	}
 	if p.Compressor.Enabled && math.Abs(p.Compressor.MakeupDB) >= 1e-7 {
@@ -633,7 +656,7 @@ func (e *Engine) ProcessBlock(inL, inR, outL, outR []float32) {
 			l, r = e.processStereoSample(l, r)
 		}
 
-		// Stage 6: 4x Oversampled ITU-R BS.1770-4 True-Peak Brickwall Limiter
+		// Stage 6: Sample-peak limiter with optional cubic inter-sample estimate
 		if limActive {
 			l, r = e.processLimiterSample(l, r)
 		} else {
@@ -673,8 +696,8 @@ func (e *Engine) ProcessBlock(inL, inR, outL, outR []float32) {
 			r = e.applyTPDFDither(r, e.params.DitherBits)
 		}
 
-		outL[i] = float32(sanitizeSample(l))
-		outR[i] = float32(sanitizeSample(r))
+		outL[i] = finiteFloat32(l)
+		outR[i] = finiteFloat32(r)
 	}
 }
 
@@ -767,7 +790,8 @@ func (e *Engine) processCompressorSample(l, r float64) (float64, float64) {
 
 	attMS := math.Max(0.2, c.AttackMS)
 	relMS := math.Max(5.0, c.ReleaseMS)
-	// Use 2.5x faster internal RC constant so 95% settling occurs within the nominal AttackMS/ReleaseMS window.
+	// Attack/release specify 91.8% gain-reduction settling (1-exp(-2.5)).
+	// Detector peak decay adds a separate 25 ms release response.
 	attCoeff := math.Exp(-2.5 / (attMS * 0.001 * e.sampleRate))
 	relCoeff := math.Exp(-2.5 / (relMS * 0.001 * e.sampleRate))
 
@@ -915,14 +939,13 @@ func (e *Engine) processStereoSample(l, r float64) (float64, float64) {
 	_, s3 := processSVFLowHigh(e.xoverCoeffs, &e.xoverSide[2], s2)
 	_, highSide := processSVFLowHigh(e.xoverCoeffs, &e.xoverSide[3], s3)
 
-	// Elliptical bass mono-maker: fold sub-crossover Side energy into Mid so out-of-phase bass stays audible & centered
-	lowSide := side - highSide
-	monoMid := mid + 0.70710678*lowSide
+	// Narrow only the side signal. Injecting it into mid changes the mono mix.
 	scaledSide := highSide * width
-	return monoMid + scaledSide, monoMid - scaledSide
+	return mid + scaledSide, mid - scaledSide
 }
 
-// estimateTruePeak4x computes the 4x oversampled inter-sample peak between previous and current samples.
+// estimateTruePeak4x approximates inter-sample peaks with cubic interpolation.
+// It is not the BS.1770 reconstruction filter and can underestimate true peaks.
 func estimateTruePeak4x(hm1, h0, h1, h2 float64) float64 {
 	maxAbs := math.Max(math.Abs(h0), math.Abs(h1))
 	// 4-point cubic Catmull-Rom / Hermite polyphase interpolation at t = 0.25, 0.50, 0.75
@@ -978,7 +1001,7 @@ func (e *Engine) processLimiterSample(l, r float64) (float64, float64) {
 	relCoeff := math.Exp(-1.0 / (relMS * 0.001 * e.sampleRate))
 
 	if reqGain < e.limEnvLin {
-		// Instant brickwall attack to prevent any true-peak overshoot
+		// Instant sample-peak attack. This cannot guarantee reconstructed peaks.
 		e.limEnvLin = reqGain
 	} else {
 		e.limEnvLin = relCoeff*e.limEnvLin + (1.0-relCoeff)*1.0

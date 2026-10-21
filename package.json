@@ -15,7 +15,9 @@
     "test": "vitest run",
     "test:backend:postman": "bash tests/postman/run-newman.sh",
     "build:binary": "bash scripts/build.sh",
-    "test:binary": "node scripts/smoke-binary.mjs"
+    "test:binary": "node scripts/smoke-binary.mjs",
+    "test:wasm": "bash scripts/test-wasm.sh",
+    "test:meters": "python3 wasm/dsp/verify_meters.py"
   },
   "dependencies": {
     "@fontsource/instrument-sans": "^5.3.0",

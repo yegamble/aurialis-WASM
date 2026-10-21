@@ -112,6 +112,20 @@ jobs:
           GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp
           ls -lh public/wasm/aurialis-dsp.wasm
 
+      - name: Verify actual native and WASM signal parity
+        uses: actions/setup-node@v4
+        with:
+          node-version: "26.12.0"
+
+      - name: Run WASM signal verification
+        run: bash scripts/test-wasm.sh
+
+      - name: Compare meters with independent FFmpeg reference
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python3 wasm/dsp/verify_meters.py
+
   frontend-quality:
     name: Next.js 16, TypeScript & Bundle Gate
     runs-on: ubuntu-latest

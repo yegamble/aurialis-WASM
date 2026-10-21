@@ -7,62 +7,36 @@ Based on [Aurialis](https://aurialis.yosefgamble.com/) ([`yegamble/Aurialis`](ht
 
 ---
 
-## Architecture & Stack
+## Current behavior and limits
 
-Aurialis-WASM consolidates the entire audio mastering stack into a **single compiled Go executable** (`aurialis`) with an ultra-low-bundle, mobile-first Next.js 16 frontend:
+This branch is an unfinished workstation prototype. The full product vision remains in [`AGENTS.md`](AGENTS.md) and [`docs/tasks.md`](docs/tasks.md); no feature is verified and merged by this session.
 
-- **Single Binary Host (`cmd/aurialis`, `internal/`)**:
-  - Go `1.26.2` HTTP/API server embedding compiled Next.js 16 static assets and `.wasm` binaries via `//go:embed all:embedded` in `internal/webui`.
-  - Serves `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` headers so browser `SharedArrayBuffer` and `AudioWorklet` run with hardware-level isolation.
-  - High-concurrency job manager (`internal/jobs`) using bounded worker pools, `context.Context` cancellation, zero-copy `sync.Pool` Float32 buffers, and 5 lifecycle states (`queued`, `running`, `done`, `cancelled`, `failed`) with `?wait=1` long-polling.
-  - In-house AI/LLM & deterministic `MasteringScript` v1 generator across 5 engineer profiles (`Warm Analog`, `Punchy Commercial`, `Dynamic & Open`, `Vocal Forward`, `Bass Heavy` plus UI aliases), Smart Stem Splitter (`2–6` stems), Reference Match, Album Consistency batch mastering, and Platform Release Check.
-- **WebAssembly DSP Core (`wasm/dsp`, `public/worklets/`)**:
-  - Compiled from Go (`GOOS=js GOARCH=wasm` / `GOOS=wasip1 GOARCH=wasm`) with zero per-block heap allocations: 5-band ZDF/TPT SVF parametric EQ, program-dependent optical/FET/VCA compressor with 90 Hz sidechain HPF, 4× oversampled ITU-R BS.1770-4 True-Peak lookahead limiter, ADAA + oversampled `Warm`/`Thick`/`Crisp` saturation, Linkwitz-Riley mono-bass + M/S width, and TPDF dither.
-- **Low-Bundle, Mobile-First Frontend (`src/`)**:
-  - **Next.js 16** (`^16.4.2`, App Router, 9 dedicated routes) + **React 19** + **TypeScript 5.8+** (`strict: true`), managed strictly with **`pnpm` (`10.33.0`)** on **Node.js `26.12.0`**.
-  - **Tailwind CSS v4** with HCL/OKLCH-calibrated warm editorial tokens (`--canvas`, `--paper`, `--ink`, `--clay`, `--moss`, `--ochre`, `Newsreader` + `Instrument Sans` + `tabular-nums`).
-  - **Custom Inline SVGs Only**: Zero external icon libraries (`lucide-react`, `@heroicons`, `react-icons` are banned) and aggressive reuse of shared primitives (`Button`, `Icon`, `SliderField`, `SegmentedControl`, `Toggle`, `Modal`, `BottomSheet`, `StatusBadge`, `DropZone`, `Waveform`, `SpectrumChart`, `DeepTimeline`, `Transport`, `MetricStrip`).
-  - **State Reducer Control Isolation**: `src/lib/store.tsx` enforces per-module action dispatches so changes to one DSP module never mutate adjacent parameters.
-  - **Client DSP & WAV Export**: `src/lib/audio-dsp.ts` provides real-time client DSP preview and 16/24/32-bit TPDF-dithered WAV audio export.
-  - **Mobile-First & Responsive (`320px–1440px+`)**: Designed for `320px–390px` phones first (top bar, 4-item bottom nav, sticky mini-transport, bottom-sheet editors, `>=44×44px` touch targets) and scaled cleanly to tablet (`768px`) and desktop workstation (`1024px–1440px+`) with full WCAG 2.2 AA & keyboard-only operability.
+- Upload a WAV file up to 16 MiB. The Go API validates and reconstructs it into canonical PCM before the browser stores its source Blob in IndexedDB. Project metadata and settings use localStorage. If browser storage fails, the session keeps audio in memory and displays a warning.
+- Advanced mode exposes independent gain, EQ, compression, saturation, stereo and limiter controls. Use **Render preview** after edits to process the full source through the shared Go WASM engine. A plays the original and B plays the rendered result; stale B playback is disabled until rendered again. Playback supports play/pause, seek and volume.
+- Export renders the latest settings from the actual source through the native Go API, preserving source sample rate and frame count. WAV output supports 16/24-bit PCM or 32-bit float. Missing sources require a new upload; exports never substitute a synthetic tone.
+- Browser metrics report measured sample peak (dBFS), RMS and crest factor. These are not certified integrated LUFS, true peak or platform compliance results. There is no automatic loudness matching for A/B.
+- Simple and Deep mastering, Smart Split, album processing, Reference Match and Release Check display unavailable states. The older backend Deep and stem routes remain experimental heuristics, without trained separation or AI/LLM inference. Their presence does not constitute working product workflows.
 
----
+The native server embeds the Next.js static export, WASM module and Go browser runtime. Browser preview currently renders a buffer before playback; direct continuous AudioWorklet/SharedArrayBuffer streaming remains open. The DSP implements useful mathematical transformations, but hardware fidelity, anti-aliasing performance and standards-compliant true-peak limiting require further verification.
 
 ## Quickstart & Single-Binary Build
 
-### 1. Build the Single Self-Contained Binary
-
-Ensure Node `26.12.0` and Go `1.26.2` are on `PATH`:
+Use Node `26.12.0`, `pnpm@10.33.0`, Go `1.26.9`, Next.js 16 and React 19, as pinned by this repository. Dependency installation uses pnpm only.
 
 ```bash
-export PATH="$HOME/.nvm/versions/node/v26.12.0/bin:$PATH"
-
-# Step A: Compile Go WebAssembly DSP module
-GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp
-
-# Step B: Build Next.js 16 static export & sync to internal/webui
 pnpm install --frozen-lockfile
-pnpm run build
-node scripts/sync-webui.mjs
-
-# Step C: Compile native host binary embedding Next.js & WASM assets
-go build -o aurialis ./cmd/aurialis
-
-# Step D: Launch single binary on localhost
-./aurialis -addr 127.0.0.1:8080 -workers 4 -max-upload-bytes 209715200
+pnpm run build:binary
+pnpm run test:binary
+./aurialis -addr 127.0.0.1:8080 -workers 4
 ```
 
-Open `http://127.0.0.1:8080` in any modern browser.
+Open [http://127.0.0.1:8080](http://127.0.0.1:8080). `build:binary` compiles the browser WASM module, copies Go's matching `wasm_exec.js`, builds and synchronizes the static frontend, then builds the host. `pnpm start` runs the built `./aurialis` executable. `test:binary` starts that executable from an empty temporary directory and checks embedded assets and API behavior. A plain `go build` does not rebuild frontend assets.
 
-### 2. CLI Flags & Environment Variables
-
-| Flag | Default | Environment Override | Description |
+| Flag | Default | Environment override | Meaning |
 |---|---|---|---|
-| `-addr` | `127.0.0.1:8080` | `AURIALIS_ADDR` or `PORT` | HTTP listen address (bound to loopback by default for security). |
-| `-workers` | `0` (auto) | — | Concurrent audio DSP worker goroutines (`0` detects CPU core count). |
-| `-max-upload-bytes` | `209715200` (200 MB) | `MAX_UPLOAD_BYTES_OVERRIDE` | Maximum allowable multipart upload payload in bytes. |
-
----
+| `-addr` | `127.0.0.1:8080` | `AURIALIS_ADDR`, then `PORT` | HTTP listen address; environment takes precedence over flag. A numeric `PORT` uses loopback; non-loopback addresses are rejected. |
+| `-workers` | `0` (auto) | — | Worker count; see current bounds in [`docs/architecture.md`](docs/architecture.md). |
+| `-max-upload-bytes` | 32 MiB | `MAX_UPLOAD_BYTES_OVERRIDE` | Multipart request body ceiling, including fields and boundaries; overrides can lower the hard 32 MiB cap. This does not increase the browser's 16 MiB import limit. |
 
 ## Multi-Model War Room (`war-room` & `war-room-loop`)
 
@@ -106,7 +80,7 @@ python3 scripts/sync-agents.py
 
 ## Fail-Fast Quality Gates
 
-Always ensure Node `26.12.0` (`$HOME/.nvm/versions/node/v26.12.0/bin`) and Go `1.26.2` are on `PATH`:
+Always ensure Node `26.12.0` (`$HOME/.nvm/versions/node/v26.12.0/bin`) and Go `1.26.9` are on `PATH`:
 
 ```bash
 export PATH="$HOME/.nvm/versions/node/v26.12.0/bin:$PATH"
@@ -128,6 +102,8 @@ pnpm exec knip
 pnpm exec cspell lint "**/*.{ts,tsx,go,md}"
 pnpm test
 pnpm run build
+pnpm run test:wasm
+pnpm run test:meters
 
 # 3. Backend API Gate (Newman TS-001..TS-015 + raw cURL 413 & DNS-rebinding probes)
 pnpm run test:backend:postman
@@ -151,12 +127,9 @@ Every commit pushed to any branch (`branches: ['**']`) and every pull request tr
 
 ---
 
-## Honest Implementation Caveats & Known Discrepancies
+## Verification status
 
-1. **Client TS DSP vs. Go/WASM Reference Engine**: The browser client includes a per-sample TypeScript DSP chain (`src/lib/audio-dsp.ts`) featuring a 1-pole mono-bass crossover and sample-peak limiter for low-latency interactive UI adjustments, whereas the Go/WASM engine (`internal/audio/dsp`, `wasm/dsp`) is the calibrated reference implementation featuring ZDF/TPT SVF filters, 4th-order Linkwitz-Riley crossover, and 4× oversampled True-Peak limiting.
-2. **AudioWorklet Live Playback**: Interactive preview playback currently runs through `HTMLAudioElement` and client TypeScript DSP; routing real-time browser playback directly through the compiled WASM `AudioWorklet` processor (`public/worklets/aurialis-dsp-worklet.js`) is scheduled for a subsequent integration slice.
-3. **Simple-Mode Metrics Estimation**: Simple-mode UI metrics are parameter-estimated approximations rather than measured directly from decoded PCM waveforms.
-4. **Vulnerability Gate (`govulncheck`)**: `govulncheck ./...` reports Go standard library finding `GO-2026-6617` on Go `1.26.2`, which is remediated in Go `1.26.9`.
+Gate commands above are requirements, not claims of passing CI. See [`docs/tasks.md`](docs/tasks.md) and [the ledger](.claude/war-room/ledger.md) for current-session execution evidence and open blockers. In this environment the current `govulncheck` attempt is blocked by a forbidden response from `https://vuln.go.dev`; a historical CVE claim in older docs was not revalidated. A passing browser smoke test does not certify analog hardware fidelity, codec support, platform release compliance or all accessibility interactions.
 
 ---
 

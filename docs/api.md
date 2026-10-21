@@ -1,237 +1,66 @@
-# Aurialis-WASM API & Postman/Newman Reference
-<!-- cspell:words Embedder -->
+# Aurialis-WASM API reference
+<!-- cspell:words Hann steganography -->
 
-Maintained by [`aurialis-tech-writer`](../.claude/agents/aurialis-tech-writer.md) and verified by [`aurialis-qa`](../.claude/agents/aurialis-qa.md) and [`aurialis-security`](../.claude/agents/aurialis-security.md) using Postman/Newman and raw `curl` security probes.
+Current routes are implemented by `internal/server`; exact DSP structs are in `internal/audio/dsp/engine.go` and the experimental script schema is in `internal/mastering/mastering.go`. No API presence alone establishes a verified product workflow. See [tasks](tasks.md) for evidence and open requirements.
 
----
+## Security and resource contract
 
-## 1. Required Security & Isolation Headers
+The executable binds only to loopback IPs (default `127.0.0.1:8080`). `AURIALIS_ADDR` takes precedence over `PORT`, then `-addr`; a numeric `PORT` becomes `127.0.0.1:<port>`. The request Host must match an allowed local authority and the actual port. A supplied Origin must be HTTP with the same authority; `null` is rejected. Fetch Metadata permits only `none` or `same-origin` when supplied. Rejections return 403 JSON. These checks do not provide remote authentication.
 
-All HTTP responses from the `aurialis` Go binary (`cmd/aurialis`, `internal/server`) attach hardened headers required for browser `SharedArrayBuffer` / `AudioWorklet` isolation and host workstation protection:
+Responses carry COOP `same-origin`, COEP `require-corp`, CORP `same-origin`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, and a CSP restricted to same-origin assets with hashes for the embedded bootstrap scripts. WASM uses `application/wasm`. Browser fonts are self-hosted. Permissions-Policy disables unused device access; WAV download responses also carry a sandbox CSP.
 
-```http
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Embedder-Policy: require-corp
-Cross-Origin-Resource-Policy: same-origin
-X-Content-Type-Options: nosniff
-X-Frame-Options: DENY
-Referrer-Policy: no-referrer
-Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'
-```
+Multipart bodies are capped at **32 MiB including overhead**. `-max-upload-bytes` / `MAX_UPLOAD_BYTES_OVERRIDE` can lower this cap; larger CLI limits are rejected. Decoding permits at most **4,194,304 output frames**. Two POST uploads/renders may run concurrently; another receives **429** with `Retry-After: 1`. Worker admission also reserves input and future output memory within **256 MiB**, retains at most **64 jobs**, and returns **503 queue_full** when full. Automatic workers use at most two CPUs; explicit workers cannot exceed four. The 256 MiB budget covers admitted decoded inputs and reserved/retained WAV artifacts, not total process RSS; temporary DSP scratch is separately constrained by frame and worker limits. Worker timeout is two minutes. Terminal records and artifacts expire after 15 minutes, checked every minute.
 
-- **WASM Modules**: Static `.wasm` files (`/wasm/*.wasm`) are served with `Content-Type: application/wasm`.
-- **DNS-Rebinding Defense**: `Host` headers must resolve to loopback (`127.0.0.1`, `localhost`, `::1`, or `0.0.0.0`). Any non-local `Host` returns `403 Forbidden` (`forbidden_host`).
-- **Localhost CSRF Defense**: On state-changing methods (`POST`, `PUT`, `DELETE`, `PATCH`), requests with `Sec-Fetch-Site: cross-site` return `403 Forbidden` (`csrf_rejected`), and requests with an untrusted external `Origin` return `403 Forbidden` (`forbidden_origin`).
-- **Audio Content Disarm & Reconstruction (CDR)**: Uploaded files are verified via magic bytes, polyglots (`MZ`, `\x7fELF`, Mach-O, `PK\x03\x04` ZIP/JAR trailers, `%PDF`, script tags) are rejected (`400 Bad Request`), all non-audio metadata/trailer chunks (`LIST`, `INFO`, `ID3`, `JUNK`, `PAD`) are stripped, and audio is decoded into bounded `float32` PCM buffers. User-supplied filenames never touch the host filesystem.
+Uploaded names are validated and never used for host disk writes. Parsing/decoding stays in bounded memory. Only mono/stereo input is supported; multichannel input is rejected. Supported inputs are WAV PCM 8/16/24/32-bit integer or 32-bit float, and 16-bit PCM AIFF. AIFC and compressed MP3/FLAC/OGG/M4A/AAC decoding are unsupported. WAV checks include declared RIFF length, alignment, byte rate, chunk bounds, duplicate chunks and whole frames. Reconstruction creates new samples without metadata. Executable/archive/script signatures are inspected in headers, metadata and outside-container trailers, not arbitrary PCM bytes. Legitimate sample bytes can match those signatures. Reconstruction is the audio-only boundary; this is not PCM steganography detection or a universal malicious-content guarantee.
 
----
+Errors use JSON with `error`, `detail` and numeric `status`. Malformed fields/container/params return 400, oversized requests 413, rejected authority/origin 403, missing resources 404, admission failures 429/503, and encoding failures 500.
 
-## 2. HTTP Endpoints
+## Routes
 
-All primary routes are registered at root and `/api/*` prefixes:
+Both root and `/api` aliases exist for health, render, analysis, separation and job routes.
 
-### `GET /health` & `GET /api/health`
-Returns service readiness, WASM status, supported stem models, and available engineer profiles.
-- **Response (`200 OK`)**:
-  ```json
-  {
-    "status": "ok",
-    "service": "aurialis-wasm",
-    "version": "0.1.0",
-    "wasmDsp": true,
-    "wasmDspReady": true,
-    "gpu": false,
-    "models": ["htdemucs", "2", "3", "4", "5", "6"],
-    "profiles": [
-      "Warm Analog",
-      "Punchy Commercial",
-      "Dynamic & Open",
-      "Vocal Forward",
-      "Bass Heavy",
-      "modern_pop_polish",
-      "hip_hop_low_end",
-      "indie_warmth",
-      "metal_wall",
-      "pop_punk_air"
-    ]
-  }
-  ```
+| Method and route | Behavior |
+|---|---|
+| `GET /health` | 200 readiness JSON, actual embedded WASM availability, profile names and explicitly heuristic model/analysis identity. This is not a browser WASM execution test. |
+| `POST /master/render` | Synchronous native DSP render from actual uploaded audio; 200 WAV or JSON. |
+| `POST /analyze/deep` | 202 experimental deterministic energy/section analysis job. No trained AI/LLM inference; disabled in the product UI. |
+| `POST /separate` | 202 deterministic frequency-based decomposition job for 2–6 outputs. No trained instrument separation; disabled in the product UI. |
+| `GET /jobs/{id}` | 200 job snapshot; `/status` and `/result` aliases return the same snapshot. `?wait=1` waits up to four seconds while queued/running. |
+| `DELETE /jobs/{id}` | Cancels queued/running work and clears terminal artifacts too; repeated cancellation of a retained record is idempotent. Missing or expired ID returns 404. |
+| `GET /jobs/{id}/stems/{stemName}` | 200 WAV when an artifact exists; optional `.wav` suffix; 404 otherwise. Traversal components are rejected. |
 
----
+`GET /health` reports `status: "ok"`, `service: "aurialis-wasm"`, `version: "0.1.0"`, `wasmDsp: true`, `wasmDspReady` based on embedded module presence, `gpu: false`, `models: ["deterministic-frequency-split"]`, `separationMethod: "deterministic-frequency-split"`, `analysisMethod: "deterministic-energy-heuristics"`, numeric `maxUploadBytes`/`maxDecodedFrames` and `profiles`. The readiness field does not load or execute WASM.
 
-### `POST /separate` & `POST /api/separate`
-Enqueues a stem separation job for exact stem counts `2` through `6`.
-- **Content-Type**: `multipart/form-data`
-  - `file`: Audio binary (WAV, AIFF, FLAC, MP3, OGG, M4A — validated via magic bytes, capped by `MAX_UPLOAD_BYTES_OVERRIDE` or default 200 MB).
-  - `stems` (or `model`): `2` | `3` | `4` | `5` | `6`
-    - Also accepts `model=htdemucs` (defaults to 4 stems) or `model=htdemucs_6s` (defaults to 6 stems).
-    - `2`: Vocals, Instrumental
-    - `3`: Vocals, Drums, Other
-    - `4`: Vocals, Drums, Bass, Other
-    - `5`: Vocals, Drums, Bass, Melody, Other
-    - `6`: Vocals, Drums, Bass, Guitar, Piano, Other
-- **Responses**:
-  - `202 Accepted`:
-    ```json
-    {
-      "id": "e8a108a7988358ea",
-      "jobId": "e8a108a7988358ea",
-      "kind": "separate",
-      "status": "queued",
-      "stemCount": 4,
-      "stems": [
-        {
-          "id": "vocals",
-          "name": "Vocals",
-          "role": "vocals",
-          "color": "#b4543c",
-          "downloadUrl": "/jobs/e8a108a7988358ea/stems/vocals",
-          "url": "/jobs/e8a108a7988358ea/stems/vocals"
-        }
-      ]
-    }
-    ```
-  - `400 Bad Request`: `missing_file`, `invalid_audio`, or `invalid_parameter`.
-  - `413 Request Entity Too Large`: `payload_too_large` when upload exceeds byte ceiling.
-  - `503 Service Unavailable`: `queue_full` when concurrent worker pool is saturated.
+### Rendering
 
----
+Send `multipart/form-data` with required `file` and optional fields:
 
-### `POST /analyze/deep` & `POST /api/analyze/deep`
-Enqueues a structure-aware Deep Analysis job producing a version 1 `MasteringScript`.
-- **Content-Type**: `multipart/form-data`
-  - `file`: Audio binary
-  - `profile`: Canonical profile (`"Warm Analog"`, `"Punchy Commercial"`, `"Dynamic & Open"`, `"Vocal Forward"`, `"Bass Heavy"`) or UI alias (`"modern_pop_polish"`, `"hip_hop_low_end"`, `"indie_warmth"`, `"metal_wall"`, `"pop_punk_air"`).
-- **Responses**:
-  - `202 Accepted`:
-    ```json
-    {
-      "id": "c1f4e92a8371bd90",
-      "jobId": "c1f4e92a8371bd90",
-      "kind": "analyze_deep",
-      "status": "queued",
-      "profile": "Warm Analog"
-    }
-    ```
-  - `400 Bad Request`: `missing_file`, `invalid_audio`, or `invalid_profile`.
-  - `413 Request Entity Too Large`: `payload_too_large`.
-  - `503 Service Unavailable`: `queue_full`.
+- `profile`: `Warm Analog`, `Punchy Commercial`, `Dynamic & Open`, `Vocal Forward`, `Bass Heavy`; compatibility aliases include `indie_warmth`, `modern_pop_polish`, `pop_punk_air`, `hip_hop_low_end`, `metal_wall`.
+- `params`: JSON overlay on default/profile DSP parameters. Unknown fields, nulls, trailing JSON, invalid enums, non-finite/out-of-range values and non-five-element `bands` arrays return 400. Parameters include `bypass`, `abOriginal`, `loudnessMatchAb`, `inputGainDb`, `eqEnabled`, `bands`, `compressor`, `saturation`, `stereo`, `limiter`, `repair`, `ditherBits`. Field presence does not guarantee every advertised analog topology has distinct behavior.
+- `bitDepth`: `16`, `24` (default), or `32`; other values return 400. 16/24-bit PCM receives TPDF dither and clamps to integer full scale; 32-bit float decode/export preserves finite headroom above ±1. NaN and infinity are sanitized to zero. Processing can change source levels; bypassed float round-trips preserve headroom.
+- `format=json`, or `Accept: application/json`: return `status`, `sampleRate`, `frames`, `duration`, `bitDepth`, `params`, `beforeMetrics`, `afterMetrics` instead of audio.
 
----
-
-### `POST /api/master/render` & `POST /master/render`
-Synchronously renders an uploaded audio track through the calibrated Go/WASM mastering DSP chain and returns a clean, disarmed WAV file with acoustic loudness headers, or a JSON report.
-- **Content-Type**: `multipart/form-data`
-  - `file`: Audio binary
-  - `profile` (optional): Canonical profile name or UI profile alias.
-  - `params` (optional): Serialized JSON representing `dsp.Params` overrides.
-  - `bitDepth` (optional): `16`, `24` (default), or `32`. TPDF dither is applied automatically for 16-bit and 24-bit exports.
-  - `format` (optional): Set to `"json"` or pass header `Accept: application/json` to receive structured metrics instead of a binary file.
-- **Responses**:
-  - `200 OK` (Default WAV binary):
-    - `Content-Type: audio/wav`
-    - `Content-Disposition: attachment; filename="aurialis-mastered.wav"`
-    - `X-Aurialis-Before-LUFS`: Integrated LUFS before mastering (e.g. `-18.42`)
-    - `X-Aurialis-After-LUFS`: Integrated LUFS after mastering (e.g. `-14.05`)
-    - `X-Aurialis-After-Peak-dBTP`: True-peak dBTP after limiting (e.g. `-0.80`)
-  - `200 OK` (JSON format):
-    ```json
-    {
-      "status": "ok",
-      "sampleRate": 48000,
-      "frames": 19200,
-      "duration": 0.4,
-      "bitDepth": 24,
-      "params": { ... },
-      "beforeMetrics": {
-        "integratedLufs": -18.42,
-        "truePeakDbtp": -3.50,
-        "loudnessRangeLu": 6.2,
-        "stereoCorrelation": 0.94
-      },
-      "afterMetrics": {
-        "integratedLufs": -14.05,
-        "truePeakDbtp": -0.80,
-        "loudnessRangeLu": 5.1,
-        "stereoCorrelation": 0.96
-      }
-    }
-    ```
-  - `400 Bad Request`: `missing_file`, `invalid_audio`, `invalid_profile`, or `invalid_params`.
-  - `413 Request Entity Too Large`: `payload_too_large`.
-  - `500 Internal Server Error`: `encode_error`.
-
----
-
-### `GET /jobs/{id}`, `GET /jobs/{id}/status`, `GET /jobs/{id}/result`
-Polls status and retrieves results of background stem separation or Deep Analysis jobs.
-- **Path Parameter**: `id` (must not contain path traversal `..` or `/`).
-- **Query Parameter**: `?wait=1` enables server-side long-polling (blocks up to 4 seconds while `status` is `queued` or `running`).
-- **Lifecycle States**:
-  - `queued`: Waiting for a worker in the bounded pool.
-  - `running`: Executing DSP or acoustic analysis.
-  - `done`: Processing finished successfully; artifacts ready.
-  - `cancelled`: Job was canceled by user request.
-  - `failed`: Job encountered an unrecoverable error.
-- **Response (`200 OK`)**: Returns full Job object. When `status == "done"`, `script` contains the complete `MasteringScript` v1 (`sections[]`, `moves[]` across 5 automation lanes, `findings[]`, `chainParams`, `beforeMetrics`, `afterMetrics`), or `stems[]` contains the downloadable stem list.
-- **Errors**: `400 Bad Request` (`invalid_job_id`), `404 Not Found` (`job_not_found`).
-
----
-
-### `DELETE /jobs/{id}` & `DELETE /api/jobs/{id}`
-Cancels an active job or cleans up completed job artifacts idempotently.
-- **Response (`200 OK`)**: Returns the canceled Job object (`status: "cancelled"`).
-- **Errors**: `400 Bad Request` (`invalid_job_id`), `404 Not Found` (`job_not_found`).
-
----
-
-### `GET /jobs/{id}/stems/{stemName}` & `GET /api/jobs/{id}/stems/{stemName}`
-Downloads a separated stem audio stream (`vocals`, `drums`, `bass`, `other`, `guitar`, `piano`, with or without `.wav` suffix).
-- **Response (`200 OK`)**:
-  - `Content-Type: audio/wav`
-  - `Content-Disposition: attachment; filename="<stemName>.wav"`
-- **Errors**:
-  - `400 Bad Request` (`invalid_stem_path`): Stem or job ID contains path traversal (`..`, `/`, `\`).
-  - `404 Not Found` (`stem_not_found`): Stem does not exist for the specified job.
-
----
-
-## 3. Postman / Newman & cURL Test Matrix (`TS-001` – `TS-015`)
-
-The backend test suite is executed via:
+WAV output uses `Content-Type: audio/wav`, `Content-Disposition: attachment; filename="aurialis-mastered.wav"` and compatibility headers `X-Aurialis-Before-LUFS`, `X-Aurialis-After-LUFS`, `X-Aurialis-After-Peak-dBTP`. Rendering preserves the uploaded sample rate and frame count. Metric fields are `integratedLufs`, `shortTermLufs`, `truePeakDbtp`, `samplePeakDbfs`, `dynamicRangeDb`, `correlation`, `lowBassCorrelation`, `dcLeftDbfs`, `dcRightDbfs`, `clippingSamples`, `gainReductionDb`; see the measurement limitations below.
 
 ```bash
-pnpm run test:backend:postman
+curl --fail-with-body http://127.0.0.1:8080/api/master/render \
+  -F file=@source.wav -F 'params={"inputGainDb":-6}' \
+  -F bitDepth=24 -o mastered.wav
+
+curl --fail-with-body http://127.0.0.1:8080/api/master/render \
+  -F file=@source.wav -F 'params={"bypass":true}' -F format=json
 ```
 
-which invokes `tests/postman/run-newman.sh` against a fresh compiled `aurialis` binary with bounded upload caps and worker pools.
+### Experimental jobs and script schema
 
-| ID | Scenario | Verification Target |
-|---|---|---|
-| `TS-001` | Health Check (`GET /health`) | `200 OK`, `wasmDspReady: true`, profiles, models, COOP/COEP headers present |
-| `TS-002` | Separate Enqueue (`POST /separate`, 2–6 stems) | `202 Accepted` with valid `jobId` and stem descriptors |
-| `TS-003` | Deep Analyze Round-Trip (`POST /analyze/deep` → `GET /jobs/{id}?wait=1`) | Polls to `done`; validates `MasteringScript` v1 JSON schema |
-| `TS-004` | Cancel Job (`DELETE /jobs/{id}`) | Cancels job and returns `200 OK` (`status: "cancelled"`) idempotently |
-| `TS-005` | Audio Edge Cases | Short (<1s), mono 8 kHz, and mono 96 kHz streams handled cleanly |
-| `TS-006` | Reject Non-Audio | PDF, EXE, and spoofed `.wav` rejected with `400 Bad Request` (`invalid_audio`) |
-| `TS-007` | Reject Oversized Upload | Exceeding `MAX_UPLOAD_BYTES_OVERRIDE` returns `413 Request Entity Too Large` |
-| `TS-008` | Reject Corrupted WAV | Valid `RIFF`/`WAVE` header with truncated body returns `400 Bad Request` |
-| `TS-009` | Invalid Params & Injection | Unknown profile, invalid stem count, or `\r\n` filenames return `400` |
-| `TS-010` | Path Traversal Guard | `GET /jobs/{id}/stems/../../etc/passwd` rejected with `400` (`invalid_stem_path`) |
-| `TS-011` | Localhost Rebinding & CSRF Guard | Foreign `Host` (`evil.attacker.com`) or cross-origin state-changing `Origin` returns `403` |
-| `TS-012` | Long Audio Stability | 10-minute track processed in bounded memory with zero goroutine or memory leaks |
-| `TS-013` | Stem Download | Successful stem retrieval returns `200 audio/wav`; invalid stem returns `404` |
-| `TS-014` | Direct Master Render (`POST /api/master/render`) | Validates `audio/wav` download with `X-Aurialis-*-LUFS` headers, and `format=json` metrics |
-| `TS-015` | Audio CDR Polyglot & Clean Reconstruction | Strips non-audio chunks/polyglots (`PK\x03\x04`), re-synthesizes pristine PCM audio |
-| `curl-413` | Raw cURL Oversized Body Probe | Streams 1.2 MB file against 1 MB ceiling and asserts immediate `413` exit code |
-| `curl-dns` | Raw cURL Host Header Rebinding Probe | Probes with `-H "Host: evil.attacker.com"` and asserts immediate `403` exit code |
+Deep analysis accepts `file` and `profile`. Separation accepts `file` and `stems=2|3|4|5|6`, with legacy model aliases such as `htdemucs` mapping to four outputs and `htdemucs_6s` to six. These aliases do not load those trained models. Output labels are 2: Vocals/Instrumental; 3: Vocals/Drums/Other; 4: Vocals/Drums/Bass/Other; 5: Vocals/Drums/Bass/Melody/Other; 6: Vocals/Drums/Bass/Guitar/Piano/Other. Labels are heuristic, not verified isolated instruments.
 
----
+A job snapshot includes `jobId` and `job_id` (same string), `kind`, `status`, `progress`, `stage`, `createdAt`, `updatedAt`; optional `profile`, `stemCount`, `error`, `detail`, `script` and `stems`. Statuses are `queued`, `running`, `done`, `cancelled`, `failed`. Queued responses do not promise finished stem descriptors. Completed stem descriptors contain `id`, `name`, `role`, `color`, `downloadUrl`, `url`, `metrics`.
 
-## 4. Known Implementation Caveats
+The current MasteringScript schema uses **string** `version`, `profile`, `summary`, numeric `targetLufs`/`ceilingDbtp`, `sections`, `moves`, `findings`, `chainParams`, `beforeMetrics`, `afterMetrics`. Sections contain `id`, `name`, `label`, `startSec`, `endSec`, `energyDb`, `role`. Moves contain identifiers/lane/section text, `label`, `summary`, `reason`, `unit`, numeric `value`, `defaultValue`, `min`, `max`, `step`, `startSec`, `endSec`, `[time,value]` points, and booleans `muted`, `edited`. Findings contain `id`, `severity`, `title`, `detail`, `lane`. `internal/mastering/render.go` validates at most 128 moves and 256 points per move. Nonempty `points` are authoritative linear envelopes; `value` applies only when points are absent. Ten-millisecond boundary fades smooth transitions. Volume automation changes input gain without implicitly enabling compression. Script target loudness is metadata, with no hidden normalization. `RenderScriptContext` supports cancellation and validates time/value bounds. These are native-library behaviors; the UI does not provide an enabled automation workflow. This generated heuristic structure is not proof of musical section recognition, AI artifact detection or effective AI repair.
 
-1. **Client TS DSP vs. Go/WASM Reference Engine**: The browser client includes a per-sample TypeScript DSP chain (`src/lib/audio-dsp.ts`) featuring a 1-pole mono-bass crossover and sample-peak limiter for low-latency interactive UI adjustments, whereas the Go/WASM engine (`internal/audio/dsp`, `wasm/dsp`) is the calibrated reference implementation featuring ZDF/TPT SVF filters, 4th-order Linkwitz-Riley crossover, and 4× oversampled True-Peak limiting.
-2. **AudioWorklet Live Playback**: Interactive preview playback currently runs through `HTMLAudioElement` and client TypeScript DSP; routing real-time browser playback directly through the compiled WASM `AudioWorklet` processor is scheduled for a subsequent integration slice.
-3. **Simple-Mode Metrics Estimation**: Simple-mode UI metrics are parameter-estimated approximations rather than measured directly from decoded PCM waveforms.
-4. **Vulnerability Gate (`govulncheck`)**: `govulncheck ./...` reports Go standard library finding `GO-2026-6617` on Go `1.26.2`, which is remediated in Go `1.26.9`.
+## Measurement limits and verification
 
+Browser reporting uses sample peak dBFS, RMS and crest factor. The API meter uses BS.1770/DeMan K-weighting with 400 ms windows and 75% overlap, absolute −70 LUFS and relative −10 LU gates, and a trailing three-second short-term interval. Short clips use the available duration, which is a diagnostic approximation to standard-duration reporting. Silence reports a finite −70 LUFS floor. Offline `truePeakDbtp` uses a finite 49-tap 4× Hann-windowed sinc estimate including end padding; it is not formal certification. The streaming limiter remains sample-bounded with cubic estimation and has no validated lookahead/true-peak guarantee; the final processed sample ceiling is reapplied after level matching and dither, while original/bypass paths preserve the source. `limiter.targetLufs` is metadata only; rendering does not automatically normalize to a loudness target. Platform compliance remains unavailable. `dynamicRangeDb` is crest factor using peak and stereo-average RMS with a 1 dB floor, not EBU LRA or a standardized DR score. Correlation uses normalized cross-energy without mean subtraction; low-bass correlation filters at 110 Hz. `clippingSamples` counts frames where either channel reaches magnitude 0.9999. DC fields report the dB of the absolute channel mean. These remain diagnostic measurements. Independent comparison fixtures and limits are tracked in [architecture](architecture.md) and [tasks](tasks.md).
+
+`pnpm run test:backend:postman` invokes the live-server Newman suite and curl probes in `tests/postman/run-newman.sh`. The current 17 requests under TS-001…TS-015 (including TS-007b and TS-008b) cover health/headers, embedded WASM and matching Go browser runtime assets, four-way heuristic split enqueue/poll/download, Deep script shape, 24-bit rendering, unknown DSP fields, missing/invalid fields, spoofed non-audio, path traversal, cancellation and cross-origin rejection. The runner separately probes upload limits and foreign Host rejection. Test names express their intended scope: a finite long-track case does not establish zero leaks, and frequency decomposition tests do not validate source separation quality. Current-session outcomes belong in [the ledger](../.claude/war-room/ledger.md).

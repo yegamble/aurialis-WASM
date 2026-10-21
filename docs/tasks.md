@@ -1,45 +1,44 @@
-# Aurialis-WASM Developer Task Tracker
+# Aurialis-WASM task tracker
 
-Maintained by [`aurialis-tech-writer`](../.claude/agents/aurialis-tech-writer.md) and [`aurialis-product-engineer`](../.claude/agents/aurialis-product-engineer.md). Every engineer agent (`aurialis-backend`, `aurialis-dsp-plugin-engineer`, `aurialis-audio-engineer`, `aurialis-grammy-veteran`, `aurialis-frontend`, `aurialis-designer`, `aurialis-security`, `aurialis-qa`) catches up with `aurialis-tech-writer` to update this file and [`.claude/war-room/ledger.md`](../.claude/war-room/ledger.md) before merging a branch to `main`.
+The full product vision remains open. Current work targets `war-room/iter2-validation`, based on user branch `feat/war-room-iter1-vertical-slices` at `9880481`. No item below is verified and merged to main. Honest unavailable states prevent simulated processing claims but do not satisfy the original requirements.
 
----
+| ID | Priority | Required capability | Current behavior | Status |
+|---|---|---|---|---|
+| WASM-1 | P0 | Self-contained Go/Next.js/WASM binary with isolation headers | Fresh asset build and empty-directory binary smoke available; security and final CI gates still apply | open — awaiting merge |
+| WASM-2 | P0 | Warm editorial design; shared SVG primitives; mobile/desktop layout; accessible interactions and color | Existing shell and expanded responsive/axe coverage; full design fidelity, all touch targets and interactive keyboard journeys still require review | open |
+| WASM-3 | P0 | Physically verified hardware-inspired DSP; continuous AudioWorklet/SharedArrayBuffer bridge; true-peak limiter; anti-aliasing and audio verification | Native/shared Go WASM processing, strict params, safety and parity tests; offline preview only. No hardware or true-peak certification | open |
+| WASM-4 | P1 | Bounded concurrent jobs, secure audio reconstruction, cancellation, cleanup and resource admission | Hard upload/frame limits, concurrent request and job memory bounds, expiration and strict local authority checks; full security gate still required | open — awaiting merge |
+| WASM-5 | P1 | Real upload/library persistence, error/relink/quota states, mobile/desktop interaction | WAV import canonicalized by Go; IndexedDB source and localStorage metadata; storage warning and missing-source handling. Other browser codecs and full metadata persistence requirements remain open | open — awaiting merge |
+| WASM-6 | P1 | Mastering workspace: transport, waveform, Simple and Advanced, real source WAV export, honest A/B | Advanced source render/preview/export path; Simple unavailable; explicit preview render and no loudness-matched A/B. Full original workspace requirements remain open | open |
+| WASM-7 | P1 | Five-profile Deep MasteringScript v1; musical sections; five editable automation lanes; effective AI repair; backend/WASM/UI integration | UI unavailable; experimental deterministic energy heuristics and script types remain backend-only. No AI/LLM inference or validated repair | open |
+| WASM-8 | P1 | Exact 2–6 trained/validated stem separation, controls, downloads, count change confirmation and mastering handoff | UI unavailable; backend frequency decomposition uses instrument labels without trained source isolation | open |
+| WASM-9 | P2 | Album ordering/consistency processing; Reference Match; six-platform measured Release Check | Routes show unavailable states; original album/reference/release workflows remain unimplemented | open |
+| WASM-10 | P1 | All required CI, Go/WASM/frontend/static/API/browser/packaging gates green | Build packaging improved and mandatory checks retained; no current green remote CI assertion; vulnerability database access blocked | open |
 
-## Workflow Rules
+## Current-session evidence
 
-1. **Small, Atomic Commits**: Break every task below into small, single-concern commits (`feat`, `fix`, `test`, `docs`) on a short-lived branch.
-2. **Developer → Technical Writer Catch-Up**: Before requesting final QA/Product Engineer sign-off, brief `aurialis-tech-writer` on any changed flags, endpoints, components, or test commands so `README.md`, `docs/api.md`, `docs/architecture.md`, and this file are updated in the same branch.
-3. **Pessimistic Verification (`aurialis-qa` + `aurialis-devils-advocate`)**: No task moves to `verified` until all fail-fast static checks (`golangci-lint`, `identypo`, `govulncheck`, `tsc --noEmit`, `eslint --max-warnings=0`, `knip`, `cspell`), Postman/Newman (`TS-001`–`TS-015`), raw `curl` security probes, and Playwright `320px–1440px` responsive + axe WCAG 2.2 AA tests pass.
-4. **Finished Means Merged (`aurialis-product-engineer`)**: A task is never marked `done` or `verified` while still on a feature branch. It is marked `open — awaiting merge` until merged to `main`.
+The Chair executed the integrated Go/static gates at `24137c4` and final browser/build/frontend checks at `c3c15c9`, reporting the following results. Evidence is scoped to these commands and selected fixtures, not a certification of every product requirement. These changes remain unmerged.
 
----
+| Evidence tier / gate | Observed result |
+|---|---|
+| Go static / `unit` | `go mod verify`, `go vet ./...`, `identypo ./...`, `golangci-lint run ./...` (0 issues), corrected gofmt check and `go test -race -count=1 ./...` passed. |
+| Frontend static / `unit` | Strict TypeScript, typed ESLint, knip and Vitest passed (13 tests in 3 files). |
+| `wasm-bridge` | `pnpm run test:wasm` passed 15 real compiled WASM/native parity fixtures, bit-identical output, plus adversarial bridge boundary cases. |
+| External meter comparison | `pnpm run test:meters` / FFmpeg comparison passed 15 selected fixtures at 44.1/48/96 kHz: maximum 0.0542 LU loudness difference and 0.0312 dB peak difference. Abrupt 8 kHz boundaries can differ by 0.58 dB; formal certification remains open. |
+| `compiled-binary-smoke` | `pnpm run build:binary` passed (24 static routes), then `pnpm run test:binary` served the application, WASM and API from an empty temporary directory. |
+| Repository checks | Agent sync (11 agents), actionlint and cspell (77 files, zero issues) passed before this final documentation commit. |
+| `newman-e2e` / `api-curl` | Final run passed 17 requests / 22 assertions and raw 413/foreign-Host probes after replacing an obsolete worklet request with the actual Go browser runtime asset. |
+| `playwright-a11y-responsive` | Final run passed 14/14 tests at `c3c15c9`, covering six viewport sizes (320/375/390/768/1024/1440), eight routes with axe checks, audio parity/headroom, persistence, control isolation and second-track behavior. Prior runs passed 6/14, 7/14 and 11/14; failures drove sizing, focus, contrast, CSP and navigation-name fixes. |
+| Vulnerability gate | `govulncheck ./...` remains blocked by forbidden network access to `https://vuln.go.dev`; no current clean vulnerability scan is claimed. |
 
-## Task Matrix (Iteration 1 — Branch: `feat/war-room-iter1-vertical-slices`)
+The original uploaded-export regression reproduced a synthetic two-second export (expected 48,000 frames, got 96,000). Further adversarial checks exposed float headroom clamping and PCM signature false positives; fixes preserve finite float headroom and inspect signatures only outside PCM payloads. Regression failures are part of the session evidence rather than passing feature claims. See [the ledger](../.claude/war-room/ledger.md) for session iterations and remaining requirements.
 
-| Task ID | Priority | Title | Status | Evidence Tier | Implementing Commits |
-|---|---|---|---|---|---|
-| `WASM-1` | **P0** | Single Go 1.26 + Next.js 16 (`pnpm`, Node 26) scaffold & `//go:embed` server (`cmd/aurialis`) with COOP/COEP headers | `open — awaiting merge (feat/war-room-iter1-vertical-slices)` | `compiled-binary-smoke` | `3049756`, `41386c8` |
-| `WASM-2` | **P0** | Warm editorial HCL/OKLCH design system tokens, custom inline SVG `<Icon />` primitive (zero icon libraries), and mobile-first responsive `AppShell` (`320px–1440px+`) | `open — awaiting merge (feat/war-room-iter1-vertical-slices)` | `playwright-a11y-responsive` | `8470405`, `421acca`, `3875075` |
-| `WASM-3` | **P0** | Waves-grade Go/WASM DSP core (`wasm/dsp`) + `AudioWorklet` / `SharedArrayBuffer` bridge + Audio Transformation Verification Suite | `open — awaiting merge (feat/war-room-iter1-vertical-slices)` | `wasm-bridge`, `unit` | `f565ab3`, `3049756` |
-| `WASM-4` | **P1** | Concurrent job engine (`internal/jobs`) + Audio Content Disarm & Reconstruction (CDR) & host-machine upload security | `open — awaiting merge (feat/war-room-iter1-vertical-slices)` | `newman-e2e`, `api-curl` | `f565ab3`, `3049756`, `41386c8`, `587731f` |
-| `WASM-5` | **P1** | Upload/Home (`/`) & persisted IndexedDB Library (`/library`) reusing `Button`, `DropZone`, `StatusBadge`, `Modal` | `open — awaiting merge (feat/war-room-iter1-vertical-slices)` | `playwright-a11y-responsive` | `421acca`, `3875075` |
-| `WASM-6` | **P1** | Mastering Workspace (`/master/[trackId]`): Transport, SVG Waveform, Simple mode, Advanced 5-band EQ/DSP, and 16/24/32-bit WAV export with TPDF dither | `open — awaiting merge (feat/war-room-iter1-vertical-slices)` | `playwright-a11y-responsive`, `unit` | `421acca`, `3875075` |
-| `WASM-7` | **P1** | In-house Deep Mastering (`MasteringScript` v1): 5 engineer profiles, section detection, AI Repair, and responsive 5-lane automation timeline | `open — awaiting merge (feat/war-room-iter1-vertical-slices)` | `newman-e2e`, `unit` | `f565ab3`, `41386c8`, `587731f` |
-| `WASM-8` | **P1** | Smart Stem Splitter (`/split/[trackId]`) with exact `2–6` stem selector, count-change confirmation, and "Send to mastering" | `open — awaiting merge (feat/war-room-iter1-vertical-slices)` | `newman-e2e`, `playwright-a11y-responsive` | `f565ab3`, `3049756`, `421acca`, `587731f` |
-| `WASM-9` | **P2** | Albums (`/albums`, `/albums/[albumId]`), Reference Match (`/reference/[trackId]`), and Release Check (`/release-check/[trackId]`) | `open — awaiting merge (feat/war-room-iter1-vertical-slices)` | `playwright-a11y-responsive` | `421acca`, `3875075` |
-| `WASM-10` | **P1** | Unified GitHub Actions CI/CD pipeline (`.github/workflows/ci.yml`) with all skip guards removed | `open — awaiting merge (feat/war-room-iter1-vertical-slices)` | `compiled-binary-smoke` | `5e07560` |
+## Final review
 
----
+The pending-preview track-switch concern was ruled out by code inspection: MasterView is keyed by the resolved track ID, so changing tracks remounts the view and its unmount cleanup aborts pending rendering.
 
-## Open Architectural Follow-Ups & Caveats
+QA approved the signed-zero expectation normalization in the float headroom regression; nonzero samples remain exact and non-finite decoder rejection is checked separately. Devil's Advocate reported no demonstrated blocker to this corrective PR, while the full product scope remains incomplete.
 
-1. **Client TS DSP vs. Go/WASM Reference Engine**:
-   - The browser UI includes a per-sample TypeScript DSP chain (`src/lib/audio-dsp.ts`) featuring a 1-pole mono-bass crossover and sample-peak limiter for interactive responsiveness.
-   - The Go/WASM engine (`internal/audio/dsp`, `wasm/dsp`) is the calibrated reference implementation with ZDF/TPT SVF filters, 4th-order Linkwitz-Riley mono-bass crossover, and 4× oversampled True-Peak limiting.
-2. **AudioWorklet Live Playback Routing**:
-   - Interactive preview playback currently runs through `HTMLAudioElement` and client TypeScript DSP.
-   - Direct routing of real-time browser playback through the compiled WASM `AudioWorklet` processor (`public/worklets/aurialis-dsp-worklet.js`) is planned for a subsequent integration slice.
-3. **Simple-Mode Metrics Estimation**:
-   - Simple-mode UI metrics are parameter-estimated approximations rather than measured directly from decoded PCM waveforms.
-4. **Vulnerability Gate (`govulncheck`)**:
-   - `govulncheck ./...` reports Go standard library finding `GO-2026-6617` on Go `1.26.2`. This is an upstream Go standard library vulnerability resolved in Go `1.26.9`.
+## Completion rule
 
+Keep commits small and synchronize README/API/architecture/tasks/ledger with implementation. A slice remains open until applicable mandatory gates in [`AGENTS.md`](../AGENTS.md) pass, QA and Devil's Advocate review the actual behavior, and Product Engineer confirms merge readiness. Finished means merged to main; `open — awaiting merge` is not complete. Do not infer green CI or release status from local tests.

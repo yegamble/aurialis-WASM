@@ -27,7 +27,7 @@ try {
     await delay(100);
   }
   assert.ok(ready, "binary did not become ready");
-  for (const route of ["/", "/library", "/master/uploaded-project", "/wasm/wasm_exec.js", "/wasm/aurialis-dsp.wasm", "/workers/aurialis-live-worker.js", "/worklets/aurialis-live-worklet.js"]) {
+  for (const route of ["/", "/library", "/master/uploaded-project", "/wasm/wasm_exec.js", "/wasm/aurialis-dsp.wasm", "/wasm/aurialis-realtime.wasm", "/worklets/aurialis-live-worklet.js", "/worklets/aurialis-wasi-host.js"]) {
     const response = await fetch(`${host}${route}`);
     assert.equal(response.status, 200, route);
     assert.equal(response.headers.get("cross-origin-opener-policy"), "same-origin");
@@ -37,18 +37,22 @@ try {
       const bytes = new Uint8Array(await response.arrayBuffer());
       assert.deepEqual([...bytes.slice(0, 4)], [0, 97, 115, 109]);
       const exports = WebAssembly.Module.exports(await WebAssembly.compile(bytes));
-      for (const name of liveExports)
+      const realtime = route.endsWith("aurialis-realtime.wasm");
+      const required = realtime ? [...liveExports, "_initialize", "aurialis_init", "aurialis_control_buffer", "aurialis_set_controls"] : liveExports;
+      for (const name of required)
         assert.ok(exports.some(item => item.name === name && item.kind === "function"), `embedded WASM is missing ${name}`);
-      assert.ok(exports.some(item => item.name === "mem" && item.kind === "memory"), "embedded WASM memory is missing");
+      assert.ok(exports.some(item => item.name === (realtime ? "memory" : "mem") && item.kind === "memory"), "embedded WASM memory is missing");
     } else {
       const source = await response.text();
       assert.ok(source.length > 100, `${route} is empty`);
-      if (route.startsWith("/workers/")) for (const name of liveExports)
-        assert.ok(source.includes(name), `embedded Go audio worker is missing ${name}`);
-      if (route.startsWith("/worklets/")) assert.ok(source.includes('registerProcessor("aurialis-live"'), "embedded audio worklet is missing");
+      if (route.endsWith("aurialis-live-worklet.js")) {
+        assert.ok(source.includes('registerProcessor("aurialis-live"'), "embedded audio worklet is missing");
+        for (const name of liveExports) assert.ok(source.includes(name), `embedded audio worklet is missing ${name}`);
+      }
+      if (route.endsWith("aurialis-wasi-host.js")) assert.ok(source.includes("createAurialisWasiHost"), "embedded initialization host is missing");
     }
   }
-  console.log("Compiled binary serves embedded UI, WASM, audio worker and worklet from an empty directory.");
+  console.log("Compiled binary serves embedded UI, both WASM targets, worklet and initialization host from an empty directory.");
 } finally {
   child.kill("SIGTERM");
   await new Promise((resolve) => {

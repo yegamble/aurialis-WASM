@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   computeRmsValue,
   previewWAV,
@@ -15,6 +15,7 @@ export function RealTransport({
   playheadRatio,
   onSeekRatio,
   sourcePcm,
+  processedPcm,
 }: {
   pcm: StereoPCM | null;
   ab: "A" | "B";
@@ -23,6 +24,7 @@ export function RealTransport({
   playheadRatio: number;
   onSeekRatio: (value: number) => void;
   sourcePcm?: StereoPCM | null;
+  processedPcm?: StereoPCM | null;
 }) {
   const ref = useRef<HTMLAudioElement>(null),
     previousRatio = useRef(playheadRatio);
@@ -33,17 +35,20 @@ export function RealTransport({
     [matchLoudness, setMatchLoudness] = useState(false);
   const duration = pcm ? pcm.left.length / pcm.sampleRate : 0;
 
-  const gainTrim =
-    matchLoudness && ab === "B" && sourcePcm && pcm
-      ? (() => {
-          const rmsA = computeRmsValue(sourcePcm);
-          const rmsB = computeRmsValue(pcm);
-          return rmsB > 0.0001 && rmsA > 0.0001
-            ? Math.min(2.0, Math.max(0.2, rmsA / rmsB))
-            : 1.0;
-        })()
-      : 1.0;
-  const effectiveVolume = Math.min(1.0, Math.max(0, volume * gainTrim));
+  const comparisonLevels = useMemo(() => ({
+    original: sourcePcm ? computeRmsValue(sourcePcm) : 0,
+    processed: processedPcm ? computeRmsValue(processedPcm) : 0,
+  }), [sourcePcm, processedPcm]);
+  // Match by attenuating the louder source, never by clipping a boosted monitor.
+  const { original, processed } = comparisonLevels;
+  const commonLevel = Math.min(original, processed);
+  const currentLevel = ab === "B" && processedReady ? processed : original;
+  const gainTrim = matchLoudness && commonLevel > 0 && currentLevel > 0
+    ? commonLevel / currentLevel : 1;
+  const effectiveVolume = Math.min(1, Math.max(0, volume * gainTrim));
+  const monitorVolume = useRef(effectiveVolume);
+  monitorVolume.current = effectiveVolume;
+  const pendingPlayback = useRef<{ time: number; playing: boolean } | null>(null);
 
   useEffect(() => {
     if (ref.current) {
@@ -55,6 +60,11 @@ export function RealTransport({
       setSrc("");
       return undefined;
     }
+    const audio = ref.current;
+    pendingPlayback.current = {
+      time: audio && Number.isFinite(audio.currentTime) ? audio.currentTime : playheadRatio * duration,
+      playing: audio ? !audio.paused : false,
+    };
     const url = URL.createObjectURL(previewWAV(pcm));
     setSrc(url);
     return () => {
@@ -88,16 +98,19 @@ export function RealTransport({
           ref={ref}
           src={src || undefined}
           onLoadedMetadata={(event) => {
-            event.currentTarget.volume = volume;
-            event.currentTarget.currentTime = Math.min(
-              playheadRatio * duration,
-              duration,
-            );
+            const audio = event.currentTarget;
+            const pending = pendingPlayback.current;
+            audio.volume = monitorVolume.current;
+            audio.currentTime = Math.min(pending?.time ?? playheadRatio * duration, duration);
+            pendingPlayback.current = null;
+            if (pending?.playing) {
+              void audio.play().catch(() => { setError("Press play to resume the comparison."); });
+            }
           }}
           onTimeUpdate={(event) => {
-            onSeekRatio(
-              duration > 0 ? event.currentTarget.currentTime / duration : 0,
-            );
+            if (!pendingPlayback.current && event.currentTarget.readyState > 0) {
+              onSeekRatio(duration > 0 ? event.currentTarget.currentTime / duration : 0);
+            }
           }}
           onPlay={() => {
             setPlaying(true);
@@ -143,7 +156,7 @@ export function RealTransport({
             disabled={!processedReady}
             className={matchLoudness ? "is-active" : ""}
             aria-pressed={matchLoudness}
-            title="Match perceived loudness between A and B"
+            title="Match whole-track RMS level between A and B"
             onClick={() => {
               setMatchLoudness(!matchLoudness);
             }}
@@ -176,7 +189,6 @@ export function RealTransport({
             onChange={(event) => {
               const next = Number(event.target.value);
               setVolume(next);
-              if (ref.current) ref.current.volume = next;
             }}
           />
         </label>

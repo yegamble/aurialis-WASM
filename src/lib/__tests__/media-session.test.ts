@@ -49,6 +49,14 @@ describe("current-player keyboard and Media Session controls", () => {
       expect(actions.seek.mock.calls.length).toBe(before);
       element.remove();
     }
+    const region = document.createElement("div");
+    region.tabIndex = 0; region.setAttribute("role", "region"); document.body.append(region);
+    const before = actions.seek.mock.calls.length;
+    const scrollKey = new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true });
+    region.dispatchEvent(scrollKey);
+    expect(scrollKey.defaultPrevented).toBe(false);
+    expect(actions.seek.mock.calls.length).toBe(before);
+    region.remove();
     const prevented = new KeyboardEvent("keydown", { key: "ArrowRight", cancelable: true });
     prevented.preventDefault();
     window.dispatchEvent(prevented);

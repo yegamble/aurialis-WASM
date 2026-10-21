@@ -50,7 +50,7 @@ export function bindPlaybackControls(title: string, actions: PlaybackActions) {
   function onKeyDown(event: KeyboardEvent) {
     if (event.defaultPrevented || event.ctrlKey || event.metaKey || !active || (session && !ownsSession()) || !actions.available()) return;
     const target = event.target;
-    if (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, select, button, a, [contenteditable]:not([contenteditable='false'])"))) return;
+    if (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, select, button, a, [tabindex]:not([tabindex='-1']), [contenteditable]:not([contenteditable='false'])"))) return;
     if (event.key === " " || event.code === "Space") {
       event.preventDefault();
       if (event.repeat) return;

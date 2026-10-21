@@ -11,7 +11,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
-import { computeEqMagnitudeDb } from "@/lib/audio-dsp";
+import { computeEqMagnitudeDb, createDefaultAdvancedParams } from "@/lib/audio-dsp";
 import type { EQBandId, EQBandParams, Track } from "@/lib/types";
 import type { LiveSpectrum } from "@/lib/live-playback";
 import { Icon } from "./Icon";
@@ -140,6 +140,7 @@ export function ControlGroup({
 export function SliderField({
   label,
   value,
+  defaultValue,
   min,
   max,
   step = 1,
@@ -150,6 +151,7 @@ export function SliderField({
 }: {
   label: string;
   value: number;
+  defaultValue: number;
   min: number;
   max: number;
   step?: number;
@@ -159,7 +161,12 @@ export function SliderField({
   ariaLabel?: string;
 }) {
   const inputId = useId();
-  const formatted = `${String(Number.isInteger(step) ? value : value.toFixed(1))}${
+  const hintId = useId();
+  const precision = Math.min(6, String(step).split(".")[1]?.length ?? 0);
+  const resetValue = Math.max(min, Math.min(max, defaultValue));
+  const reset = () => { onChange(resetValue); onCommit?.(); };
+  const resetHint = `Double-click or press Backspace to reset to ${String(resetValue)}${unit ? ` ${unit}` : ""}.`;
+  const formatted = `${String(precision ? value.toFixed(precision) : value)}${
     unit ? ` ${unit}` : ""
   }`;
   return (
@@ -173,11 +180,18 @@ export function SliderField({
         step={step}
         value={value}
         aria-label={ariaLabel ?? label}
+        aria-describedby={hintId}
+        title={resetHint}
         onChange={(e) => {
           onChange(Number(e.target.value));
         }}
         onPointerUp={onCommit}
+        onDoubleClick={(event) => { event.preventDefault(); reset(); }}
+        onKeyDown={(event) => {
+          if (event.key === "Backspace") { event.preventDefault(); reset(); }
+        }}
       />
+      <span id={hintId} className="sr-only">{resetHint}</span>
     </ControlGroup>
   );
 }
@@ -328,18 +342,23 @@ export function Waveform({
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const stepSeconds = event.altKey ? 0.1 : event.shiftKey ? 10 : 1;
+    const stepRatio = duration > 0 ? stepSeconds / duration : 0;
     if (event.key === "ArrowRight") {
       event.preventDefault();
-      setRatio(ratio + 0.05);
+      setRatio(ratio + stepRatio);
     } else if (event.key === "ArrowLeft") {
       event.preventDefault();
-      setRatio(ratio - 0.05);
+      setRatio(ratio - stepRatio);
     } else if (event.key === "Home") {
       event.preventDefault();
       setRatio(0);
     } else if (event.key === "End") {
       event.preventDefault();
       setRatio(1);
+    } else if (event.key === "Backspace") {
+      event.preventDefault();
+      setRatio(0);
     }
   };
 
@@ -372,7 +391,9 @@ export function Waveform({
         aria-valuemax={Math.round(duration)}
         aria-valuenow={currentSec}
         aria-valuetext={`${formatTime(currentSec)} of ${formatTime(duration)}`}
+        aria-description="Arrow keys seek one second; Shift seeks ten seconds; Alt seeks one tenth of a second. Double-click or press Backspace to return to the beginning."
         onKeyDown={handleKeyDown}
+        onDoubleClick={(event) => { event.preventDefault(); setRatio(0); }}
         onClick={(event) => {
           const rect = event.currentTarget.getBoundingClientRect();
           if (rect.width > 0) {
@@ -504,6 +525,10 @@ export function SpectrumChart({
   const instructionsId = useId();
   const plotRef = useRef<HTMLDivElement>(null);
   const maxFrequency = Math.min(20000, sampleRate * 0.47);
+  const resetBand = (band: EQBandParams) => {
+    const defaults = createDefaultAdvancedParams().eqBands.find((item) => item.id === band.id);
+    if (defaults) onBandChange?.(band.id, { freqHz: Math.min(maxFrequency, defaults.freqHz), gainDb: defaults.gainDb });
+  };
   const updateFromPointer = (id: EQBandId, event: ReactPointerEvent<HTMLButtonElement>) => {
     const rect = plotRef.current?.getBoundingClientRect();
     if (!rect?.width || !rect.height) return;
@@ -519,6 +544,7 @@ export function SpectrumChart({
     const frequencyFactor = Math.pow(2, event.shiftKey ? 1 : 1 / 12);
     let patch: Partial<EQBandParams>;
     switch (event.key) {
+      case "Backspace": event.preventDefault(); resetBand(band); return;
       case "ArrowUp": patch = { gainDb: Math.min(12, band.gainDb + gainStep) }; break;
       case "ArrowDown": patch = { gainDb: Math.max(-12, band.gainDb - gainStep) }; break;
       case "ArrowLeft": patch = { freqHz: Math.max(20, Math.round(band.freqHz / frequencyFactor)) }; break;
@@ -597,6 +623,7 @@ export function SpectrumChart({
                 style={position}
                 onFocus={() => onSelectBand?.(band.id)}
                 onClick={() => onSelectBand?.(band.id)}
+                onDoubleClick={(event) => { event.preventDefault(); resetBand(band); }}
                 onPointerDown={(event) => {
                   onSelectBand?.(band.id);
                   event.currentTarget.setPointerCapture(event.pointerId);
@@ -620,7 +647,8 @@ export function SpectrumChart({
         <p className="sr-only" id={instructionsId}>
           Drag to change frequency and gain. Arrow left and right change frequency;
           arrow up and down change gain. Hold Shift for larger steps. The band
-          controls provide another way to enter exact values.
+          controls provide another way to enter exact values. Double-click a node or
+          press Backspace to reset its frequency and gain.
         </p>
       )}
       {referenceBands && (

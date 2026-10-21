@@ -110,6 +110,7 @@ export type TrackStatus = "draft" | "ready" | "mastered" | "needs-review";
 export type Track = {
   persistenceWarning?: string;
   measurements?: MeasuredAudioMetrics;
+  measurementKind?: "source" | "album-render";
   id: string;
   title: string;
   filename: string;

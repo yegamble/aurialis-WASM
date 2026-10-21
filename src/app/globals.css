@@ -1542,7 +1542,6 @@ input[type="range"] {
 .overlay-chart .spectrum { margin: 0; padding: 0; border: 0; background: transparent; }
 .overlay-chart .chart-label { height: 18px; margin: 0 0 18px; }
 .overlay-chart .spectrum > svg { height: 190px; }
-.reference-line { position: absolute; left: 0; top: 36px; width: 100%; height: 190px; pointer-events: none; }
 .reference-controls h2 { margin-top: 13px; font-size: 35px; }
 .reference-controls > p { margin-top: 10px; font-size: 13px; }
 .reference-controls .control-group { margin-top: 28px; }

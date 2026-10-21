@@ -415,6 +415,7 @@ function HomeView() {
       target: "Streaming",
       metrics: trackMetrics(measurement.afterMetrics),
       measurements: measurement.afterMetrics,
+      measurementKind: "source",
       advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), pcm.sampleRate),
       profile: "modern_pop_polish",
       persistenceWarning: storageWarning,
@@ -657,7 +658,7 @@ function LibraryView() {
         <div className="library-list-head">
           <span>Project</span>
           <span>Format</span>
-          <span>Loudness</span>
+          <span>Saved LUFS</span>
           <span>Modified</span>
           <span />
         </div>
@@ -679,7 +680,7 @@ function LibraryView() {
             </span>
             <span className="metric-number">
               {track.measurements ? track.metrics.lufs.toFixed(1) : "Unmeasured"}
-              <small>LUFS</small>
+              <small>{track.measurementKind === "source" ? "Source LUFS" : track.measurementKind === "album-render" ? "Album render LUFS" : "Saved LUFS"}</small>
             </span>
             <span>
               {new Date(track.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}<small>Local</small>
@@ -1881,6 +1882,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                   advanced: item.advanced,
                   metrics: trackMetrics(item.measurement.afterMetrics),
                   measurements: item.measurement.afterMetrics,
+                  measurementKind: "album-render",
                 } });
               }
               dispatch({ type: "UPDATE_ALBUM", id: album.id, patch: { mastered: true } });
@@ -2017,7 +2019,7 @@ function AlbumView({ albumId }: { albumId: string }) {
           <div className="section-heading">
             <div>
               <span className="eyebrow">Across the album</span>
-              <h2>Loudness contour</h2>
+              <h2>Saved loudness measurements</h2>
             </div>
             <strong>Target {album.target}</strong>
           </div>
@@ -2118,31 +2120,15 @@ function ReferenceView({ trackId }: { trackId: string }) {
             </div>
           </div>
           <div className="overlay-chart">
-            <SpectrumChart seed={track.seed} eqBands={track.advanced.eqBands} />
-            {reference !== undefined && (
-              <svg
-                className="reference-line"
-                viewBox="0 0 100 60"
-                preserveAspectRatio="none"
-                role="img"
-                aria-label={`Reference tonal contour for ${reference.title}`}
-              >
-                <title>{`Reference tonal contour for ${reference.title}`}</title>
-                <polyline
-                  points={reference.advanced.eqBands
-                    .map((band, idx) => {
-                      const x = (idx / 4) * 100;
-                      const y = Math.max(5, Math.min(55, 30 - band.gainDb * 2.5));
-                      return `${x.toFixed(1)},${y.toFixed(1)}`;
-                    })
-                    .join(" ")}
-                  fill="none"
-                  stroke="var(--moss)"
-                  strokeWidth="1.8"
-                  vectorEffect="non-scaling-stroke"
-                />
-              </svg>
-            )}
+            <SpectrumChart
+              eqBands={track.advanced.eqBands}
+              sampleRate={track.sampleRate}
+              {...(reference ? {
+                referenceBands: reference.advanced.eqBands,
+                referenceSampleRate: reference.sampleRate,
+                referenceLabel: `Reference EQ settings for ${reference.title}`,
+              } : {})}
+            />
           </div>
         </section>
         <aside className="paper-panel reference-controls">
@@ -2235,10 +2221,10 @@ function MetricMini({ track }: { track: Track }) {
         <strong>
           {track.measurements ? track.metrics.lufs.toFixed(1) : "Unmeasured"}
         </strong>
-        <small>LUFS</small>
+        <small>{track.measurementKind === "source" ? "Source LUFS" : track.measurementKind === "album-render" ? "Album render LUFS" : "Saved LUFS"}</small>
       </span>
       <span>
-        <strong>{track.metrics.dynamics.toFixed(1)}</strong>
+        <strong>{track.measurements ? track.metrics.dynamics.toFixed(1) : "Unmeasured"}</strong>
         <small>Crest dB</small>
       </span>
       <span>

@@ -431,12 +431,10 @@ export function SpectrumChart({
   seed,
   eqBands,
   activeBandId,
-  onSelectBand,
 }: {
   seed: number;
   eqBands?: readonly EQBandParams[];
   activeBandId?: EQBandId;
-  onSelectBand?: (bandId: EQBandId) => void;
 }) {
   const gradientId = useId();
   const basePoints = Array.from({ length: 25 }, (_, i) => {
@@ -502,10 +500,6 @@ export function SpectrumChart({
               fill={band.enabled ? "var(--clay)" : "var(--ink-soft)"}
               stroke="var(--paper)"
               strokeWidth="0.8"
-              style={{ cursor: onSelectBand ? "pointer" : "default" }}
-              onClick={() => {
-                onSelectBand?.(band.id);
-              }}
             />
           );
         })}

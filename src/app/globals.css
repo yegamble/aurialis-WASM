@@ -2765,3 +2765,34 @@ input[type="range"] {
     scroll-margin-bottom: 240px;
   }
 }
+.ab-toggle button.is-active > span {
+  color: inherit;
+}
+@media (min-width: 768px) {
+  .side-nav {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 236px;
+    height: 100dvh;
+  }
+  .main-content {
+    grid-column: 2;
+  }
+}
+@media (min-width: 768px) and (max-width: 1100px) {
+  .side-nav {
+    width: 82px;
+  }
+}
+@media (min-width: 1024px) {
+  .inspector {
+    position: sticky;
+    top: 18px;
+    max-height: calc(100dvh - 140px);
+    overflow-y: auto;
+    padding-right: 8px;
+    padding-bottom: 18px;
+    scrollbar-gutter: stable;
+    overscroll-behavior-y: contain;
+  }
+}

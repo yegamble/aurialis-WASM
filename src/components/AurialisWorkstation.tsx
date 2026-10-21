@@ -1055,7 +1055,6 @@ function MasterView({ trackId }: { trackId: string }) {
                   }))
             }
             activeBandId={activeBandId}
-            onSelectBand={setActiveBandId}
           />
           <p className="disclosure">
             The curve approximates your EQ settings; it is not a measured audio

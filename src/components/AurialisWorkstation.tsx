@@ -15,6 +15,7 @@ import {
   type StereoPCM,
 } from "@/lib/browser-engine";
 import { clearNextPlaybackHandoff, reconcileNextPlaybackHandoff, stageNextPlaybackHandoff, takeNextPlaybackHandoff } from "@/lib/playback-handoff";
+import { currentMasteringTarget, masteringTargets } from "@/lib/mastering-targets";
 import { bindPlaybackControls } from "@/lib/media-session";
 import { DSPModule } from "./shared/DSPModule";
 import { RealTransport } from "./shared/RealTransport";
@@ -1783,6 +1784,9 @@ function SimpleControls({
     dispatch({ type: "UPDATE_SIMPLE", id: track.id, patch });
   };
   const activeDirection = track.simpleCustom === false;
+  const selectedTarget = currentMasteringTarget(track.advanced.limiter, track.target);
+  const targetLufsLabel = String(track.advanced.limiter.targetLufs).replace("-", "−");
+  const targetCeilingLabel = String(track.advanced.limiter.ceiling).replace("-", "−");
 
   return (
     <div className="control-stack">
@@ -1844,20 +1848,19 @@ function SimpleControls({
       <ControlGroup label="Output target">
         <div className="select-wrap">
           <select
-            value={track.target}
+            value={selectedTarget}
             aria-label="Output target"
             onChange={(e) => {
               update({ target: e.target.value });
             }}
           >
-            <option value="Streaming">Streaming (−14 LUFS)</option>
-            <option value="Loud">Loud (−9 LUFS)</option>
-            <option value="Dynamic">Dynamic (−16 LUFS)</option>
-            <option value="Podcast">Podcast (−16 LUFS)</option>
+            {selectedTarget === "custom" && <option value="custom" disabled>Custom ({targetLufsLabel} LUFS)</option>}
+            {masteringTargets.map((target) => <option value={target.name} key={target.name}>{target.name} ({String(target.targetLufs).replace("-", "−")} LUFS)</option>)}
           </select>
           <Icon name="chevron-down" />
         </div>
       </ControlGroup>
+      <p className="disclosure">Current target: {targetLufsLabel} LUFS · ceiling {targetCeilingLabel} dBFS. Set target loudness measures these current settings.</p>
       <Button
         className="full-button"
         disabled={processing || !sourceReady}

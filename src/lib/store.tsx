@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP } from "./audio-dsp";
+import { masteringTargets } from "./mastering-targets";
 import type {
   Album,
   AdvancedParams,
@@ -145,10 +146,12 @@ export function reduceStoreState(
           const next = { ...track, ...action.patch };
           const mapped = clampAdvancedToSampleRate(mapSimpleToDSP(next.genre, next.tone, next.intensity, next.target), next.sampleRate);
           const directionChanged = action.patch.genre !== undefined || action.patch.tone !== undefined || action.patch.intensity !== undefined;
+          const target = action.patch.target === undefined ? track.advanced.limiter : masteringTargets.find((item) => item.name === action.patch.target) ?? track.advanced.limiter;
+          const limiterTarget = { targetLufs: target.targetLufs, ceiling: target.ceiling };
           return {
             ...next,
             simpleCustom: directionChanged ? false : track.simpleCustom ?? true,
-            advanced: directionChanged ? mapped : { ...track.advanced, limiter: { ...track.advanced.limiter, targetLufs: mapped.limiter.targetLufs, ceiling: mapped.limiter.ceiling } },
+            advanced: directionChanged ? { ...mapped, limiter: { ...mapped.limiter, ...limiterTarget } } : { ...track.advanced, limiter: { ...track.advanced.limiter, ...limiterTarget } },
             updatedAt: new Date().toISOString(),
           };
         }),

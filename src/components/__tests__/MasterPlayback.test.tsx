@@ -147,6 +147,31 @@ describe("master live playback lifecycle", () => {
     expect(screen.getByText("Custom settings")).toBeTruthy();
   }, 30000);
 
+  it("displays and measures the canonical target after reset or an unmatched profile", async () => {
+    mount(); await ready();
+    fireEvent.click(screen.getByRole("tab", { name: "simple" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Output target" }), { target: { value: "Loud" } });
+    fireEvent.click(screen.getByRole("tab", { name: "advanced" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset modules" }));
+    const reset = savedTrack().advanced;
+    fireEvent.click(screen.getByRole("tab", { name: "simple" }));
+    expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Output target" }).value).toBe("Streaming");
+    expect(savedTrack().advanced).toEqual(reset);
+    fireEvent.click(screen.getByRole("button", { name: "Rock" }));
+    expect(savedTrack().advanced.limiter.targetLufs).toBe(-14);
+    const custom = { ...savedTrack().advanced, limiter: { ...savedTrack().advanced.limiter, targetLufs: -12, ceiling: -0.7 } };
+    cleanup();
+    localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1).map((track) => ({ ...track, mode: "simple", target: "Streaming", advanced: custom })) }));
+    mount(); await ready();
+    expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Output target" }).value).toBe("custom");
+    expect(screen.getByRole("option", { name: "Custom (−12 LUFS)" })).toBeTruthy();
+    expect(screen.getByText(/Current target: −12 LUFS · ceiling −0.7 dBFS/)).toBeTruthy();
+    const normalize = vi.spyOn(engine, "normalizeSimpleAudio").mockResolvedValue(custom);
+    vi.spyOn(engine, "processPreview").mockResolvedValue(pcm);
+    fireEvent.click(screen.getByRole("button", { name: "Set target loudness" }));
+    await waitFor(() => { expect(normalize).toHaveBeenCalledWith(expect.any(Blob), custom, -12, expect.any(AbortSignal)); });
+  }, 30000);
+
   it("disposes on leaving and constructs a new playable engine on return without stale callbacks", async () => {
     const first = mount();
     await ready();

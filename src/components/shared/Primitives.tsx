@@ -23,8 +23,21 @@ export const formatTime = (seconds: number): string =>
 export const statusLabel = (status: Track["status"]): string =>
   status.replace("-", " ");
 
+type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+
+const buttonVariants: Record<ButtonVariant, string> = {
+  primary: "border-clay bg-clay text-white shadow-[0_7px_18px_rgba(180,84,60,0.16)] hover:enabled:border-clay-dark hover:enabled:bg-clay-dark",
+  secondary: "border-line-dark bg-paper text-ink hover:enabled:border-ink",
+  ghost: "border-transparent bg-transparent text-ink-soft hover:enabled:bg-paper-deep",
+  danger: "border-danger bg-danger text-white hover:enabled:brightness-90",
+};
+
+export function buttonClassName(variant: ButtonVariant = "primary", className = ""): string {
+  return `button button--${variant} inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-[13px] font-semibold transition enabled:hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-55 [&_svg]:size-4 ${buttonVariants[variant]} ${className}`.trim();
+}
+
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "ghost" | "danger";
+  variant?: ButtonVariant;
   icon?: ReactNode;
 };
 
@@ -39,7 +52,7 @@ export function Button({
   return (
     <button
       type={type}
-      className={`button button--${variant} ${className}`.trim()}
+      className={buttonClassName(variant, className)}
       {...props}
     >
       {icon}
@@ -73,11 +86,11 @@ export function PageTitle({
   action?: ReactNode;
 }) {
   return (
-    <header className="page-title">
+    <header className="page-title mb-9 mt-7 flex flex-wrap items-end justify-between gap-5">
       <div>
         <span className="eyebrow">{eyebrow}</span>
-        <h1>{title}</h1>
-        {copy !== undefined ? <p>{copy}</p> : null}
+        <h1 className="mt-3 text-[clamp(48px,6vw,82px)] tracking-[-0.05em]">{title}</h1>
+        {copy !== undefined ? <p className="mt-4 max-w-[60ch] text-sm leading-relaxed">{copy}</p> : null}
       </div>
       {action}
     </header>
@@ -96,14 +109,14 @@ export function ControlGroup({
   children: ReactNode;
 }) {
   return (
-    <div className="control-group">
-      <div className="control-label">
+    <div className="control-group mt-[18px] grid min-w-0 gap-2">
+      <div className="control-label mb-1.5 flex items-center justify-between gap-2.5 text-xs">
         {htmlFor !== undefined ? (
           <label htmlFor={htmlFor}>{label}</label>
         ) : (
           <span>{label}</span>
         )}
-        {value !== undefined ? <strong>{value}</strong> : null}
+        {value !== undefined ? <strong className="font-semibold text-clay-dark tabular-nums">{value}</strong> : null}
       </div>
       {children}
     </div>
@@ -140,6 +153,7 @@ export function SliderField({
       <input
         id={inputId}
         type="range"
+        className="min-h-11 w-full cursor-pointer accent-clay-dark"
         min={min}
         max={max}
         step={step}
@@ -208,120 +222,71 @@ function useDialogFocus(open: boolean, onClose: () => void) {
   return panel;
 }
 
-export function Modal({
-  open,
-  title,
-  eyebrow,
-  onClose,
-  children,
-  actions,
-}: {
+type DialogProps = {
   open: boolean;
   title: string;
   eyebrow?: string;
   onClose: () => void;
   children: ReactNode;
   actions?: ReactNode;
-}) {
-  const titleId = useId();
+};
 
-  const panelRef = useDialogFocus(open, onClose);
-
-  if (!open) return null;
-
-  const handleBackdropClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (event.target === event.currentTarget) {
-      onClose();
-    }
-  };
-
-  return (
-    <div
-      className="modal-backdrop"
-      role="presentation"
-      onClick={handleBackdropClick}
-    >
-      <div
-        ref={panelRef}
-        tabIndex={-1}
-        className="modal-panel"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-      >
-        <div className="modal-header">
-          <div>
-            {eyebrow !== undefined ? (
-              <span className="eyebrow">{eyebrow}</span>
-            ) : null}
-            <h2 id={titleId}>{title}</h2>
-          </div>
-          <button
-            type="button"
-            className="icon-button"
-            onClick={onClose}
-            aria-label="Close dialog"
-          >
-            <Icon name="x" />
-          </button>
-        </div>
-        <div>{children}</div>
-        {actions !== undefined ? (
-          <div className="modal-actions">{actions}</div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-export function BottomSheet({
+function DialogFrame({
   open,
   title,
+  eyebrow,
   onClose,
   children,
-}: {
-  open: boolean;
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-}) {
+  actions,
+  sheet = false,
+}: DialogProps & { sheet?: boolean }) {
   const titleId = useId();
-
   const panelRef = useDialogFocus(open, onClose);
-
   if (!open) return null;
 
   return (
     <div
-      className="modal-backdrop"
+      className="fixed inset-0 z-60 grid items-end justify-items-center bg-ink/45 backdrop-blur-sm md:place-items-center md:p-4"
       role="presentation"
-      onClick={(event) => {
+      onClick={(event: ReactMouseEvent<HTMLDivElement>) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
       <div
         ref={panelRef}
         tabIndex={-1}
-        className="bottom-sheet"
+        className={`${sheet ? "bottom-sheet" : "modal-panel"} max-h-[88dvh] w-full max-w-[540px] overflow-y-auto rounded-t-3xl border border-line-dark bg-paper px-[18px] py-[22px] shadow-[var(--shadow)] md:max-h-[90dvh] md:rounded-3xl md:p-6`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
       >
-        <div className="modal-header">
-          <h2 id={titleId}>{title}</h2>
+        <div className="mb-5 flex items-start justify-between gap-3.5">
+          <div className="min-w-0">
+            {eyebrow !== undefined && <span className="eyebrow">{eyebrow}</span>}
+            <h2 id={titleId} className="text-3xl wrap-anywhere">{title}</h2>
+          </div>
           <button
             type="button"
-            className="icon-button"
+            className="icon-button shrink-0"
             onClick={onClose}
-            aria-label="Close menu"
+            aria-label={sheet ? "Close menu" : "Close dialog"}
           >
             <Icon name="x" />
           </button>
         </div>
-        {children}
+        <div>{children}</div>
+        {actions !== undefined && <div className="mt-6 flex flex-wrap justify-end gap-2.5">{actions}</div>}
       </div>
     </div>
   );
+}
+
+export function Modal(props: DialogProps) {
+  return <DialogFrame {...props} />;
+}
+
+export function BottomSheet(props: Omit<DialogProps, "eyebrow" | "actions">) {
+  return <DialogFrame {...props} sheet />;
 }
 
 export function Waveform({
@@ -442,7 +407,7 @@ export function SpectrumChart({
   const gradientId = useId();
   const instructionsId = useId();
   const plotRef = useRef<HTMLDivElement>(null);
-  const maxFrequency = Math.min(20000, sampleRate * 0.49);
+  const maxFrequency = Math.min(20000, sampleRate * 0.47);
   const updateFromPointer = (id: EQBandId, event: ReactPointerEvent<HTMLButtonElement>) => {
     const rect = plotRef.current?.getBoundingClientRect();
     if (!rect?.width || !rect.height) return;

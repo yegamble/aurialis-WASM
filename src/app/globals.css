@@ -8,6 +8,17 @@
   --color-ink: #29231f;
   --color-clay: #b4543c;
   --color-moss: #596c52;
+  --color-paper-deep: #e9e3d9;
+  --color-ink-soft: #615850;
+  --color-line: #d7cfc3;
+  --color-line-dark: #94897d;
+  --color-clay-dark: #8e3f2e;
+  --color-clay-wash: #ecd7cf;
+  --color-moss-dark: #3f5139;
+  --color-moss-wash: #dce2d7;
+  --color-ochre-dark: #6d5220;
+  --color-ochre-wash: #eee0bd;
+  --color-danger: #9c3d32;
 }
 
 :root {

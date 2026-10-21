@@ -13,9 +13,7 @@
     "scripts/*.mjs"
   ],
   "ignoreDependencies": [
-    "@next/eslint-plugin-next",
     "@testing-library/jest-dom",
-    "eslint-plugin-security",
     "fake-indexeddb",
     "newman",
     "tailwindcss"

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 import { previewWAV, type StereoPCM } from "@/lib/browser-engine";
 import * as engine from "@/lib/browser-engine";
-import { mapSimpleToDSP } from "@/lib/audio-dsp";
+import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP } from "@/lib/audio-dsp";
 import type { AdvancedParams } from "@/lib/types";
 import type { LiveMeter, LivePlaybackController, LivePlaybackState, LiveSpectrum } from "@/lib/live-playback";
 import { StoreProvider } from "@/lib/store";
@@ -137,6 +137,36 @@ describe("master live playback lifecycle", () => {
     expect(mocks.createLivePlayback).toHaveBeenCalledOnce();
     expect(screen.queryByRole("button", { name: "Retry source" })).toBeNull();
   }, 20000);
+
+  it("resets sliders to canonical module and sample-rate-safe EQ defaults without changing other fields", async () => {
+    const defaults = clampAdvancedToSampleRate(createDefaultAdvancedParams(), 8000);
+    const advanced = { ...defaults, input: 6,
+      compressor: { ...defaults.compressor, threshold: -24, ratio: 4, attack: 47, release: 300 },
+      stereo: { ...defaults.stereo, width: 140 }, saturationModule: { ...defaults.saturationModule, drive: 35 },
+      limiter: { ...defaults.limiter, ceiling: -2 },
+      eqBands: defaults.eqBands.map((band) => band.id === "air" ? { ...band, freqHz: 1000, gainDb: 6, q: 2, enabled: false } : band),
+    };
+    localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1).map((track) => ({ ...track, sampleRate: 8000, advanced })) }));
+    mocks.getAudio.mockResolvedValue(previewWAV({ ...pcm, sampleRate: 8000 }));
+    mount();
+    await ready();
+    const instance = latest();
+    fireEvent.doubleClick(screen.getByRole("slider", { name: "Input gain" }));
+    expect(instance.controller.setParams).toHaveBeenLastCalledWith(expect.objectContaining({ input: 0, compressor: advanced.compressor }));
+    for (const label of ["Threshold", "Ratio", "Attack", "Release", "Stereo width", "Saturation", "Limiter ceiling"]) fireEvent.doubleClick(screen.getByRole("slider", { name: label }));
+    fireEvent.click(screen.getByRole("tab", { name: "Air" }));
+    for (const label of ["Air frequency", "Air gain", "Air Q"]) fireEvent.doubleClick(screen.getByRole("slider", { name: label }));
+    const actual = vi.mocked(instance.controller.setParams).mock.lastCall?.[0];
+    expect(actual?.compressor).toEqual(defaults.compressor);
+    expect(actual?.stereo).toEqual(defaults.stereo);
+    expect(actual?.saturationModule).toEqual(defaults.saturationModule);
+    expect(actual?.limiter).toEqual(defaults.limiter);
+    expect(actual?.eqBands.find((band) => band.id === "air")).toEqual({ ...defaults.eqBands.find((band) => band.id === "air"), enabled: false });
+    fireEvent.click(screen.getByRole("tab", { name: "simple" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Intensity" }), { target: { value: "87" } });
+    fireEvent.doubleClick(screen.getByRole("slider", { name: "Intensity" }));
+    expect(screen.getByRole<HTMLInputElement>("slider", { name: "Intensity" }).value).toBe("50");
+  }, 30000);
 
   it("restarts and skips within the current track without changing play or repeat state", async () => {
     mount();

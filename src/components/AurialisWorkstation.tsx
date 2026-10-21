@@ -80,6 +80,7 @@ const stemNames = new Map<number, string[]>([
   [6, ["Vocals", "Drums", "Bass", "Guitar", "Piano", "Other"]],
 ]);
 
+const DEFAULT_REFERENCE_AMOUNT = 62;
 const MAX_SOURCE_FRAMES = 16 * 1024 * 1024;
 const MAX_SOURCE_BYTES = MAX_SOURCE_FRAMES * 8 + 44;
 
@@ -1375,19 +1376,22 @@ function AdvancedControls({
 }) {
   const { dispatch } = useStore();
   const adv = track.advanced;
+  const defaults = clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate);
   const selectedBand =
     adv.eqBands.find((b) => b.id === activeBandId) ?? adv.eqBands[1];
+  const defaultBand = defaults.eqBands.find((band) => band.id === selectedBand.id) ?? defaults.eqBands[1];
 
   return (
     <div className="control-stack">
       <div>
         <h2>Shape the detail</h2>
-        <p>Adjust a module while you listen.</p>
+        <p>Adjust a module while you listen. Double-click a slider to restore its default.</p>
       </div>
 
       <SliderField
         label="Input gain"
         value={adv.input}
+        defaultValue={defaults.input}
         min={-36}
         max={36}
         step={0.5}
@@ -1450,6 +1454,7 @@ function AdvancedControls({
       <SliderField
         label={`${selectedBand.label} gain`}
         value={selectedBand.gainDb}
+        defaultValue={defaultBand.gainDb}
         min={-12}
         max={12}
         step={0.5}
@@ -1466,9 +1471,10 @@ function AdvancedControls({
       <SliderField
         label={`${selectedBand.label} frequency`}
         value={Math.min(selectedBand.freqHz, Math.floor(track.sampleRate * 0.47))}
+        defaultValue={defaultBand.freqHz}
         min={20}
         max={Math.min(18000, Math.floor(track.sampleRate * 0.47))}
-        step={10}
+        step={1}
         unit="Hz"
         onChange={(freqHz) => {
           dispatch({
@@ -1482,9 +1488,10 @@ function AdvancedControls({
       <SliderField
         label={`${selectedBand.label} Q`}
         value={selectedBand.q}
+        defaultValue={defaultBand.q}
         min={0.3}
         max={8.0}
-        step={0.1}
+        step={0.001}
         onChange={(q) => {
           dispatch({
             type: "UPDATE_EQ_BAND",
@@ -1517,6 +1524,7 @@ function AdvancedControls({
       <SliderField
         label="Threshold"
         value={adv.compressor.threshold}
+        defaultValue={defaults.compressor.threshold}
         min={-60}
         max={0}
         step={1}
@@ -1532,6 +1540,7 @@ function AdvancedControls({
       <SliderField
         label="Ratio"
         value={adv.compressor.ratio}
+        defaultValue={defaults.compressor.ratio}
         min={1}
         max={8}
         step={0.5}
@@ -1547,6 +1556,7 @@ function AdvancedControls({
       <SliderField
         label="Attack"
         value={adv.compressor.attack}
+        defaultValue={defaults.compressor.attack}
         min={1}
         max={100}
         step={1}
@@ -1562,6 +1572,7 @@ function AdvancedControls({
       <SliderField
         label="Release"
         value={adv.compressor.release}
+        defaultValue={defaults.compressor.release}
         min={40}
         max={500}
         step={5}
@@ -1597,6 +1608,7 @@ function AdvancedControls({
       <SliderField
         label="Stereo width"
         value={adv.stereo.width}
+        defaultValue={defaults.stereo.width}
         min={0}
         max={200}
         step={1}
@@ -1649,6 +1661,7 @@ function AdvancedControls({
       <SliderField
         label="Saturation"
         value={adv.saturationModule.drive}
+        defaultValue={defaults.saturationModule.drive}
         min={0}
         max={100}
         step={1}
@@ -1713,6 +1726,7 @@ function AdvancedControls({
       <SliderField
         label="Limiter ceiling"
         value={adv.limiter.ceiling}
+        defaultValue={defaults.limiter.ceiling}
         min={-3.0}
         max={-0.1}
         step={0.1}
@@ -1803,6 +1817,7 @@ function SimpleControls({
       <SliderField
         label="Intensity"
         value={track.intensity}
+        defaultValue={50}
         min={0}
         max={100}
         step={1}
@@ -2268,7 +2283,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
   const [referenceId, setReferenceId] = useState(
     state.tracks.find((item) => item.id !== track?.id)?.id ?? "",
   );
-  const [amount, setAmount] = useState(62);
+  const [amount, setAmount] = useState(DEFAULT_REFERENCE_AMOUNT);
   const [protectLowEnd, setProtectLowEnd] = useState(true);
   const [includeWidth, setIncludeWidth] = useState(false);
 
@@ -2347,6 +2362,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
           <SliderField
             label="Match amount"
             value={amount}
+            defaultValue={DEFAULT_REFERENCE_AMOUNT}
             min={0}
             max={100}
             step={1}

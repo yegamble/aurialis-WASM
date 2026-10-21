@@ -36,6 +36,15 @@ describe("shared engine browser boundary", () => {
     fetch.mockResolvedValue({ ok: false, status: 502, json: () => Promise.reject(new SyntaxError("HTML error")) });
     await expect(measureAudio(new Blob(["source"]))).rejects.toThrow("HTTP 502");
   });
+  it("explains transfers interrupted after the server has sent response headers", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      blob: () => Promise.reject(new TypeError("Failed to fetch")),
+      json: () => Promise.reject(new SyntaxError("Unexpected end of JSON")),
+    }));
+    await expect(serverRender(new Blob(["source"]), {}, 32)).rejects.toThrow("response was interrupted or unreadable");
+    await expect(measureAudio(new Blob(["source"]))).rejects.toThrow("response was interrupted or unreadable");
+  });
   it("cancels native renders before dispatch and while consuming their response", async () => {
     const controller = new AbortController();
     const fetch = vi.fn().mockResolvedValue({

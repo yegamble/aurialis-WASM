@@ -158,6 +158,17 @@ async function audioError(response: Response, fallback: string): Promise<Error> 
   return new Error(fallback);
 }
 
+async function readAudioResponse<T>(read: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  try {
+    const result = await read();
+    signal?.throwIfAborted();
+    return result;
+  } catch (error: unknown) {
+    signal?.throwIfAborted();
+    throw new Error("The local audio response was interrupted or unreadable. Check that Aurialis is still running, then try again.", { cause: error });
+  }
+}
+
 export function processPreview(
   source: StereoPCM,
   advanced: AdvancedParams,
@@ -213,9 +224,7 @@ export async function serverRender(
   const response = await audioRequest(data, signal);
   if (!response.ok)
     throw await audioError(response, "Audio processing failed. Please try again.");
-  const blob = await response.blob();
-  signal?.throwIfAborted();
-  return blob;
+  return readAudioResponse(() => response.blob(), signal);
 }
 export async function readCanonicalWAV(blob: Blob): Promise<StereoPCM> {
   const data = new DataView(await blob.arrayBuffer());
@@ -389,8 +398,7 @@ export async function measureAudio(
   form.append("format", "json");
   const response = await audioRequest(form, signal, true);
   if (!response.ok) throw await audioError(response, "Audio measurement failed.");
-  const body: unknown = await response.json();
-  signal?.throwIfAborted();
+  const body: unknown = await readAudioResponse(() => response.json() as Promise<unknown>, signal);
   if (typeof body !== "object" || body === null || !("sampleRate" in body)
     || !("frames" in body) || !("duration" in body)
     || !("beforeMetrics" in body) || !("afterMetrics" in body)

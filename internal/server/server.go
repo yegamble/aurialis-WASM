@@ -113,6 +113,7 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Content-Security-Policy", s.csp)
 		h.Set("Cache-Control", "no-store")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 
 		// 1. Validate Host header against DNS rebinding attacks
 		if !isAllowedLocalHost(r.Host) || !s.listenerMatches(r) {
@@ -488,6 +489,7 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "audio/wav")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	w.Header().Set("Content-Disposition", `attachment; filename="aurialis-mastered.wav"`)
 	w.Header().Set("X-Aurialis-Before-LUFS", fmt.Sprintf("%.2f", beforeMetrics.IntegratedLUFS))
 	w.Header().Set("X-Aurialis-After-LUFS", fmt.Sprintf("%.2f", afterMetrics.IntegratedLUFS))
@@ -555,6 +557,7 @@ func (s *Server) handleDownloadStem(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "audio/wav")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.wav"`, stemName))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(wavBytes) // #nosec G705 -- canonical PCM stem WAV; fixed audio/wav and nosniff headers

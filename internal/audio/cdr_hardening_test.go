@@ -11,6 +11,7 @@ func TestWAVRejectsInconsistentContainerLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := map[string]func([]byte) []byte{
+		"surround layout": func(b []byte) []byte { binary.LittleEndian.PutUint16(b[22:24], 6); return b },
 		"RIFF length":     func(b []byte) []byte { binary.LittleEndian.PutUint32(b[4:8], 0); return b },
 		"float16":         func(b []byte) []byte { binary.LittleEndian.PutUint16(b[20:22], 3); return b },
 		"block alignment": func(b []byte) []byte { binary.LittleEndian.PutUint16(b[32:34], 1); return b },

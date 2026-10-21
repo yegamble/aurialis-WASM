@@ -249,7 +249,7 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 	if audioFormat != 1 && audioFormat != 3 {
 		return nil, fmt.Errorf("%w: unsupported WAV format tag %d", ErrCorruptContainer, audioFormat)
 	}
-	if numChannels < 1 || numChannels > 8 {
+	if numChannels < 1 || numChannels > 2 {
 		return nil, fmt.Errorf("%w: invalid channel count %d", ErrCorruptContainer, numChannels)
 	}
 	if sampleRate < 8000 || sampleRate > 192000 {
@@ -408,7 +408,7 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 	if offset != len(raw) {
 		return nil, fmt.Errorf("%w: incomplete AIFF chunk", ErrCorruptContainer)
 	}
-	if numChannels < 1 || numChannels > 8 || sampleRate < 8000 || sampleRate > 192000 || bitsPerSample != 16 || len(ssndData) == 0 {
+	if numChannels < 1 || numChannels > 2 || sampleRate < 8000 || sampleRate > 192000 || bitsPerSample != 16 || len(ssndData) == 0 {
 		return nil, fmt.Errorf("%w: invalid AIFF parameters", ErrCorruptContainer)
 	}
 	frameSize := 2 * int(numChannels)

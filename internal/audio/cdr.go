@@ -130,7 +130,7 @@ func ScanPolyglotPayloads(data []byte) error {
 		return fmt.Errorf("%w: shell script shebang detected", ErrPolyglotPayload)
 	}
 
-	// Scan header/trailer regions (and full buffer up to 8 MB) for ZIP/JAR/HTML/script polyglot markers
+	// Scan the bounded upload for ZIP/JAR markers, plus header/trailer script markers.
 	scanSlice := data
 	if bytes.Contains(scanSlice, []byte("PK\x03\x04")) || bytes.Contains(scanSlice, []byte("PK\x05\x06")) {
 		return fmt.Errorf("%w: embedded ZIP/JAR archive signature (PK) detected", ErrPolyglotPayload)
@@ -232,7 +232,10 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 
 		offset += int(chunkSize)
 		// RIFF word alignment padding byte
-		if chunkSize%2 == 1 && offset < len(raw) {
+		if chunkSize%2 == 1 {
+			if offset >= len(raw) {
+				return nil, fmt.Errorf("%w: missing chunk alignment byte", ErrCorruptContainer)
+			}
 			offset++
 		}
 	}
@@ -395,7 +398,10 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 			ssndData = chunkBytes[8+int(dataOffset):]
 		}
 		offset += int(chunkSize)
-		if chunkSize%2 == 1 && offset < len(raw) {
+		if chunkSize%2 == 1 {
+			if offset >= len(raw) {
+				return nil, fmt.Errorf("%w: missing chunk alignment byte", ErrCorruptContainer)
+			}
 			offset++
 		}
 	}
@@ -539,9 +545,9 @@ func EncodeWAV(left, right []float32, sampleRate, bitDepth int) ([]byte, error) 
 				offset += 2
 			case 24:
 				scaled := int32(math.Round(s * 8388607.0))
-				out[offset] = byte(scaled)
-				out[offset+1] = byte(scaled >> 8)
-				out[offset+2] = byte(scaled >> 16)
+				out[offset] = byte(scaled & 0xff)
+				out[offset+1] = byte((scaled >> 8) & 0xff)
+				out[offset+2] = byte((scaled >> 16) & 0xff)
 				offset += 3
 			case 32:
 				binary.LittleEndian.PutUint32(out[offset:offset+4], math.Float32bits(float32(s)))

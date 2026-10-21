@@ -146,5 +146,6 @@ assert.equal(maximumL[0], 0.0625);
 assert.equal(maximumL[65535], 0.0625);
 assert.equal(maximumL[65536], 0.5);
 assert.equal(maximumR[65536], -0.5);
-console.log(`wasm-bridge: ${fixtures.length} native/WASM fixtures passed at 44.1/48/96 kHz; max absolute error ${maximumError}; adversarial boundary checks passed`);
+const rates = [...new Set(fixtures.map(fixture => fixture.rate))].toSorted((a, b) => a - b).map(rate => rate / 1000).join("/");
+console.log(`wasm-bridge: ${fixtures.length} native/WASM fixtures passed at ${rates} kHz; max absolute error ${maximumError}; adversarial boundary checks passed`);
 process.exit(0);

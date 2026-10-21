@@ -887,23 +887,23 @@ func (e *Engine) processCompressorSample(l, r float64) (float64, float64) {
 	return l * gainLin, r * gainLin
 }
 
-func adaaThickWave(x, drive float64) (float64, float64) {
+func adaaThickValue(x, drive float64) float64 {
 	dx := drive * x
-	var f0 float64
 	if math.Abs(dx) > 20.0 {
 		if dx > 0 {
-			f0 = 1.0
-		} else {
-			f0 = -1.0
+			return 1.0
 		}
-	} else {
-		f0 = math.Tanh(dx)
+		return -1.0
 	}
-	// Exact antiderivative F1(x) = ln(cosh(drive * x)) / drive
+	return math.Tanh(dx)
+}
+
+func adaaThickIntegral(x, drive float64) float64 {
+	dx := drive * x
+	// Exact antiderivative F1(x) = ln(cosh(drive * x)) / drive.
 	absDX := math.Abs(dx)
 	lnCosh := absDX + math.Log1p(math.Exp(-2.0*absDX)) - math.Ln2
-	f1 := lnCosh / drive
-	return f0, f1
+	return lnCosh / drive
 }
 
 func adaaWarmWave(x, drive float64) (float64, float64) {
@@ -960,12 +960,12 @@ func (e *Engine) processSaturationSample(l, r float64) (float64, float64) {
 				e.ironLP[ch] = 0.96*e.ironLP[ch] + 0.04*x
 				hi := x - e.ironLP[ch]
 				xShaped := x + 0.35*amt*hi + 0.20*amt*e.ironLP[ch]
-				f0, f1 := adaaThickWave(xShaped, drive*1.1)
+				f1 := adaaThickIntegral(xShaped, drive*1.1)
 				diff := xShaped - e.satPrevX[ch]
 				if math.Abs(diff) > 1e-6 {
 					y = (f1 - e.satPrevF1[ch]) / diff
 				} else {
-					y = f0
+					y = adaaThickValue(xShaped, drive*1.1)
 				}
 				e.satPrevX[ch] = xShaped
 				e.satPrevF1[ch] = f1
@@ -973,12 +973,12 @@ func (e *Engine) processSaturationSample(l, r float64) (float64, float64) {
 			case SatThick:
 				fallthrough
 			default:
-				f0, f1 := adaaThickWave(x, drive)
+				f1 := adaaThickIntegral(x, drive)
 				diff := x - e.satPrevX[ch]
 				if math.Abs(diff) > 1e-6 {
 					y = (f1 - e.satPrevF1[ch]) / diff
 				} else {
-					y = f0
+					y = adaaThickValue(x, drive)
 				}
 				e.satPrevX[ch] = x
 				e.satPrevF1[ch] = f1

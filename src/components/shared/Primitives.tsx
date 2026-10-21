@@ -3,6 +3,7 @@
 import {
   useEffect,
   useId,
+  useMemo,
   useRef,
   useState,
   type ButtonHTMLAttributes,
@@ -333,6 +334,32 @@ export function Waveform({
   onSeekRatio?: (ratio: number) => void;
 }) {
   const [internalRatio, setInternalRatio] = useState(0);
+  const barsRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  const hasPeaks = Boolean(peaks?.length);
+  useEffect(() => {
+    const element = barsRef.current;
+    if (!element) return undefined;
+    const measure = () => { setWidth(Math.floor(element.getBoundingClientRect().width)); };
+    measure();
+    if (typeof ResizeObserver === "function") {
+      const observer = new ResizeObserver(measure);
+      observer.observe(element);
+      return () => { observer.disconnect(); };
+    }
+    window.addEventListener("resize", measure);
+    return () => { window.removeEventListener("resize", measure); };
+  }, [hasPeaks]);
+  const visiblePeaks = useMemo(() => {
+    if (!peaks?.length) return [];
+    const count = Math.min(peaks.length, width > 0 ? Math.max(1, Math.floor((width + 1) / 2.5)) : 512);
+    return Array.from({ length: count }, (_, index) => {
+      let peak = 0;
+      for (let offset = Math.floor(index * peaks.length / count); offset < Math.floor((index + 1) * peaks.length / count); offset++)
+        peak = Math.max(peak, peaks.at(offset) ?? 0);
+      return peak;
+    });
+  }, [peaks, width]);
   const ratio = controlledRatio ?? internalRatio;
   const currentSec = Math.floor(ratio * duration);
 
@@ -382,7 +409,8 @@ export function Waveform({
         </div>
       )}
       <div
-        className={`wave-bars relative flex cursor-pointer items-center gap-0.5 ${compact ? "h-[52px]" : "h-[140px]"}`}
+        ref={barsRef}
+        className={`wave-bars relative flex cursor-pointer items-center gap-px ${compact ? "h-[52px]" : "h-[140px]"}`}
         role="slider"
         tabIndex={0}
         aria-label={
@@ -402,10 +430,10 @@ export function Waveform({
           }
         }}
       >
-        {peaks.map((peak, i) => (
-          <i key={i} className="block min-w-0 flex-1 rounded-[2px]" style={{
+        {visiblePeaks.map((peak, i) => (
+          <i key={i} className="block min-w-0 flex-1 rounded-full" style={{
             height: `${String(Math.max(1, Math.min(100, peak * 100)))}%`,
-            backgroundColor: ratio > 0 && i / peaks.length < ratio ? "var(--clay)" : "var(--line-dark)",
+            backgroundColor: ratio > 0 && i / visiblePeaks.length < ratio ? "var(--clay)" : "var(--line-dark)",
           }} />
         ))}
         <span

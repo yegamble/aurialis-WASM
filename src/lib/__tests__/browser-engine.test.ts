@@ -11,10 +11,21 @@ import {
   processPreview,
   readCanonicalWAV,
   serverRender,
+  sourcePeaks,
 } from "../browser-engine";
 
 afterEach(() => vi.unstubAllGlobals());
 describe("shared engine browser boundary", () => {
+  it("retains narrow transients across the full source in a bounded detailed waveform envelope", () => {
+    const left = new Float32Array(8192), right = new Float32Array(8192);
+    left[0] = 0.25; right[4097] = -0.75; left[8191] = 0.5;
+    const peaks = sourcePeaks({ left, right, sampleRate: 48000 });
+    expect(peaks).toHaveLength(2048);
+    expect(peaks[0]).toBe(0.25);
+    expect(peaks[1024]).toBe(0.75);
+    expect(peaks[2047]).toBe(0.5);
+    expect(peaks.filter((peak) => peak !== 0)).toHaveLength(3);
+  });
   it("explains unreachable local requests and preserves cancellation", async () => {
     const fetch = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
     vi.stubGlobal("fetch", fetch);

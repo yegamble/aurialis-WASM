@@ -305,12 +305,12 @@ export function previewWAV(pcm: StereoPCM): Blob {
   return new Blob([data], { type: "audio/wav" });
 }
 export function sourcePeaks(pcm: StereoPCM): number[] {
-  const size = Math.max(1, Math.ceil(pcm.left.length / 96));
-  return Array.from({ length: 96 }, (_, index) => {
+  const count = Math.min(2048, pcm.left.length);
+  return Array.from({ length: count }, (_, index) => {
     let peak = 0;
     for (
-      let i = index * size;
-      i < Math.min((index + 1) * size, pcm.left.length);
+      let i = Math.floor(index * pcm.left.length / count);
+      i < Math.floor((index + 1) * pcm.left.length / count);
       i++
     )
       peak = Math.max(

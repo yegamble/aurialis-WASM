@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 import {
   createContext,
@@ -9,10 +9,11 @@ import {
   useState,
   type Dispatch,
   type ReactNode,
-} from "react"
-import { createDefaultAdvancedParams } from "./audio-dsp"
+} from "react";
+import { createDefaultAdvancedParams } from "./audio-dsp";
 import type {
   Album,
+  AdvancedParams,
   CompressorParams,
   EQBandId,
   EQBandParams,
@@ -28,11 +29,11 @@ import type {
   StemProject,
   StereoParams,
   Track,
-} from "./types"
+} from "./types";
 
-const INITIAL_TIMESTAMP = "2026-10-20T00:00:00.000Z"
+const INITIAL_TIMESTAMP = "2026-10-20T00:00:00.000Z";
 
-export const profiles: { id: ProfileId; name: string; note: string }[] = [
+const profiles: { id: ProfileId; name: string; note: string }[] = [
   {
     id: "modern_pop_polish",
     name: "Modern Pop Polish",
@@ -58,7 +59,7 @@ export const profiles: { id: ProfileId; name: string; note: string }[] = [
     name: "Pop Punk Air",
     note: "Bright presence and energetic drum movement.",
   },
-]
+];
 
 const demoTracks: Track[] = [
   {
@@ -169,38 +170,38 @@ const demoTracks: Track[] = [
     }),
     profile: "modern_pop_polish",
   },
-]
+];
 
 type StoreState = {
-  tracks: Track[]
-  albums: Album[]
-  stems: StemProject[]
-}
+  tracks: Track[];
+  albums: Album[];
+  stems: StemProject[];
+};
 
 type StoreAction =
   | { type: "ADD_TRACK"; track: Track }
   | { type: "UPDATE_TRACK"; id: string; patch: Partial<Track> }
   | {
-      type: "UPDATE_SIMPLE"
-      id: string
-      patch: Partial<Pick<Track, "genre" | "tone" | "intensity" | "target">>
+      type: "UPDATE_SIMPLE";
+      id: string;
+      patch: Partial<Pick<Track, "genre" | "tone" | "intensity" | "target">>;
     }
   | {
-      type: "UPDATE_EQ_BAND"
-      trackId: string
-      bandId: EQBandId
-      patch: Partial<Omit<EQBandParams, "id" | "label" | "type">>
+      type: "UPDATE_EQ_BAND";
+      trackId: string;
+      bandId: EQBandId;
+      patch: Partial<Omit<EQBandParams, "id" | "label" | "type">>;
     }
   | { type: "TOGGLE_EQ_ENABLED"; trackId: string; enabled: boolean }
   | {
-      type: "UPDATE_COMPRESSOR"
-      trackId: string
-      patch: Partial<CompressorParams>
+      type: "UPDATE_COMPRESSOR";
+      trackId: string;
+      patch: Partial<CompressorParams>;
     }
   | {
-      type: "UPDATE_SATURATION"
-      trackId: string
-      patch: Partial<SaturationParams>
+      type: "UPDATE_SATURATION";
+      trackId: string;
+      patch: Partial<SaturationParams>;
     }
   | { type: "UPDATE_STEREO"; trackId: string; patch: Partial<StereoParams> }
   | { type: "UPDATE_LIMITER"; trackId: string; patch: Partial<LimiterParams> }
@@ -212,29 +213,29 @@ type StoreAction =
   | { type: "UPDATE_MOVE"; trackId: string; move: Move }
   | { type: "SAVE_STEMS"; project: StemProject }
   | {
-      type: "UPDATE_STEM"
-      trackId: string
-      stemId: string
-      patch: Partial<Omit<Stem, "id">>
+      type: "UPDATE_STEM";
+      trackId: string;
+      stemId: string;
+      patch: Partial<Omit<Stem, "id">>;
     }
   | { type: "ADD_ALBUM"; album: Album }
   | { type: "UPDATE_ALBUM"; id: string; patch: Partial<Album> }
   | { type: "DELETE_ALBUM"; id: string }
   | { type: "HYDRATE_STATE"; state: StoreState }
-  | { type: "RESET_WORKSPACE" }
+  | { type: "RESET_WORKSPACE" };
 
 export const initialStoreState: StoreState = {
   tracks: demoTracks,
   albums: [],
   stems: [],
-}
+};
 
 function updateTrackInList(
   tracks: Track[],
   id: string,
   updater: (track: Track) => Track,
 ): Track[] {
-  return tracks.map((track) => (track.id === id ? updater(track) : track))
+  return tracks.map((track) => (track.id === id ? updater(track) : track));
 }
 
 export function reduceStoreState(
@@ -243,7 +244,7 @@ export function reduceStoreState(
 ): StoreState {
   switch (action.type) {
     case "ADD_TRACK":
-      return { ...state, tracks: [action.track, ...state.tracks] }
+      return { ...state, tracks: [action.track, ...state.tracks] };
 
     case "UPDATE_TRACK":
       return {
@@ -253,7 +254,7 @@ export function reduceStoreState(
           ...action.patch,
           updatedAt: new Date().toISOString(),
         })),
-      }
+      };
 
     case "UPDATE_SIMPLE":
       return {
@@ -263,7 +264,7 @@ export function reduceStoreState(
           ...action.patch,
           updatedAt: new Date().toISOString(),
         })),
-      }
+      };
 
     case "UPDATE_INPUT_GAIN":
       return {
@@ -276,7 +277,7 @@ export function reduceStoreState(
           },
           updatedAt: new Date().toISOString(),
         })),
-      }
+      };
 
     case "TOGGLE_EQ_ENABLED":
       return {
@@ -289,7 +290,7 @@ export function reduceStoreState(
           },
           updatedAt: new Date().toISOString(),
         })),
-      }
+      };
 
     case "UPDATE_EQ_BAND":
       return {
@@ -297,7 +298,7 @@ export function reduceStoreState(
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => {
           const nextBands = track.advanced.eqBands.map((band) =>
             band.id === action.bandId ? { ...band, ...action.patch } : band,
-          ) as Track["advanced"]["eqBands"]
+          ) as Track["advanced"]["eqBands"];
           return {
             ...track,
             advanced: {
@@ -305,9 +306,9 @@ export function reduceStoreState(
               eqBands: nextBands,
             },
             updatedAt: new Date().toISOString(),
-          }
+          };
         }),
-      }
+      };
 
     case "UPDATE_COMPRESSOR":
       return {
@@ -316,7 +317,7 @@ export function reduceStoreState(
           const nextComp: CompressorParams = {
             ...track.advanced.compressor,
             ...action.patch,
-          }
+          };
           return {
             ...track,
             advanced: {
@@ -328,9 +329,9 @@ export function reduceStoreState(
               compressor: nextComp,
             },
             updatedAt: new Date().toISOString(),
-          }
+          };
         }),
-      }
+      };
 
     case "UPDATE_SATURATION":
       return {
@@ -339,7 +340,7 @@ export function reduceStoreState(
           const nextSat: SaturationParams = {
             ...track.advanced.saturationModule,
             ...action.patch,
-          }
+          };
           return {
             ...track,
             advanced: {
@@ -348,9 +349,9 @@ export function reduceStoreState(
               saturationModule: nextSat,
             },
             updatedAt: new Date().toISOString(),
-          }
+          };
         }),
-      }
+      };
 
     case "UPDATE_STEREO":
       return {
@@ -359,7 +360,7 @@ export function reduceStoreState(
           const nextStereo: StereoParams = {
             ...track.advanced.stereo,
             ...action.patch,
-          }
+          };
           return {
             ...track,
             advanced: {
@@ -368,9 +369,9 @@ export function reduceStoreState(
               stereo: nextStereo,
             },
             updatedAt: new Date().toISOString(),
-          }
+          };
         }),
-      }
+      };
 
     case "UPDATE_LIMITER":
       return {
@@ -386,7 +387,7 @@ export function reduceStoreState(
           },
           updatedAt: new Date().toISOString(),
         })),
-      }
+      };
 
     case "UPDATE_REPAIR":
       return {
@@ -402,7 +403,7 @@ export function reduceStoreState(
           },
           updatedAt: new Date().toISOString(),
         })),
-      }
+      };
 
     case "RESET_ADVANCED":
       return {
@@ -412,7 +413,7 @@ export function reduceStoreState(
           advanced: createDefaultAdvancedParams(),
           updatedAt: new Date().toISOString(),
         })),
-      }
+      };
 
     case "DELETE_TRACK":
       return {
@@ -423,7 +424,7 @@ export function reduceStoreState(
           trackIds: album.trackIds.filter((id) => id !== action.id),
         })),
         stems: state.stems.filter((project) => project.trackId !== action.id),
-      }
+      };
 
     case "SAVE_SCRIPT":
       return {
@@ -433,7 +434,7 @@ export function reduceStoreState(
           script: action.script,
           updatedAt: new Date().toISOString(),
         })),
-      }
+      };
 
     case "UPDATE_MOVE":
       return {
@@ -452,7 +453,7 @@ export function reduceStoreState(
               }
             : track,
         ),
-      }
+      };
 
     case "SAVE_STEMS":
       return {
@@ -461,7 +462,7 @@ export function reduceStoreState(
           ...state.stems.filter((p) => p.trackId !== action.project.trackId),
           action.project,
         ],
-      }
+      };
 
     case "UPDATE_STEM":
       return {
@@ -478,10 +479,10 @@ export function reduceStoreState(
               }
             : project,
         ),
-      }
+      };
 
     case "ADD_ALBUM":
-      return { ...state, albums: [action.album, ...state.albums] }
+      return { ...state, albums: [action.album, ...state.albums] };
 
     case "UPDATE_ALBUM":
       return {
@@ -489,37 +490,43 @@ export function reduceStoreState(
         albums: state.albums.map((a) =>
           a.id === action.id ? { ...a, ...action.patch } : a,
         ),
-      }
+      };
 
     case "DELETE_ALBUM":
       return {
         ...state,
         albums: state.albums.filter((a) => a.id !== action.id),
-      }
+      };
 
     case "HYDRATE_STATE":
-      return action.state
+      return action.state;
 
     case "RESET_WORKSPACE":
-      return initialStoreState
+      return initialStoreState;
   }
 }
 
 function normalizeHydratedState(raw: unknown): StoreState | null {
-  if (typeof raw !== "object" || raw === null) return null
-  const candidate = raw as Partial<StoreState>
-  if (!Array.isArray(candidate.tracks)) return null
+  if (typeof raw !== "object" || raw === null) return null;
+  const candidate = raw as {
+    tracks?: (Omit<Track, "advanced"> & {
+      advanced?: Partial<AdvancedParams>;
+    })[];
+    albums?: Album[];
+    stems?: StemProject[];
+  };
+  if (!Array.isArray(candidate.tracks)) return null;
   const tracks: Track[] = candidate.tracks.map((track) => {
-    const baseAdv = createDefaultAdvancedParams(track.advanced)
+    const baseAdv = createDefaultAdvancedParams(track.advanced);
+    const storedBands: unknown = track.advanced?.eqBands;
     return {
       ...track,
       advanced: {
         ...baseAdv,
         ...track.advanced,
         eqBands:
-          Array.isArray(track.advanced?.eqBands) &&
-          track.advanced.eqBands.length === 5
-            ? track.advanced.eqBands
+          Array.isArray(storedBands) && storedBands.length === 5
+            ? (storedBands as Track["advanced"]["eqBands"])
             : baseAdv.eqBands,
         compressor: {
           ...baseAdv.compressor,
@@ -542,57 +549,80 @@ function normalizeHydratedState(raw: unknown): StoreState | null {
           ...(track.advanced?.repair ?? {}),
         },
       },
-    }
-  })
+    };
+  });
   return {
     tracks,
     albums: Array.isArray(candidate.albums) ? candidate.albums : [],
     stems: Array.isArray(candidate.stems) ? candidate.stems : [],
-  }
+  };
 }
 
 const StoreContext = createContext<{
-  state: StoreState
-  dispatch: Dispatch<StoreAction>
-} | null>(null)
+  state: StoreState;
+  dispatch: Dispatch<StoreAction>;
+} | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reduceStoreState, initialStoreState)
-  const [hydrated, setHydrated] = useState(false)
+  const [state, dispatch] = useReducer(reduceStoreState, initialStoreState);
+  const [hydrated, setHydrated] = useState(false);
+  const [storageWarning, setStorageWarning] = useState("");
 
   useEffect(() => {
     try {
-      const saved = globalThis.localStorage.getItem("aurialis-state-v1")
+      const saved = globalThis.localStorage.getItem("aurialis-state-v1");
       if (saved) {
-        const parsed: unknown = JSON.parse(saved)
-        const hydrated = normalizeHydratedState(parsed)
+        const parsed: unknown = JSON.parse(saved);
+        const hydrated = normalizeHydratedState(parsed);
         if (hydrated) {
-          dispatch({ type: "HYDRATE_STATE", state: hydrated })
+          dispatch({ type: "HYDRATE_STATE", state: hydrated });
         }
       }
     } catch {
-      // Invalid or blocked persistence falls back to the current session.
+      setStorageWarning(
+        "Saved settings could not be restored. This tab is using session settings.",
+      );
     }
-    setHydrated(true)
-  }, [])
+    setHydrated(true);
+  }, []);
 
   useEffect(() => {
-    if (!hydrated) return
+    if (!hydrated) return;
     try {
-      globalThis.localStorage.setItem("aurialis-state-v1", JSON.stringify(state))
+      globalThis.localStorage.setItem(
+        "aurialis-state-v1",
+        JSON.stringify(state),
+      );
     } catch {
-      // Ignore storage quota errors
+      setStorageWarning(
+        "Settings could not be saved by your browser. Keep this tab open and export before leaving.",
+      );
     }
-  }, [state, hydrated])
+  }, [state, hydrated]);
 
-  const value = useMemo(() => ({ state, dispatch }), [state])
-  return <StoreContext.Provider value={value}>{hydrated ? children : <p className="page" role="status">Loading your local workspace…</p>}</StoreContext.Provider>
+  const value = useMemo(() => ({ state, dispatch }), [state]);
+  return (
+    <StoreContext.Provider value={value}>
+      {storageWarning && (
+        <p className="storage-warning" role="status">
+          {storageWarning}
+        </p>
+      )}
+      {hydrated ? (
+        children
+      ) : (
+        <p className="page" role="status">
+          Loading your local workspace…
+        </p>
+      )}
+    </StoreContext.Provider>
+  );
 }
 
 export function useStore() {
-  const value = useContext(StoreContext)
-  if (!value) throw new Error("StoreProvider is missing")
-  return value
+  const value = useContext(StoreContext);
+  if (!value) throw new Error("StoreProvider is missing");
+  return value;
 }
 
 export function generateScript(
@@ -608,27 +638,21 @@ export function generateScript(
     "bridge",
     "chorus",
     "outro",
-  ]
-  const length = track.duration / sectionTypes.length
+  ];
+  const length = track.duration / sectionTypes.length;
   const sections = sectionTypes.map((type, i) => ({
-    id: `section-${i}`,
+    id: `section-${String(i)}`,
     type,
     start: Number((i * length).toFixed(2)),
     end: Number(((i + 1) * length).toFixed(2)),
     loudness: -18 + ((track.seed + i * 7) % 8),
     centroid: 900 + ((track.seed * (i + 2) * 97) % 2400),
-  }))
+  }));
 
-  const lanes: MoveLane[] = [
-    "Volume",
-    "EQ",
-    "Comp/Sat",
-    "Width",
-    "AI Repair",
-  ]
+  const lanes: MoveLane[] = ["Volume", "EQ", "Comp/Sat", "Width", "AI Repair"];
 
   const profileName =
-    profiles.find((p) => p.id === profile)?.name ?? "Modern Pop Polish"
+    profiles.find((p) => p.id === profile)?.name ?? "Modern Pop Polish";
 
   const moves: Move[] = sections.flatMap((section, sectionIndex) =>
     lanes
@@ -639,11 +663,11 @@ export function generateScript(
         const value =
           Math.round(
             (((track.seed + sectionIndex * 13 + laneIndex * 7) % 25) - 12) * 10,
-          ) / 10
-        const start = Number((section.start + length * 0.08).toFixed(2))
-        const end = Number((section.end - length * 0.08).toFixed(2))
+          ) / 10;
+        const start = Number((section.start + length * 0.08).toFixed(2));
+        const end = Number((section.end - length * 0.08).toFixed(2));
         return {
-          id: `${section.id}-${laneIndex}`,
+          id: `${section.id}-${String(laneIndex)}`,
           lane,
           parameter:
             lane === "Volume"
@@ -666,9 +690,9 @@ export function generateScript(
           reason: `${profileName} adjustment for the ${section.type}.`,
           edited: false,
           muted: false,
-        }
+        };
       }),
-  )
+  );
 
   return {
     version: 1,
@@ -691,5 +715,5 @@ export function generateScript(
             },
           ]
         : [],
-  }
+  };
 }

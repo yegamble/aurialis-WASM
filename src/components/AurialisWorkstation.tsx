@@ -1,9 +1,17 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { engineParams, measuredLevels, processPreview, readCanonicalWAV, serverRender, sourcePeaks, type StereoPCM } from "@/lib/browser-engine"
-import { RealTransport } from "./shared/RealTransport"
-import { usePathname, useRouter } from "next/navigation"
+import Link from "next/link";
+import {
+  engineParams,
+  measuredLevels,
+  processPreview,
+  readCanonicalWAV,
+  serverRender,
+  sourcePeaks,
+  type StereoPCM,
+} from "@/lib/browser-engine";
+import { RealTransport } from "./shared/RealTransport";
+import { usePathname, useRouter } from "next/navigation";
 import {
   type ReactNode,
   useEffect,
@@ -11,12 +19,10 @@ import {
   useRef,
   useState,
   type DragEvent,
-} from "react"
-import {
-  createDefaultAdvancedParams,
-} from "@/lib/audio-dsp"
-import { deleteAudio, saveAudio, getAudio } from "@/lib/db"
-import { useStore } from "@/lib/store"
+} from "react";
+import { createDefaultAdvancedParams } from "@/lib/audio-dsp";
+import { deleteAudio, saveAudio, getAudio } from "@/lib/db";
+import { useStore } from "@/lib/store";
 import type {
   Album,
   EQBandId,
@@ -24,8 +30,8 @@ import type {
   SaturationCharacter,
   Stem,
   Track,
-} from "@/lib/types"
-import { Icon, type IconName } from "./shared/Icon"
+} from "@/lib/types";
+import { Icon, type IconName } from "./shared/Icon";
 import {
   Artwork,
   BottomSheet,
@@ -38,7 +44,7 @@ import {
   Waveform,
   formatTime,
   statusLabel,
-} from "./shared/Primitives"
+} from "./shared/Primitives";
 
 type WorkstationRoute =
   | "home"
@@ -49,15 +55,15 @@ type WorkstationRoute =
   | "album"
   | "reference"
   | "release-check"
-  | "tools"
+  | "tools";
 
-const stemNames: Record<number, string[]> = {
-  2: ["Vocals", "Instrumental"],
-  3: ["Vocals", "Drums", "Other"],
-  4: ["Vocals", "Drums", "Bass", "Other"],
-  5: ["Vocals", "Drums", "Bass", "Melody", "Other"],
-  6: ["Vocals", "Drums", "Bass", "Guitar", "Piano", "Other"],
-}
+const stemNames = new Map<number, string[]>([
+  [2, ["Vocals", "Instrumental"]],
+  [3, ["Vocals", "Drums", "Other"]],
+  [4, ["Vocals", "Drums", "Bass", "Other"]],
+  [5, ["Vocals", "Drums", "Bass", "Melody", "Other"]],
+  [6, ["Vocals", "Drums", "Bass", "Guitar", "Piano", "Other"]],
+]);
 
 function resolveDynamicId(
   propId: string | undefined,
@@ -65,44 +71,44 @@ function resolveDynamicId(
   fallbackId: string,
 ): string {
   if (pathname) {
-    const parts = pathname.split("/").filter(Boolean)
-    const candidate = parts[1]
+    const parts = pathname.split("/").filter(Boolean);
+    const candidate = parts[1];
     if (candidate && candidate !== "placeholder") {
-      return decodeURIComponent(candidate)
+      return decodeURIComponent(candidate);
     }
   }
   if (propId && propId !== "placeholder") {
-    return propId
+    return propId;
   }
-  return fallbackId
+  return fallbackId;
 }
 
 export function AurialisWorkstation({
   route,
   paramId,
 }: {
-  route: WorkstationRoute
-  paramId?: string
+  route: WorkstationRoute;
+  paramId?: string;
 }) {
-  const pathname = usePathname()
-  const { state, dispatch } = useStore()
-  const [prefsOpen, setPrefsOpen] = useState(false)
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const [livePath, setLivePath] = useState<string | null>(pathname)
+  const pathname = usePathname();
+  const { state, dispatch } = useStore();
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [livePath, setLivePath] = useState<string | null>(pathname);
 
   useEffect(() => {
-    setLivePath(window.location.pathname)
-  }, [pathname])
+    setLivePath(window.location.pathname);
+  }, [pathname]);
 
-  const inWorkspace = route === "master"
-  const defaultTrackId = state.tracks[0]?.id ?? "demo-1"
-  const resolvedId = resolveDynamicId(paramId, livePath, defaultTrackId)
+  const inWorkspace = route === "master";
+  const defaultTrackId = state.tracks[0]?.id ?? "demo-1";
+  const resolvedId = resolveDynamicId(paramId, livePath, defaultTrackId);
 
   const navItems: {
-    href: string
-    label: string
-    icon: IconName
-    active: boolean
+    href: string;
+    label: string;
+    icon: IconName;
+    active: boolean;
   }[] = [
     {
       href: "/",
@@ -132,7 +138,7 @@ export function AurialisWorkstation({
         route === "reference" ||
         route === "release-check",
     },
-  ]
+  ];
 
   return (
     <div className="app-shell">
@@ -157,14 +163,14 @@ export function AurialisWorkstation({
         </nav>
         <div className="nav-note">
           <span className="eyebrow">Local workspace</span>
-          <p>Your audio stays in this browser.</p>
+          <p>Audio stays on your device and local server.</p>
         </div>
         <button
           type="button"
           className="profile-button"
           aria-label="Open local preferences"
           onClick={() => {
-            setPrefsOpen(true)
+            setPrefsOpen(true);
           }}
         >
           <span>AG</span>
@@ -188,7 +194,7 @@ export function AurialisWorkstation({
           className="icon-button"
           aria-label="Open menu"
           onClick={() => {
-            setMobileMenuOpen(true)
+            setMobileMenuOpen(true);
           }}
         >
           <Icon name="menu" />
@@ -202,12 +208,49 @@ export function AurialisWorkstation({
       >
         {route === "home" && <HomeView />}
         {route === "library" && <LibraryView />}
-        {route === "master" && <MasterView key={resolvedId} trackId={resolvedId} />}
-        {route === "split" && <UnavailableFeature title="Stem separation" copy="Instrument separation is not connected to an audio model. No stems are generated here."><SplitView trackId={resolvedId} /></UnavailableFeature>}
-        {route === "albums" && <UnavailableFeature title="Album mastering" copy="Batch audio processing and album consistency measurement are not available."><AlbumsView /></UnavailableFeature>}
-        {route === "album" && <UnavailableFeature title="Album mastering" copy="Batch audio processing and album consistency measurement are not available."><AlbumView albumId={resolvedId} /></UnavailableFeature>}
-        {route === "reference" && <UnavailableFeature title="Reference matching" copy="Audio reference analysis and matching are not available."><ReferenceView trackId={resolvedId} /></UnavailableFeature>}
-        {route === "release-check" && <UnavailableFeature title="Release checks" copy="Standards based loudness and true-peak certification are not available."><ReleaseView trackId={resolvedId} /></UnavailableFeature>}
+        {route === "master" && (
+          <MasterView key={resolvedId} trackId={resolvedId} />
+        )}
+        {route === "split" && (
+          <UnavailableFeature
+            title="Stem separation"
+            copy="Instrument separation is not connected to an audio model. No stems are generated here."
+          >
+            <SplitView trackId={resolvedId} />
+          </UnavailableFeature>
+        )}
+        {route === "albums" && (
+          <UnavailableFeature
+            title="Album mastering"
+            copy="Batch audio processing and album consistency measurement are not available."
+          >
+            <AlbumsView />
+          </UnavailableFeature>
+        )}
+        {route === "album" && (
+          <UnavailableFeature
+            title="Album mastering"
+            copy="Batch audio processing and album consistency measurement are not available."
+          >
+            <AlbumView albumId={resolvedId} />
+          </UnavailableFeature>
+        )}
+        {route === "reference" && (
+          <UnavailableFeature
+            title="Reference matching"
+            copy="Audio reference analysis and matching are not available."
+          >
+            <ReferenceView trackId={resolvedId} />
+          </UnavailableFeature>
+        )}
+        {route === "release-check" && (
+          <UnavailableFeature
+            title="Release checks"
+            copy="Standards based loudness and true-peak certification are not available."
+          >
+            <ReleaseView trackId={resolvedId} />
+          </UnavailableFeature>
+        )}
         {route === "tools" && <ToolsView />}
       </main>
 
@@ -230,7 +273,7 @@ export function AurialisWorkstation({
         eyebrow="Workspace settings"
         title="Local studio preferences"
         onClose={() => {
-          setPrefsOpen(false)
+          setPrefsOpen(false);
         }}
         actions={
           <>
@@ -238,8 +281,8 @@ export function AurialisWorkstation({
               variant="secondary"
               icon={<Icon name="rotate-ccw" />}
               onClick={() => {
-                dispatch({ type: "RESET_WORKSPACE" })
-                setPrefsOpen(false)
+                dispatch({ type: "RESET_WORKSPACE" });
+                setPrefsOpen(false);
               }}
             >
               Reset demo workspace
@@ -247,7 +290,7 @@ export function AurialisWorkstation({
             <Button
               variant="primary"
               onClick={() => {
-                setPrefsOpen(false)
+                setPrefsOpen(false);
               }}
             >
               Done
@@ -279,7 +322,7 @@ export function AurialisWorkstation({
         open={mobileMenuOpen}
         title="Studio navigation"
         onClose={() => {
-          setMobileMenuOpen(false)
+          setMobileMenuOpen(false);
         }}
       >
         <div className="control-stack">
@@ -291,7 +334,7 @@ export function AurialisWorkstation({
                 item.active ? "button--primary" : "button--secondary"
               }`}
               onClick={() => {
-                setMobileMenuOpen(false)
+                setMobileMenuOpen(false);
               }}
             >
               <Icon name={item.icon} />
@@ -301,49 +344,85 @@ export function AurialisWorkstation({
         </div>
       </BottomSheet>
     </div>
-  )
+  );
 }
 
-function UnavailableFeature({ title, copy }: { title: string; copy: string; children?: ReactNode }) {
-  return <div className="page"><PageTitle eyebrow="Not available yet" title={title} copy={copy} /><p className="disclosure">You can import WAV audio, adjust independent digital processors, listen to a rendered preview, and export a processed master.</p><Link className="button button--primary" href="/">Import a track</Link></div>
+function UnavailableFeature({
+  title,
+  copy,
+}: {
+  title: string;
+  copy: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="page">
+      <PageTitle eyebrow="Not available yet" title={title} copy={copy} />
+      <p className="disclosure">
+        You can import WAV audio, adjust independent digital processors, listen
+        to a rendered preview, and export a processed master.
+      </p>
+      <Link className="button button--primary" href="/">
+        Import a track
+      </Link>
+    </div>
+  );
 }
 
 function HomeView() {
-  const { state, dispatch } = useStore()
-  const router = useRouter()
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [dragging, setDragging] = useState(false)
-  const [message, setMessage] = useState("")
-  const [loading, setLoading] = useState(false)
+  const { state, dispatch } = useStore();
+  const router = useRouter();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const importFile = async (file?: File) => {
-    if (!file) return
-    if (loading) return
-    if (!/\.wav$/i.test(file.name) || file.size === 0 || file.size > 16 * 1024 * 1024) {
-      setMessage("Choose a nonempty PCM WAV file up to 16 MiB. Other codecs are not supported.")
-      return
+    if (!file) return;
+    if (loading) return;
+    if (
+      !/\.wav$/i.test(file.name) ||
+      file.size === 0 ||
+      file.size > 16 * 1024 * 1024
+    ) {
+      setMessage(
+        "Choose a nonempty PCM WAV file up to 16 MiB. Other codecs are not supported.",
+      );
+      return;
     }
-    setLoading(true)
-    setMessage("Validating and reconstructing your WAV on the local Go server…")
-    const id = `track-${crypto.randomUUID()}`
-    const title = file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ")
-    let canonical: Blob
-    let pcm: StereoPCM
-    let storageWarning = ""
+    setLoading(true);
+    setMessage(
+      "Validating and reconstructing your WAV on the local Go server…",
+    );
+    const id = `track-${crypto.randomUUID()}`;
+    const title = file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ");
+    let canonical: Blob;
+    let pcm: StereoPCM;
+    let storageWarning = "";
     try {
-      canonical = await serverRender(file, { bypass: true }, 32)
-      pcm = await readCanonicalWAV(canonical)
+      canonical = await serverRender(file, { bypass: true }, 32);
+      pcm = await readCanonicalWAV(canonical);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "This file could not be imported.")
-      setLoading(false)
-      return
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "This file could not be imported.",
+      );
+      setLoading(false);
+      return;
     }
-    try { await saveAudio(id, canonical) } catch { storageWarning = "Browser storage is unavailable; keep this tab open and export before leaving." }
-    const duration = pcm.left.length / pcm.sampleRate
+    try {
+      await saveAudio(id, canonical);
+    } catch {
+      storageWarning =
+        "Browser storage is unavailable; keep this tab open and export before leaving.";
+    }
+    const duration = pcm.left.length / pcm.sampleRate;
 
     const seed =
-      [...file.name].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 97
-    const nowIso = new Date().toISOString()
+      Array.from(file.name).reduce((sum, char) => sum + char.charCodeAt(0), 0) %
+      97;
+    const nowIso = new Date().toISOString();
     const track: Track = {
       id,
       title,
@@ -372,25 +451,25 @@ function HomeView() {
       advanced: createDefaultAdvancedParams(),
       profile: "modern_pop_polish",
       persistenceWarning: storageWarning,
-    }
-    dispatch({ type: "ADD_TRACK", track })
-    setLoading(false)
-    setMessage(storageWarning)
-    router.push(`/master/${id}`)
-  }
+    };
+    dispatch({ type: "ADD_TRACK", track });
+    setLoading(false);
+    setMessage(storageWarning);
+    router.push(`/master/${id}`);
+  };
 
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
       const file = Array.from(event.clipboardData?.files ?? []).find((item) =>
         item.type.startsWith("audio/"),
-      )
-      if (file) void importFile(file)
-    }
-    document.addEventListener("paste", onPaste)
+      );
+      if (file) void importFile(file);
+    };
+    document.addEventListener("paste", onPaste);
     return () => {
-      document.removeEventListener("paste", onPaste)
-    }
-  })
+      document.removeEventListener("paste", onPaste);
+    };
+  });
 
   return (
     <div className="page home-page">
@@ -408,23 +487,24 @@ function HomeView() {
           <div className="hero-trust">
             <Icon name="headphones" />
             <span>
-              Local by default. Audio is processed by your local Go server and browser.
+              Local by default. Audio is processed by your local Go server and
+              browser.
             </span>
           </div>
         </div>
         <div
           className={`drop-zone ${dragging ? "is-dragging" : ""}`.trim()}
           onDragOver={(event) => {
-            event.preventDefault()
-            setDragging(true)
+            event.preventDefault();
+            setDragging(true);
           }}
           onDragLeave={() => {
-            setDragging(false)
+            setDragging(false);
           }}
           onDrop={(event: DragEvent) => {
-            event.preventDefault()
-            setDragging(false)
-            void importFile(event.dataTransfer.files[0])
+            event.preventDefault();
+            setDragging(false);
+            void importFile(event.dataTransfer.files[0]);
           }}
           role="region"
           aria-label="Bring in a track: drop audio or choose a file"
@@ -445,9 +525,7 @@ function HomeView() {
             {message ||
               "Drop audio here, paste it, or choose a file from your device."}
           </p>
-          <span className="file-types">
-            PCM WAV · up to 16 MiB
-          </span>
+          <span className="file-types">PCM WAV · up to 16 MiB</span>
           <Button
             variant="primary"
             icon={<Icon name="file-audio" />}
@@ -494,18 +572,18 @@ function HomeView() {
             number="02"
             icon="scissors"
             title="Split"
-            copy="Explore the balance with two to six phase-coherent stem groups."
+            copy="Instrument separation is planned. It is not available in this build."
           />
           <WorkflowCard
             number="03"
             icon="check"
             title="Release check"
-            copy="Review loudness, peaks, dynamics, format, and metadata before delivery."
+            copy="Certified loudness and delivery checks are planned. They are not available yet."
           />
         </div>
       </section>
     </div>
-  )
+  );
 }
 
 function WorkflowCard({
@@ -514,10 +592,10 @@ function WorkflowCard({
   title,
   copy,
 }: {
-  number: string
-  icon: IconName
-  title: string
-  copy: string
+  number: string;
+  icon: IconName;
+  title: string;
+  copy: string;
 }) {
   return (
     <article className="workflow-card">
@@ -528,7 +606,7 @@ function WorkflowCard({
       <h3>{title}</h3>
       <p>{copy}</p>
     </article>
-  )
+  );
 }
 
 function TrackCard({ track, index = 0 }: { track: Track; index?: number }) {
@@ -537,7 +615,9 @@ function TrackCard({ track, index = 0 }: { track: Track; index?: number }) {
       <Artwork seed={track.seed} index={index} />
       <div className="track-card-copy">
         <span className={`status status--${track.status}`}>
-          {statusLabel(track.status)}
+          {track.source === "demo"
+            ? "Design example"
+            : statusLabel(track.status)}
         </span>
         <h3>{track.title}</h3>
         <p>
@@ -549,27 +629,27 @@ function TrackCard({ track, index = 0 }: { track: Track; index?: number }) {
         <Icon name="arrow-right" />
       </span>
     </Link>
-  )
+  );
 }
 
 function LibraryView() {
-  const { state, dispatch } = useStore()
-  const [query, setQuery] = useState("")
-  const [filter, setFilter] = useState("All")
-  const [pendingDelete, setPendingDelete] = useState<Track | null>(null)
+  const { state, dispatch } = useStore();
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("All");
+  const [pendingDelete, setPendingDelete] = useState<Track | null>(null);
 
   const tracks = state.tracks.filter(
     (track) =>
       track.title.toLowerCase().includes(query.toLowerCase()) &&
       (filter === "All" || statusLabel(track.status) === filter.toLowerCase()),
-  )
+  );
 
   return (
     <div className="page">
       <PageTitle
         eyebrow="Your local archive"
         title="Library"
-        copy={`${state.tracks.length} projects stored only in this browser.`}
+        copy={`${String(state.tracks.length)} projects stored only in this browser.`}
         action={
           <Link className="button button--primary" href="/">
             <Icon name="plus" />
@@ -584,19 +664,23 @@ function LibraryView() {
             value={query}
             aria-label="Search your library"
             onChange={(e) => {
-              setQuery(e.target.value)
+              setQuery(e.target.value);
             }}
             placeholder="Search your library"
           />
         </label>
-        <div className="filter-row" role="group" aria-label="Filter projects by status">
+        <div
+          className="filter-row"
+          role="group"
+          aria-label="Filter projects by status"
+        >
           {["All", "Draft", "Ready", "Mastered", "Needs review"].map((item) => (
             <button
               type="button"
               className={filter === item ? "chip is-active" : "chip"}
               aria-pressed={filter === item}
               onClick={() => {
-                setFilter(item)
+                setFilter(item);
               }}
               key={item}
             >
@@ -622,7 +706,9 @@ function LibraryView() {
                 <small>
                   {formatTime(track.duration)} ·{" "}
                   <span className={`status status--${track.status}`}>
-                    {statusLabel(track.status)}
+                    {track.source === "demo"
+                      ? "Design example"
+                      : statusLabel(track.status)}
                   </span>
                 </small>
               </span>
@@ -632,7 +718,9 @@ function LibraryView() {
               <small>{track.sampleRate / 1000} kHz</small>
             </span>
             <span className="metric-number">
-              {track.source === "upload" ? "Unmeasured" : track.metrics.lufs.toFixed(1)}
+              {track.source === "upload"
+                ? "Unmeasured"
+                : track.metrics.lufs.toFixed(1)}
               <small>LUFS</small>
             </span>
             <span>
@@ -643,7 +731,7 @@ function LibraryView() {
               className="icon-button"
               aria-label={`Delete ${track.title}`}
               onClick={() => {
-                setPendingDelete(track)
+                setPendingDelete(track);
               }}
             >
               <Icon name="trash" />
@@ -659,26 +747,27 @@ function LibraryView() {
             <small>Audio and settings stay on this device.</small>
           </span>
         </div>
-        <div className="storage-bar">
-          <span
-            style={{ width: `${Math.min(72, state.tracks.length * 8)}%` }}
-          />
-        </div>
+        <span className="disclosure">
+          Stored only in this browser. Browser data can be cleared by your
+          device.
+        </span>
       </div>
 
       <Modal
         open={pendingDelete !== null}
         eyebrow="Confirm removal"
-        title={pendingDelete ? `Delete “${pendingDelete.title}”?` : "Delete track"}
+        title={
+          pendingDelete ? `Delete “${pendingDelete.title}”?` : "Delete track"
+        }
         onClose={() => {
-          setPendingDelete(null)
+          setPendingDelete(null);
         }}
         actions={
           <>
             <Button
               variant="secondary"
               onClick={() => {
-                setPendingDelete(null)
+                setPendingDelete(null);
               }}
             >
               Cancel
@@ -688,10 +777,10 @@ function LibraryView() {
               icon={<Icon name="trash" />}
               onClick={() => {
                 if (pendingDelete) {
-                  const id = pendingDelete.id
-                  dispatch({ type: "DELETE_TRACK", id })
-                  void deleteAudio(id)
-                  setPendingDelete(null)
+                  const id = pendingDelete.id;
+                  dispatch({ type: "DELETE_TRACK", id });
+                  void deleteAudio(id);
+                  setPendingDelete(null);
                 }
               }}
             >
@@ -706,96 +795,346 @@ function LibraryView() {
         </p>
       </Modal>
     </div>
-  )
+  );
 }
 
 function MasterView({ trackId }: { trackId: string }) {
-  const { state, dispatch } = useStore()
-  const router = useRouter()
-  const track = state.tracks.find(item => item.id === trackId)
-  const [processing, setProcessing] = useState(false)
-  const [source, setSource] = useState<StereoPCM | null>(null)
-  const [preview, setPreview] = useState<StereoPCM | null>(null)
-  const [renderedKey, setRenderedKey] = useState("")
-  const [ab, setAb] = useState<"A" | "B">("A")
-  const [playheadRatio, setPlayheadRatio] = useState(0)
-  const [activeBandId, setActiveBandId] = useState<EQBandId>("low")
-  const [exportOpen, setExportOpen] = useState(false)
-  const [bitDepth, setBitDepth] = useState<ExportBitDepth>(24)
-  const [message, setMessage] = useState("")
-  const [sourceBlob, setSourceBlob] = useState<Blob | null>(null)
-  const settingsKey = track ? JSON.stringify(engineParams(track.advanced)) : ""
-  const fresh = renderedKey === settingsKey && preview !== null
-  const audible = ab === "B" && fresh ? preview : source
-  const levels = useMemo(() => audible ? measuredLevels(audible) : null, [audible])
-  const peaks = useMemo(() => source ? sourcePeaks(source) : [], [source])
+  const { state, dispatch } = useStore();
+  const router = useRouter();
+  const track = state.tracks.find((item) => item.id === trackId);
+  const [processing, setProcessing] = useState(false);
+  const [source, setSource] = useState<StereoPCM | null>(null);
+  const [preview, setPreview] = useState<StereoPCM | null>(null);
+  const [renderedKey, setRenderedKey] = useState("");
+  const [ab, setAb] = useState<"A" | "B">("A");
+  const [playheadRatio, setPlayheadRatio] = useState(0);
+  const [activeBandId, setActiveBandId] = useState<EQBandId>("low");
+  const [exportOpen, setExportOpen] = useState(false);
+  const [bitDepth, setBitDepth] = useState<ExportBitDepth>(24);
+  const [message, setMessage] = useState("");
+  const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
+  const renderAbort = useRef<AbortController | null>(null);
+  useEffect(
+    () => () => {
+      renderAbort.current?.abort();
+    },
+    [],
+  );
+  const settingsKey = track ? JSON.stringify(engineParams(track.advanced)) : "";
+  const fresh = renderedKey === settingsKey && preview !== null;
+  const audible = ab === "B" && fresh ? preview : source;
+  const levels = useMemo(
+    () => (audible ? measuredLevels(audible) : null),
+    [audible],
+  );
+  const peaks = useMemo(() => (source ? sourcePeaks(source) : []), [source]);
 
   useEffect(() => {
-    let cancelled = false
-    setSource(null); setPreview(null); setSourceBlob(null); setRenderedKey(""); setMessage("")
+    let cancelled = false;
+    setSource(null);
+    setPreview(null);
+    setSourceBlob(null);
+    setRenderedKey("");
+    setMessage("");
     async function prepare() {
-      if (!track) return
+      if (!track) return;
       try {
-        const blob = await getAudio(track.id)
-        if (!blob) throw new Error(track.source === "demo" ? "This design example has no uploaded audio. Import a WAV to create a real master." : "The source audio is missing. Import the file again to create a new project.")
-        const canonical = await serverRender(blob, { bypass: true }, 32)
-        const pcm = await readCanonicalWAV(canonical)
-        if (!cancelled) { setSource(pcm); setSourceBlob(canonical) }
-      } catch (error) { if (!cancelled) setMessage(error instanceof Error ? error.message : "The source could not be loaded.") }
+        const blob = await getAudio(track.id);
+        if (!blob)
+          throw new Error(
+            track.source === "demo"
+              ? "This design example has no uploaded audio. Import a WAV to create a real master."
+              : "The source audio is missing. Import the file again to create a new project.",
+          );
+        const canonical = await serverRender(blob, { bypass: true }, 32);
+        const pcm = await readCanonicalWAV(canonical);
+        if (!cancelled) {
+          setSource(pcm);
+          setSourceBlob(canonical);
+        }
+      } catch (error) {
+        if (!cancelled)
+          setMessage(
+            error instanceof Error
+              ? error.message
+              : "The source could not be loaded.",
+          );
+      }
     }
-    void prepare()
-    return () => { cancelled = true }
-  }, [track?.id])
+    void prepare();
+    return () => {
+      cancelled = true;
+    };
+  }, [track?.id]);
 
   async function renderPreview() {
-    if (!track || !source) return
-    setProcessing(true); setMessage("Rendering the uploaded audio with the shared Go WebAssembly engine…")
-    try { const pcm = await processPreview(source, track.advanced); setPreview(pcm); setRenderedKey(settingsKey); setAb("B"); setMessage("Preview ready. Playback uses the shared Go DSP engine."); dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { status: "mastered" } }) }
-    catch (error) { setMessage(error instanceof Error ? error.message : "Preview failed. Please retry.") }
-    finally { setProcessing(false) }
+    if (!track || !source) return;
+    renderAbort.current?.abort();
+    const controller = new AbortController();
+    renderAbort.current = controller;
+    setProcessing(true);
+    setMessage(
+      "Rendering the uploaded audio with the shared Go WebAssembly engine…",
+    );
+    try {
+      const pcm = await processPreview(
+        source,
+        track.advanced,
+        controller.signal,
+      );
+      if (controller.signal.aborted) return;
+      setPreview(pcm);
+      setRenderedKey(settingsKey);
+      setAb("B");
+      setMessage("Preview ready. Playback uses the shared Go DSP engine.");
+      dispatch({
+        type: "UPDATE_TRACK",
+        id: track.id,
+        patch: { status: "mastered" },
+      });
+    } catch (error) {
+      if (!controller.signal.aborted)
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Preview failed. Please retry.",
+        );
+    } finally {
+      if (!controller.signal.aborted) setProcessing(false);
+    }
   }
   async function download() {
-    if (!track || !sourceBlob) return
-    setProcessing(true); setMessage("Rendering WAV from the uploaded source…")
+    if (!track || !sourceBlob) return;
+    setProcessing(true);
+    setMessage("Rendering WAV from the uploaded source…");
     try {
-      const blob = await serverRender(sourceBlob, engineParams(track.advanced), bitDepth)
-      const url = URL.createObjectURL(blob), anchor = document.createElement("a")
-      anchor.href = url; anchor.download = `${track.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-${bitDepth}bit.wav`; anchor.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
-      setMessage(`Exported ${bitDepth === 32 ? "32-bit float" : `${bitDepth}-bit PCM`} WAV at the source rate using the same Go DSP parameters.`)
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Export failed. Please retry.") }
-    finally { setProcessing(false) }
+      const blob = await serverRender(
+        sourceBlob,
+        engineParams(track.advanced),
+        bitDepth,
+      );
+      const url = URL.createObjectURL(blob),
+        anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${track.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-${String(bitDepth)}bit.wav`;
+      anchor.click();
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 1000);
+      setMessage(
+        `Exported ${bitDepth === 32 ? "32-bit float" : `${String(bitDepth)}-bit PCM`} WAV at the source rate using the same Go DSP parameters.`,
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Export failed. Please retry.",
+      );
+    } finally {
+      setProcessing(false);
+    }
   }
-  if (!track) return <div className="page"><PageTitle eyebrow="Local workspace" title="Project not found" copy="This project is not in your browser library." /><Link className="button button--primary" href="/library">Open library</Link></div>
-  return <div className="master-page">
-    <header className="workspace-header">
-      <button type="button" className="icon-button" onClick={() => router.push("/library")} aria-label="Back to library"><Icon name="arrow-left" /></button>
-      <Artwork seed={track.seed} /><div className="workspace-track"><h1>{track.title}</h1><p>{formatTime(track.duration)} · {track.sampleRate / 1000} kHz · WAV</p></div>
-      <div className="mode-tabs" role="tablist" aria-label="Mastering mode"><button type="button" role="tab" aria-selected="true" className="is-active">advanced</button></div>
-      <div className="workspace-actions"><Button disabled={!sourceBlob || processing} icon={<Icon name="arrow-down-to-line" />} onClick={() => setExportOpen(true)}>Export</Button></div>
-    </header>
-    <div className="workspace-layout">
-      <section className="workspace-canvas">
-        <div className="metric-strip" aria-label="Measured audio levels">
-          <div><span>Sample peak</span><strong>{levels?.peak ?? "—"}</strong><small>dBFS</small></div>
-          <div><span>RMS level</span><strong>{levels?.rms ?? "—"}</strong><small>dBFS</small></div>
-          <div><span>Crest factor</span><strong>{levels?.crest ?? "—"}</strong><small>dB</small></div>
-          <div><span>Source rate</span><strong>{track.sampleRate / 1000}</strong><small>kHz</small></div>
-          <div><span>Listening to</span><strong>{ab === "B" && fresh ? "B" : "A"}</strong><small>{ab === "B" && fresh ? "Processed" : "Original"}</small></div>
+  if (!track)
+    return (
+      <div className="page">
+        <PageTitle
+          eyebrow="Local workspace"
+          title="Project not found"
+          copy="This project is not in your browser library."
+        />
+        <Link className="button button--primary" href="/library">
+          Open library
+        </Link>
+      </div>
+    );
+  return (
+    <div className="master-page">
+      <header className="workspace-header">
+        <button
+          type="button"
+          className="icon-button"
+          onClick={() => {
+            router.push("/library");
+          }}
+          aria-label="Back to library"
+        >
+          <Icon name="arrow-left" />
+        </button>
+        <Artwork seed={track.seed} />
+        <div className="workspace-track">
+          <h1>{track.title}</h1>
+          <p>
+            {formatTime(track.duration)} · {track.sampleRate / 1000} kHz · WAV
+          </p>
         </div>
-        <Waveform seed={track.seed} duration={track.duration} peaks={peaks} playheadRatio={playheadRatio} onSeekRatio={setPlayheadRatio} />
-        <RealTransport pcm={audible} ab={ab} onAB={setAb} processedReady={fresh} playheadRatio={playheadRatio} onSeekRatio={setPlayheadRatio} />
-        <div className="render-actions"><Button disabled={!source || processing} onClick={() => void renderPreview()} icon={<Icon name={processing ? "refresh-cw" : "play"} />}>{processing ? "Rendering…" : "Render preview"}</Button><span className="disclosure">{fresh ? "Preview matches your settings." : "Apply your settings to hear a fresh preview. Export always renders current settings."}</span></div>
-        <p className="disclosure" role="status">{message || "Loading source audio…"}</p>{track.persistenceWarning && <p className="disclosure" role="alert">{track.persistenceWarning}</p>}
-        <SpectrumChart seed={track.seed} eqBands={track.advanced.eqEnabled ? track.advanced.eqBands : track.advanced.eqBands.map(band => ({ ...band, enabled: false }))} activeBandId={activeBandId} onSelectBand={setActiveBandId} />
-        <p className="disclosure">The curve shows the configured EQ response, rather than a measured audio spectrum. Preview and export share the same Go processor. LUFS and true-peak certification are unavailable.</p>
-      </section>
-      <aside className="inspector" aria-label="Mastering controls inspector"><span className="eyebrow">Master controls</span><AdvancedControls track={track} activeBandId={activeBandId} onSelectBand={setActiveBandId} /></aside>
+        <div className="mode-tabs" role="tablist" aria-label="Mastering mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected="true"
+            className="is-active"
+          >
+            advanced
+          </button>
+        </div>
+        <div className="workspace-actions">
+          <Button
+            disabled={!sourceBlob || processing}
+            icon={<Icon name="arrow-down-to-line" />}
+            onClick={() => {
+              setExportOpen(true);
+            }}
+          >
+            Export
+          </Button>
+        </div>
+      </header>
+      <div className="workspace-layout">
+        <section className="workspace-canvas">
+          <div className="metric-strip" aria-label="Measured audio levels">
+            <div>
+              <span>Sample peak</span>
+              <strong>{levels?.peak ?? "—"}</strong>
+              <small>dBFS</small>
+            </div>
+            <div>
+              <span>RMS level</span>
+              <strong>{levels?.rms ?? "—"}</strong>
+              <small>dBFS</small>
+            </div>
+            <div>
+              <span>Crest factor</span>
+              <strong>{levels?.crest ?? "—"}</strong>
+              <small>dB</small>
+            </div>
+            <div>
+              <span>Source rate</span>
+              <strong>{track.sampleRate / 1000}</strong>
+              <small>kHz</small>
+            </div>
+            <div>
+              <span>Listening to</span>
+              <strong>{ab === "B" && fresh ? "B" : "A"}</strong>
+              <small>{ab === "B" && fresh ? "Processed" : "Original"}</small>
+            </div>
+          </div>
+          <Waveform
+            seed={track.seed}
+            duration={track.duration}
+            peaks={peaks}
+            playheadRatio={playheadRatio}
+            onSeekRatio={setPlayheadRatio}
+          />
+          <RealTransport
+            pcm={audible}
+            ab={ab}
+            onAB={setAb}
+            processedReady={fresh}
+            playheadRatio={playheadRatio}
+            onSeekRatio={setPlayheadRatio}
+          />
+          <div className="render-actions">
+            <Button
+              disabled={!source || processing}
+              onClick={() => void renderPreview()}
+              icon={<Icon name={processing ? "refresh-cw" : "play"} />}
+            >
+              {processing ? "Rendering…" : "Render preview"}
+            </Button>
+            <span className="disclosure">
+              {fresh
+                ? "Preview matches your settings."
+                : "Apply your settings to hear a fresh preview. Export always renders current settings."}
+            </span>
+          </div>
+          <p className="disclosure" role="status">
+            {message || "Loading source audio…"}
+          </p>
+          {track.persistenceWarning && (
+            <p className="disclosure" role="alert">
+              {track.persistenceWarning}
+            </p>
+          )}
+          <SpectrumChart
+            seed={track.seed}
+            eqBands={
+              track.advanced.eqEnabled
+                ? track.advanced.eqBands
+                : track.advanced.eqBands.map((band) => ({
+                    ...band,
+                    enabled: false,
+                  }))
+            }
+            activeBandId={activeBandId}
+            onSelectBand={setActiveBandId}
+          />
+          <p className="disclosure">
+            The curve approximates your EQ settings; it is not a measured audio
+            spectrum. Preview and export share the same Go processor. LUFS and
+            true-peak certification are unavailable.
+          </p>
+        </section>
+        <aside className="inspector" aria-label="Mastering controls inspector">
+          <span className="eyebrow">Master controls</span>
+          <AdvancedControls
+            track={track}
+            activeBandId={activeBandId}
+            onSelectBand={setActiveBandId}
+          />
+        </aside>
+      </div>
+      <Modal
+        open={exportOpen}
+        eyebrow="Master delivery"
+        title={`Export “${track.title}”`}
+        onClose={() => {
+          setExportOpen(false);
+        }}
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setExportOpen(false);
+              }}
+            >
+              Close
+            </Button>
+            <Button
+              disabled={!sourceBlob || processing}
+              onClick={() => void download()}
+            >
+              {processing ? "Rendering WAV…" : "Render & download WAV"}
+            </Button>
+          </>
+        }
+      >
+        <ControlGroup label="Bit depth">
+          <div className="choice-grid">
+            {([16, 24, 32] as const).map((depth) => (
+              <button
+                type="button"
+                className={bitDepth === depth ? "choice is-active" : "choice"}
+                aria-pressed={bitDepth === depth}
+                key={depth}
+                onClick={() => {
+                  setBitDepth(depth);
+                }}
+              >
+                {depth === 32 ? "32-bit Float" : `${String(depth)}-bit PCM`}
+              </button>
+            ))}
+          </div>
+        </ControlGroup>
+        <p className="disclosure">
+          Source sample rate: {track.sampleRate / 1000} kHz. Original duration
+          and stereo frames are preserved. Integer formats use the shared
+          engine’s output quantization.
+        </p>
+        <p className="disclosure" role="status">
+          {message}
+        </p>
+      </Modal>
     </div>
-    <Modal open={exportOpen} eyebrow="Master delivery" title={`Export “${track.title}”`} onClose={() => setExportOpen(false)} actions={<><Button variant="secondary" onClick={() => setExportOpen(false)}>Close</Button><Button disabled={!sourceBlob || processing} onClick={() => void download()}>{processing ? "Rendering WAV…" : "Render & download WAV"}</Button></>}>
-      <ControlGroup label="Bit depth"><div className="choice-grid">{([16,24,32] as const).map(depth => <button type="button" className={bitDepth === depth ? "choice is-active" : "choice"} aria-pressed={bitDepth === depth} key={depth} onClick={() => setBitDepth(depth)}>{depth === 32 ? "32-bit Float" : `${depth}-bit PCM`}</button>)}</div></ControlGroup>
-      <p className="disclosure">Source sample rate: {track.sampleRate / 1000} kHz. Original duration and stereo frames are preserved. Integer formats use the shared engine’s output quantization.</p><p className="disclosure" role="status">{message}</p>
-    </Modal>
-  </div>
+  );
 }
 
 function AdvancedControls({
@@ -803,14 +1142,14 @@ function AdvancedControls({
   activeBandId,
   onSelectBand,
 }: {
-  track: Track
-  activeBandId: EQBandId
-  onSelectBand: (bandId: EQBandId) => void
+  track: Track;
+  activeBandId: EQBandId;
+  onSelectBand: (bandId: EQBandId) => void;
 }) {
-  const { dispatch } = useStore()
-  const adv = track.advanced
+  const { dispatch } = useStore();
+  const adv = track.advanced;
   const selectedBand =
-    adv.eqBands.find((b) => b.id === activeBandId) ?? adv.eqBands[1]
+    adv.eqBands.find((b) => b.id === activeBandId) ?? adv.eqBands[1];
 
   return (
     <div className="control-stack">
@@ -819,11 +1158,91 @@ function AdvancedControls({
         <p>Adjust a module, then render a preview to hear your settings.</p>
       </div>
 
-      <label className="check-row"><input type="checkbox" checked={adv.eqEnabled} onChange={event => dispatch({ type: "TOGGLE_EQ_ENABLED", trackId: track.id, enabled: event.target.checked })} /><span><Icon name="check" /></span>Enable EQ</label>
-      <label className="check-row"><input type="checkbox" checked={adv.compressor.enabled} onChange={event => dispatch({ type: "UPDATE_COMPRESSOR", trackId: track.id, patch: { enabled: event.target.checked } })} /><span><Icon name="check" /></span>Enable compressor</label>
-      <label className="check-row"><input type="checkbox" checked={adv.saturationModule.enabled} onChange={event => dispatch({ type: "UPDATE_SATURATION", trackId: track.id, patch: { enabled: event.target.checked } })} /><span><Icon name="check" /></span>Enable saturation</label>
-      <label className="check-row"><input type="checkbox" checked={adv.stereo.enabled} onChange={event => dispatch({ type: "UPDATE_STEREO", trackId: track.id, patch: { enabled: event.target.checked } })} /><span><Icon name="check" /></span>Enable stereo</label>
-      <label className="check-row"><input type="checkbox" checked={adv.limiter.enabled} onChange={event => dispatch({ type: "UPDATE_LIMITER", trackId: track.id, patch: { enabled: event.target.checked } })} /><span><Icon name="check" /></span>Enable limiter</label>
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={adv.eqEnabled}
+          onChange={(event) => {
+            dispatch({
+              type: "TOGGLE_EQ_ENABLED",
+              trackId: track.id,
+              enabled: event.target.checked,
+            });
+          }}
+        />
+        <span>
+          <Icon name="check" />
+        </span>
+        Enable EQ
+      </label>
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={adv.compressor.enabled}
+          onChange={(event) => {
+            dispatch({
+              type: "UPDATE_COMPRESSOR",
+              trackId: track.id,
+              patch: { enabled: event.target.checked },
+            });
+          }}
+        />
+        <span>
+          <Icon name="check" />
+        </span>
+        Enable compressor
+      </label>
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={adv.saturationModule.enabled}
+          onChange={(event) => {
+            dispatch({
+              type: "UPDATE_SATURATION",
+              trackId: track.id,
+              patch: { enabled: event.target.checked },
+            });
+          }}
+        />
+        <span>
+          <Icon name="check" />
+        </span>
+        Enable saturation
+      </label>
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={adv.stereo.enabled}
+          onChange={(event) => {
+            dispatch({
+              type: "UPDATE_STEREO",
+              trackId: track.id,
+              patch: { enabled: event.target.checked },
+            });
+          }}
+        />
+        <span>
+          <Icon name="check" />
+        </span>
+        Enable stereo
+      </label>
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={adv.limiter.enabled}
+          onChange={(event) => {
+            dispatch({
+              type: "UPDATE_LIMITER",
+              trackId: track.id,
+              patch: { enabled: event.target.checked },
+            });
+          }}
+        />
+        <span>
+          <Icon name="check" />
+        </span>
+        Enable limiter
+      </label>
       <SliderField
         label="Input gain"
         value={adv.input}
@@ -832,14 +1251,14 @@ function AdvancedControls({
         step={0.5}
         unit="dB"
         onChange={(input) => {
-          dispatch({ type: "UPDATE_INPUT_GAIN", trackId: track.id, input })
+          dispatch({ type: "UPDATE_INPUT_GAIN", trackId: track.id, input });
         }}
       />
 
       <div className="control-group">
         <div className="control-label">
           <span>5-Band Parametric EQ</span>
-          <strong>{ selectedBand.label }</strong>
+          <strong>{selectedBand.label}</strong>
         </div>
         <div className="filter-row" role="tablist" aria-label="EQ bands">
           {adv.eqBands.map((band) => (
@@ -852,7 +1271,7 @@ function AdvancedControls({
                 band.id === selectedBand.id ? "chip is-active" : "chip"
               }
               onClick={() => {
-                onSelectBand(band.id)
+                onSelectBand(band.id);
               }}
             >
               {band.label}
@@ -874,7 +1293,7 @@ function AdvancedControls({
             trackId: track.id,
             bandId: selectedBand.id,
             patch: { gainDb },
-          })
+          });
         }}
       />
       <SliderField
@@ -890,7 +1309,7 @@ function AdvancedControls({
             trackId: track.id,
             bandId: selectedBand.id,
             patch: { freqHz },
-          })
+          });
         }}
       />
       <SliderField
@@ -905,7 +1324,7 @@ function AdvancedControls({
             trackId: track.id,
             bandId: selectedBand.id,
             patch: { q },
-          })
+          });
         }}
       />
 
@@ -921,7 +1340,7 @@ function AdvancedControls({
             type: "UPDATE_COMPRESSOR",
             trackId: track.id,
             patch: { threshold },
-          })
+          });
         }}
       />
       <SliderField
@@ -936,7 +1355,7 @@ function AdvancedControls({
             type: "UPDATE_COMPRESSOR",
             trackId: track.id,
             patch: { ratio },
-          })
+          });
         }}
       />
       <SliderField
@@ -951,7 +1370,7 @@ function AdvancedControls({
             type: "UPDATE_COMPRESSOR",
             trackId: track.id,
             patch: { attack },
-          })
+          });
         }}
       />
       <SliderField
@@ -966,7 +1385,7 @@ function AdvancedControls({
             type: "UPDATE_COMPRESSOR",
             trackId: track.id,
             patch: { release },
-          })
+          });
         }}
       />
 
@@ -982,7 +1401,7 @@ function AdvancedControls({
             type: "UPDATE_STEREO",
             trackId: track.id,
             patch: { width },
-          })
+          });
         }}
       />
       <label className="check-row">
@@ -994,7 +1413,7 @@ function AdvancedControls({
               type: "UPDATE_STEREO",
               trackId: track.id,
               patch: { monoBass: e.target.checked },
-            })
+            });
           }}
         />
         <span>
@@ -1015,11 +1434,15 @@ function AdvancedControls({
             type: "UPDATE_SATURATION",
             trackId: track.id,
             patch: { drive },
-          })
+          });
         }}
       />
       <ControlGroup label="Saturation character">
-        <div className="choice-grid" role="group" aria-label="Saturation character">
+        <div
+          className="choice-grid"
+          role="group"
+          aria-label="Saturation character"
+        >
           {(["Warm", "Thick", "Crisp"] as SaturationCharacter[]).map((char) => (
             <button
               type="button"
@@ -1035,7 +1458,7 @@ function AdvancedControls({
                   type: "UPDATE_SATURATION",
                   trackId: track.id,
                   patch: { character: char },
-                })
+                });
               }}
             >
               {char}
@@ -1056,7 +1479,7 @@ function AdvancedControls({
             type: "UPDATE_LIMITER",
             trackId: track.id,
             patch: { ceiling },
-          })
+          });
         }}
       />
 
@@ -1064,49 +1487,49 @@ function AdvancedControls({
         variant="secondary"
         icon={<Icon name="rotate-ccw" />}
         onClick={() => {
-          dispatch({ type: "RESET_ADVANCED", trackId: track.id })
+          dispatch({ type: "RESET_ADVANCED", trackId: track.id });
         }}
       >
         Reset modules
       </Button>
     </div>
-  )
+  );
 }
 
 function SplitView({ trackId }: { trackId: string }) {
-  const { state, dispatch } = useStore()
-  const router = useRouter()
+  const { state, dispatch } = useStore();
+  const router = useRouter();
   const track =
-    state.tracks.find((item) => item.id === trackId) ?? state.tracks[0]
-  const existing = state.stems.find((item) => item.trackId === track?.id)
-  const [count, setCount] = useState(existing?.count ?? 4)
-  const [working, setWorking] = useState(false)
-  const [pendingCount, setPendingCount] = useState<number | null>(null)
+    state.tracks.find((item) => item.id === trackId) ?? state.tracks[0];
+  const existing = state.stems.find((item) => item.trackId === track?.id);
+  const [count, setCount] = useState(existing?.count ?? 4);
+  const [working, setWorking] = useState(false);
+  const [pendingCount, setPendingCount] = useState<number | null>(null);
 
-  if (!track) return null
+  if (!track) return null;
 
-  const stems: Stem[] = existing?.stems ?? []
-  const currentStemNames = stemNames[count] ?? stemNames[4] ?? []
+  const stems: Stem[] = existing?.stems ?? [];
+  const currentStemNames = stemNames.get(count) ?? stemNames.get(4) ?? [];
 
   const split = () => {
-    setWorking(true)
+    setWorking(true);
     setTimeout(() => {
-      const names = stemNames[count] ?? stemNames[4] ?? []
+      const names = stemNames.get(count) ?? stemNames.get(4) ?? [];
       const generated: Stem[] = names.map((name, index) => ({
-        id: `${track.id}-${index}`,
+        id: `${track.id}-${String(index)}`,
         name,
         level: 0,
         pan: 0,
         muted: false,
         solo: false,
-      }))
+      }));
       dispatch({
         type: "SAVE_STEMS",
         project: { trackId: track.id, count, complete: true, stems: generated },
-      })
-      setWorking(false)
-    }, 250)
-  }
+      });
+      setWorking(false);
+    }, 250);
+  };
 
   const updateStem = (id: string, patch: Partial<Omit<Stem, "id">>) => {
     dispatch({
@@ -1114,8 +1537,8 @@ function SplitView({ trackId }: { trackId: string }) {
       trackId: track.id,
       stemId: id,
       patch,
-    })
-  }
+    });
+  };
 
   return (
     <div className="page">
@@ -1128,7 +1551,7 @@ function SplitView({ trackId }: { trackId: string }) {
             variant="secondary"
             icon={<Icon name="arrow-left" />}
             onClick={() => {
-              router.push(`/master/${track.id}`)
+              router.push(`/master/${track.id}`);
             }}
           >
             Back to master
@@ -1139,9 +1562,7 @@ function SplitView({ trackId }: { trackId: string }) {
         <div>
           <span className="eyebrow">Output layout</span>
           <h2>How many stems do you need?</h2>
-          <p>
-            Labels adapt to the selected count before separation begins.
-          </p>
+          <p>Labels adapt to the selected count before separation begins.</p>
         </div>
         <div className="stem-count" role="group" aria-label="Stem count">
           {[2, 3, 4, 5, 6].map((number) => (
@@ -1152,9 +1573,9 @@ function SplitView({ trackId }: { trackId: string }) {
               key={number}
               onClick={() => {
                 if (stems.length > 0 && number !== count) {
-                  setPendingCount(number)
+                  setPendingCount(number);
                 } else {
-                  setCount(number)
+                  setCount(number);
                 }
               }}
             >
@@ -1196,7 +1617,7 @@ function SplitView({ trackId }: { trackId: string }) {
             <Button
               icon={<Icon name="arrow-right" />}
               onClick={() => {
-                router.push(`/master/${track.id}`)
+                router.push(`/master/${track.id}`);
               }}
             >
               Send to mastering
@@ -1206,12 +1627,12 @@ function SplitView({ trackId }: { trackId: string }) {
             {stems.map((stem, index) => (
               <article className="stem-card" key={stem.id}>
                 <div className="stem-card-head">
-                  <i className={`stem-color stem-color--${index}`} />
+                  <i className={`stem-color stem-color--${String(index)}`} />
                   <input
                     value={stem.name}
-                    aria-label={`Stem ${index + 1} name`}
+                    aria-label={`Stem ${String(index + 1)} name`}
                     onChange={(e) => {
-                      updateStem(stem.id, { name: e.target.value })
+                      updateStem(stem.id, { name: e.target.value });
                     }}
                   />
                 </div>
@@ -1229,7 +1650,7 @@ function SplitView({ trackId }: { trackId: string }) {
                   step={1}
                   unit="dB"
                   onChange={(level) => {
-                    updateStem(stem.id, { level })
+                    updateStem(stem.id, { level });
                   }}
                 />
                 <ControlGroup
@@ -1238,8 +1659,8 @@ function SplitView({ trackId }: { trackId: string }) {
                     stem.pan === 0
                       ? "C"
                       : stem.pan < 0
-                        ? `${-stem.pan} L`
-                        : `${stem.pan} R`
+                        ? `${String(-stem.pan)} L`
+                        : `${String(stem.pan)} R`
                   }
                 >
                   <input
@@ -1249,7 +1670,7 @@ function SplitView({ trackId }: { trackId: string }) {
                     value={stem.pan}
                     aria-label={`${stem.name} pan`}
                     onChange={(e) => {
-                      updateStem(stem.id, { pan: Number(e.target.value) })
+                      updateStem(stem.id, { pan: Number(e.target.value) });
                     }}
                   />
                 </ControlGroup>
@@ -1259,7 +1680,7 @@ function SplitView({ trackId }: { trackId: string }) {
                     className={stem.muted ? "is-active" : ""}
                     aria-pressed={stem.muted}
                     onClick={() => {
-                      updateStem(stem.id, { muted: !stem.muted })
+                      updateStem(stem.id, { muted: !stem.muted });
                     }}
                   >
                     Mute
@@ -1269,7 +1690,7 @@ function SplitView({ trackId }: { trackId: string }) {
                     className={stem.solo ? "is-active" : ""}
                     aria-pressed={stem.solo}
                     onClick={() => {
-                      updateStem(stem.id, { solo: !stem.solo })
+                      updateStem(stem.id, { solo: !stem.solo });
                     }}
                   >
                     Solo
@@ -1284,16 +1705,16 @@ function SplitView({ trackId }: { trackId: string }) {
       <Modal
         open={pendingCount !== null}
         eyebrow="Change stem layout"
-        title={`Switch to ${pendingCount ?? count} stems?`}
+        title={`Switch to ${String(pendingCount ?? count)} stems?`}
         onClose={() => {
-          setPendingCount(null)
+          setPendingCount(null);
         }}
         actions={
           <>
             <Button
               variant="secondary"
               onClick={() => {
-                setPendingCount(null)
+                setPendingCount(null);
               }}
             >
               Keep current stems
@@ -1302,7 +1723,7 @@ function SplitView({ trackId }: { trackId: string }) {
               variant="primary"
               onClick={() => {
                 if (pendingCount !== null) {
-                  setCount(pendingCount)
+                  setCount(pendingCount);
                   dispatch({
                     type: "SAVE_STEMS",
                     project: {
@@ -1311,8 +1732,8 @@ function SplitView({ trackId }: { trackId: string }) {
                       complete: false,
                       stems: [],
                     },
-                  })
-                  setPendingCount(null)
+                  });
+                  setPendingCount(null);
                 }
               }}
             >
@@ -1327,22 +1748,22 @@ function SplitView({ trackId }: { trackId: string }) {
         </p>
       </Modal>
     </div>
-  )
+  );
 }
 
 function AlbumsView() {
-  const { state, dispatch } = useStore()
+  const { state, dispatch } = useStore();
   const create = () => {
     const album: Album = {
-      id: `album-${Date.now()}`,
-      title: `Untitled sequence ${state.albums.length + 1}`,
+      id: `album-${String(Date.now())}`,
+      title: `Untitled sequence ${String(state.albums.length + 1)}`,
       artist: "",
       target: "−14 LUFS",
       trackIds: [],
       mastered: false,
-    }
-    dispatch({ type: "ADD_ALBUM", album })
-  }
+    };
+    dispatch({ type: "ADD_ALBUM", album });
+  };
   return (
     <div className="page">
       <PageTitle
@@ -1380,7 +1801,7 @@ function AlbumsView() {
               href={`/albums/${album.id}`}
               key={album.id}
             >
-              <div className={`album-art album-art--${index % 3}`}>
+              <div className={`album-art album-art--${String(index % 3)}`}>
                 <span>{String(index + 1).padStart(2, "0")}</span>
               </div>
               <span className="eyebrow">{album.trackIds.length} tracks</span>
@@ -1395,13 +1816,13 @@ function AlbumsView() {
         </div>
       )}
     </div>
-  )
+  );
 }
 
 function AlbumView({ albumId }: { albumId: string }) {
-  const { state, dispatch } = useStore()
+  const { state, dispatch } = useStore();
   const album =
-    state.albums.find((item) => item.id === albumId) ?? state.albums[0]
+    state.albums.find((item) => item.id === albumId) ?? state.albums[0];
 
   if (!album) {
     return (
@@ -1417,12 +1838,12 @@ function AlbumView({ albumId }: { albumId: string }) {
           }
         />
       </div>
-    )
+    );
   }
 
   const albumTracks = album.trackIds
     .map((id) => state.tracks.find((track) => track.id === id))
-    .filter((t): t is Track => t !== undefined)
+    .filter((t): t is Track => t !== undefined);
 
   return (
     <div className="page">
@@ -1441,7 +1862,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                 type: "UPDATE_ALBUM",
                 id: album.id,
                 patch: { title: e.target.value },
-              })
+              });
             }}
           />
           <input
@@ -1454,7 +1875,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                 type: "UPDATE_ALBUM",
                 id: album.id,
                 patch: { artist: e.target.value },
-              })
+              });
             }}
           />
           <div className="album-meta">
@@ -1470,7 +1891,7 @@ function AlbumView({ albumId }: { albumId: string }) {
               type: "UPDATE_ALBUM",
               id: album.id,
               patch: { mastered: true },
-            })
+            });
           }}
         >
           Master album
@@ -1493,7 +1914,10 @@ function AlbumView({ albumId }: { albumId: string }) {
                   <strong>{track.title}</strong>
                   <small>
                     {formatTime(track.duration)} ·{" "}
-                    {track.source === "upload" ? "Unmeasured" : track.metrics.lufs.toFixed(1)} LUFS
+                    {track.source === "upload"
+                      ? "Unmeasured"
+                      : track.metrics.lufs.toFixed(1)}{" "}
+                    LUFS
                   </small>
                 </div>
                 <button
@@ -1509,7 +1933,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                           (id) => id !== track.id,
                         ),
                       },
-                    })
+                    });
                   }}
                 >
                   <Icon name="x" />
@@ -1530,7 +1954,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                       type: "UPDATE_ALBUM",
                       id: album.id,
                       patch: { trackIds: [...album.trackIds, track.id] },
-                    })
+                    });
                   }}
                 >
                   <Icon name="plus" />
@@ -1557,10 +1981,14 @@ function AlbumView({ albumId }: { albumId: string }) {
                 <div key={track.id}>
                   <span
                     style={{
-                      height: `${Math.max(15, Math.min(95, 55 + (track.metrics.lufs + 18) * 8))}%`,
+                      height: `${String(Math.max(15, Math.min(95, 55 + (track.metrics.lufs + 18) * 8)))}%`,
                     }}
                   >
-                    <i>{track.source === "upload" ? "Unmeasured" : track.metrics.lufs.toFixed(1)}</i>
+                    <i>
+                      {track.source === "upload"
+                        ? "Unmeasured"
+                        : track.metrics.lufs.toFixed(1)}
+                    </i>
                   </span>
                   <small>{index + 1}</small>
                 </div>
@@ -1572,21 +2000,21 @@ function AlbumView({ albumId }: { albumId: string }) {
         </section>
       </div>
     </div>
-  )
+  );
 }
 
 function ReferenceView({ trackId }: { trackId: string }) {
-  const { state, dispatch } = useStore()
-  const router = useRouter()
+  const { state, dispatch } = useStore();
+  const router = useRouter();
   const track =
-    state.tracks.find((item) => item.id === trackId) ?? state.tracks[0]
+    state.tracks.find((item) => item.id === trackId) ?? state.tracks[0];
   const [referenceId, setReferenceId] = useState(
     state.tracks.find((item) => item.id !== track?.id)?.id ?? "",
-  )
-  const [amount, setAmount] = useState(62)
+  );
+  const [amount, setAmount] = useState(62);
 
-  if (!track) return null
-  const reference = state.tracks.find((item) => item.id === referenceId)
+  if (!track) return null;
+  const reference = state.tracks.find((item) => item.id === referenceId);
 
   return (
     <div className="page">
@@ -1599,7 +2027,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
             variant="secondary"
             icon={<Icon name="arrow-left" />}
             onClick={() => {
-              router.push(`/master/${track.id}`)
+              router.push(`/master/${track.id}`);
             }}
           >
             Back to master
@@ -1622,7 +2050,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
                   aria-label="Reference track"
                   value={referenceId}
                   onChange={(e) => {
-                    setReferenceId(e.target.value)
+                    setReferenceId(e.target.value);
                   }}
                 >
                   {state.tracks
@@ -1653,7 +2081,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
                   points={Array.from(
                     { length: 13 },
                     (_, i) =>
-                      `${i * 8.33},${58 - ((reference.seed * (i + 3) * 5 + i * 9) % 32)}`,
+                      `${String(i * 8.33)},${String(58 - ((reference.seed * (i + 3) * 5 + i * 9) % 32))}`,
                   ).join(" ")}
                   fill="none"
                   stroke="var(--moss)"
@@ -1701,8 +2129,8 @@ function ReferenceView({ trackId }: { trackId: string }) {
                 type: "UPDATE_SIMPLE",
                 id: track.id,
                 patch: { tone: "Reference-led", intensity: amount },
-              })
-              router.push(`/master/${track.id}`)
+              });
+              router.push(`/master/${track.id}`);
             }}
           >
             Apply reference direction
@@ -1710,14 +2138,18 @@ function ReferenceView({ trackId }: { trackId: string }) {
         </aside>
       </div>
     </div>
-  )
+  );
 }
 
 function MetricMini({ track }: { track: Track }) {
   return (
     <div className="metric-mini">
       <span>
-        <strong>{track.source === "upload" ? "Unmeasured" : track.metrics.lufs.toFixed(1)}</strong>
+        <strong>
+          {track.source === "upload"
+            ? "Unmeasured"
+            : track.metrics.lufs.toFixed(1)}
+        </strong>
         <small>LUFS</small>
       </span>
       <span>
@@ -1729,33 +2161,33 @@ function MetricMini({ track }: { track: Track }) {
         <small>Width</small>
       </span>
     </div>
-  )
+  );
 }
 
 function ReleaseView({ trackId }: { trackId: string }) {
-  const { state, dispatch } = useStore()
-  const router = useRouter()
+  const { state, dispatch } = useStore();
+  const router = useRouter();
   const track =
-    state.tracks.find((item) => item.id === trackId) ?? state.tracks[0]
-  const [platform, setPlatform] = useState("Spotify")
-  const [scanning, setScanning] = useState(false)
-  const [score, setScore] = useState<number | undefined>(track?.releaseScore)
+    state.tracks.find((item) => item.id === trackId) ?? state.tracks[0];
+  const [platform, setPlatform] = useState("Spotify");
+  const [scanning, setScanning] = useState(false);
+  const [score, setScore] = useState<number | undefined>(track?.releaseScore);
 
-  if (!track) return null
+  if (!track) return null;
 
   const run = () => {
-    setScanning(true)
+    setScanning(true);
     setTimeout(() => {
-      const next = 84 + (track.seed % 11)
-      setScore(next)
+      const next = 84 + (track.seed % 11);
+      setScore(next);
       dispatch({
         type: "UPDATE_TRACK",
         id: track.id,
         patch: { releaseScore: next },
-      })
-      setScanning(false)
-    }, 250)
-  }
+      });
+      setScanning(false);
+    }, 250);
+  };
 
   const checks: [string, string, "pass" | "warn", string][] = [
     [
@@ -1784,11 +2216,11 @@ function ReleaseView({ trackId }: { trackId: string }) {
     ],
     [
       "Source format",
-      `${track.format} · ${track.sampleRate / 1000} kHz`,
+      `${track.format} · ${String(track.sampleRate / 1000)} kHz`,
       "pass",
       "Suitable source for delivery preparation.",
     ],
-  ]
+  ];
 
   return (
     <div className="page">
@@ -1801,7 +2233,7 @@ function ReleaseView({ trackId }: { trackId: string }) {
             variant="secondary"
             icon={<Icon name="arrow-left" />}
             onClick={() => {
-              router.push(`/master/${track.id}`)
+              router.push(`/master/${track.id}`);
             }}
           >
             Back to master
@@ -1837,7 +2269,7 @@ function ReleaseView({ trackId }: { trackId: string }) {
                 className={platform === item ? "chip is-active" : "chip"}
                 aria-pressed={platform === item}
                 onClick={() => {
-                  setPlatform(item)
+                  setPlatform(item);
                 }}
                 key={item}
               >
@@ -1872,7 +2304,9 @@ function ReleaseView({ trackId }: { trackId: string }) {
               <span className={`check-icon check-icon--${status}`}>
                 <Icon name={status === "pass" ? "check" : "circle-alert"} />
               </span>
-              <strong>{name} ({status === "pass" ? "Pass" : "Review"})</strong>
+              <strong>
+                {name} ({status === "pass" ? "Pass" : "Review"})
+              </strong>
               <span>{value}</span>
               <p>{note}</p>
             </div>
@@ -1891,12 +2325,12 @@ function ReleaseView({ trackId }: { trackId: string }) {
                     ),
                   ],
                   { type: "application/json" },
-                )
-                const a = document.createElement("a")
-                a.href = URL.createObjectURL(blob)
-                a.download = `${track.title}-release-report.json`
-                a.click()
-                URL.revokeObjectURL(a.href)
+                );
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(blob);
+                a.download = `${track.title}-release-report.json`;
+                a.click();
+                URL.revokeObjectURL(a.href);
               }}
             >
               Download JSON report
@@ -1905,13 +2339,13 @@ function ReleaseView({ trackId }: { trackId: string }) {
         </section>
       )}
     </div>
-  )
+  );
 }
 
 function ToolsView() {
-  const { state } = useStore()
-  const first = state.tracks[0]
-  const targetId = first?.id ?? "demo-1"
+  const { state } = useStore();
+  const first = state.tracks[0];
+  const targetId = first?.id ?? "demo-1";
   return (
     <div className="page">
       <PageTitle
@@ -1943,7 +2377,7 @@ function ToolsView() {
         />
       </div>
     </div>
-  )
+  );
 }
 
 function ToolCard({
@@ -1953,11 +2387,11 @@ function ToolCard({
   copy,
   href,
 }: {
-  icon: IconName
-  eyebrow: string
-  title: string
-  copy: string
-  href: string
+  icon: IconName;
+  eyebrow: string;
+  title: string;
+  copy: string;
+  href: string;
 }) {
   return (
     <Link className="tool-card" href={href}>
@@ -1971,5 +2405,5 @@ function ToolCard({
         Open tool <Icon name="arrow-right" />
       </span>
     </Link>
-  )
+  );
 }

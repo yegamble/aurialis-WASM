@@ -5,8 +5,51 @@ const SLOTS = 256;
 const FRAMES = QUANTUM * SLOTS;
 const WRITE = 0, READ = 1, GENERATION = 2, ERROR = 5, WAKE = 7;
 let header, tags, samples, inputPort, activeGeneration = 0, version = 0, pumping = false, stopped = false;
-const left = new Float32Array(QUANTUM), right = new Float32Array(QUANTUM);
-const outLeft = new Float32Array(QUANTUM), outRight = new Float32Array(QUANTUM);
+let direct, memoryBuffer, left, right, outLeft, outRight;
+function refreshLiveBuffers() {
+  if (direct.memory.buffer === memoryBuffer) return;
+  const pointers = [];
+  for (let channel = 0; channel < 4; channel++) {
+    const raw = direct.buffer(channel);
+    if (!Number.isInteger(raw) || raw < -2147483648 || raw > 2147483647)
+      throw new Error("The live audio engine returned an invalid buffer address.");
+    pointers.push(raw >>> 0);
+  }
+  // A first call can grow Go's stack/memory too; read the buffer after getters.
+  const buffer = direct.memory.buffer;
+  const bytes = QUANTUM * Float32Array.BYTES_PER_ELEMENT;
+  for (let channel = 0; channel < pointers.length; channel++) {
+    const pointer = pointers[channel];
+    if (pointer === 0 || pointer % 4 !== 0 || pointer + bytes > buffer.byteLength)
+      throw new Error("The live audio engine returned an invalid buffer address.");
+    for (let previous = 0; previous < channel; previous++) {
+      if (pointer < pointers[previous] + bytes && pointers[previous] < pointer + bytes)
+        throw new Error("The live audio engine returned overlapping buffers.");
+    }
+  }
+  left = new Float32Array(buffer, pointers[0], QUANTUM);
+  right = new Float32Array(buffer, pointers[1], QUANTUM);
+  outLeft = new Float32Array(buffer, pointers[2], QUANTUM);
+  outRight = new Float32Array(buffer, pointers[3], QUANTUM);
+  memoryBuffer = buffer;
+}
+function bindDirectExports(exports) {
+  if (!(exports.mem instanceof WebAssembly.Memory)
+    || typeof exports.aurialis_live_buffer !== "function"
+    || typeof exports.aurialis_live_process !== "function"
+    || typeof exports.aurialis_live_reset !== "function")
+    throw new Error("The shared audio engine is missing its fixed-buffer interface.");
+  direct = { memory: exports.mem, buffer: exports.aurialis_live_buffer,
+    process: exports.aurialis_live_process, reset: exports.aurialis_live_reset };
+  memoryBuffer = undefined;
+  refreshLiveBuffers();
+}
+function processLiveBlock() {
+  refreshLiveBuffers();
+  const frames = direct.process();
+  refreshLiveBuffers();
+  return frames;
+}
 function fail(message) {
   stopped = true;
   if (header) Atomics.store(header, ERROR, 1);
@@ -21,7 +64,7 @@ function warmUp(sampleRate) {
     right[i] = 0.04 * Math.sin(2 * Math.PI * 1000 * i / sampleRate + 0.3);
   }
   for (let block = 0; block < 256; block++) {
-    if (self.aurialisDSPProcessBlock(left, right, outLeft, outRight) !== QUANTUM)
+    if (processLiveBlock() !== QUANTUM)
       throw new Error("The live audio engine could not warm up.");
   }
   left.fill(0); right.fill(0); outLeft.fill(0); outRight.fill(0);
@@ -29,8 +72,10 @@ function warmUp(sampleRate) {
 function reset(requestedGeneration = Atomics.load(header, GENERATION)) {
   const generation = Atomics.load(header, GENERATION);
   if (requestedGeneration !== generation || activeGeneration === generation) return;
+  const result = direct.reset();
+  refreshLiveBuffers();
+  if (result !== 1) throw new Error("The live audio engine could not reset.");
   activeGeneration = generation;
-  if (!self.aurialisDSPReset()) throw new Error("The live audio engine could not reset.");
   Atomics.store(header, READ, 0);
 }
 function pump() {
@@ -45,11 +90,12 @@ function pump() {
       if (written - read > SLOTS) throw new Error("The live audio worker fell behind its bounded buffer.");
       const sequence = read + 1, slot = (sequence - 1) % SLOTS, offset = slot * QUANTUM;
       if (Atomics.load(tags, slot) !== sequence || Atomics.load(tags, SLOTS + slot) !== activeGeneration) break;
+      refreshLiveBuffers();
       for (let i = 0; i < QUANTUM; i++) {
         left[i] = samples[offset + i];
         right[i] = samples[FRAMES + offset + i];
       }
-      if (self.aurialisDSPProcessBlock(left, right, outLeft, outRight) !== QUANTUM)
+      if (processLiveBlock() !== QUANTUM)
         throw new Error("The live audio engine rejected an audio block.");
       if (activeGeneration !== Atomics.load(header, GENERATION)) break;
       for (let i = 0; i < QUANTUM; i++) {
@@ -90,6 +136,7 @@ self.onmessage = async (event) => {
       if (!self.aurialisDSPReady || !self.aurialisDSPInit(message.sampleRate)
         || !self.aurialisDSPSetParams(message.params))
         throw new Error("The live audio engine could not initialize these settings.");
+      bindDirectExports(result.instance.exports);
       version = message.version;
       warmUp(message.sampleRate);
       reset();
@@ -97,7 +144,9 @@ self.onmessage = async (event) => {
       inputPort.start();
       self.postMessage({ type: "ready" });
     } else if (message.type === "params") {
-      if (!self.aurialisDSPSetParams(message.params))
+      const accepted = self.aurialisDSPSetParams(message.params);
+      refreshLiveBuffers();
+      if (!accepted)
         throw new Error("The live audio engine rejected these settings.");
       version = message.version;
     } else if (message.type === "reset" && header) {

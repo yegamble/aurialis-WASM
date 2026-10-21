@@ -108,6 +108,8 @@ export type Metrics = {
 export type TrackStatus = "draft" | "ready" | "mastered" | "needs-review";
 
 export type Track = {
+  /** Only an explicit Simple selection establishes a preset association. */
+  simpleCustom?: boolean;
   persistenceWarning?: string;
   measurements?: MeasuredAudioMetrics;
   measurementKind?: "source" | "album-render";

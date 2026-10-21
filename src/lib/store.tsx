@@ -10,7 +10,7 @@ import {
   type Dispatch,
   type ReactNode,
 } from "react";
-import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "./audio-dsp";
+import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP } from "./audio-dsp";
 import type {
   Album,
   AdvancedParams,
@@ -62,6 +62,7 @@ type StoreState = {
 type StoreAction =
   | { type: "ADD_TRACK"; track: Track }
   | { type: "UPDATE_TRACK"; id: string; patch: Partial<Track> }
+  | { type: "APPLY_NORMALIZED_GAIN"; id: string; expected: AdvancedParams; input: number }
   | {
       type: "UPDATE_SIMPLE";
       id: string;
@@ -116,7 +117,7 @@ export function reduceStoreState(
 ): StoreState {
   switch (action.type) {
     case "ADD_TRACK":
-      return { ...state, tracks: [action.track, ...state.tracks] };
+      return { ...state, tracks: [{ ...action.track, simpleCustom: action.track.simpleCustom ?? true }, ...state.tracks] };
 
     case "UPDATE_TRACK":
       return {
@@ -124,18 +125,33 @@ export function reduceStoreState(
         tracks: updateTrackInList(state.tracks, action.id, (track) => ({
           ...track,
           ...action.patch,
+          ...(action.patch.advanced ? { simpleCustom: action.patch.simpleCustom ?? true } : {}),
           updatedAt: new Date().toISOString(),
         })),
+      };
+
+    case "APPLY_NORMALIZED_GAIN":
+      return {
+        ...state,
+        tracks: updateTrackInList(state.tracks, action.id, (track) => track.advanced === action.expected ? {
+          ...track, advanced: { ...track.advanced, input: action.input }, updatedAt: new Date().toISOString(),
+        } : track),
       };
 
     case "UPDATE_SIMPLE":
       return {
         ...state,
-        tracks: updateTrackInList(state.tracks, action.id, (track) => ({
-          ...track,
-          ...action.patch,
-          updatedAt: new Date().toISOString(),
-        })),
+        tracks: updateTrackInList(state.tracks, action.id, (track) => {
+          const next = { ...track, ...action.patch };
+          const mapped = clampAdvancedToSampleRate(mapSimpleToDSP(next.genre, next.tone, next.intensity, next.target), next.sampleRate);
+          const directionChanged = action.patch.genre !== undefined || action.patch.tone !== undefined || action.patch.intensity !== undefined;
+          return {
+            ...next,
+            simpleCustom: directionChanged ? false : track.simpleCustom ?? true,
+            advanced: directionChanged ? mapped : { ...track.advanced, limiter: { ...track.advanced.limiter, targetLufs: mapped.limiter.targetLufs, ceiling: mapped.limiter.ceiling } },
+            updatedAt: new Date().toISOString(),
+          };
+        }),
       };
 
     case "UPDATE_INPUT_GAIN":
@@ -143,6 +159,7 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
           ...track,
+          simpleCustom: true,
           advanced: {
             ...track.advanced,
             input: action.input,
@@ -156,6 +173,7 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
           ...track,
+          simpleCustom: true,
           advanced: {
             ...track.advanced,
             eqEnabled: action.enabled,
@@ -173,6 +191,7 @@ export function reduceStoreState(
           ) as Track["advanced"]["eqBands"];
           return {
             ...track,
+            simpleCustom: true,
             advanced: {
               ...track.advanced,
               eqBands: nextBands,
@@ -192,6 +211,7 @@ export function reduceStoreState(
           };
           return {
             ...track,
+            simpleCustom: true,
             advanced: {
               ...track.advanced,
               threshold: nextComp.threshold,
@@ -215,6 +235,7 @@ export function reduceStoreState(
           };
           return {
             ...track,
+            simpleCustom: true,
             advanced: {
               ...track.advanced,
               saturation: nextSat.drive,
@@ -235,6 +256,7 @@ export function reduceStoreState(
           };
           return {
             ...track,
+            simpleCustom: true,
             advanced: {
               ...track.advanced,
               width: nextStereo.width,
@@ -250,6 +272,7 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
           ...track,
+          simpleCustom: true,
           advanced: {
             ...track.advanced,
             limiter: {
@@ -266,6 +289,7 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
           ...track,
+          simpleCustom: true,
           advanced: {
             ...track.advanced,
             repair: {
@@ -282,6 +306,7 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
           ...track,
+          simpleCustom: true,
           advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate),
           updatedAt: new Date().toISOString(),
         })),
@@ -341,6 +366,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
     delete restored.releaseScore;
     return {
       ...restored,
+      simpleCustom: track.simpleCustom !== false,
       mode: track.mode === "deep" ? "advanced" : track.mode,
       advanced: clampAdvancedToSampleRate({
         ...baseAdv,

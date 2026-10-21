@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { initialStoreState as emptyStore, normalizeHydratedState, reduceStoreState } from "../store";
 import { testStore as initialStoreState } from "./fixtures";
+import { mapSimpleToDSP } from "../audio-dsp";
 import type { EQBandId } from "../types";
 
 describe("Aurialis Control Isolation & Parameter Orthogonality", () => {
   it("starts with an empty production workspace", () => {
     expect(emptyStore).toEqual({ tracks: [], albums: [], stems: [] });
   });
-  it("isolates Simple mode controls without mutating Advanced DSP or other tracks", () => {
+  it("applies Simple choices to shared Advanced DSP without mutating other tracks", () => {
     const beforeTrack1 = structuredClone(initialStoreState.tracks[0]);
     const beforeTrack2 = structuredClone(initialStoreState.tracks[1]);
     if (!beforeTrack1 || !beforeTrack2) throw new Error("Missing demo tracks");
@@ -25,7 +26,8 @@ describe("Aurialis Control Isolation & Parameter Orthogonality", () => {
     expect(updated1.tone).toBe(beforeTrack1.tone);
     expect(updated1.intensity).toBe(beforeTrack1.intensity);
     expect(updated1.target).toBe(beforeTrack1.target);
-    expect(updated1.advanced).toEqual(beforeTrack1.advanced);
+    expect(updated1.advanced).toEqual(mapSimpleToDSP("Hip-hop", beforeTrack1.tone, beforeTrack1.intensity, beforeTrack1.target));
+    expect(updated1.simpleCustom).toBe(false);
     expect(updated2).toEqual(beforeTrack2);
   });
 

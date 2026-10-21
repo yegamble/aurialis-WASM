@@ -1,0 +1,63 @@
+import { describe, expect, it } from "vitest";
+import { clampAdvancedToSampleRate, mapSimpleToDSP } from "../audio-dsp";
+import { normalizeHydratedState, reduceStoreState } from "../store";
+import { testStore } from "./fixtures";
+
+function source() { const track = testStore.tracks[0]; if (!track) throw new Error("Missing fixture"); return track; }
+function selected() { return reduceStoreState(testStore, { type: "UPDATE_SIMPLE", id: source().id, patch: { genre: "Rock", tone: "Punchy", intensity: 72 } }); }
+function trackOf(state: Parameters<typeof reduceStoreState>[0]) { const track = state.tracks[0]; if (!track) throw new Error("Missing track"); return track; }
+
+describe("one canonical mastering snapshot", () => {
+  it("writes explicit Simple directions to the persisted DSP snapshot, bounded by source rate", () => {
+    const initial = { ...testStore, tracks: [{ ...source(), sampleRate: 8000 }] };
+    const changed = reduceStoreState(initial, { type: "UPDATE_SIMPLE", id: source().id, patch: { genre: "Rock", tone: "Punchy", intensity: 72 } });
+    expect(trackOf(changed).advanced).toEqual(clampAdvancedToSampleRate(mapSimpleToDSP("Rock", "Punchy", 72, "Streaming"), 8000));
+    expect(trackOf(changed).simpleCustom).toBe(false);
+  });
+
+  it("changes only the view when switching modes in either direction", () => {
+    let state = selected(); const snapshot = trackOf(state).advanced;
+    for (const mode of ["simple", "advanced", "simple", "advanced"] as const) {
+      state = reduceStoreState(state, { type: "UPDATE_TRACK", id: source().id, patch: { mode } });
+      expect(trackOf(state).advanced).toBe(snapshot); expect(trackOf(state).simpleCustom).toBe(false);
+    }
+  });
+
+  it("marks every manual Advanced edit Custom without changing the last chosen direction metadata", () => {
+    const state = selected(); const trackId = source().id;
+    const actions: Parameters<typeof reduceStoreState>[1][] = [
+      { type: "UPDATE_INPUT_GAIN", trackId, input: 6 }, { type: "TOGGLE_EQ_ENABLED", trackId, enabled: false },
+      { type: "UPDATE_EQ_BAND", trackId, bandId: "mid", patch: { gainDb: 5 } }, { type: "UPDATE_COMPRESSOR", trackId, patch: { attack: 47 } },
+      { type: "UPDATE_SATURATION", trackId, patch: { drive: 30 } }, { type: "UPDATE_STEREO", trackId, patch: { width: 130 } },
+      { type: "UPDATE_LIMITER", trackId, patch: { ceiling: -2 } }, { type: "UPDATE_REPAIR", trackId, patch: { enabled: false } },
+      { type: "RESET_ADVANCED", trackId }, { type: "UPDATE_TRACK", id: trackId, patch: { advanced: source().advanced } },
+    ];
+    for (const action of actions) {
+      const track = trackOf(reduceStoreState(state, action));
+      expect(track.simpleCustom).toBe(true); expect(track.genre).toBe("Rock"); expect(track.tone).toBe("Punchy");
+    }
+  });
+
+  it("changes a custom output target without erasing EQ, input, modules or limiter enable state", () => {
+    const initial = reduceStoreState(testStore, { type: "UPDATE_INPUT_GAIN", trackId: source().id, input: 6 });
+    const before = trackOf(initial);
+    const changed = trackOf(reduceStoreState(initial, { type: "UPDATE_SIMPLE", id: before.id, patch: { target: "Loud" } }));
+    expect(changed.advanced).toEqual({ ...before.advanced, limiter: { ...before.advanced.limiter, targetLufs: -9, ceiling: -0.2 } });
+    expect(changed.simpleCustom).toBe(true);
+  });
+
+  it("applies only measured input gain to the expected snapshot, preserving association across mode changes", () => {
+    const initial = selected(); const expected = trackOf(initial).advanced;
+    const modeChanged = reduceStoreState(initial, { type: "UPDATE_TRACK", id: source().id, patch: { mode: "simple" } });
+    const measured = trackOf(reduceStoreState(modeChanged, { type: "APPLY_NORMALIZED_GAIN", id: source().id, expected, input: 4 }));
+    expect(measured.advanced).toEqual({ ...expected, input: 4 }); expect(measured.simpleCustom).toBe(false);
+    const edited = reduceStoreState(initial, { type: "UPDATE_EQ_BAND", trackId: source().id, bandId: "mid", patch: { gainDb: 5 } });
+    expect(trackOf(reduceStoreState(edited, { type: "APPLY_NORMALIZED_GAIN", id: source().id, expected, input: 4 }))).toBe(trackOf(edited));
+  });
+
+  it("restores legacy settings as Custom and retains only explicitly saved preset association", () => {
+    expect(normalizeHydratedState(testStore)?.tracks[0]?.simpleCustom).toBe(true);
+    expect(normalizeHydratedState(selected())?.tracks[0]?.simpleCustom).toBe(false);
+    expect(trackOf(reduceStoreState({ ...testStore, tracks: [] }, { type: "ADD_TRACK", track: source() })).simpleCustom).toBe(true);
+  });
+});

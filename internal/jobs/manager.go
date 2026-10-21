@@ -74,8 +74,9 @@ type Job struct {
 	Script    *mastering.Script `json:"script,omitempty"`
 	Stems     []StemDescriptor  `json:"stems,omitempty"`
 
-	stemWAVs map[string][]byte
-	cancel   context.CancelFunc
+	stemWAVs      map[string][]byte
+	cancel        context.CancelFunc
+	reservedBytes int64
 }
 
 type workItem struct {
@@ -85,27 +86,35 @@ type workItem struct {
 
 // Manager coordinates bounded worker goroutines and in-memory job state.
 type Manager struct {
-	mu      sync.RWMutex
-	jobs    map[string]*Job
-	queue   chan workItem
-	closed  bool
-	wg      sync.WaitGroup
-	baseCtx context.Context
-	stopFn  context.CancelFunc
+	mu        sync.RWMutex
+	jobs      map[string]*Job
+	queue     chan workItem
+	closed    bool
+	wg        sync.WaitGroup
+	baseCtx   context.Context
+	stopFn    context.CancelFunc
+	usedBytes int64
 }
+
+// MaxMemoryBytes bounds admitted inputs and retained encoded artifacts together.
+const MaxMemoryBytes int64 = 256 * 1024 * 1024
+
+// MaxRetainedJobs limits metadata and result retention independently of bytes.
+const MaxRetainedJobs = 64
+
+// Retention is the lifetime of completed, failed and canceled job records.
+const Retention = 15 * time.Minute
 
 // NewManager creates and starts a concurrent job manager with the given worker count.
 func NewManager(workers int) *Manager {
 	if workers <= 0 {
-		workers = runtime.NumCPU() - 1
-		if workers < 2 {
-			workers = 2
-		}
+		workers = min(2, runtime.NumCPU())
 	}
+	workers = min(workers, 4)
 	baseCtx, stopFn := context.WithCancel(context.Background())
 	m := &Manager{
 		jobs:    make(map[string]*Job),
-		queue:   make(chan workItem, 128),
+		queue:   make(chan workItem, MaxRetainedJobs),
 		baseCtx: baseCtx,
 		stopFn:  stopFn,
 	}
@@ -113,6 +122,8 @@ func NewManager(workers int) *Manager {
 		m.wg.Add(1)
 		go m.workerLoop()
 	}
+	m.wg.Add(1)
+	go m.reapLoop()
 	return m
 }
 
@@ -128,6 +139,10 @@ func (m *Manager) Close() {
 	close(m.queue)
 	m.mu.Unlock()
 	m.wg.Wait()
+	m.mu.Lock()
+	clear(m.jobs)
+	m.usedBytes = 0
+	m.mu.Unlock()
 }
 
 func (m *Manager) workerLoop() {
@@ -135,17 +150,19 @@ func (m *Manager) workerLoop() {
 	for item := range m.queue {
 		m.mu.RLock()
 		j, exists := m.jobs[item.jobID]
-		if !exists || j.Status == StatusCanceled {
+		if !exists || j.Status == StatusCanceled || m.baseCtx.Err() != nil {
 			m.mu.RUnlock()
+			m.releaseReservation(item.jobID)
 			continue
 		}
 		m.mu.RUnlock()
 
-		ctx, cancel := context.WithCancel(m.baseCtx)
+		ctx, cancel := context.WithTimeout(m.baseCtx, 2*time.Minute)
 		m.mu.Lock()
 		if j.Status == StatusCanceled {
 			m.mu.Unlock()
 			cancel()
+			m.releaseReservation(item.jobID)
 			continue
 		}
 		j.cancel = cancel
@@ -159,7 +176,68 @@ func (m *Manager) workerLoop() {
 
 		item.run(ctx)
 		cancel()
+		m.releaseReservation(item.jobID)
 	}
+}
+
+func (m *Manager) reapLoop() {
+	defer m.wg.Done()
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-m.baseCtx.Done():
+			return
+		case now := <-ticker.C:
+			m.mu.Lock()
+			m.pruneLocked(now)
+			m.mu.Unlock()
+		}
+	}
+}
+
+func (m *Manager) pruneLocked(now time.Time) {
+	for id, j := range m.jobs {
+		if j.reservedBytes == 0 && now.Sub(j.UpdatedAt) >= Retention {
+			for _, wav := range j.stemWAVs {
+				m.usedBytes -= int64(len(wav))
+			}
+			delete(m.jobs, id)
+		}
+	}
+}
+
+func (m *Manager) releaseReservation(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if j, ok := m.jobs[id]; ok && j.reservedBytes > 0 {
+		m.usedBytes -= j.reservedBytes
+		j.reservedBytes = 0
+		for _, wav := range j.stemWAVs {
+			m.usedBytes += int64(len(wav))
+		}
+		j.cancel = nil
+	}
+}
+
+func (m *Manager) admitLocked(job *Job, buf *audio.Buffer, stemCount int) error {
+	if m.closed {
+		return errors.New("job manager is closed")
+	}
+	m.pruneLocked(time.Now())
+	if buf == nil || buf.Frames < 1 || buf.Frames > audio.MaxDecodedFrames || len(buf.Left) != buf.Frames || len(buf.Right) != buf.Frames {
+		return errors.New("invalid audio buffer")
+	}
+	// Retain input stereo floats and reserve the worst-case 24-bit stereo stems
+	// before enqueueing. Workers cannot exceed the shared memory budget.
+	reservation := int64(buf.Frames)*(8+int64(stemCount)*6) + int64(stemCount)*44
+	if len(m.jobs) >= MaxRetainedJobs || reservation > MaxMemoryBytes-m.usedBytes {
+		return ErrQueueFull
+	}
+	job.reservedBytes = reservation
+	m.usedBytes += reservation
+	m.jobs[job.ID] = job
+	return nil
 }
 
 func newJobID() string {
@@ -172,6 +250,9 @@ func newJobID() string {
 
 // SubmitSeparate enqueues a 2..6 stem separation job.
 func (m *Manager) SubmitSeparate(buf *audio.Buffer, stemCount int) (*Job, error) {
+	if stemCount < 2 || stemCount > 6 {
+		return nil, errors.New("stem count must be between 2 and 6")
+	}
 	id := newJobID()
 	now := time.Now().UTC()
 	job := &Job{
@@ -188,13 +269,11 @@ func (m *Manager) SubmitSeparate(buf *audio.Buffer, stemCount int) (*Job, error)
 	}
 
 	m.mu.Lock()
-	if m.closed {
+	if err := m.admitLocked(job, buf, stemCount); err != nil {
 		m.mu.Unlock()
-		return nil, errors.New("job manager is closed")
+		return nil, err
 	}
-	m.jobs[id] = job
 	snapshot := m.cloneJob(job)
-	m.mu.Unlock()
 
 	work := workItem{
 		jobID: id,
@@ -252,9 +331,10 @@ func (m *Manager) SubmitSeparate(buf *audio.Buffer, stemCount int) (*Job, error)
 
 	select {
 	case m.queue <- work:
+		m.mu.Unlock()
 		return snapshot, nil
 	default:
-		m.mu.Lock()
+		m.usedBytes -= job.reservedBytes
 		delete(m.jobs, id)
 		m.mu.Unlock()
 		return nil, ErrQueueFull
@@ -278,13 +358,11 @@ func (m *Manager) SubmitAnalyzeDeep(buf *audio.Buffer, profile mastering.Profile
 	}
 
 	m.mu.Lock()
-	if m.closed {
+	if err := m.admitLocked(job, buf, 0); err != nil {
 		m.mu.Unlock()
-		return nil, errors.New("job manager is closed")
+		return nil, err
 	}
-	m.jobs[id] = job
 	snapshot := m.cloneJob(job)
-	m.mu.Unlock()
 
 	work := workItem{
 		jobID: id,
@@ -324,9 +402,10 @@ func (m *Manager) SubmitAnalyzeDeep(buf *audio.Buffer, profile mastering.Profile
 
 	select {
 	case m.queue <- work:
+		m.mu.Unlock()
 		return snapshot, nil
 	default:
-		m.mu.Lock()
+		m.usedBytes -= job.reservedBytes
 		delete(m.jobs, id)
 		m.mu.Unlock()
 		return nil, ErrQueueFull
@@ -404,10 +483,17 @@ func (m *Manager) Cancel(id string) (*Job, bool) {
 		return nil, false
 	}
 	cancelFn := j.cancel
-	if j.Status == StatusQueued || j.Status == StatusRunning {
+	if j.Status != StatusCanceled {
+		if j.reservedBytes == 0 {
+			for _, wav := range j.stemWAVs {
+				m.usedBytes -= int64(len(wav))
+			}
+		}
 		j.Status = StatusCanceled
 		j.Stage = "Canceled"
 		j.stemWAVs = nil
+		j.Stems = nil
+		j.Script = nil
 		j.UpdatedAt = time.Now().UTC()
 	}
 	snapshot := m.cloneJob(j)

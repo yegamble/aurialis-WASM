@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer"
 import { readFile } from "node:fs/promises"
 import { expect, test, type Page } from "@playwright/test"
 import { decode, fixture, dbRatio } from "./audio-fixture"
@@ -51,6 +52,30 @@ test("uploaded source survives export, independent gain controls, reload and sec
   expect(dbRatio(louder.right, neutral.right)).toBeCloseTo(6, 2)
   await page.getByRole("button", { name: "Render preview", exact: true }).click()
   await expect.poll(() => page.evaluate(() => (globalThis as unknown as { aurialisDSPReady?: boolean }).aurialisDSPReady)).toBe(true)
+  const levelMatch = page.getByRole("button", { name: "Level match", exact: true })
+  if (await levelMatch.getAttribute("aria-pressed") === "true") await levelMatch.click()
+  await page.getByRole("button", { name: "B Processed", exact: true }).click()
+  await expect.poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.readyState)).toBeGreaterThanOrEqual(2)
+  const playbackBytes = await page.locator("audio").evaluate(async (audio: HTMLAudioElement) => {
+    const response = await fetch(audio.src)
+    if (!response.ok) throw new Error("Cannot read actual playback source")
+    return Array.from(new Uint8Array(await response.arrayBuffer()))
+  })
+  const playback = decode(Buffer.from(playbackBytes))
+  expect(playback.left).toHaveLength(louder.left.length)
+  for (const channel of ["left", "right"] as const) {
+    expect(Math.max(...playback[channel].map((sample, i) => Math.abs(sample - (louder[channel][i] ?? Infinity))))).toBeLessThan(1e-5)
+  }
+  await page.getByRole("button", { name: "Play", exact: true }).click()
+  await expect.poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.currentTime)).toBeGreaterThan(0)
+  await page.getByRole("button", { name: "A Original", exact: true }).click()
+  const originalBytes = await page.locator("audio").evaluate(async (audio: HTMLAudioElement) => {
+    const response = await fetch(audio.src)
+    return Array.from(new Uint8Array(await response.arrayBuffer()))
+  })
+  const original = decode(Buffer.from(originalBytes))
+  expect(original.left).toHaveLength(source.left.length)
+  expect(Math.max(...original.left.map((sample, i) => Math.abs(sample - (source.left[i] ?? Infinity))))).toBeLessThan(1 / 32768)
   await page.reload()
   await expect(page.getByRole("slider", { name: "Input gain", exact: true })).toHaveValue("6")
   const restored = await exported(page)

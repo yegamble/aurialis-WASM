@@ -560,3 +560,13 @@ export function mapProfileToDSP(
 
   return profileDSP;
 }
+
+// Keep the displayed and processed EQ frequencies inside the source bandwidth.
+// Other controls and module enable states retain their exact values.
+export function clampAdvancedToSampleRate(settings: AdvancedParams, sampleRate: number): AdvancedParams {
+  if (!Number.isFinite(sampleRate) || sampleRate < 8000 || sampleRate > 192000)
+    throw new Error("Unsupported source sample rate.");
+  const maximum = Math.min(18000, Math.floor(sampleRate * 0.47));
+  const band = (value: EQBandParams): EQBandParams => ({ ...value, freqHz: Math.max(20, Math.min(maximum, value.freqHz)) });
+  return { ...settings, eqBands: [band(settings.eqBands[0]), band(settings.eqBands[1]), band(settings.eqBands[2]), band(settings.eqBands[3]), band(settings.eqBands[4])] };
+}

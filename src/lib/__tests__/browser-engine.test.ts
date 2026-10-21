@@ -1,6 +1,6 @@
 import { Blob as NodeBlob } from "node:buffer";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createDefaultAdvancedParams } from "../audio-dsp";
+import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "../audio-dsp";
 import {
   engineParams,
   measureAudio,
@@ -257,4 +257,20 @@ describe("actual audio measurement and explicit Simple normalization", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(measurementResponse({ ...measured, integratedLufs: -14, truePeakDbtp: 0 })) }));
     await expect(normalizeSimpleAudio(new Blob(["fixture"]), createDefaultAdvancedParams(), -14)).rejects.toThrow("peak ceiling");
   });
+});
+
+describe("source bandwidth constraints", () => {
+  for (const rate of [8000, 16000, 44100, 48000, 96000, 192000]) {
+    it(`keeps ${String(rate)} Hz controls within the visible source bandwidth without altering other settings`, () => {
+      const settings = createDefaultAdvancedParams();
+      settings.compressor.threshold = -23;
+      settings.stereo.width = 137;
+      const before = structuredClone(settings);
+      const next = clampAdvancedToSampleRate(settings, rate);
+      expect(next.eqBands.every((band) => band.freqHz <= Math.min(18000, Math.floor(rate * 0.47)))).toBe(true);
+      expect({ ...next, eqBands: before.eqBands }).toEqual(before);
+      expect(settings).toEqual(before);
+      expect(engineParams(next).bands.map((band) => band.freqHz)).toEqual(next.eqBands.map((band) => band.freqHz));
+    });
+  }
 });

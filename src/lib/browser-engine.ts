@@ -315,7 +315,7 @@ export function sourcePeaks(pcm: StereoPCM): number[] {
   });
 }
 
-export type AudioMeasurement = {
+type AudioMeasurement = {
   sampleRate: number;
   frames: number;
   duration: number;

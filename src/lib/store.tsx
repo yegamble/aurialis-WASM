@@ -10,7 +10,7 @@ import {
   type Dispatch,
   type ReactNode,
 } from "react";
-import { createDefaultAdvancedParams } from "./audio-dsp";
+import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "./audio-dsp";
 import type {
   Album,
   AdvancedParams,
@@ -282,7 +282,7 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
           ...track,
-          advanced: createDefaultAdvancedParams(),
+          advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate),
           updatedAt: new Date().toISOString(),
         })),
       };
@@ -342,7 +342,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
     return {
       ...restored,
       mode: track.mode === "deep" ? "advanced" : track.mode,
-      advanced: {
+      advanced: clampAdvancedToSampleRate({
         ...baseAdv,
         ...track.advanced,
         eqBands:
@@ -369,7 +369,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
           ...baseAdv.repair,
           ...(track.advanced?.repair ?? {}),
         },
-      },
+      }, track.sampleRate),
     };
   });
   return {

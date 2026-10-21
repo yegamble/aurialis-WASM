@@ -3,14 +3,68 @@ import { createDefaultAdvancedParams } from "../audio-dsp";
 import { createLivePlayback } from "../live-playback";
 
 const source = () => ({ sampleRate: 48000, left: new Float32Array(48000), right: new Float32Array(48000) });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+function graphHarness(autoReady = true) {
+  const contexts: Context[] = [];
+  const nodes: Node[] = [];
+  const worker = vi.fn();
+  const compiledModule = new WebAssembly.Module(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]));
+  const fetchModule = vi.fn<typeof fetch>(() => Promise.resolve(new Response(new Uint8Array([0]), { status: 200 })));
+  vi.spyOn(WebAssembly, "compile").mockResolvedValue(compiledModule);
+  class Port {
+    onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
+    postMessage = vi.fn();
+    close = vi.fn();
+    message(data: unknown) { this.onmessage?.(new MessageEvent("message", { data })); }
+  }
+  type ProcessorOptions = {
+    controls: SharedArrayBuffer;
+    header: SharedArrayBuffer;
+    module: WebAssembly.Module;
+    entropy: Uint8Array;
+    clockOriginMs: number;
+  };
+  class Node {
+    port = new Port();
+    onprocessorerror: (() => void) | null = null;
+    connect = vi.fn();
+    disconnect = vi.fn();
+    constructor(_context: Context, _name: string, readonly options: { processorOptions: ProcessorOptions }) {
+      nodes.push(this);
+      if (autoReady) queueMicrotask(() => { this.port.message({ type: "ready" }); });
+    }
+  }
+  const endpoint = () => ({ connect: vi.fn(), disconnect: vi.fn() });
+  class Context {
+    sampleRate = 48000;
+    currentTime = 0;
+    state = "running";
+    destination = {};
+    resume = vi.fn().mockResolvedValue(undefined);
+    suspend = vi.fn().mockResolvedValue(undefined);
+    close = vi.fn(() => { this.state = "closed"; return Promise.resolve(); });
+    audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
+    createChannelSplitter = endpoint;
+    createChannelMerger = endpoint;
+    createAnalyser = () => ({ ...endpoint(), fftSize: 4096, smoothingTimeConstant: 0, minDecibels: -120, maxDecibels: 0 });
+    createBuffer = () => ({ copyToChannel: vi.fn() });
+    createBufferSource = () => ({ ...endpoint(), buffer: null, loop: false, onended: null, start: vi.fn(), stop: vi.fn() });
+    constructor() { contexts.push(this); }
+  }
+  vi.stubGlobal("crossOriginIsolated", true);
+  vi.stubGlobal("AudioContext", Context);
+  vi.stubGlobal("AudioWorkletNode", Node);
+  vi.stubGlobal("Worker", worker);
+  vi.stubGlobal("fetch", fetchModule);
+  vi.stubGlobal("requestAnimationFrame", vi.fn().mockReturnValue(1));
+  vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  return { contexts, nodes, fetchModule, compiledModule, worker };
+}
 
 describe("per-track live audio lifecycle", () => {
-  it("defers all audio/network initialization until Play and starts in processed A", () => {
-    const context = vi.fn();
-    const worker = vi.fn();
-    vi.stubGlobal("AudioContext", context);
-    vi.stubGlobal("Worker", worker);
+  it("defers audio and network initialization until Play and starts in processed A", () => {
+    const { contexts, fetchModule, worker } = graphHarness();
     const controller = createLivePlayback(source(), createDefaultAdvancedParams());
     expect(controller.getState()).toMatchObject({ original: false, repeat: false, playing: false, ready: false, loading: false, position: 0 });
     controller.setBypass(true);
@@ -18,47 +72,102 @@ describe("per-track live audio lifecycle", () => {
     controller.setVolume(0.25);
     controller.seek(0.5);
     expect(controller.getState()).toMatchObject({ original: true, repeat: true, volume: 0.25, position: 0.5 });
-    expect(context).not.toHaveBeenCalled();
+    expect(contexts).toHaveLength(0);
+    expect(fetchModule).not.toHaveBeenCalled();
     expect(worker).not.toHaveBeenCalled();
     controller.dispose();
   });
-  it("settles a disposed initialization without stale callbacks or recreating a closed graph", async () => {
+  it("connects before readiness and disposes pending initialization without stale callbacks", async () => {
+    const { contexts, nodes, worker } = graphHarness(false);
     const states = vi.fn(), errors = vi.fn();
-    const close = vi.fn().mockResolvedValue(undefined), terminate = vi.fn();
-    const contexts: object[] = [];
-    const workers: { onmessage?: ((event: MessageEvent<unknown>) => void) | null }[] = [];
-    class Context {
-      sampleRate = 48000;
-      state = "running";
-      resume = vi.fn().mockResolvedValue(undefined);
-      close = close;
-      audioWorklet = { addModule: vi.fn().mockResolvedValue(undefined) };
-      constructor() { contexts.push(this); }
-    }
-    class Worker {
-      onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
-      onerror = null;
-      postMessage = vi.fn();
-      terminate = terminate;
-      constructor() { workers.push(this); }
-    }
-    vi.stubGlobal("crossOriginIsolated", true);
-    vi.stubGlobal("AudioContext", Context);
-    vi.stubGlobal("Worker", Worker);
     const controller = createLivePlayback(source(), createDefaultAdvancedParams(), { onState: states, onError: errors });
     const playing = controller.play();
     expect(contexts).toHaveLength(1);
+    expect(contexts[0]?.resume).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => { expect(nodes).toHaveLength(1); });
+    const node = nodes[0];
+    if (!node) throw new Error("Missing worklet fixture");
+    expect(node.connect).toHaveBeenCalledTimes(1);
+    expect(controller.getState().loading).toBe(true);
     controller.dispose();
     const callsAfterDispose = states.mock.calls.length;
-    workers[0]?.onmessage?.(new MessageEvent("message", { data: { type: "ready" } }));
+    node.port.message({ type: "ready" });
     await playing;
     await controller.play();
     expect(contexts).toHaveLength(1);
-    expect(close).toHaveBeenCalledTimes(1);
-    expect(terminate).toHaveBeenCalledTimes(1);
+    expect(contexts[0]?.close).toHaveBeenCalledTimes(1);
+    expect(node.disconnect).toHaveBeenCalledTimes(1);
+    expect(node.port.close).toHaveBeenCalledTimes(1);
+    expect(worker).not.toHaveBeenCalled();
     expect(states).toHaveBeenCalledTimes(callsAfterDispose);
     expect(errors).not.toHaveBeenCalled();
     expect(controller.getState().playing).toBe(false);
+  });
+  it("publishes current numeric settings and their version together without JSON parameter messages", async () => {
+    const { nodes, compiledModule, worker } = graphHarness();
+    const settings = createDefaultAdvancedParams();
+    const controller = createLivePlayback(source(), settings);
+    await controller.play();
+    const node = nodes[0];
+    if (!node) throw new Error("Missing worklet fixture");
+    const options = node.options.processorOptions;
+    const publication = new Int32Array(options.controls, 0, 4);
+    const values = new Float64Array(options.controls, 16, 56);
+    const telemetry = new Int32Array(options.header);
+    expect(options.module).toBe(compiledModule);
+    expect(options.entropy).toHaveLength(256);
+    expect(options.clockOriginMs).toBeGreaterThan(0);
+    expect(Array.from(publication)).toEqual([2, 1, 0, 0]);
+    expect(values[3]).toBe(settings.input);
+    controller.setParams({ ...settings, input: 6 });
+    expect(Array.from(publication)).toEqual([4, 2, 0, 0]);
+    expect(values[3]).toBe(6);
+    expect(Atomics.load(telemetry, 3)).toBe(2);
+    controller.setParams({ ...settings, input: 6 });
+    controller.setBypass(true);
+    controller.setVolume(0.25);
+    expect(Array.from(publication)).toEqual([4, 2, 0, 0]);
+    expect(node.port.postMessage.mock.calls).not.toEqual(expect.arrayContaining([
+      [expect.objectContaining({ type: "params" })],
+    ]));
+    expect(worker).not.toHaveBeenCalled();
+    expect(controller.getState()).toMatchObject({ playing: true, original: true, volume: 0.25, parameterVersion: 2 });
+    controller.dispose();
+  });
+  it("creates a fresh graph after a processor failure and ignores old graph events", async () => {
+    const { contexts, nodes } = graphHarness();
+    const errors = vi.fn();
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams(), { onError: errors });
+    await controller.play();
+    const previous = nodes[0];
+    if (!previous) throw new Error("Missing worklet fixture");
+    previous.onprocessorerror?.();
+    expect(controller.getState()).toMatchObject({ ready: false, playing: false, loading: false });
+    expect(contexts[0]?.close).toHaveBeenCalledTimes(1);
+    await controller.play();
+    previous.onprocessorerror?.();
+    previous.port.message({ type: "error", message: "stale graph" });
+    expect(nodes).toHaveLength(2);
+    expect(controller.getState()).toMatchObject({ ready: true, playing: true, error: null });
+    expect(errors).toHaveBeenCalledTimes(1);
+    controller.dispose();
+  });
+  it("times out pending module loading and aborts its request", async () => {
+    vi.useFakeTimers();
+    const { contexts, fetchModule } = graphHarness();
+    fetchModule.mockImplementation(() => new Promise<Response>(() => undefined));
+    const errors = vi.fn();
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams(), { onError: errors });
+    const playing = controller.play();
+    const request = fetchModule.mock.calls[0]?.[1];
+    await vi.advanceTimersByTimeAsync(15_000);
+    await playing;
+    expect(request?.signal?.aborted).toBe(true);
+    expect(contexts[0]?.close).toHaveBeenCalledTimes(1);
+    expect(controller.getState()).toMatchObject({ ready: false, playing: false, loading: false });
+    expect(controller.getState().error).toContain("timed out");
+    expect(errors).toHaveBeenCalledTimes(1);
+    controller.dispose();
   });
   it("fails explicitly when isolation is missing and clears audible meter values", async () => {
     vi.stubGlobal("crossOriginIsolated", false);

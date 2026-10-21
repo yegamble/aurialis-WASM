@@ -1,0 +1,66 @@
+import { describe, expect, it } from "vitest";
+import { createDefaultAdvancedParams } from "../audio-dsp";
+import { engineParams } from "../browser-engine";
+import { createLiveControls, packLiveControls } from "../live-controls";
+
+const params = () => engineParams(createDefaultAdvancedParams());
+
+describe("fixed Go live control ABI", () => {
+  it("maps all fields to their specified numeric positions", () => {
+    const controls: ReturnType<typeof engineParams> = {
+      bypass: true, abOriginal: false, loudnessMatchAb: true, inputGainDb: -6, eqEnabled: false,
+      bands: [
+        { freqHz: 35, gainDb: -1, q: 0.5, type: "high_pass", enabled: true },
+        { freqHz: 150, gainDb: 2, q: 0.6, type: "low_shelf", enabled: false },
+        { freqHz: 900, gainDb: -3, q: 0.7, type: "peaking", enabled: true },
+        { freqHz: 3000, gainDb: 4, q: 0.8, type: "high_shelf", enabled: false },
+        { freqHz: 14000, gainDb: -5, q: 0.9, type: "peaking", enabled: true },
+      ],
+      compressor: { enabled: false, thresholdDb: -21, ratio: 3, attackMs: 9, releaseMs: 130, kneeDb: 5, makeupDb: 2, sidechainHpfHz: 95, topology: "vca" },
+      saturation: { enabled: true, amount: 23, character: "Crisp" },
+      stereo: { enabled: false, widthPct: 125, monoBass: true, crossoverHz: 120 },
+      limiter: { enabled: true, ceilingDbtp: -0.7, targetLufs: -12, releaseMs: 70, truePeak: true },
+      repair: { enabled: true, deEssDb: 3, transientDb: -2, deClip: true }, ditherBits: 24,
+    };
+    expect(Array.from(packLiveControls(controls))).toEqual([
+      1, 0, 1, -6, 0,
+      35, -1, 0.5, 0, 1, 150, 2, 0.6, 1, 0, 900, -3, 0.7, 2, 1,
+      3000, 4, 0.8, 3, 0, 14000, -5, 0.9, 2, 1,
+      0, -21, 3, 9, 130, 5, 2, 95, 3,
+      1, 23, 2, 0, 125, 1, 120, 1, -0.7, -12, 70, 1, 1, 3, -2, 1, 24,
+    ]);
+  });
+  it("encodes each supported compressor and saturation enumeration", () => {
+    for (const [code, topology] of ["optical", "vari_mu", "fet", "vca"].entries()) {
+      const value = params();
+      value.compressor.topology = topology;
+      expect(packLiveControls(value)[38]).toBe(code);
+    }
+    for (const [code, character] of (["Warm", "Thick", "Crisp"] as const).entries()) {
+      const value = params();
+      value.saturation.character = character;
+      expect(packLiveControls(value)[41]).toBe(code);
+    }
+  });
+  it("publishes one bounded data and version snapshot and preserves it after invalid input", () => {
+    const value = params();
+    const controls = createLiveControls(value, 7);
+    expect(controls.buffer.byteLength).toBe(464);
+    const header = new Int32Array(controls.buffer, 0, 4);
+    const payload = new Float64Array(controls.buffer, 16, 56);
+    expect(Array.from(header)).toEqual([2, 7, 0, 0]);
+    expect(Array.from(payload)).toEqual(Array.from(packLiveControls(value)));
+    controls.publish({ ...value, inputGainDb: 4 }, 8);
+    expect(Array.from(header)).toEqual([4, 8, 0, 0]);
+    expect(payload[3]).toBe(4);
+    const before = Array.from(payload);
+    expect(() => { controls.publish({ ...value, inputGainDb: Number.NaN }, 9); }).toThrow("finite");
+    expect(Array.from(header)).toEqual([4, 8, 0, 0]);
+    expect(Array.from(payload)).toEqual(before);
+  });
+  it("rejects incomplete bands and unsupported enums before publication", () => {
+    const value = params();
+    expect(() => packLiveControls({ ...value, bands: value.bands.slice(1) })).toThrow("five EQ");
+    expect(() => packLiveControls({ ...value, compressor: { ...value.compressor, topology: "unknown" } })).toThrow("unsupported");
+  });
+});

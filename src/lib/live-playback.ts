@@ -1,4 +1,5 @@
 import { engineParams, type StereoPCM } from "./browser-engine";
+import { createLiveControls } from "./live-controls";
 import type { AdvancedParams } from "./types";
 
 export type LivePlaybackState = {
@@ -64,7 +65,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-// Each controller owns its complete graph and Go worker. Nothing from a closed
+// Each controller owns its complete graph and Go instance. Nothing from a closed
 // track is cached or reused when the user returns to that track.
 export function createLivePlayback(
   source: StereoPCM,
@@ -77,19 +78,20 @@ export function createLivePlayback(
     throw new Error("Live playback requires bounded stereo PCM at 8–192 kHz.");
   if (!source.left.every(Number.isFinite) || !source.right.every(Number.isFinite))
     throw new Error("Live playback requires finite PCM samples.");
-  let serializedSettings = JSON.stringify(engineParams(settings));
+  let currentParams = engineParams(settings);
+  let serializedSettings = JSON.stringify(currentParams);
   let state: LivePlaybackState = {
     position: 0, duration: source.left.length / source.sampleRate,
     playing: false, ready: false, loading: false, original: false, repeat: false, volume: 1,
     underruns: 0, parameterVersion: 1, appliedVersion: 0, error: null,
   };
   let audio: AudioContext | undefined;
-  let worker: Worker | undefined;
   let worklet: AudioWorkletNode | undefined;
   let header: Int32Array<SharedArrayBuffer> | undefined;
+  let controls: ReturnType<typeof createLiveControls> | undefined;
+  let loadingAbort: AbortController | undefined;
   let buffer: AudioBuffer | undefined;
   let sourceNode: AudioBufferSourceNode | undefined;
-  let channel: MessageChannel | undefined;
   let leftAnalyser: AnalyserNode | undefined;
   let rightAnalyser: AnalyserNode | undefined;
   let splitter: ChannelSplitterNode | undefined;
@@ -150,10 +152,10 @@ export function createLivePlayback(
     leftAnalyser?.disconnect();
     rightAnalyser?.disconnect();
     merger?.disconnect();
-    worker?.terminate();
-    channel?.port1.close(); channel?.port2.close(); channel = undefined;
+    loadingAbort?.abort();
+    loadingAbort = undefined;
     if (audio && audio.state !== "closed") void audio.close().catch(() => undefined);
-    audio = undefined; worker = undefined; worklet = undefined; header = undefined;
+    audio = undefined; worklet = undefined; header = undefined; controls = undefined;
     buffer = undefined; splitter = undefined; merger = undefined;
     leftAnalyser = undefined; rightAnalyser = undefined;
     initialization = undefined;
@@ -172,12 +174,11 @@ export function createLivePlayback(
     callbacks.onError?.(failure);
   }
   function resetStream(): void {
-    if (!header || !worklet || !worker) return;
+    if (!header || !worklet) return;
     const generation = Atomics.add(header, GENERATION, 1) + 1;
     Atomics.store(header, WRITE, 0); Atomics.store(header, READ, 0);
     Atomics.store(header, WAKE, 0); Atomics.store(header, APPLIED_VERSION, 0);
     worklet.port.postMessage({ type: "reset", generation });
-    worker.postMessage({ type: "reset", generation });
   }
   function emitSilence(): void {
     callbacks.onMeter?.({ peakDbfs: -120, rmsDbfs: -120, crestDb: 0,
@@ -272,60 +273,64 @@ export function createLivePlayback(
     header = new Int32Array(sharedHeader);
     Atomics.store(header, GENERATION, 1);
     Atomics.store(header, PARAMETER_VERSION, state.parameterVersion);
-    const bridgeChannel = new MessageChannel();
-    channel = bridgeChannel;
-    const processingWorker = new Worker("/workers/aurialis-live-worker.js");
-    worker = processingWorker;
+    controls = createLiveControls(currentParams, state.parameterVersion);
+    const sharedControls = controls.buffer;
+    const requestAbort = new AbortController();
+    loadingAbort = requestAbort;
+    let resolveReady: (() => void) | undefined;
     const ready = new Promise<void>((resolve, reject) => {
+      resolveReady = resolve;
       rejectInitialization = reject;
       bootTimeout = setTimeout(() => { reject(new Error("Live audio initialization timed out. Retry playback.")); }, 15000);
-      processingWorker.onmessage = (event: MessageEvent<unknown>) => {
-        if (disposed || worker !== processingWorker || !isRecord(event.data)) return;
+    });
+    const loadModule = async () => {
+      const response = await fetch("/wasm/aurialis-realtime.wasm", { signal: requestAbort.signal });
+      if (!response.ok) throw new Error("The shared Go audio engine could not be loaded. Reload and retry.");
+      return WebAssembly.compile(await response.arrayBuffer());
+    };
+    const loaded = Promise.all([
+      loadModule(), context.audioWorklet.addModule("/worklets/aurialis-live-worklet.js"),
+    ]).then(([compiledModule]) => {
+      if (isDisposed() || audio !== context) return;
+      const delayBlocks = Math.max(4, Math.ceil(context.sampleRate * 0.08 / QUANTUM));
+      delaySeconds = delayBlocks * QUANTUM / context.sampleRate;
+      const node = new AudioWorkletNode(context, "aurialis-live", { numberOfInputs: 1, numberOfOutputs: 1,
+        channelCount: 2, channelCountMode: "explicit", outputChannelCount: [2],
+        processorOptions: { header: sharedHeader, tags: sharedTags, samples: sharedSamples, delayBlocks,
+          module: compiledModule, controls: sharedControls, entropy: crypto.getRandomValues(new Uint8Array(256)),
+          clockOriginMs: Math.max(1, performance.now()) } });
+      worklet = node;
+      node.port.onmessage = (event: MessageEvent<unknown>) => {
+        if (disposed || worklet !== node || !isRecord(event.data)) return;
         if (event.data.type === "ready") {
           if (bootTimeout) clearTimeout(bootTimeout);
           bootTimeout = undefined;
           rejectInitialization = undefined;
-          resolve();
-        } else if (event.data.type === "error") {
-          fail(new Error(typeof event.data.message === "string" ? event.data.message : "The audio worker failed."));
-        }
+          resolveReady?.();
+          resolveReady = undefined;
+        } else onWorkletMessage(event);
       };
-      processingWorker.onerror = () => {
-        if (worker === processingWorker) fail(new Error("The shared Go audio worker could not start. Reload and retry."));
+      node.onprocessorerror = () => {
+        if (worklet === node) fail(new Error("The live audio processor stopped unexpectedly. Retry playback."));
       };
+      const split = context.createChannelSplitter(2), merge = context.createChannelMerger(2);
+      const left = context.createAnalyser(), right = context.createAnalyser();
+      left.fftSize = right.fftSize = 4096;
+      left.smoothingTimeConstant = right.smoothingTimeConstant = 0.35;
+      left.minDecibels = right.minDecibels = -120;
+      left.maxDecibels = right.maxDecibels = 0;
+      node.connect(split);
+      split.connect(left, 0); split.connect(right, 1);
+      left.connect(merge, 0, 0); right.connect(merge, 0, 1);
+      merge.connect(context.destination);
+      splitter = split; merger = merge; leftAnalyser = left; rightAnalyser = right;
+      node.port.postMessage({ type: "original", value: state.original });
+      node.port.postMessage({ type: "volume", value: state.volume });
     });
-    processingWorker.postMessage({ type: "init", header: sharedHeader, tags: sharedTags,
-      samples: sharedSamples, sampleRate: context.sampleRate, params: serializedSettings,
-      version: state.parameterVersion, port: bridgeChannel.port1 }, [bridgeChannel.port1]);
-    await Promise.all([ready, context.audioWorklet.addModule("/worklets/aurialis-live-worklet.js"), resumed]);
+    await Promise.all([ready, loaded, resumed]);
     if (isDisposed() || audio !== context) return;
-    const delayBlocks = Math.max(4, Math.ceil(context.sampleRate * 0.08 / QUANTUM));
-    delaySeconds = delayBlocks * QUANTUM / context.sampleRate;
-    const node = new AudioWorkletNode(context, "aurialis-live", { numberOfInputs: 1, numberOfOutputs: 1,
-      channelCount: 2, channelCountMode: "explicit", outputChannelCount: [2],
-      processorOptions: { header: sharedHeader, tags: sharedTags, samples: sharedSamples, delayBlocks } });
-    worklet = node;
-    node.port.onmessage = (event: MessageEvent<unknown>) => {
-      if (worklet === node) onWorkletMessage(event);
-    };
-    node.onprocessorerror = () => {
-      if (worklet === node) fail(new Error("The live audio processor stopped unexpectedly. Retry playback."));
-    };
-    node.port.postMessage({ type: "connect", port: bridgeChannel.port2 }, [bridgeChannel.port2]);
-    node.port.postMessage({ type: "original", value: state.original });
-    node.port.postMessage({ type: "volume", value: state.volume });
-    processingWorker.postMessage({ type: "params", params: serializedSettings, version: state.parameterVersion });
-    const split = context.createChannelSplitter(2), merge = context.createChannelMerger(2);
-    const left = context.createAnalyser(), right = context.createAnalyser();
-    left.fftSize = right.fftSize = 4096;
-    left.smoothingTimeConstant = right.smoothingTimeConstant = 0.35;
-    left.minDecibels = right.minDecibels = -120;
-    left.maxDecibels = right.maxDecibels = 0;
-    node.connect(split);
-    split.connect(left, 0); split.connect(right, 1);
-    left.connect(merge, 0, 0); right.connect(merge, 0, 1);
-    merge.connect(context.destination);
-    splitter = split; merger = merge; leftAnalyser = left; rightAnalyser = right;
+    if (!worklet) throw new Error("The live audio processor could not initialize.");
+    loadingAbort = undefined;
     buffer = context.createBuffer(2, source.left.length, source.sampleRate);
     buffer.copyToChannel(source.left, 0); buffer.copyToChannel(source.right, 1);
     state = { ...state, ready: true, error: null };
@@ -365,12 +370,15 @@ export function createLivePlayback(
     },
     setParams(next) {
       if (disposed) return;
-      const serialized = JSON.stringify(engineParams(next));
+      const params = engineParams(next);
+      const serialized = JSON.stringify(params);
       if (serialized === serializedSettings) return;
+      const version = state.parameterVersion + 1;
+      controls?.publish(params, version);
       serializedSettings = serialized;
-      state = { ...state, parameterVersion: state.parameterVersion + 1 };
+      currentParams = params;
+      state = { ...state, parameterVersion: version };
       if (header) Atomics.store(header, PARAMETER_VERSION, state.parameterVersion);
-      if (state.ready) worker?.postMessage({ type: "params", params: serializedSettings, version: state.parameterVersion });
       emit();
     },
     setBypass(original) {

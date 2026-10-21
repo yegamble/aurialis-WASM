@@ -64,9 +64,12 @@ test("uploaded source survives export, independent gain controls, reload and sec
   for (const channel of ["left", "right"] as const) {
     expect(Math.max(...playback[channel].map((sample, i) => Math.abs(sample - (louder[channel][i] ?? Infinity))))).toBeLessThan(1e-5)
   }
+  const beforePlay = await page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.currentTime)
   await page.getByRole("button", { name: "Play", exact: true }).click()
-  await expect.poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.currentTime)).toBeGreaterThan(0)
+  await expect.poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.currentTime)).toBeGreaterThan(beforePlay + 0.05)
+  const processedSource = await page.locator("audio").getAttribute("src")
   await page.getByRole("button", { name: "A Original", exact: true }).click()
+  await expect(page.locator("audio")).not.toHaveAttribute("src", processedSource!)
   const originalBytes = await page.locator("audio").evaluate(async (audio: HTMLAudioElement) => {
     const response = await fetch(audio.src)
     return Array.from(new Uint8Array(await response.arrayBuffer()))

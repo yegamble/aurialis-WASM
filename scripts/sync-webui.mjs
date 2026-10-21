@@ -13,5 +13,6 @@ if (!fs.existsSync(outDir)) {
 fs.rmSync(targetDir, { recursive: true, force: true });
 fs.mkdirSync(targetDir, { recursive: true });
 fs.cpSync(outDir, targetDir, { recursive: true });
+fs.writeFileSync(path.join(targetDir, ".gitkeep"), "");
 
 console.log("Synced Next.js static export out/ -> internal/webui/embedded/");

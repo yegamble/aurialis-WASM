@@ -1,3 +1,3 @@
 module github.com/yegamble/Aurialis-WASM
 
-go 1.26
+go 1.26.9

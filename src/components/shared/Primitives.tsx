@@ -23,17 +23,30 @@ export const formatTime = (seconds: number): string =>
 export const statusLabel = (status: Track["status"]): string =>
   status.replace("-", " ");
 
+const statusVariants = new Map<Track["status"], string>([
+  ["draft", "bg-paper-deep text-ink-soft"],
+  ["ready", "bg-moss-wash text-moss-dark"],
+  ["mastered", "bg-moss-wash text-moss-dark"],
+  ["needs-review", "bg-ochre-wash text-ochre-dark"],
+]);
+
+export function StatusBadge({ status }: { status: Track["status"] }) {
+  return <span className={`status status--${status} inline-flex w-fit rounded-full px-2 py-1 text-[10px] font-semibold tracking-[0.08em] uppercase ${statusVariants.get(status) ?? "bg-paper-deep text-ink-soft"}`}>{statusLabel(status)}</span>;
+}
+
+const chartLabelClassName = "chart-label mb-[18px] flex justify-between gap-2 text-[11px] text-ink-soft";
+
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
-const buttonVariants: Record<ButtonVariant, string> = {
-  primary: "border-clay bg-clay text-white shadow-[0_7px_18px_rgba(180,84,60,0.16)] hover:enabled:border-clay-dark hover:enabled:bg-clay-dark",
-  secondary: "border-line-dark bg-paper text-ink hover:enabled:border-ink",
-  ghost: "border-transparent bg-transparent text-ink-soft hover:enabled:bg-paper-deep",
-  danger: "border-danger bg-danger text-white hover:enabled:brightness-90",
-};
+const buttonVariants = new Map<ButtonVariant, string>([
+  ["primary", "border-clay bg-clay text-white shadow-[0_7px_18px_rgba(180,84,60,0.16)] hover:enabled:border-clay-dark hover:enabled:bg-clay-dark"],
+  ["secondary", "border-line-dark bg-paper text-ink hover:enabled:border-ink"],
+  ["ghost", "border-transparent bg-transparent text-ink-soft hover:enabled:bg-paper-deep"],
+  ["danger", "border-danger bg-danger text-white hover:enabled:brightness-90"],
+]);
 
 export function buttonClassName(variant: ButtonVariant = "primary", className = ""): string {
-  return `button button--${variant} inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-[13px] font-semibold transition enabled:hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-55 [&_svg]:size-4 ${buttonVariants[variant]} ${className}`.trim();
+  return `button button--${variant} inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full border px-4 py-2.5 text-[13px] font-semibold transition enabled:hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-55 [&_svg]:size-4 ${buttonVariants.get(variant) ?? ""} ${className}`.trim();
 }
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -331,16 +344,16 @@ export function Waveform({
 
   if (!peaks?.length) {
     return (
-      <div className="waveform waveform--empty" role="status">
-        <p>Source waveform unavailable. Load audio to see its waveform.</p>
+      <div className="waveform waveform--empty grid min-h-[130px] place-items-center rounded-[18px] border border-line bg-paper p-[18px] text-center" role="status">
+        <p className="max-w-[34ch] text-[13px]">Source waveform unavailable. Load audio to see its waveform.</p>
       </div>
     );
   }
 
   return (
-    <div className={`waveform ${compact ? "waveform--compact" : ""}`.trim()}>
+    <div className={`waveform ${compact ? "waveform--compact my-[13px] border-0 bg-transparent px-0 py-[5px]" : "rounded-[18px] border border-line bg-paper p-[18px]"}`}>
       {!compact && (
-        <div className="chart-label">
+        <div className={chartLabelClassName}>
           <span>Source waveform</span>
           <span>
             {formatTime(currentSec)} / {formatTime(duration)}
@@ -348,7 +361,7 @@ export function Waveform({
         </div>
       )}
       <div
-        className="wave-bars"
+        className={`wave-bars relative flex cursor-pointer items-center gap-0.5 ${compact ? "h-[52px]" : "h-[140px]"}`}
         role="slider"
         tabIndex={0}
         aria-label={
@@ -367,10 +380,10 @@ export function Waveform({
         }}
       >
         {peaks.map((peak, i) => (
-          <i key={i} style={{ height: `${String(Math.max(1, Math.min(100, peak * 100)))}%` }} />
+          <i key={i} className="block min-w-0 flex-1 rounded-[2px] bg-moss" style={{ height: `${String(Math.max(1, Math.min(100, peak * 100)))}%` }} />
         ))}
         <span
-          className="playhead"
+          className="playhead absolute inset-y-0 w-px bg-clay-dark"
           style={{ left: `${String(ratio * 100)}%` }}
         />
       </div>
@@ -450,14 +463,14 @@ export function SpectrumChart({
     : "No EQ settings loaded";
 
   return (
-    <div className="spectrum">
-      <div className="chart-label">
+    <div className="spectrum rounded-[18px] border border-line bg-paper p-[22px]">
+      <div className={chartLabelClassName}>
         <span>
           {eqBands ? "Approximate EQ response" : "EQ response unavailable"}
         </span>
         <span>20 Hz — {String(Number((maxFrequency / 1000).toFixed(1)))} kHz</span>
       </div>
-      <div className="spectrum-plot" ref={plotRef}>
+      <div className="spectrum-plot relative h-[190px] [&>svg]:block [&>svg]:size-full" ref={plotRef}>
       <svg
         viewBox="0 0 100 60"
         preserveAspectRatio="none"
@@ -503,7 +516,7 @@ export function SpectrumChart({
           <button
             key={band.id}
             type="button"
-            className="eq-handle"
+            className="eq-handle absolute size-11 -translate-x-1/2 -translate-y-1/2 touch-none cursor-grab rounded-full border-0 bg-transparent p-0 active:cursor-grabbing focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-clay-dark disabled:cursor-not-allowed"
             disabled={!band.enabled}
             aria-label={`${band.label} EQ: ${String(band.freqHz)} Hz, ${band.gainDb.toFixed(1)} dB`}
             aria-describedby={instructionsId}
@@ -541,7 +554,7 @@ export function SpectrumChart({
           controls provide another way to enter exact values.
         </p>
       )}
-      <div className="axis">
+      <div className="axis mt-1.5 flex justify-between text-[11px] text-ink-soft tabular-nums">
         <span>Sub</span>
         <span>Low</span>
         <span>Mid</span>

@@ -1116,8 +1116,9 @@ function MasterView({ trackId }: { trackId: string }) {
         </ControlGroup>
         <p className="disclosure">
           Source sample rate: {track.sampleRate / 1000} kHz. Original duration
-          and stereo frames are preserved. Integer formats use the shared
-          engine’s output quantization.
+          and stereo frames are preserved. 16-bit and 24-bit PCM clip samples
+          outside ±1. Choose 32-bit Float to preserve headroom, or enable the
+          limiter before exporting integer PCM.
         </p>
         <p className="disclosure" role="status">
           {message}

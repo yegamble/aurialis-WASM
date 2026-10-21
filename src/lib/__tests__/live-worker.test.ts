@@ -9,6 +9,36 @@ type Harness = {
 };
 
 describe("worker generation ordering", () => {
+  it("warms only a bounded configured Go chain before resetting for real source audio", async () => {
+    const events: string[] = [];
+    const process = vi.fn((left: Float32Array, right: Float32Array) => {
+      expect(left.every(Number.isFinite) && right.every(Number.isFinite)).toBe(true);
+      expect(left.some(value => value !== 0) && right.some(value => value !== 0)).toBe(true);
+      return 128;
+    });
+    const scope = {
+      Go: class { importObject = {}; run() { return Promise.resolve(); } },
+      aurialisDSPReady: true,
+      aurialisDSPInit: () => { events.push("init"); return true; },
+      aurialisDSPSetParams: () => { events.push("params"); return true; },
+      aurialisDSPProcessBlock: process,
+      aurialisDSPReset: () => { events.push("reset"); return true; },
+      postMessage: (message: { type: string }) => { events.push(message.type); },
+      onmessage: undefined as ((event: { data: unknown }) => Promise<void>) | undefined,
+    };
+    const context = { self: scope, importScripts: vi.fn(),
+      fetch: () => Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) }),
+      WebAssembly: { instantiate: () => Promise.resolve({ instance: {} }) }, setTimeout: vi.fn() };
+    const script = readFileSync("public/workers/aurialis-live-worker.js", "utf8");
+    runInNewContext(script, context);
+    const header = new Int32Array(new SharedArrayBuffer(8 * 4));
+    header[2] = 1;
+    await scope.onmessage?.({ data: { type: "init", sampleRate: 48000, params: "{}", version: 1,
+      header: header.buffer, tags: new SharedArrayBuffer(256 * 5 * 4),
+      samples: new SharedArrayBuffer(128 * 256 * 4 * 4), port: { start: vi.fn() } } });
+    expect(process).toHaveBeenCalledTimes(256);
+    expect(events).toEqual(["init", "params", "reset", "ready"]);
+  });
   it("does not rewind DSP or the read cursor when a delayed reset follows a new-generation wake", async () => {
     const reset = vi.fn(() => true);
     const scope = {

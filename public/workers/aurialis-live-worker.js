@@ -12,6 +12,20 @@ function fail(message) {
   if (header) Atomics.store(header, ERROR, 1);
   self.postMessage({ type: "error", message });
 }
+// Exercise the actual configured Go chain before the audio graph can consume
+// its first block. This bounded worker-only warmup absorbs cold WASM/JIT work;
+// reset() below removes its filter/envelope history before any source plays.
+function warmUp(sampleRate) {
+  for (let i = 0; i < QUANTUM; i++) {
+    left[i] = 0.05 * Math.sin(2 * Math.PI * 1000 * i / sampleRate);
+    right[i] = 0.04 * Math.sin(2 * Math.PI * 1000 * i / sampleRate + 0.3);
+  }
+  for (let block = 0; block < 256; block++) {
+    if (self.aurialisDSPProcessBlock(left, right, outLeft, outRight) !== QUANTUM)
+      throw new Error("The live audio engine could not warm up.");
+  }
+  left.fill(0); right.fill(0); outLeft.fill(0); outRight.fill(0);
+}
 function reset(requestedGeneration = Atomics.load(header, GENERATION)) {
   const generation = Atomics.load(header, GENERATION);
   if (requestedGeneration !== generation || activeGeneration === generation) return;
@@ -77,6 +91,7 @@ self.onmessage = async (event) => {
         || !self.aurialisDSPSetParams(message.params))
         throw new Error("The live audio engine could not initialize these settings.");
       version = message.version;
+      warmUp(message.sampleRate);
       reset();
       inputPort.onmessage = pump;
       inputPort.start();

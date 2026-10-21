@@ -296,14 +296,14 @@ func decodeSampleLE(b []byte, audioFormat, bitsPerSample uint16) float32 {
 	case 8:
 		return (float32(b[0]) - 128.0) / 128.0
 	case 16:
-		v := int16(binary.LittleEndian.Uint16(b[0:2]))
+		v := int16(binary.LittleEndian.Uint16(b[0:2])) // #nosec G115 -- intentional 16-bit two's complement PCM bit reinterpretation
 		return float32(v) / 32768.0
 	case 24:
 		u := uint32(b[0]) | (uint32(b[1]) << 8) | (uint32(b[2]) << 16)
 		if u&0x800000 != 0 {
 			u |= 0xFF000000
 		}
-		v := int32(u)
+		v := int32(u) // #nosec G115 -- intentional 24-bit sign-extended two's complement PCM bit reinterpretation
 		return float32(v) / 8388608.0
 	case 32:
 		u := binary.LittleEndian.Uint32(b[0:4])
@@ -319,7 +319,7 @@ func decodeSampleLE(b []byte, audioFormat, bitsPerSample uint16) float32 {
 			}
 			return f
 		}
-		v := int32(u)
+		v := int32(u) // #nosec G115 -- intentional 32-bit two's complement PCM bit reinterpretation
 		return float32(float64(v) / 2147483648.0)
 	default:
 		return 0.0
@@ -385,10 +385,10 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 	right := make([]float32, availFrames)
 	for f := 0; f < availFrames; f++ {
 		base := f * frameSize
-		sL := float32(int16(binary.BigEndian.Uint16(ssndData[base:base+2]))) / 32768.0
+		sL := float32(int16(binary.BigEndian.Uint16(ssndData[base:base+2]))) / 32768.0 // #nosec G115 -- 16-bit PCM two's complement
 		sR := sL
 		if numChannels >= 2 {
-			sR = float32(int16(binary.BigEndian.Uint16(ssndData[base+2:base+4]))) / 32768.0
+			sR = float32(int16(binary.BigEndian.Uint16(ssndData[base+2:base+4]))) / 32768.0 // #nosec G115 -- 16-bit PCM two's complement
 		}
 		left[f] = sL
 		right[f] = sR
@@ -413,24 +413,24 @@ func parseIEEE80SampleRate(b []byte) int {
 		return 48000
 	}
 	shift := 63 - exp
-	if shift < 0 || shift >= 64 {
+	if shift < 33 || shift >= 64 {
 		return 48000
 	}
-	sr := int(mant >> shift)
-	if sr < 8000 || sr > 192000 {
+	shifted := mant >> shift
+	if shifted < 8000 || shifted > 192000 {
 		return 48000
 	}
-	return sr
+	return int(shifted) // #nosec G115 -- bounded to [8000, 192000]
 }
 
 func safeUint32(v int) uint32 {
 	if v <= 0 {
 		return 0
 	}
-	if uint64(v) > math.MaxUint32 {
+	if int64(v) > int64(math.MaxUint32) {
 		return math.MaxUint32
 	}
-	return uint32(uint64(v))
+	return uint32(v) // #nosec G115 -- bounded to [0, MaxUint32]
 }
 
 func safeUint16(v int) uint16 {

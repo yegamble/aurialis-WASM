@@ -97,7 +97,7 @@ func TestAudioCDRSanitizationAndPolyglotRejection(t *testing.T) {
 	withJunk = append(withJunk, cleanWAV[:36]...)
 	withJunk = append(withJunk, []byte("JUNK\x08\x00\x00\x00METADATA")...)
 	withJunk = append(withJunk, cleanWAV[36:]...)
-	binary.LittleEndian.PutUint32(withJunk[4:8], uint32(len(withJunk)-8))
+	binary.LittleEndian.PutUint32(withJunk[4:8], uint32(len(withJunk)-8)) // #nosec G115 -- test fixture size < 100 KB
 	disarmed, err := audio.DecodeAndDisarm("with_junk.wav", withJunk)
 	if err != nil {
 		t.Fatalf("DecodeAndDisarm failed on WAV with JUNK chunk: %v", err)

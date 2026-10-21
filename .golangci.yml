@@ -46,7 +46,7 @@ linters:
         - name: if-return
         - name: increment-decrement
         - name: indent-error-flow
-        - name: Early-return
+        - name: early-return
           disabled: true
         - name: package-comments
           disabled: true

@@ -52,12 +52,12 @@ func MeasureStereo(left, right []float32, sampleRate float64) Metrics {
 		Enabled: true,
 	})
 	kwHPF := computeButterworthSVF(sampleRate, 38.135)
-	var kwShelfState [2]svfState
-	var kwHPFState [2]svfState
+	var kwShelfL, kwShelfR svfState
+	var kwHPFL, kwHPFR svfState
 
 	// Low-bass (<110 Hz) correlation filter (4th-order Butterworth LP)
 	lbFilter := computeButterworthSVF(sampleRate, 110.0)
-	var lbState [2][2]svfState
+	var lbL1, lbL2, lbR1, lbR2 svfState
 
 	var sumSqK float64
 	var sumSqRaw float64
@@ -111,10 +111,10 @@ func MeasureStereo(left, right []float32, sampleRate float64) Metrics {
 		sumSqRaw += 0.5 * (l*l + r*r)
 
 		// Low-bass (<110 Hz) correlation after settling first 256 samples
-		lowL1, _ := processSVFLowHigh(lbFilter, &lbState[0][0], l)
-		lowL2, _ := processSVFLowHigh(lbFilter, &lbState[0][1], lowL1)
-		lowR1, _ := processSVFLowHigh(lbFilter, &lbState[1][0], r)
-		lowR2, _ := processSVFLowHigh(lbFilter, &lbState[1][1], lowR1)
+		lowL1, _ := processSVFLowHigh(lbFilter, &lbL1, l)
+		lowL2, _ := processSVFLowHigh(lbFilter, &lbL2, lowL1)
+		lowR1, _ := processSVFLowHigh(lbFilter, &lbR1, r)
+		lowR2, _ := processSVFLowHigh(lbFilter, &lbR2, lowR1)
 		if i >= 256 || n < 512 {
 			lbLL += lowL2 * lowL2
 			lbRR += lowR2 * lowR2
@@ -122,10 +122,10 @@ func MeasureStereo(left, right []float32, sampleRate float64) Metrics {
 		}
 
 		// K-weighted energy
-		kl := processSVF(kwShelf, &kwShelfState[0], l)
-		_, kl = processSVFLowHigh(kwHPF, &kwHPFState[0], kl)
-		kr := processSVF(kwShelf, &kwShelfState[1], r)
-		_, kr = processSVFLowHigh(kwHPF, &kwHPFState[1], kr)
+		kl := processSVF(kwShelf, &kwShelfL, l)
+		_, kl = processSVFLowHigh(kwHPF, &kwHPFL, kl)
+		kr := processSVF(kwShelf, &kwShelfR, r)
+		_, kr = processSVFLowHigh(kwHPF, &kwHPFR, kr)
 
 		eSample := 0.5 * (kl*kl + kr*kr)
 		sumSqK += eSample

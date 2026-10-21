@@ -168,3 +168,29 @@ it("captures a primary pointer hold, suppresses its click, and cancels a touch i
     expect(capture).toHaveBeenCalledWith(7);
   } finally { vi.useRealTimers(); }
 });
+
+it("restores the keyboard hold origin after a disabled resume without stealing another control's focus", () => {
+  vi.useFakeTimers();
+  const focused = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+  const other = document.createElement("input");
+  const bodyTabIndex = document.body.getAttribute("tabindex");
+  document.body.tabIndex = -1;
+  try {
+    const callbacks = handlers();
+    const state = { ...initial, ready: true, playing: true };
+    const { rerender } = render(<RealTransport {...callbacks} state={state} sourceReady nextTrackTitle="Second song" />);
+    const forward = screen.getByRole("button", { name: "Next track: Second song" });
+    function releaseHold() { forward.focus(); fireEvent.keyDown(forward, { key: " " }); vi.advanceTimersByTime(300); fireEvent.keyDown(window, { key: "Escape" }); }
+    releaseHold();
+    rerender(<RealTransport {...callbacks} state={{ ...state, playing: false, loading: true }} sourceReady nextTrackTitle="Second song" />);
+    document.body.focus();
+    expect(document.activeElement).toBe(document.body);
+    rerender(<RealTransport {...callbacks} state={state} sourceReady nextTrackTitle="Second song" />);
+    expect(document.activeElement).toBe(forward);
+    releaseHold();
+    rerender(<RealTransport {...callbacks} state={{ ...state, playing: false, loading: true }} sourceReady nextTrackTitle="Second song" />);
+    document.body.append(other); other.focus();
+    rerender(<RealTransport {...callbacks} state={state} sourceReady nextTrackTitle="Second song" />);
+    expect(document.activeElement).toBe(other);
+  } finally { other.remove(); if (bodyTabIndex === null) document.body.removeAttribute("tabindex"); else document.body.setAttribute("tabindex", bodyTabIndex); focused.mockRestore(); vi.useRealTimers(); }
+});

@@ -26,7 +26,8 @@ const actionClass = "touch-none select-none grid size-[44px] shrink-0 place-item
 function useHoldAction(direction: -1 | 1, onScrub: RealTransportProps["onScrub"], onTap: () => void, disabled: boolean) {
   const callbacks = useRef({ onScrub, onTap });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const session = useRef<{ origin: "pointer" | "key"; held: boolean } | null>(null);
+  const session = useRef<{ origin: "pointer" | "key"; held: boolean; element: HTMLButtonElement } | null>(null);
+  const resumeFocus = useRef<HTMLButtonElement | null>(null);
   const suppressClick = useRef(false);
   useEffect(() => { callbacks.current = { onScrub, onTap }; }, [onScrub, onTap]);
   function finish(phase: "end" | "cancel") {
@@ -36,14 +37,17 @@ function useHoldAction(direction: -1 | 1, onScrub: RealTransportProps["onScrub"]
     session.current = null;
     if (current !== null) {
       suppressClick.current = current.held || phase === "cancel";
-      if (current.held) callbacks.current.onScrub(direction, phase);
+      if (current.held) {
+        if (current.origin === "key" && document.activeElement === current.element) resumeFocus.current = current.element;
+        callbacks.current.onScrub(direction, phase);
+      }
     }
     return current;
   }
-  function begin(origin: "pointer" | "key") {
+  function begin(origin: "pointer" | "key", element: HTMLButtonElement) {
     if (disabled || session.current !== null) return;
     suppressClick.current = false;
-    session.current = { origin, held: false };
+    session.current = { origin, held: false, element };
     timer.current = setTimeout(() => {
       timer.current = null;
       if (session.current === null) return;
@@ -60,14 +64,21 @@ function useHoldAction(direction: -1 | 1, onScrub: RealTransportProps["onScrub"]
       window.removeEventListener("blur", cancel);
       window.removeEventListener("keydown", escape);
       cancel();
+      resumeFocus.current = null;
     };
   }, [direction]);
   useEffect(() => { if (disabled) finish("cancel"); }, [disabled]);
+  useEffect(() => {
+    if (disabled || resumeFocus.current === null) return;
+    const element = resumeFocus.current;
+    resumeFocus.current = null;
+    if (element.isConnected && document.hasFocus() && (document.activeElement === document.body || document.activeElement === element)) element.focus({ preventScroll: true });
+  });
   return {
     onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => {
       if (event.button !== 0 || !event.isPrimary) return;
       event.currentTarget.setPointerCapture(event.pointerId);
-      begin("pointer");
+      begin("pointer", event.currentTarget);
     },
     onPointerUp: () => { finish("end"); },
     onPointerCancel: () => { finish("cancel"); },
@@ -81,7 +92,7 @@ function useHoldAction(direction: -1 | 1, onScrub: RealTransportProps["onScrub"]
     onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => {
       if (event.key !== " " && event.key !== "Enter") return;
       event.preventDefault();
-      if (!event.repeat) begin("key");
+      if (!event.repeat) begin("key", event.currentTarget);
     },
     onKeyUp: (event: React.KeyboardEvent<HTMLButtonElement>) => {
       if (event.key !== " " && event.key !== "Enter") return;

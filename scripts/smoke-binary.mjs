@@ -26,7 +26,7 @@ try {
     await delay(100);
   }
   assert.ok(ready, "binary did not become ready");
-  for (const route of ["/", "/library", "/master/demo-1", "/wasm/wasm_exec.js", "/wasm/aurialis-dsp.wasm"]) {
+  for (const route of ["/", "/library", "/master/uploaded-project", "/wasm/wasm_exec.js", "/wasm/aurialis-dsp.wasm"]) {
     const response = await fetch(`${host}${route}`);
     assert.equal(response.status, 200, route);
     assert.equal(response.headers.get("cross-origin-opener-policy"), "same-origin");

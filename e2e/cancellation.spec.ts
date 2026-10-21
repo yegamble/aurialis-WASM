@@ -19,6 +19,23 @@ async function holdRender(page: Page) {
   return { seen, release };
 }
 
+test("a failed import can retry the same file without reloading the page", async ({ page }) => {
+  await page.goto("/");
+  let first = true;
+  await page.route("**/api/master/render", async (route) => {
+    if (first) { first = false; await route.abort("failed"); }
+    else await route.continue();
+  });
+  const file = { name: "retry-same-source.wav", mimeType: "audio/wav", buffer: fixture() };
+  const input = page.getByLabel("Upload audio file");
+  await input.setInputFiles(file);
+  await expect(page.getByText("Could not reach the local audio server", { exact: false })).toBeVisible();
+  expect(await input.inputValue(), "clearing the native chooser allows its next selection of the same file to fire change").toBe("");
+  await input.setInputFiles(file);
+  await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
+  await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
+});
+
 test("leaving Home cancels a pending import without creating or opening a stale project", async ({ page }) => {
   await page.goto("/");
   const held = await holdRender(page);
@@ -52,36 +69,36 @@ test("closing the export dialog cancels its pending render and keeps the source 
     await canceled;
     await expect(dialog).toBeHidden();
     await expect(page).toHaveURL(new RegExp(`/master/${id}$`));
-    await expect(page.getByRole("button", { name: "Render preview", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Render offline preview", exact: true })).toBeEnabled();
   } finally {
     held.release();
   }
 });
 
-test("Simple and profile Apply wait for the actual source to finish loading", async ({ page }) => {
-  const id = await uploadProject(page, "loading-source.wav");
-  let release = () => {};
-  let capture = () => {};
-  const seen = new Promise<void>((resolve) => { capture = resolve; });
-  const held = new Promise<void>((resolve) => { release = resolve; });
-  await page.route("**/api/master/render", async (route) => {
-    capture();
-    await held;
-    await route.continue();
-  });
-  try {
-    await page.goto(`/master/${id}`);
-    await seen;
-    await page.getByRole("tab", { name: "simple", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Apply master direction", exact: true })).toBeDisabled();
-    await page.getByRole("tab", { name: "deep", exact: true }).click();
-    const apply = page.getByRole("button", { name: "Apply profile", exact: true });
-    await expect(apply).toBeDisabled();
-    release();
-    await expect(apply).toBeEnabled({ timeout: 30_000 });
-    await apply.click();
-    await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
-  } finally {
-    release();
+test("missing cached audio disables playback and Apply without inventing a source", async ({ page }) => {
+  const id = await uploadProject(page, "missing-source.wav");
+  await page.evaluate(async (id) => {
+    await new Promise<void>((resolve, reject) => {
+      const open = indexedDB.open("aurialis-local", 2);
+      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        const db = open.result;
+        const transaction = db.transaction("audio", "readwrite");
+        transaction.objectStore("audio").delete(id);
+        transaction.oncomplete = () => { db.close(); resolve(); };
+        transaction.onerror = () => { db.close(); reject(transaction.error); };
+      };
+    });
+  }, id);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Retry source", exact: true })).toBeVisible();
+  for (const name of ["Play", "A Processed", "B Original"]) {
+    await expect(page.getByRole("button", { name, exact: true })).toBeDisabled();
   }
+  await page.getByRole("tab", { name: "simple", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Apply master direction", exact: true })).toBeDisabled();
+  await page.getByRole("tab", { name: "deep", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Apply profile", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Retry source", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeDisabled();
 });

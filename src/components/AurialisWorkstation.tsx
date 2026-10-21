@@ -500,7 +500,11 @@ function HomeView() {
             accept="audio/wav,.wav"
             hidden
             aria-label="Upload audio file"
-            onChange={(e) => void importFile(e.target.files?.[0])}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              event.currentTarget.value = "";
+              void importFile(file);
+            }}
           />
           <div className="drop-icon">
             <Icon name="upload" />

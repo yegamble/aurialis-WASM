@@ -50,20 +50,20 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
     }
   })
 
-  test("passes axe WCAG 2.2 AA accessibility audit on core routes", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1280, height: 800 })
-    for (const route of ["/", "/library", "/master/demo-1", "/split/demo-1", "/tools"]) {
-      await page.goto(route)
-      await expect(page.locator("h1")).toBeVisible()
-      const results = await new AxeBuilder({ page })
-        .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
-        .analyze()
-      expect(
-        results.violations,
-        `WCAG 2.2 AA violations on ${route}: ${JSON.stringify(results.violations)}`,
-      ).toEqual([])
-    }
-  })
+  for (const vp of VIEWPORTS) {
+    test(`passes axe WCAG 2.2 AA at ${vp.width}px`, async ({ page }) => {
+      await page.setViewportSize({ width: vp.width, height: vp.height })
+      for (const route of ROUTES) {
+        await page.goto(route)
+        await expect(page.locator("h1")).toBeVisible()
+        const results = await new AxeBuilder({ page })
+          .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+          .analyze()
+        expect(
+          results.violations,
+          `WCAG 2.2 AA on ${route} at ${vp.width}px: ${JSON.stringify(results.violations)}`,
+        ).toEqual([])
+      }
+    })
+  }
 })

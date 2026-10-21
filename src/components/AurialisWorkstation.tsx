@@ -25,6 +25,7 @@ import {
 } from "react";
 import {
   createDefaultAdvancedParams,
+  clampAdvancedToSampleRate,
   mapSimpleToDSP,
   mapProfileToDSP,
 } from "@/lib/audio-dsp";
@@ -96,11 +97,6 @@ async function wavCapacity(file: File): Promise<{ frames: number; sampleRate: nu
     offset += 8 + length + length % 2;
   }
   return null;
-}
-
-function paramsAtSampleRate(params: AdvancedParams, sampleRate: number): AdvancedParams {
-  const maximum = Math.min(18000, Math.floor(sampleRate * 0.47));
-  return { ...params, eqBands: params.eqBands.map((band) => ({ ...band, freqHz: Math.min(maximum, Math.max(20, band.freqHz)) })) as AdvancedParams["eqBands"] };
 }
 
 function resolveDynamicId(
@@ -418,7 +414,7 @@ function HomeView() {
       target: "Streaming",
       metrics: trackMetrics(measurement.afterMetrics),
       measurements: measurement.afterMetrics,
-      advanced: paramsAtSampleRate(createDefaultAdvancedParams(), pcm.sampleRate),
+      advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), pcm.sampleRate),
       profile: "modern_pop_polish",
       persistenceWarning: storageWarning,
     };
@@ -814,7 +810,7 @@ function MasterView({ trackId }: { trackId: string }) {
         if (!cancelled) {
           setSource(pcm);
           setSourceBlob(canonical);
-          const advanced = paramsAtSampleRate(track.advanced, pcm.sampleRate);
+          const advanced = clampAdvancedToSampleRate(track.advanced, pcm.sampleRate);
           if (JSON.stringify(advanced) !== JSON.stringify(track.advanced)) dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced } });
           setMessage("Source ready. Adjust settings and render a preview.");
         }
@@ -1081,7 +1077,7 @@ function MasterView({ trackId }: { trackId: string }) {
                   track.target,
                   track.advanced,
                 );
-                const next = await normalizeSimpleAudio(sourceBlob, paramsAtSampleRate(mapped, track.sampleRate), mapped.limiter.targetLufs);
+                const next = await normalizeSimpleAudio(sourceBlob, clampAdvancedToSampleRate(mapped, track.sampleRate), mapped.limiter.targetLufs);
                 dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next } });
                 await renderPreview(next);
                 } catch (error) {
@@ -1522,7 +1518,7 @@ function AdvancedControls({
         variant="secondary"
         icon={<Icon name="rotate-ccw" />}
         onClick={() => {
-          dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: paramsAtSampleRate(createDefaultAdvancedParams(), track.sampleRate) } });
+          dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate) } });
         }}
       >
         Reset modules
@@ -1662,7 +1658,7 @@ function DeepControls({ track, processing, onApply }: {
       <p className="disclosure">Musical section detection, timeline automation and AI repair are not available. These profiles apply the same settings throughout your track.</p>
       <Button className="full-button" disabled={processing} icon={<Icon name="sparkles" />}
         onClick={() => {
-          const params = paramsAtSampleRate(mapProfileToDSP(selectedProfile), track.sampleRate);
+          const params = clampAdvancedToSampleRate(mapProfileToDSP(selectedProfile), track.sampleRate);
           dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { profile: selectedProfile } });
           onApply(params);
         }}>

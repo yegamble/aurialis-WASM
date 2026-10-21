@@ -339,11 +339,17 @@ export async function importAudio(file: Blob, signal?: AbortSignal): Promise<{ c
   const response = await audioRequest(form, signal);
   if (!response.ok) throw await audioError(response, "Audio import failed.");
   const header = response.headers.get("X-Aurialis-Source-Metrics");
-  if (!header || header.length > 4096) throw new Error("The local server returned incomplete source measurements. Restart Aurialis and try again.");
-  let body: unknown;
-  try { body = JSON.parse(header) as unknown; }
-  catch { throw new Error("The local server returned invalid source measurements."); }
-  const measurement = audioMeasurement(body);
+  let measurement: AudioMeasurement;
+  try {
+    if (!header || header.length > 4096) throw new Error("The local server returned incomplete source measurements. Restart Aurialis and try again.");
+    let body: unknown;
+    try { body = JSON.parse(header) as unknown; }
+    catch { throw new Error("The local server returned invalid source measurements."); }
+    measurement = audioMeasurement(body);
+  } catch (error) {
+    await response.body?.cancel().catch(() => undefined);
+    throw error;
+  }
   const canonical = await readAudioResponse(() => response.blob(), signal);
   if (canonical.size !== 44 + measurement.frames * 8)
     throw new Error("The reconstructed audio transfer was incomplete. Try importing the source again.");

@@ -270,10 +270,12 @@ describe("actual audio measurement and explicit Simple normalization", () => {
   });
   it("rejects absent, malformed and incomplete source responses without another upload", async () => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
+    const cancel = vi.fn(() => Promise.resolve());
     for (const value of [null, "invalid", JSON.stringify({ ...measurementResponse(), duration: 5 })]) {
-      fetch.mockResolvedValue({ ok: true, headers: new Headers(value ? { "X-Aurialis-Source-Metrics": value } : {}), blob: () => Promise.resolve(new Blob([])) });
+      fetch.mockResolvedValue({ ok: true, body: { cancel }, headers: new Headers(value ? { "X-Aurialis-Source-Metrics": value } : {}), blob: () => Promise.resolve(new Blob([])) });
       await expect(importAudio(new Blob(["source"]))).rejects.toThrow("measurements");
     }
+    expect(cancel).toHaveBeenCalledTimes(3);
     fetch.mockResolvedValue({ ok: true, headers: new Headers({ "X-Aurialis-Source-Metrics": JSON.stringify(measurementResponse()) }), blob: () => Promise.resolve(new Blob(["truncated"])) });
     await expect(importAudio(new Blob(["source"]))).rejects.toThrow("transfer was incomplete");
     expect(fetch).toHaveBeenCalledTimes(4);

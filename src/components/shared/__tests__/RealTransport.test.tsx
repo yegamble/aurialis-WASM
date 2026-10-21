@@ -1,48 +1,56 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { StereoPCM } from "@/lib/browser-engine";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { LivePlaybackState } from "@/lib/live-playback";
 import { RealTransport } from "../RealTransport";
 
-const source: StereoPCM = { sampleRate: 8000, left: new Float32Array(24000).fill(0.2), right: new Float32Array(24000).fill(0.1) };
-const processed: StereoPCM = { sampleRate: 8000, left: new Float32Array(24000).fill(0.4), right: new Float32Array(24000).fill(0.2) };
-const callbacks = { onAB: vi.fn(), onSeekRatio: vi.fn() };
+const initial: LivePlaybackState = { position: 1.25, duration: 5, playing: false, ready: false, loading: false, original: false, volume: 0.8, underruns: 0, parameterVersion: 1, appliedVersion: 1, error: null };
+function handlers() { return { onPlay: vi.fn().mockResolvedValue(undefined), onPause: vi.fn(), onOriginal: vi.fn(), onVolume: vi.fn() }; }
+afterEach(cleanup);
 
-beforeEach(() => {
-  let next = 0;
-  vi.stubGlobal("URL", { createObjectURL: vi.fn(() => `blob:test-${String(next++)}`), revokeObjectURL: vi.fn() });
-});
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
-
-describe("A/B monitor regression checks", () => {
-  it("retains matched monitor volume after each source metadata event", () => {
-    const { container, rerender } = render(<RealTransport {...callbacks} pcm={processed} sourcePcm={source} processedPcm={processed} ab="B" processedReady playheadRatio={0} />);
-    const audio = container.querySelector("audio");
-    if (!audio) throw new Error("Missing audio element");
-    fireEvent.loadedMetadata(audio);
-    fireEvent.click(screen.getByRole("button", { name: "Match level" }));
-    expect(audio.volume).toBeCloseTo(0.4, 5);
-    rerender(<RealTransport {...callbacks} pcm={source} sourcePcm={source} processedPcm={processed} ab="A" processedReady playheadRatio={0} />);
-    fireEvent.loadedMetadata(audio);
-    expect(audio.volume).toBeCloseTo(0.8, 5);
-    rerender(<RealTransport {...callbacks} pcm={processed} sourcePcm={source} processedPcm={processed} ab="B" processedReady playheadRatio={0} />);
-    fireEvent.loadedMetadata(audio);
-    expect(audio.volume).toBeCloseTo(0.4, 5);
-    fireEvent.change(screen.getByRole("slider", { name: "Playback volume" }), { target: { value: "0.5" } });
-    expect(audio.volume).toBeCloseTo(0.25, 5);
+describe("live A/B transport", () => {
+  it("defaults to A processed, offers B original immediately and has no hidden level matching", () => {
+    const callbacks = handlers();
+    render(<RealTransport {...callbacks} state={initial} sourceReady />);
+    expect(screen.getByRole("button", { name: "A Processed" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "B Original" }).disabled).toBe(false);
+    expect(screen.queryByRole("button", { name: "Match level" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "B Original" }));
+    expect(callbacks.onOriginal).toHaveBeenLastCalledWith(true);
+    fireEvent.click(screen.getByRole("button", { name: "A Processed" }));
+    expect(callbacks.onOriginal).toHaveBeenLastCalledWith(false);
+    expect(callbacks.onPlay).not.toHaveBeenCalled();
+    expect(callbacks.onPause).not.toHaveBeenCalled();
+    expect(callbacks.onVolume).not.toHaveBeenCalled();
   });
 
-  it("preserves playhead and resumes a playing comparison after an A/B swap", () => {
-    const { container, rerender } = render(<RealTransport {...callbacks} pcm={source} sourcePcm={source} processedPcm={processed} ab="A" processedReady playheadRatio={0} />);
-    const audio = container.querySelector("audio");
-    if (!audio) throw new Error("Missing audio element");
-    fireEvent.loadedMetadata(audio);
-    audio.currentTime = 1.25;
-    Object.defineProperty(audio, "paused", { configurable: true, value: false });
-    const play = vi.spyOn(audio, "play").mockResolvedValue();
-    rerender(<RealTransport {...callbacks} pcm={processed} sourcePcm={source} processedPcm={processed} ab="B" processedReady playheadRatio={0} />);
-    audio.currentTime = 0;
-    fireEvent.loadedMetadata(audio);
-    expect(audio.currentTime).toBeCloseTo(1.25, 4);
-    expect(play).toHaveBeenCalledOnce();
+  it("keeps the controller clock and play state when comparison routing changes", () => {
+    const callbacks = handlers();
+    const { container, rerender } = render(<RealTransport {...callbacks} state={{ ...initial, ready: true, playing: true }} sourceReady />);
+    rerender(<RealTransport {...callbacks} state={{ ...initial, ready: true, playing: true, original: true }} sourceReady />);
+    expect(container.querySelector(".transport")?.getAttribute("data-position")).toBe("1.25");
+    expect(container.querySelector(".transport")?.getAttribute("data-playing")).toBe("true");
+    expect(screen.getByRole("button", { name: "B Original" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    expect(callbacks.onPause).toHaveBeenCalledOnce();
+    fireEvent.change(screen.getByRole("slider", { name: "Playback volume" }), { target: { value: "0.5" } });
+    expect(callbacks.onVolume).toHaveBeenCalledWith(0.5);
+  });
+
+  it("does not offer dead comparison controls or claim a selected source before audio loads", () => {
+    const callbacks = handlers();
+    render(<RealTransport {...callbacks} state={null} sourceReady={false} />);
+    for (const name of ["A Processed", "B Original", "Play"]) expect(screen.getByRole<HTMLButtonElement>("button", { name }).disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "A Processed" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: "B Original" }).getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("shows loading and unapplied parameter versions from the real controller state", () => {
+    const callbacks = handlers();
+    const { container, rerender } = render(<RealTransport {...callbacks} state={{ ...initial, loading: true }} sourceReady />);
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Starting playback" }).disabled).toBe(true);
+    rerender(<RealTransport {...callbacks} state={{ ...initial, ready: true, playing: true, parameterVersion: 4, appliedVersion: 3 }} sourceReady />);
+    expect(screen.getByRole("status").textContent).toBe("Updating audio…");
+    expect(container.querySelector(".transport")?.getAttribute("data-parameter-version")).toBe("4");
+    expect(container.querySelector(".transport")?.getAttribute("data-applied-version")).toBe("3");
   });
 });

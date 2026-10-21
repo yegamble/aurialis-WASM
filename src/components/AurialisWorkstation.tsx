@@ -30,7 +30,6 @@ import {
 import {
   createDefaultAdvancedParams,
   clampAdvancedToSampleRate,
-  mapSimpleToDSP,
   mapProfileToDSP,
 } from "@/lib/audio-dsp";
 import { deleteAudio, saveAudio, getAudio } from "@/lib/db";
@@ -795,6 +794,10 @@ function LibraryView() {
   );
 }
 
+function masteringSettingsKey(settings: AdvancedParams) {
+  return JSON.stringify({ ...engineParams(settings), requestedTargetLufs: settings.limiter.targetLufs });
+}
+
 async function readStoredSource(blob: Blob, signal: AbortSignal): Promise<{ blob: Blob; pcm: StereoPCM }> {
   signal.throwIfAborted();
   const header = new DataView(await blob.slice(0, 44).arrayBuffer());
@@ -829,7 +832,6 @@ function MasterView({ trackId }: { trackId: string }) {
   const [source, setSource] = useState<StereoPCM | null>(null);
   const [preview, setPreview] = useState<StereoPCM | null>(null);
   const [renderedKey, setRenderedKey] = useState("");
-  const [renderedDirection, setRenderedDirection] = useState("");
   const live = useRef<LivePlaybackController | null>(null);
   const playbackControls = useRef<ReturnType<typeof bindPlaybackControls> | null>(null);
   const scrub = useRef<{ controller: LivePlaybackController; direction: -1 | 1; startedAt: number; lastAt: number; position: number; wasPlaying: boolean; frame: number } | null>(null);
@@ -848,28 +850,25 @@ function MasterView({ trackId }: { trackId: string }) {
   const [message, setMessage] = useState("");
   const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
   const renderAbort = useRef<AbortController | null>(null);
+  const renderSettings = useRef("");
+  const canonicalSettings = useRef(track?.advanced);
+  canonicalSettings.current = track?.advanced;
   useEffect(
     () => () => {
       renderAbort.current?.abort();
     },
     [],
   );
-  const settingsKey = track ? JSON.stringify(engineParams(track.advanced)) : "";
-  const directionKey = track?.mode === "simple" ? JSON.stringify([track.genre, track.tone, track.intensity, track.target]) : "";
-  const fresh = renderedKey === settingsKey && preview !== null && (track?.mode !== "simple" || renderedDirection === directionKey);
+  const settingsKey = track ? masteringSettingsKey(track.advanced) : "";
+  const fresh = renderedKey === settingsKey && preview !== null;
   useEffect(() => {
-    renderAbort.current?.abort();
-    setProcessing(false);
-  }, [track?.mode, directionKey]);
-  const liveSettings = useMemo(() => {
-    if (!track) return createDefaultAdvancedParams();
-    if (track.mode !== "simple") return clampAdvancedToSampleRate(track.advanced, source?.sampleRate ?? track.sampleRate);
-    const mapped = clampAdvancedToSampleRate(mapSimpleToDSP(track.genre, track.tone, track.intensity, track.target), source?.sampleRate ?? track.sampleRate);
-    const stored = clampAdvancedToSampleRate(track.advanced, source?.sampleRate ?? track.sampleRate);
-    // Retain measured input gain only while the complete selected direction, including its target, matches.
-    const sameDirection = JSON.stringify({ ...mapped, input: 0 }) === JSON.stringify({ ...stored, input: 0 });
-    return sameDirection ? stored : mapped;
-  }, [track?.advanced, track?.mode, track?.genre, track?.tone, track?.intensity, track?.target, track?.sampleRate, source?.sampleRate]);
+    if (renderAbort.current && !renderAbort.current.signal.aborted && renderSettings.current !== settingsKey) {
+      renderAbort.current.abort();
+      setProcessing(false);
+      if (processing) setMessage("Settings changed. The previous offline operation was canceled.");
+    }
+  }, [settingsKey, processing]);
+  const liveSettings = useMemo(() => track ? clampAdvancedToSampleRate(track.advanced, source?.sampleRate ?? track.sampleRate) : createDefaultAdvancedParams(), [track?.advanced, track?.sampleRate, source?.sampleRate]);
   const currentSettings = useRef(liveSettings);
   currentSettings.current = liveSettings;
   const liveMeter = playback?.playing ? meter : null;
@@ -1039,11 +1038,12 @@ function MasterView({ trackId }: { trackId: string }) {
     };
   }, [track?.id, sourceAttempt]);
 
-  async function renderPreview(params: AdvancedParams = track?.advanced ?? createDefaultAdvancedParams(), direction = "", pending?: AbortController) {
+  async function renderPreview(params: AdvancedParams = track?.advanced ?? createDefaultAdvancedParams(), pending?: AbortController) {
     if (!track || !source) return;
     if (!pending) renderAbort.current?.abort();
     const controller = pending ?? new AbortController();
     renderAbort.current = controller;
+    renderSettings.current = masteringSettingsKey(params);
     setProcessing(true);
     setMessage(
       "Rendering the uploaded audio with the shared Go WebAssembly engine…",
@@ -1056,8 +1056,7 @@ function MasterView({ trackId }: { trackId: string }) {
       );
       if (controller.signal.aborted) return;
       setPreview(pcm);
-      setRenderedKey(JSON.stringify(engineParams(params)));
-      setRenderedDirection(direction);
+      setRenderedKey(masteringSettingsKey(params));
       live.current?.setBypass(false);
       setMessage("Preview ready. Playback uses the shared Go DSP engine.");
       dispatch({
@@ -1081,14 +1080,18 @@ function MasterView({ trackId }: { trackId: string }) {
     renderAbort.current?.abort();
     const controller = new AbortController();
     renderAbort.current = controller;
+    renderSettings.current = settingsKey;
+    const expected = track.advanced;
     setProcessing(true);
-    setMessage("Measuring the requested direction and output target…");
+    setMessage("Measuring the current settings and requested loudness…");
     try {
-      const mapped = mapSimpleToDSP(track.genre, track.tone, track.intensity, track.target);
-      const next = await normalizeSimpleAudio(sourceBlob, clampAdvancedToSampleRate(mapped, track.sampleRate), mapped.limiter.targetLufs, controller.signal);
+      const measured = await normalizeSimpleAudio(sourceBlob, expected, expected.limiter.targetLufs, controller.signal);
       if (controller.signal.aborted) return;
-      dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next } });
-      await renderPreview(next, directionKey, controller);
+      if (canonicalSettings.current !== expected) { setMessage("Settings changed. Set target loudness again."); return; }
+      const next = { ...expected, input: measured.input };
+      renderSettings.current = masteringSettingsKey(next);
+      dispatch({ type: "APPLY_NORMALIZED_GAIN", id: track.id, expected, input: next.input });
+      await renderPreview(next, controller);
     } catch (error) {
       if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Could not prepare this master.");
     } finally {
@@ -1096,11 +1099,12 @@ function MasterView({ trackId }: { trackId: string }) {
     }
   }
   async function download() {
-    if (!track || !sourceBlob || (track.mode === "simple" && !fresh)) return;
+    if (!track || !sourceBlob) return;
     renderAbort.current?.abort();
     const controller = new AbortController();
     renderAbort.current = controller;
     setProcessing(true);
+    renderSettings.current = settingsKey;
     setMessage("Rendering WAV from the uploaded source…");
     try {
       const blob = await serverRender(
@@ -1189,7 +1193,7 @@ function MasterView({ trackId }: { trackId: string }) {
         </div>
         <div className="workspace-actions">
           <Button
-            disabled={!sourceBlob || processing || (track.mode === "simple" && !fresh)}
+            disabled={!sourceBlob || processing}
             icon={<Icon name="arrow-down-to-line" />}
             onClick={() => {
               setExportOpen(true);
@@ -1258,7 +1262,7 @@ function MasterView({ trackId }: { trackId: string }) {
           <div className="render-actions">
             <Button
               disabled={!source || processing}
-              onClick={() => void (track.mode === "simple" ? applySimpleDirection() : renderPreview())}
+              onClick={() => void renderPreview()}
               icon={<Icon name={processing ? "refresh-cw" : "play"} />}
             >
               {processing ? "Rendering…" : "Render offline preview"}
@@ -1272,7 +1276,7 @@ function MasterView({ trackId }: { trackId: string }) {
               {fresh
                 ? "Offline preview matches your settings. Live playback updates independently."
                 : track.mode === "simple"
-                  ? "Tone updates while you listen. Apply the master direction to measure the output target before exporting."
+                  ? "Simple and Advanced share these settings. Set target loudness to measure the requested level; export uses the current settings."
                   : "Playback responds to your controls immediately. Render an offline preview for a full-track check; export always uses current settings."}
             </span>
           </div>
@@ -1335,7 +1339,7 @@ function MasterView({ trackId }: { trackId: string }) {
               Close
             </Button>
             <Button
-              disabled={!sourceBlob || processing || (track.mode === "simple" && !fresh)}
+              disabled={!sourceBlob || processing}
               onClick={() => void download()}
             >
               {processing ? "Rendering WAV…" : "Render & download WAV"}
@@ -1775,15 +1779,17 @@ function SimpleControls({
   onApply: () => void;
 }) {
   const { dispatch } = useStore();
-  const update = (patch: Partial<Track>) => {
-    dispatch({ type: "UPDATE_TRACK", id: track.id, patch });
+  const update = (patch: Partial<Pick<Track, "genre" | "tone" | "intensity" | "target">>) => {
+    dispatch({ type: "UPDATE_SIMPLE", id: track.id, patch });
   };
+  const activeDirection = track.simpleCustom === false;
 
   return (
     <div className="control-stack">
       <div>
         <h2>Find the feeling</h2>
-        <p>Choose a broad musical direction. Real DSP parameters map to your choices.</p>
+        <p>Choose a direction to update the shared settings. Advanced edits stay in place until you choose another direction.</p>
+        {!activeDirection && <p className="disclosure" role="status">Custom settings</p>}
       </div>
       <ControlGroup label="Genre">
         <div className="choice-grid">
@@ -1791,8 +1797,8 @@ function SimpleControls({
             (item) => (
               <button
                 type="button"
-                className={track.genre === item ? "choice is-active" : "choice"}
-                aria-pressed={track.genre === item}
+                className={activeDirection && track.genre === item ? "choice is-active" : "choice"}
+                aria-pressed={activeDirection && track.genre === item}
                 key={item}
                 onClick={() => {
                   update({ genre: item });
@@ -1810,8 +1816,8 @@ function SimpleControls({
             (item) => (
               <button
                 type="button"
-                className={track.tone === item ? "choice is-active" : "choice"}
-                aria-pressed={track.tone === item}
+                className={activeDirection && track.tone === item ? "choice is-active" : "choice"}
+                aria-pressed={activeDirection && track.tone === item}
                 key={item}
                 onClick={() => {
                   update({ tone: item });
@@ -1863,7 +1869,7 @@ function SimpleControls({
         }
         onClick={onApply}
       >
-        {processing ? "Rendering master…" : "Apply master direction"}
+        {processing ? "Setting loudness…" : "Set target loudness"}
       </Button>
     </div>
   );

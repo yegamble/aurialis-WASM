@@ -29,6 +29,7 @@ const pcm: StereoPCM = { left: Float32Array.from({ length: 4800 }, (_, index) =>
 
 function mount() { return render(<StoreProvider><AurialisWorkstation route="master" paramId="demo-1" /></StoreProvider>); }
 async function ready() { await waitFor(() => { expect(screen.getByRole<HTMLButtonElement>("button", { name: "A Processed" }).disabled).toBe(false); }, { timeout: 10000 }); }
+function savedTrack() { const saved = JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as typeof testStore; const track = saved.tracks[0]; if (!track) throw new Error("No persisted track"); return track; }
 function latest() { const instance = instances.at(-1); if (!instance) throw new Error("No live controller was constructed"); return instance; }
 
 beforeEach(() => {
@@ -81,30 +82,70 @@ describe("master live playback lifecycle", () => {
     expect(screen.getByRole("region", { name: "Measured audio levels" }).textContent).not.toContain("−∞");
   }, 20000);
 
-  it("auditions Simple changes immediately and retains prepared gain only for the applied direction", async () => {
-    mount();
-    await ready();
+  it("persists Simple choices to shared params and keeps modes neutral before and after manual edits", async () => {
+    mount(); await ready();
     const instance = latest();
-    const normalize = vi.spyOn(engine, "normalizeSimpleAudio");
-    const offline = vi.spyOn(engine, "processPreview").mockResolvedValue(pcm);
     fireEvent.click(screen.getByRole("tab", { name: "simple" }));
+    expect(screen.getByText("Custom settings")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Warm" }));
     const mapped = mapSimpleToDSP("Pop", "Warm", 50, "Streaming");
-    await waitFor(() => { expect(instance.controller.setParams).toHaveBeenLastCalledWith(mapped); });
-    expect(offline).not.toHaveBeenCalled();
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Export" }).disabled).toBe(true);
-    const prepared = { ...mapped, input: 4 };
-    normalize.mockResolvedValue(prepared);
-    fireEvent.click(screen.getByRole("button", { name: "Apply master direction" }));
-    await waitFor(() => { expect(screen.getByRole<HTMLButtonElement>("button", { name: "Export" }).disabled).toBe(false); }, { timeout: 10000 });
+    expect(savedTrack().advanced).toEqual(mapped);
+    expect(instance.controller.setParams).toHaveBeenLastCalledWith(mapped);
+    const offline = vi.spyOn(engine, "processPreview").mockResolvedValue(pcm);
+    fireEvent.click(screen.getByRole("button", { name: "Render offline preview" }));
+    await screen.findByRole("button", { name: "Download offline preview" });
+    const calls = vi.mocked(instance.controller.setParams).mock.calls.length;
+    fireEvent.click(screen.getByRole("tab", { name: "advanced" }));
+    fireEvent.click(screen.getByRole("tab", { name: "simple" }));
+    expect(savedTrack().advanced).toEqual(mapped);
+    expect(instance.controller.setParams).toHaveBeenCalledTimes(calls);
+    expect(screen.getByRole("button", { name: "Download offline preview" })).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Export" }).disabled).toBe(false);
+    fireEvent.click(screen.getByRole("tab", { name: "advanced" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "6" } });
+    fireEvent.click(screen.getByRole("tab", { name: "Mid" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Mid gain" }), { target: { value: "5" } });
+    const custom = savedTrack().advanced; const customCalls = vi.mocked(instance.controller.setParams).mock.calls.length;
+    fireEvent.click(screen.getByRole("tab", { name: "simple" }));
+    expect(screen.getByText("Custom settings")).toBeTruthy();
+    for (const name of ["Pop", "Hip-hop", "Rock", "Electronic", "Acoustic", "R&B", "Warm", "Open", "Punchy", "Intimate", "Wide", "Clean"]) expect(screen.getByRole("button", { name }).getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(screen.getByRole("tab", { name: "advanced" }));
+    expect(savedTrack().advanced).toEqual(custom);
+    expect(instance.controller.setParams).toHaveBeenCalledTimes(customCalls);
+    expect(offline).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("tab", { name: "simple" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+    expect(savedTrack().advanced).toEqual(mapSimpleToDSP("Pop", "Open", 50, "Streaming"));
+    expect(screen.queryByText("Custom settings")).toBeNull();
+  }, 30000);
+
+  it("normalizes only current canonical input gain and preserves an in-flight operation across view changes", async () => {
+    mount(); await ready();
+    const instance = latest();
+    fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "6" } });
+    fireEvent.click(screen.getByRole("tab", { name: "Mid" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Mid gain" }), { target: { value: "5" } });
+    const expected = savedTrack().advanced;
+    let resolveMeasured: ((params: AdvancedParams) => void) | undefined;
+    const normalize = vi.spyOn(engine, "normalizeSimpleAudio").mockReturnValue(new Promise((resolve) => { resolveMeasured = resolve; }));
+    const offline = vi.spyOn(engine, "processPreview").mockResolvedValue(pcm);
+    fireEvent.click(screen.getByRole("tab", { name: "simple" }));
+    fireEvent.click(screen.getByRole("button", { name: "Set target loudness" }));
+    expect(normalize).toHaveBeenCalledWith(expect.any(Blob), expected, expected.limiter.targetLufs, expect.any(AbortSignal));
+    const calls = vi.mocked(instance.controller.setParams).mock.calls.length;
+    fireEvent.click(screen.getByRole("tab", { name: "advanced" }));
+    expect(instance.controller.setParams).toHaveBeenCalledTimes(calls);
+    await act(async () => { resolveMeasured?.({ ...expected, input: 4, stereo: { ...expected.stereo, width: 199 } }); await Promise.resolve(); });
+    const prepared = { ...expected, input: 4 };
+    expect(savedTrack().advanced).toEqual(prepared);
     expect(instance.controller.setParams).toHaveBeenLastCalledWith(prepared);
     expect(offline).toHaveBeenCalledWith(pcm, prepared, expect.any(AbortSignal));
-    fireEvent.change(screen.getByRole("combobox", { name: "Output target" }), { target: { value: "Dynamic" } });
-    await waitFor(() => { expect(instance.controller.setParams).toHaveBeenLastCalledWith(mapSimpleToDSP("Pop", "Warm", 50, "Dynamic")); });
-    fireEvent.click(screen.getByRole("button", { name: "Open" }));
-    await waitFor(() => { expect(instance.controller.setParams).toHaveBeenLastCalledWith(mapSimpleToDSP("Pop", "Open", 50, "Dynamic")); });
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Export" }).disabled).toBe(true);
-  }, 20000);
+    fireEvent.click(screen.getByRole("tab", { name: "simple" }));
+    expect(screen.getByText("Custom settings")).toBeTruthy();
+    fireEvent.change(screen.getByRole("combobox", { name: "Output target" }), { target: { value: "Loud" } });
+    expect(savedTrack().advanced).toEqual({ ...prepared, limiter: { ...prepared.limiter, targetLufs: -9, ceiling: -0.2 } });
+    expect(screen.getByText("Custom settings")).toBeTruthy();
+  }, 30000);
 
   it("disposes on leaving and constructs a new playable engine on return without stale callbacks", async () => {
     const first = mount();

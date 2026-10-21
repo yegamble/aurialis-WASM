@@ -14,6 +14,7 @@ import {
   sourcePeaks,
   type StereoPCM,
 } from "@/lib/browser-engine";
+import { clearNextPlaybackHandoff, reconcileNextPlaybackHandoff, stageNextPlaybackHandoff, takeNextPlaybackHandoff } from "@/lib/playback-handoff";
 import { bindPlaybackControls } from "@/lib/media-session";
 import { DSPModule } from "./shared/DSPModule";
 import { RealTransport } from "./shared/RealTransport";
@@ -123,9 +124,6 @@ function resolveDynamicId(
   return fallbackId;
 }
 
-type PlaybackHandoff = { fromTrackId: string; trackId: string; playing: boolean; volume: number };
-let pendingPlaybackHandoff: PlaybackHandoff | null = null;
-
 export function AurialisWorkstation({
   route,
   paramId,
@@ -147,7 +145,7 @@ export function AurialisWorkstation({
   const defaultTrackId = state.tracks[0]?.id ?? "placeholder";
   const resolvedId = resolveDynamicId(paramId, livePath, defaultTrackId);
   useEffect(() => {
-    if (pendingPlaybackHandoff && (route !== "master" || (resolvedId !== pendingPlaybackHandoff.trackId && resolvedId !== pendingPlaybackHandoff.fromTrackId))) pendingPlaybackHandoff = null;
+    reconcileNextPlaybackHandoff(route, resolveDynamicId(undefined, window.location.pathname, resolvedId));
   }, [route, resolvedId]);
 
   const navItems: {
@@ -908,9 +906,8 @@ function MasterView({ trackId }: { trackId: string }) {
         onError: (error) => { if (active) setLiveError(error instanceof Error ? error.message : "Playback could not start."); },
       });
       playbackControls.current = controls;
-      const handoff = pendingPlaybackHandoff?.trackId === trackId ? pendingPlaybackHandoff : null;
+      const handoff = takeNextPlaybackHandoff(trackId);
       if (handoff) {
-        pendingPlaybackHandoff = null;
         controller.setVolume(handoff.volume);
         if (handoff.playing) void controller.play().catch((error: unknown) => { if (active) setLiveError(error instanceof Error ? error.message : "Press play to start the next track."); });
       }
@@ -981,13 +978,13 @@ function MasterView({ trackId }: { trackId: string }) {
     const intendedPlaying = scrub.current?.wasPlaying ?? current.playing;
     stopScrub(false);
     if (!nextTrack) { controller.seek(Math.min(current.duration, current.position + 10)); return; }
-    pendingPlaybackHandoff = { fromTrackId: trackId, trackId: nextTrack.id, playing: intendedPlaying, volume: current.volume };
+    stageNextPlaybackHandoff({ fromTrackId: trackId, trackId: nextTrack.id, playing: intendedPlaying, volume: current.volume });
     handoverActive.current = true;
     setHandover(true);
     controller.pause();
     try { router.push(`/master/${encodeURIComponent(nextTrack.id)}`); }
     catch (error) {
-      pendingPlaybackHandoff = null;
+      clearNextPlaybackHandoff();
       handoverActive.current = false;
       setHandover(false);
       setLiveError(error instanceof Error ? error.message : "The next track could not be opened.");

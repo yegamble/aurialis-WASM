@@ -46,6 +46,18 @@ describe("one canonical mastering snapshot", () => {
     expect(changed.simpleCustom).toBe(true);
   });
 
+  it("keeps the canonical target after reset or a custom profile when selecting a direction", () => {
+    const loud = reduceStoreState(testStore, { type: "UPDATE_SIMPLE", id: source().id, patch: { target: "Loud" } });
+    const reset = reduceStoreState(loud, { type: "RESET_ADVANCED", trackId: source().id });
+    const rock = trackOf(reduceStoreState(reset, { type: "UPDATE_SIMPLE", id: source().id, patch: { genre: "Rock" } }));
+    expect(rock.target).toBe("Loud"); expect(rock.advanced.limiter.targetLufs).toBe(-14); expect(rock.advanced.limiter.ceiling).toBe(-1);
+    let custom = reduceStoreState(reset, { type: "UPDATE_LIMITER", trackId: source().id, patch: { targetLufs: -12, ceiling: -0.7 } });
+    for (const patch of [{ tone: "Warm" }, { intensity: 80 }]) {
+      custom = reduceStoreState(custom, { type: "UPDATE_SIMPLE", id: source().id, patch });
+      expect(trackOf(custom).advanced.limiter.targetLufs).toBe(-12); expect(trackOf(custom).advanced.limiter.ceiling).toBe(-0.7);
+    }
+  });
+
   it("applies only measured input gain to the expected snapshot, preserving association across mode changes", () => {
     const initial = selected(); const expected = trackOf(initial).advanced;
     const modeChanged = reduceStoreState(initial, { type: "UPDATE_TRACK", id: source().id, patch: { mode: "simple" } });

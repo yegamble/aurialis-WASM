@@ -1,4 +1,4 @@
-// Verify real wasmexport functions against pre-change native fixture files.
+// Verify real wasmexport functions against the supplied native fixture files.
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { webcrypto } from "node:crypto";
@@ -123,5 +123,5 @@ assert.equal(previousView.byteLength, 0);
 for (let channel = 0; channel < 4; channel++) assert.equal(wasm.aurialis_live_buffer(channel) >>> 0, pointers[channel]);
 const afterGrowth = renderDirect(new Float32Array(128).fill(.125), new Float32Array(128).fill(-.25));
 assert.equal(afterGrowth[2][127], .125); assert.equal(afterGrowth[3][127], -.25);
-console.log(`wasm-live-direct: ${fixtures.length} frozen fixtures matched exactly; fixed pointers, validation, zero sign, shared controls/state/reset and one-page memory growth passed`);
+console.log(`wasm-live-direct: ${fixtures.length} native fixtures matched exactly; fixed pointers, validation, zero sign, shared controls/state/reset and one-page memory growth passed`);
 process.exit(0);

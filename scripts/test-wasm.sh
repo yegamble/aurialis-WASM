@@ -3,6 +3,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 test -s public/wasm/aurialis-dsp.wasm
 fixture="$(mktemp)"
-trap 'rm -f "$fixture"' EXIT
-AURIALIS_PARITY_FIXTURE="$fixture" go test ./wasm/dsp -run TestWriteNativeParityFixture -count=1
+adaa_fixture="$(mktemp)"
+trap 'rm -f "$fixture" "$adaa_fixture"' EXIT
+AURIALIS_PARITY_FIXTURE="$fixture" AURIALIS_ADAA_BASELINE_FIXTURE="$adaa_fixture" \
+  go test ./wasm/dsp -run 'TestWrite(NativeParity|ADAABaseline)Fixture$' -count=1
 node wasm/dsp/verify.mjs public/wasm/aurialis-dsp.wasm "$(go env GOROOT)/lib/wasm/wasm_exec.js" "$fixture"
+node wasm/dsp/verify.mjs public/wasm/aurialis-dsp.wasm "$(go env GOROOT)/lib/wasm/wasm_exec.js" "$adaa_fixture"
+node wasm/dsp/verify-live.mjs public/wasm/aurialis-dsp.wasm "$(go env GOROOT)/lib/wasm/wasm_exec.js" "$fixture" "$adaa_fixture"

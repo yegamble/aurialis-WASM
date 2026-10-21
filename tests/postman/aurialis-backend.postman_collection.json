@@ -85,7 +85,7 @@
       }
     },
     {
-      "name": "TS-003 Serve AudioWorklet Processor Script",
+      "name": "TS-003 Serve Go WASM Runtime Script",
       "event": [
         {
           "listen": "test",
@@ -103,7 +103,7 @@
       "request": {
         "method": "GET",
         "header": [],
-        "url": "{{baseUrl}}/worklets/aurialis-dsp-worklet.js"
+        "url": "{{baseUrl}}/wasm/wasm_exec.js"
       }
     },
     {

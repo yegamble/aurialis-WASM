@@ -3,16 +3,17 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"mime"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -24,8 +25,8 @@ import (
 	"github.com/yegamble/Aurialis-WASM/internal/mastering"
 )
 
-// DefaultMaxUploadBytes is the default 200 MB upload ceiling.
-const DefaultMaxUploadBytes int64 = 200 * 1024 * 1024
+// DefaultMaxUploadBytes is the hard 32 MiB in-memory multipart request ceiling.
+const DefaultMaxUploadBytes int64 = 32 * 1024 * 1024
 
 // Config configures the Aurialis HTTP server.
 type Config struct {
@@ -33,6 +34,7 @@ type Config struct {
 	Workers        int
 	StaticFS       fs.FS
 	WasmFS         fs.FS
+	ListenAddress  string
 }
 
 // Server serves the Aurialis HTTP API and embedded Next.js + WASM assets.
@@ -40,22 +42,21 @@ type Server struct {
 	cfg     Config
 	jobs    *jobs.Manager
 	handler http.Handler
+	uploads chan struct{}
+	csp     string
 }
 
 // New constructs a new Aurialis HTTP server and starts the worker pool.
 func New(cfg Config) *Server {
-	if cfg.MaxUploadBytes <= 0 {
+	if cfg.MaxUploadBytes <= 0 || cfg.MaxUploadBytes > DefaultMaxUploadBytes {
 		cfg.MaxUploadBytes = DefaultMaxUploadBytes
-		if envVal := strings.TrimSpace(os.Getenv("MAX_UPLOAD_BYTES_OVERRIDE")); envVal != "" {
-			if parsed, err := strconv.ParseInt(envVal, 10, 64); err == nil && parsed > 0 {
-				cfg.MaxUploadBytes = parsed
-			}
-		}
 	}
 
 	s := &Server{
-		cfg:  cfg,
-		jobs: jobs.NewManager(cfg.Workers),
+		cfg:     cfg,
+		jobs:    jobs.NewManager(cfg.Workers),
+		uploads: make(chan struct{}, 2),
+		csp:     buildCSP(cfg.StaticFS),
 	}
 
 	mux := http.NewServeMux()
@@ -110,27 +111,46 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Referrer-Policy", "no-referrer")
-		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'")
+		h.Set("Content-Security-Policy", s.csp)
+		h.Set("Cache-Control", "no-store")
 
 		// 1. Validate Host header against DNS rebinding attacks
-		if !isAllowedLocalHost(r.Host) {
+		if !isAllowedLocalHost(r.Host) || !s.listenerMatches(r) {
 			writeErrorJSON(w, http.StatusForbidden, "forbidden_host", "Requests with non-local Host headers are rejected")
 			return
 		}
 
-		// 2. Validate Origin and Sec-Fetch-Site on state-changing methods against drive-by localhost CSRF
-		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch || r.Method == http.MethodDelete {
-			if secSite := strings.ToLower(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site"))); secSite == "cross-site" {
+		// 2. Validate exact origins and fetch metadata against localhost CSRF.
+		{
+			if secSite := r.Header.Get("Sec-Fetch-Site"); secSite != "" && secSite != "same-origin" && secSite != "none" {
 				writeErrorJSON(w, http.StatusForbidden, "csrf_rejected", "Cross-site state-changing requests are forbidden")
 				return
 			}
-			if origin := strings.TrimSpace(r.Header.Get("Origin")); origin != "" && origin != "null" {
+			if origin := r.Header.Get("Origin"); origin != "" {
 				u, err := url.Parse(origin)
-				if err != nil || !isAllowedLocalHost(u.Host) {
+				if err != nil || u.Scheme != "http" || u.Host != r.Host || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
 					writeErrorJSON(w, http.StatusForbidden, "forbidden_origin", "Cross-origin state-changing requests are forbidden")
 					return
 				}
 			}
+		}
+		if r.Method == http.MethodPost {
+			if r.Context().Err() != nil {
+				return
+			}
+			select {
+			case s.uploads <- struct{}{}:
+				defer func() { <-s.uploads }()
+			case <-r.Context().Done():
+				return
+			default:
+				w.Header().Set("Retry-After", "1")
+				writeErrorJSON(w, http.StatusTooManyRequests, "busy", "Audio request capacity reached")
+				return
+			}
+			ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+			defer cancel()
+			r = r.WithContext(ctx)
 		}
 
 		next.ServeHTTP(w, r)
@@ -139,8 +159,8 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 
 func isAllowedLocalHost(hostport string) bool {
 	trimmed := strings.TrimSpace(hostport)
-	if trimmed == "" {
-		return true
+	if trimmed == "" || trimmed != hostport {
+		return false
 	}
 	host := trimmed
 	if h, _, err := net.SplitHostPort(trimmed); err == nil {
@@ -148,11 +168,27 @@ func isAllowedLocalHost(hostport string) bool {
 	}
 	host = strings.Trim(strings.ToLower(host), "[]")
 	switch host {
-	case "127.0.0.1", "localhost", "::1", "0.0.0.0":
+	case "127.0.0.1", "localhost", "::1":
 		return true
 	default:
 		return false
 	}
+}
+
+func (s *Server) listenerMatches(r *http.Request) bool {
+	address := s.cfg.ListenAddress
+	if local, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
+		address = local.String()
+	}
+	if address == "" {
+		return true
+	} // In-process handlers have no listener.
+	_, boundPort, err := net.SplitHostPort(address)
+	if err != nil {
+		return false
+	}
+	_, requestPort, err := net.SplitHostPort(r.Host)
+	return err == nil && requestPort == boundPort
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {
@@ -170,14 +206,29 @@ func writeErrorJSON(w http.ResponseWriter, status int, code, detail string) {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
+	ready := false
+	if s.cfg.WasmFS != nil {
+		if info, err := fs.Stat(s.cfg.WasmFS, "aurialis-dsp.wasm"); err == nil && info.Size() > 8 {
+			ready = true
+		}
+	}
+	if !ready && s.cfg.StaticFS != nil {
+		if info, err := fs.Stat(s.cfg.StaticFS, "wasm/aurialis-dsp.wasm"); err == nil && info.Size() > 8 {
+			ready = true
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":       "ok",
-		"service":      "aurialis-wasm",
-		"version":      "0.1.0",
-		"wasmDsp":      true,
-		"wasmDspReady": true,
-		"gpu":          false,
-		"models":       []string{"htdemucs", "2", "3", "4", "5", "6"},
+		"status":           "ok",
+		"service":          "aurialis-wasm",
+		"version":          "0.1.0",
+		"wasmDsp":          true,
+		"wasmDspReady":     ready,
+		"gpu":              false,
+		"models":           []string{"deterministic-frequency-split"},
+		"separationMethod": "deterministic-frequency-split",
+		"analysisMethod":   "deterministic-energy-heuristics",
+		"maxUploadBytes":   s.cfg.MaxUploadBytes,
+		"maxDecodedFrames": audio.MaxDecodedFrames,
 		"profiles": []string{
 			"Warm Analog",
 			"Punchy Commercial",
@@ -201,48 +252,89 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request) (*a
 	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxUploadBytes)
-	if err := r.ParseMultipartForm(16 * 1024 * 1024); err != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) || strings.Contains(strings.ToLower(err.Error()), "request body too large") {
-			writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large",
-				fmt.Sprintf("Upload exceeds maximum size of %d bytes", s.cfg.MaxUploadBytes))
-			return nil, false
-		}
-		writeErrorJSON(w, http.StatusBadRequest, "invalid_multipart", "Expected multipart/form-data upload with audio file")
+	reader, err := r.MultipartReader()
+	if err != nil {
+		writeErrorJSON(w, http.StatusBadRequest, "invalid_multipart", "Expected multipart/form-data upload")
 		return nil, false
 	}
-	defer func() {
-		if r.MultipartForm != nil {
-			_ = r.MultipartForm.RemoveAll()
+	values := make(url.Values)
+	var rawBytes []byte
+	var filename string
+	for count := 0; ; count++ {
+		part, partErr := reader.NextRawPart()
+		if errors.Is(partErr, io.EOF) {
+			break
 		}
-	}()
-
-	file, header, err := r.FormFile("file")
-	if err != nil {
+		if partErr != nil {
+			return uploadReadError(w, partErr)
+		}
+		if count >= 8 {
+			_ = part.Close()
+			writeErrorJSON(w, http.StatusBadRequest, "invalid_multipart", "Too many multipart fields")
+			return nil, false
+		}
+		_, disposition, parseErr := mime.ParseMediaType(part.Header.Get("Content-Disposition"))
+		if parseErr != nil {
+			_ = part.Close()
+			writeErrorJSON(w, http.StatusBadRequest, "invalid_multipart", "Invalid multipart disposition")
+			return nil, false
+		}
+		name := disposition["name"]
+		switch {
+		case name == "file" && rawBytes == nil && disposition["filename"] != "":
+			filename = disposition["filename"] // Validate the original value before FileName can strip paths.
+			if _, parseErr = audio.SanitizeFilename(filename); parseErr != nil {
+				_ = part.Close()
+				writeErrorJSON(w, http.StatusBadRequest, "invalid_audio", "Invalid audio filename")
+				return nil, false
+			}
+			rawBytes, err = io.ReadAll(part)
+		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "format") && disposition["filename"] == "" && values[name] == nil:
+			var value []byte
+			value, err = io.ReadAll(io.LimitReader(part, 64*1024+1))
+			if len(value) > 64*1024 {
+				_ = part.Close()
+				writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Multipart field exceeds 64 KiB")
+				return nil, false
+			}
+			values[name] = []string{string(value)}
+		default:
+			_ = part.Close()
+			writeErrorJSON(w, http.StatusBadRequest, "invalid_multipart", "Unknown or duplicate multipart field")
+			return nil, false
+		}
+		_ = part.Close()
+		if err != nil {
+			return uploadReadError(w, err)
+		}
+		if r.Context().Err() != nil {
+			writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio request canceled")
+			return nil, false
+		}
+	}
+	if rawBytes == nil {
 		writeErrorJSON(w, http.StatusBadRequest, "missing_file", "Form field 'file' is required")
 		return nil, false
 	}
-	defer func() {
-		_ = file.Close()
-	}()
-
-	rawBytes, err := io.ReadAll(file)
-	if err != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) {
-			writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Uploaded file exceeds size limit")
-			return nil, false
-		}
-		writeErrorJSON(w, http.StatusBadRequest, "read_error", "Failed to read uploaded file stream")
-		return nil, false
-	}
-
-	buf, err := audio.DecodeAndDisarm(header.Filename, rawBytes)
+	// Populate values only; multipart parsing never creates raw upload files on disk.
+	r.MultipartForm = &multipart.Form{Value: values}
+	r.Form = values
+	buf, err := audio.DecodeAndDisarm(filename, rawBytes)
 	if err != nil {
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_audio", err.Error())
 		return nil, false
 	}
 	return buf, true
+}
+
+func uploadReadError(w http.ResponseWriter, err error) (*audio.Buffer, bool) {
+	var limitErr *http.MaxBytesError
+	if errors.As(err, &limitErr) {
+		writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Uploaded request exceeds size limit")
+	} else {
+		writeErrorJSON(w, http.StatusBadRequest, "invalid_multipart", "Malformed or incomplete multipart upload")
+	}
+	return nil, false
 }
 
 func parseStemCountAndModel(r *http.Request) (int, error) {
@@ -258,7 +350,7 @@ func parseStemCountAndModel(r *http.Request) (int, error) {
 	if rawModel != "" {
 		lowerModel := strings.ToLower(rawModel)
 		switch lowerModel {
-		case "htdemucs", "htdemucs_ft", "default", "standard":
+		case "deterministic-frequency-split", "htdemucs", "htdemucs_ft", "default", "standard":
 			if rawStems == "" {
 				return 4, nil
 			}
@@ -343,24 +435,38 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		params = mastering.ProfilePreset(prof)
 	}
 	if rawParams := strings.TrimSpace(r.FormValue("params")); rawParams != "" {
-		if err := json.Unmarshal([]byte(rawParams), &params); err != nil {
-			writeErrorJSON(w, http.StatusBadRequest, "invalid_params", "Invalid DSP params JSON: "+err.Error())
+		parsed, err := dsp.DecodeParamsJSON([]byte(rawParams), params)
+		if err != nil {
+			writeErrorJSON(w, http.StatusBadRequest, "invalid_params", "Invalid DSP params JSON")
 			return
 		}
+		params = parsed
+	}
+
+	if err := dsp.ValidateParams(params); err != nil {
+		writeErrorJSON(w, http.StatusBadRequest, "invalid_params", err.Error())
+		return
 	}
 
 	bitDepth := 24
 	if rawBits := strings.TrimSpace(r.FormValue("bitDepth")); rawBits != "" {
-		if parsed, err := strconv.Atoi(rawBits); err == nil && (parsed == 16 || parsed == 24 || parsed == 32) {
-			bitDepth = parsed
+		parsed, err := strconv.Atoi(rawBits)
+		if err != nil || (parsed != 16 && parsed != 24 && parsed != 32) {
+			writeErrorJSON(w, http.StatusBadRequest, "invalid_bit_depth", "bitDepth must be 16, 24 or 32")
+			return
 		}
+		bitDepth = parsed
 	}
 	if bitDepth == 16 || bitDepth == 24 {
 		params.DitherBits = bitDepth
 	}
 
 	beforeMetrics := dsp.MeasureStereo(buf.Left, buf.Right, float64(buf.SampleRate))
-	outL, outR, afterMetrics := dsp.RenderBuffer(buf.Left, buf.Right, float64(buf.SampleRate), params)
+	outL, outR, afterMetrics, renderErr := dsp.RenderBufferContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate), params)
+	if renderErr != nil {
+		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio rendering canceled or timed out")
+		return
+	}
 
 	if r.FormValue("format") == "json" || strings.Contains(r.Header.Get("Accept"), "application/json") {
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -387,7 +493,7 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Aurialis-After-LUFS", fmt.Sprintf("%.2f", afterMetrics.IntegratedLUFS))
 	w.Header().Set("X-Aurialis-After-Peak-dBTP", fmt.Sprintf("%.2f", afterMetrics.TruePeakDBTP))
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(wavBytes)
+	_, _ = w.Write(wavBytes) // #nosec G705 -- canonical PCM WAV synthesized by EncodeWAV; fixed audio/wav and nosniff headers
 }
 
 func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
@@ -404,7 +510,11 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Query().Get("wait") == "1" {
 		deadline := time.Now().Add(4 * time.Second)
 		for (job.Status == jobs.StatusQueued || job.Status == jobs.StatusRunning) && time.Now().Before(deadline) {
-			time.Sleep(15 * time.Millisecond)
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(15 * time.Millisecond):
+			}
 			if next, exists := s.jobs.Get(id); exists {
 				job = next
 			} else {
@@ -447,10 +557,15 @@ func (s *Server) handleDownloadStem(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "audio/wav")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.wav"`, stemName))
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(wavBytes)
+	_, _ = w.Write(wavBytes) // #nosec G705 -- canonical PCM stem WAV; fixed audio/wav and nosniff headers
 }
 
 func (s *Server) handleStaticOrSPA(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		writeErrorJSON(w, http.StatusMethodNotAllowed, "method_not_allowed", "Method not allowed")
+		return
+	}
 	cleanPath := path.Clean("/" + strings.TrimPrefix(r.URL.Path, "/"))
 	relPath := strings.TrimPrefix(cleanPath, "/")
 	if relPath == "" {
@@ -463,7 +578,7 @@ func (s *Server) handleStaticOrSPA(w http.ResponseWriter, r *http.Request) {
 		if data, err := fs.ReadFile(s.cfg.WasmFS, wasmFile); err == nil {
 			setStaticContentType(w, relPath)
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write(data)
+			_, _ = w.Write(data) // #nosec G705 -- trusted static application assets, never uploaded bytes
 			return
 		}
 	}
@@ -478,7 +593,7 @@ func (s *Server) handleStaticOrSPA(w http.ResponseWriter, r *http.Request) {
 				if readErr == nil {
 					setStaticContentType(w, cand)
 					w.WriteHeader(http.StatusOK)
-					_, _ = w.Write(data)
+					_, _ = w.Write(data) // #nosec G705 -- trusted static application assets, never uploaded bytes
 					return
 				}
 			}
@@ -486,7 +601,7 @@ func (s *Server) handleStaticOrSPA(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fallback if static export is not mounted on this path
-	if strings.HasPrefix(cleanPath, "/jobs/") || strings.HasPrefix(cleanPath, "/api/") {
+	if strings.HasPrefix(cleanPath, "/jobs/") || strings.HasPrefix(cleanPath, "/api/") || path.Ext(cleanPath) != "" {
 		writeErrorJSON(w, http.StatusNotFound, "not_found", "API route not found")
 		return
 	}

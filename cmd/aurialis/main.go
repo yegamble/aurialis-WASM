@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -43,9 +44,6 @@ func resolveMaxUploadBytes(flagVal int64) int64 {
 }
 
 func resolveStaticFS() fs.FS {
-	if info, err := os.Stat("out/index.html"); err == nil && !info.IsDir() {
-		return os.DirFS("out")
-	}
 	embedded, err := webui.DistFS()
 	if err != nil {
 		return nil
@@ -54,9 +52,6 @@ func resolveStaticFS() fs.FS {
 }
 
 func resolveWasmFS() fs.FS {
-	if info, err := os.Stat("public/wasm/aurialis-dsp.wasm"); err == nil && !info.IsDir() {
-		return os.DirFS("public/wasm")
-	}
 	embedded, err := webui.DistFS()
 	if err != nil {
 		return nil
@@ -69,19 +64,34 @@ func resolveWasmFS() fs.FS {
 }
 
 func run() error {
-	addrFlag := flag.String("addr", "127.0.0.1:8080", "HTTP listen address (bound to loopback by default)")
+	addrFlag := flag.String("addr", "127.0.0.1:8080", "HTTP listen address (loopback IP only)")
 	workersFlag := flag.Int("workers", 0, "Number of concurrent audio DSP workers (0 = auto)")
 	maxUploadFlag := flag.Int64("max-upload-bytes", server.DefaultMaxUploadBytes, "Maximum upload size in bytes")
 	flag.Parse()
 
 	listenAddr := resolveListenAddr(*addrFlag)
 	maxUpload := resolveMaxUploadBytes(*maxUploadFlag)
+	if maxUpload <= 0 || maxUpload > server.DefaultMaxUploadBytes {
+		return fmt.Errorf("maximum upload must be between 1 and %d bytes", server.DefaultMaxUploadBytes)
+	}
+	listenHost, _, err := net.SplitHostPort(listenAddr)
+	if err != nil || net.ParseIP(listenHost) == nil || !net.ParseIP(listenHost).IsLoopback() {
+		return errors.New("listen address must use a loopback IP")
+	}
+	listenConfig := net.ListenConfig{}
+	listener, err := listenConfig.Listen(context.Background(), "tcp", listenAddr)
+	if err != nil {
+		return fmt.Errorf("open loopback listener: %w", err)
+	}
+	defer func() { _ = listener.Close() }()
+	listenAddr = listener.Addr().String()
 
 	srv := server.New(server.Config{
 		MaxUploadBytes: maxUpload,
 		Workers:        *workersFlag,
 		StaticFS:       resolveStaticFS(),
 		WasmFS:         resolveWasmFS(),
+		ListenAddress:  listenAddr,
 	})
 	defer srv.Close()
 
@@ -89,6 +99,8 @@ func run() error {
 		Addr:              listenAddr,
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       60 * time.Second,
+		MaxHeaderBytes:    16 * 1024,
 		WriteTimeout:      120 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}
@@ -104,7 +116,7 @@ func run() error {
 	}()
 
 	fmt.Printf("Aurialis-WASM listening on http://%s (maxUpload=%d bytes)\n", listenAddr, maxUpload)
-	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("Aurialis-WASM server failed: %w", err)
 	}
 	return nil

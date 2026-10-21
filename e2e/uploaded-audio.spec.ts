@@ -52,8 +52,6 @@ test("uploaded source survives export, independent gain controls, reload and sec
   expect(dbRatio(louder.right, neutral.right)).toBeCloseTo(6, 2)
   await page.getByRole("button", { name: "Render preview", exact: true }).click()
   await expect.poll(() => page.evaluate(() => (globalThis as unknown as { aurialisDSPReady?: boolean }).aurialisDSPReady)).toBe(true)
-  const levelMatch = page.getByRole("button", { name: "Level match", exact: true })
-  if (await levelMatch.getAttribute("aria-pressed") === "true") await levelMatch.click()
   await page.getByRole("button", { name: "B Processed", exact: true }).click()
   await expect.poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.readyState)).toBeGreaterThanOrEqual(2)
   const playbackBytes = await page.locator("audio").evaluate(async (audio: HTMLAudioElement) => {

@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import { decode } from "./audio-fixture";
@@ -6,8 +5,12 @@ import { uploadProject } from "./workflow-fixture";
 import type { AdvancedParams } from "../src/lib/types";
 
 async function previewPCM(page: Page) {
-  const bytes = await page.locator("audio").evaluate(async (audio: HTMLAudioElement) => Array.from(new Uint8Array(await (await fetch(audio.src)).arrayBuffer())));
-  return decode(Buffer.from(bytes));
+  const waiting = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download offline preview", exact: true }).click();
+  const download = await waiting;
+  const path = await download.path();
+  if (!path) throw new Error("Missing offline preview download");
+  return decode(await readFile(path));
 }
 async function exportPCM(page: Page) {
   await page.getByRole("button", { name: "Export", exact: true }).click();
@@ -62,15 +65,15 @@ test("first Simple apply previews exactly the settings exported from the uploade
   await uploadProject(page);
   await page.getByRole("tab", { name: "simple", exact: true }).click();
   await page.getByRole("button", { name: "Apply master direction", exact: true }).click();
-  await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
-  await expect(page.getByText("Preview matches your settings.", { exact: true })).toBeVisible();
-  await expect.poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.readyState)).toBeGreaterThanOrEqual(2);
+  await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
+  await expect(page.getByText("Offline preview matches your settings. Live playback updates independently.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Download offline preview", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Open", exact: true }).click();
-  await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Export", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Apply master direction", exact: true }).click();
-  await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
-  await expect(page.getByText("Preview matches your settings.", { exact: true })).toBeVisible();
-  await expect.poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.readyState)).toBeGreaterThanOrEqual(2);
+  await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
+  await expect(page.getByText("Offline preview matches your settings. Live playback updates independently.", { exact: true })).toBeVisible();
   const preview = await previewPCM(page);
   const exported = await exportPCM(page);
   expect(preview.left).toHaveLength(exported.left.length);
@@ -90,7 +93,7 @@ test("re-applying an unchanged Simple direction never compounds EQ or other sett
     const apply = page.getByRole("button", { name: "Apply master direction", exact: true });
     await apply.click();
     await expect(apply).toBeEnabled({ timeout: 30_000 });
-    await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
     snapshots.push(await page.evaluate(() => {
       const raw = localStorage.getItem("aurialis-state-v1");
       if (!raw) throw new Error("Missing project settings");
@@ -100,26 +103,6 @@ test("re-applying an unchanged Simple direction never compounds EQ or other sett
   expect(snapshots[0]).toBeDefined();
   expect(snapshots[1]).toEqual(snapshots[0]);
   expect(snapshots[2]).toEqual(snapshots[0]);
-});
-
-test("A/B switches preserve playback and retain matched level after repeated metadata events", async ({ page }) => {
-  await uploadProject(page, "qa-comparison.wav", 3);
-  await page.getByRole("slider", { name: "Input gain", exact: true }).fill("6");
-  await page.getByRole("button", { name: "Render preview", exact: true }).click();
-  await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
-  await expect.poll(() => page.locator("audio").evaluate((audio: HTMLAudioElement) => audio.readyState)).toBeGreaterThanOrEqual(2);
-  await page.getByRole("button", { name: "Match level", exact: true }).click();
-  const audio = page.locator("audio");
-  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.volume)).toBeCloseTo(0.4, 2);
-  await page.getByRole("button", { name: "Play", exact: true }).click();
-  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime)).toBeGreaterThan(0.1);
-  const before = await audio.evaluate((element: HTMLAudioElement) => element.currentTime);
-  await page.getByRole("button", { name: "A Original", exact: true }).click();
-  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.paused)).toBe(false);
-  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.currentTime)).toBeGreaterThan(before - 0.03);
-  await page.getByRole("button", { name: "B Processed", exact: true }).click();
-  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.volume)).toBeCloseTo(0.4, 2);
-  await expect.poll(() => audio.evaluate((element: HTMLAudioElement) => element.paused)).toBe(false);
 });
 
 test("reference settings honor unchecked width and protected low bands", async ({ page }) => {

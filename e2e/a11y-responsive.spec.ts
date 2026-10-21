@@ -37,7 +37,7 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
 
   test("audio touch targets retain 44 CSS pixels at the editorial font size", async ({ page }) => {
     await uploadProject(page)
-    for (const width of [320, 375, 1440]) {
+    for (const width of [320, 375, 390, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 })
       for (const selector of [".eq-handle", 'input[type="range"]', ".module-disclosure > summary", ".button"]) {
         const controls = page.locator(selector)
@@ -48,6 +48,12 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
           expect(box?.width, `${selector} width at ${width}px`).toBeGreaterThanOrEqual(44)
           expect(box?.height, `${selector} height at ${width}px`).toBeGreaterThanOrEqual(44)
         }
+      }
+      for (const marker of await page.locator(".eq-handle .eq-marker").all()) {
+        if (!(await marker.isVisible())) continue
+        const box = await marker.boundingBox()
+        if (!box) throw new Error("Missing visible EQ marker")
+        expect(box.width / box.height, `round EQ artwork at ${width}px`).toBeCloseTo(1, 2)
       }
     }
   })

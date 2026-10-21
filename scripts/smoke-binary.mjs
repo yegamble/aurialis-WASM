@@ -26,7 +26,7 @@ try {
     await delay(100);
   }
   assert.ok(ready, "binary did not become ready");
-  for (const route of ["/", "/library", "/master/uploaded-project", "/wasm/wasm_exec.js", "/wasm/aurialis-dsp.wasm"]) {
+  for (const route of ["/", "/library", "/master/uploaded-project", "/wasm/wasm_exec.js", "/wasm/aurialis-dsp.wasm", "/workers/aurialis-live-worker.js", "/worklets/aurialis-live-worklet.js"]) {
     const response = await fetch(`${host}${route}`);
     assert.equal(response.status, 200, route);
     assert.equal(response.headers.get("cross-origin-opener-policy"), "same-origin");
@@ -35,10 +35,13 @@ try {
       assert.equal(response.headers.get("content-type"), "application/wasm");
       assert.deepEqual([...new Uint8Array(await response.arrayBuffer()).slice(0, 4)], [0, 97, 115, 109]);
     } else {
-      assert.ok((await response.text()).length > 100, `${route} is empty`);
+      const source = await response.text();
+      assert.ok(source.length > 100, `${route} is empty`);
+      if (route.startsWith("/workers/")) assert.ok(source.includes("aurialisDSPProcessBlock"), "embedded Go audio worker is missing");
+      if (route.startsWith("/worklets/")) assert.ok(source.includes('registerProcessor("aurialis-live"'), "embedded audio worklet is missing");
     }
   }
-  console.log("Compiled binary serves embedded UI and WASM from an empty directory.");
+  console.log("Compiled binary serves embedded UI, WASM, audio worker and worklet from an empty directory.");
 } finally {
   child.kill("SIGTERM");
   await new Promise((resolve) => {

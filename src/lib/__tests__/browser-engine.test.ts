@@ -6,7 +6,6 @@ import {
   measureAudio,
   normalizeSimpleAudio,
   trackMetrics,
-  measuredLevels,
   previewWAV,
   processPreview,
   readCanonicalWAV,
@@ -67,7 +66,6 @@ describe("shared engine browser boundary", () => {
     };
     const restored = await readCanonicalWAV(previewWAV(source));
     expect(restored).toEqual(source);
-    expect(measuredLevels(restored).peak).toBe("3.5");
   });
   it("maps independent persisted modules into the native API schema without mutating settings", () => {
     const advanced = createDefaultAdvancedParams();

@@ -784,7 +784,7 @@ async function readStoredSource(blob: Blob, signal: AbortSignal): Promise<{ blob
     header.getUint16(22, true) === 2 && header.getUint32(24, true) >= 8000 && header.getUint32(24, true) <= 192000 &&
     header.getUint32(28, true) === header.getUint32(24, true) * 8 && header.getUint16(32, true) === 8 &&
     header.getUint16(34, true) === 32 && id(36) === "data" && header.getUint32(40, true) === blob.size - 44 && (blob.size - 44) % 8 === 0;
-  // Imported sources already passed Go reconstruction. Older noncanonical records still go through it.
+  // Imported sources already passed Go reconstruction. Other stored WAV layouts still go through it.
   const clean = canonical ? blob : await serverRender(blob, { bypass: true }, 32, signal);
   const pcm = await readCanonicalWAV(clean);
   for (let index = 0; index < pcm.left.length; index++) {

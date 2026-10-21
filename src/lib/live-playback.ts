@@ -30,7 +30,7 @@ export type LiveSpectrum = {
   fftSize: number;
 };
 
-export type LivePlaybackCallbacks = {
+type LivePlaybackCallbacks = {
   onState?: (state: LivePlaybackState) => void;
   onMeter?: (meter: LiveMeter) => void;
   onSpectrum?: (spectrum: LiveSpectrum) => void;

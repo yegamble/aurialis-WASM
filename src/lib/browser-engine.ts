@@ -304,37 +304,6 @@ export function previewWAV(pcm: StereoPCM): Blob {
   }
   return new Blob([data], { type: "audio/wav" });
 }
-export function computeRmsValue(pcm: StereoPCM): number {
-  let sum = 0;
-  for (let i = 0; i < pcm.left.length; i++) {
-    const l = pcm.left.at(i) ?? 0,
-      r = pcm.right.at(i) ?? 0;
-    sum += l * l + r * r;
-  }
-  return Math.sqrt(sum / (pcm.left.length * 2));
-}
-
-export function measuredLevels(pcm: StereoPCM): {
-  peak: string;
-  rms: string;
-  crest: string;
-} {
-  let peak = 0,
-    sum = 0;
-  for (let i = 0; i < pcm.left.length; i++) {
-    const l = pcm.left.at(i) ?? 0,
-      r = pcm.right.at(i) ?? 0;
-    peak = Math.max(peak, Math.abs(l), Math.abs(r));
-    sum += l * l + r * r;
-  }
-  const rms = Math.sqrt(sum / (pcm.left.length * 2));
-  const db = (n: number) => (n > 0 ? (20 * Math.log10(n)).toFixed(1) : "−∞");
-  return {
-    peak: db(peak),
-    rms: db(rms),
-    crest: rms > 0 ? (20 * Math.log10(peak / rms)).toFixed(1) : "—",
-  };
-}
 export function sourcePeaks(pcm: StereoPCM): number[] {
   const size = Math.max(1, Math.ceil(pcm.left.length / 96));
   return Array.from({ length: 96 }, (_, index) => {

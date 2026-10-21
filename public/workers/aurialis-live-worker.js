@@ -7,7 +7,14 @@ const BURST_MS = 20;
 const BURST_BLOCKS = 64;
 const WRITE = 0, READ = 1, GENERATION = 2, ERROR = 5, WAKE = 7;
 let header, tags, samples, inputPort, activeGeneration = 0, version = 0, pumping = false, stopped = false;
-let continuation;
+let continuation = 0, continuationTicket = 0;
+const continuationChannel = new MessageChannel();
+continuationChannel.port1.onmessage = (event) => {
+  if (stopped || continuation === 0 || event.data !== continuation) return;
+  continuation = 0;
+  pump();
+};
+continuationChannel.port1.start();
 let direct, memoryBuffer, left, right, outLeft, outRight;
 function refreshLiveBuffers() {
   if (direct.memory.buffer === memoryBuffer) return;
@@ -56,6 +63,8 @@ function processLiveBlock() {
 function fail(message) {
   stopped = true;
   cancelContinuation();
+  continuationChannel.port1.close();
+  continuationChannel.port2.close();
   if (header) Atomics.store(header, ERROR, 1);
   self.postMessage({ type: "error", message });
 }
@@ -83,16 +92,14 @@ function reset(requestedGeneration = Atomics.load(header, GENERATION)) {
   Atomics.store(header, READ, 0);
 }
 function cancelContinuation() {
-  if (continuation === undefined) return;
-  clearTimeout(continuation);
-  continuation = undefined;
+  continuation = 0;
 }
 function continueAfterYield() {
-  if (continuation !== undefined) return;
-  continuation = setTimeout(() => {
-    continuation = undefined;
-    pump();
-  }, 0);
+  if (continuation !== 0) return;
+  continuation = ++continuationTicket;
+  // A port task yields without a chained timer's minimum-delay clamp. Tickets
+  // invalidate already-queued tasks when a bootstrap services the worker first.
+  continuationChannel.port2.postMessage(continuation);
 }
 function pump() {
   if (stopped || pumping || !header) return;
@@ -104,6 +111,8 @@ function pump() {
     // needs a MessagePort task when starting an idle worker; subsequent input
     // wakes the worker's predicate wait without allocating one task per block.
     Atomics.store(header, WAKE, 1);
+    // Cooperative budget: a Go call or host pause can exceed it. This
+    // checks between blocks/waits; it cannot impose a real-time wall-time cap.
     const deadline = performance.now() + BURST_MS;
     for (let count = 0; count < BURST_BLOCKS;) {
       if (activeGeneration !== Atomics.load(header, GENERATION)) reset();
@@ -150,7 +159,7 @@ function pump() {
     return;
   }
   // Yield to JSON controls after at most one burst. An empty burst retires the
-  // lease, so a paused graph does not leave a perpetual polling timer behind.
+  // lease, so a paused graph does not leave a perpetual continuation behind.
   if (processed || Atomics.load(header, WRITE) > Atomics.load(header, READ)
     || activeGeneration !== Atomics.load(header, GENERATION)) {
     continueAfterYield();
@@ -200,6 +209,8 @@ self.onmessage = async (event) => {
     } else if (message.type === "dispose") {
       stopped = true;
       cancelContinuation();
+      continuationChannel.port1.close();
+      continuationChannel.port2.close();
       if (header) Atomics.store(header, WAKE, 0);
       inputPort?.close();
       self.close();

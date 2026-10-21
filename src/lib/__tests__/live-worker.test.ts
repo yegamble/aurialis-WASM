@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 const QUANTUM = 128;
 const SLOTS = 256;
 const FRAMES = QUANTUM * SLOTS;
-type Probe = { reset: (generation?: number) => void; pump: () => void };
+type Probe = { reset: (generation?: number) => void; pump: () => void; pending: () => number };
 
 function engineFixture() {
   const memory = new WebAssembly.Memory({ initial: 1 });
@@ -24,8 +24,13 @@ function engineFixture() {
 }
 
 function workerFixture(engine = engineFixture()) {
-  let now = 0, nextTimer = 1;
-  const timers = new Map<number, () => void>();
+  let now = 0;
+  const tasks = new Map<number, () => void>();
+  const receivingPort = { start: vi.fn(), close: vi.fn(),
+    onmessage: undefined as ((event: { data: number }) => void) | undefined };
+  const sendingPort = { close: vi.fn(), postMessage: vi.fn((ticket: number) => {
+    tasks.set(ticket, () => { receivingPort.onmessage?.({ data: ticket }); });
+  }) };
   const wait = vi.fn((array: Int32Array, index: number, expected: number, timeout: number): "ok" | "not-equal" | "timed-out" => {
     if (Atomics.load(array, index) !== expected) return "not-equal";
     now += timeout;
@@ -50,14 +55,16 @@ function workerFixture(engine = engineFixture()) {
     fetch: () => Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)) }),
     WebAssembly: { Memory: WebAssembly.Memory, instantiate: () => Promise.resolve({ instance: { exports: engine.exports } }) },
     Atomics: { load: Atomics.load, store, wait }, performance: { now: () => now },
-    setTimeout: vi.fn((callback: () => void) => { const id = nextTimer++; timers.set(id, callback); return id; }),
-    clearTimeout: vi.fn((id: number) => { timers.delete(id); }), probe: undefined as Probe | undefined };
+    MessageChannel: class { port1 = receivingPort; port2 = sendingPort; },
+    setTimeout: vi.fn(() => { throw new Error("The live continuation must not depend on timers"); }),
+    probe: undefined as Probe | undefined };
   // This fixed repository script uses isolated fake Go exports. These cases
   // verify its protocol and memory lifecycle, not DSP sample correctness.
   const script = readFileSync("public/workers/aurialis-live-worker.js", "utf8");
-  runInNewContext(script + "\nprobe={reset,pump};", context);
+  runInNewContext(script + "\nprobe={reset,pump,pending:()=>continuation};", context);
   const probe = context.probe;
   if (!probe || !scope.onmessage) throw new Error("Worker protocol was not installed");
+  const pendingTicket = probe.pending;
   const onmessage = scope.onmessage;
   const header = new Int32Array(new SharedArrayBuffer(8 * 4));
   const tags = new Int32Array(new SharedArrayBuffer(SLOTS * 5 * 4));
@@ -76,13 +83,14 @@ function workerFixture(engine = engineFixture()) {
     samples.fill(-0.5, FRAMES + offset, FRAMES + offset + QUANTUM);
     tags.set([sequence], slot); tags.set([generation], SLOTS + slot); header[0] = sequence;
   }
-  function runContinuation() {
-    const entry = timers.entries().next().value;
-    if (!entry) throw new Error("No worker continuation was queued");
-    timers.delete(entry[0]); entry[1]();
+  function runContinuation(ticket = pendingTicket()) {
+    const task = tasks.get(ticket);
+    if (!task) throw new Error("No worker continuation was queued");
+    tasks.delete(ticket); task();
   }
   return { engine, scope, context, probe, header, tags, samples, posted, legacyProcess, legacyReset, port, init, message,
-    queue, wait, store, timers, runContinuation, advance: (milliseconds: number) => { now += milliseconds; }, elapsed: () => now };
+    queue, wait, store, tasks, receivingPort, sendingPort, runContinuation,
+    advance: (milliseconds: number) => { now += milliseconds; }, elapsed: () => now };
 }
 
 describe("direct-export audio worker", () => {
@@ -177,6 +185,8 @@ describe("direct-export audio worker", () => {
       expect(fixture.posted.some(message => message.type === "ready")).toBe(false);
       expect(fixture.posted.at(-1)?.type).toBe("error");
       expect(engine.process).not.toHaveBeenCalled();
+      expect(fixture.receivingPort.close).toHaveBeenCalledOnce();
+      expect(fixture.sendingPort.close).toHaveBeenCalledOnce();
     },
   );
 
@@ -227,7 +237,7 @@ describe("direct-export audio worker", () => {
     expect(fixture.header[1]).toBe(2);
     expect(fixture.tags[2 * SLOTS + 1]).toBe(2);
     expect(fixture.header[7]).toBe(1);
-    expect(fixture.timers.size).toBe(1);
+    expect(fixture.tasks.size).toBe(1);
     expect(fixture.wait.mock.calls.every(call => call[3] <= 20)).toBe(true);
   });
 
@@ -250,28 +260,41 @@ describe("direct-export audio worker", () => {
     fixture.probe.pump();
     expect(fixture.header[1]).toBe(0);
     expect(fixture.header[7]).toBe(1);
-    expect(fixture.timers.size).toBe(1);
+    expect(fixture.tasks.size).toBe(1);
+    const stale = fixture.probe.pending();
     fixture.probe.pump();
     expect(fixture.header[1]).toBe(1);
-    expect(fixture.timers.size).toBe(1);
-    expect(fixture.context.clearTimeout).toHaveBeenCalledOnce();
+    expect(fixture.tasks.size).toBe(2);
+    const current = fixture.probe.pending();
+    expect(current).not.toBe(stale);
+    fixture.runContinuation(stale);
+    expect(fixture.probe.pending()).toBe(current);
+    expect(fixture.engine.process).toHaveBeenCalledTimes(257);
   });
 
-  it("cancels a stale continuation on a bootstrap and becomes timer-free when input pauses", async () => {
+  it("ignores a stale queued ticket after a bootstrap and stops scheduling when input pauses", async () => {
     const fixture = workerFixture();
     await fixture.init();
     fixture.queue(1, 1); fixture.probe.pump();
+    const stale = fixture.probe.pending();
     fixture.queue(2, 1); fixture.probe.pump();
-    expect(fixture.context.clearTimeout).toHaveBeenCalledOnce();
-    expect(fixture.timers.size).toBe(1);
+    const current = fixture.probe.pending();
+    expect(current).not.toBe(stale);
+    expect(fixture.tasks.size).toBe(2);
+    expect(fixture.engine.process).toHaveBeenCalledTimes(258);
+    fixture.runContinuation(stale);
+    expect(fixture.probe.pending()).toBe(current);
+    expect(fixture.tasks.size).toBe(1);
     expect(fixture.engine.process).toHaveBeenCalledTimes(258);
     fixture.runContinuation();
     expect(fixture.header[7]).toBe(0);
-    expect(fixture.timers.size).toBe(0);
+    expect(fixture.probe.pending()).toBe(0);
+    expect(fixture.tasks.size).toBe(0);
     expect(fixture.engine.process).toHaveBeenCalledTimes(258);
+    expect(fixture.context.setTimeout).not.toHaveBeenCalled();
   });
 
-  it("yields after 20 ms so queued settings apply before the next burst", async () => {
+  it("uses a 20 ms cooperative budget so queued settings apply before the next burst", async () => {
     const fixture = workerFixture();
     await fixture.init();
     fixture.engine.process.mockImplementation(() => { fixture.advance(5); return QUANTUM; });
@@ -279,7 +302,7 @@ describe("direct-export audio worker", () => {
     fixture.probe.pump();
     expect(fixture.elapsed()).toBe(20);
     expect(fixture.header[1]).toBe(4);
-    expect(fixture.timers.size).toBe(1);
+    expect(fixture.tasks.size).toBe(1);
     await fixture.message({ type: "params", params: "{}", version: 9 });
     fixture.runContinuation();
     expect(fixture.header[1]).toBe(8);
@@ -293,7 +316,7 @@ describe("direct-export audio worker", () => {
     for (let sequence = 1; sequence <= 70; sequence++) fixture.queue(sequence, 1);
     fixture.probe.pump();
     expect(fixture.header[1]).toBe(64);
-    expect(fixture.timers.size).toBe(1);
+    expect(fixture.tasks.size).toBe(1);
     expect(fixture.wait).not.toHaveBeenCalled();
   });
 
@@ -314,11 +337,16 @@ describe("direct-export audio worker", () => {
     const fixture = workerFixture();
     await fixture.init();
     fixture.queue(1, 1); fixture.probe.pump();
-    expect(fixture.timers.size).toBe(1);
+    const stale = fixture.probe.pending();
+    expect(fixture.tasks.size).toBe(1);
     await fixture.message({ type: "dispose" });
-    expect(fixture.timers.size).toBe(0);
+    expect(fixture.probe.pending()).toBe(0);
     expect(fixture.header[7]).toBe(0);
-    expect(fixture.context.clearTimeout).toHaveBeenCalledOnce();
+    expect(fixture.receivingPort.close).toHaveBeenCalledOnce();
+    expect(fixture.sendingPort.close).toHaveBeenCalledOnce();
+    // Deliver even an already-queued task after close: the stopped/ticket guard
+    // must not depend on native queue cancellation to prevent DSP execution.
+    fixture.runContinuation(stale);
     fixture.queue(2, 1); fixture.probe.pump();
     expect(fixture.header[1]).toBe(1);
   });

@@ -68,140 +68,87 @@ jobs:
     name: Go 1.26 & WASM Quality Gate
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    outputs:
-      has_go_mod: ${{ steps.check_go.outputs.has_go_mod }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check for go.mod
-        id: check_go
-        run: |
-          if [ -f go.mod ]; then
-            echo "has_go_mod=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_go_mod=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::go.mod not yet scaffolded (tracked under WASM-1 in .claude/war-room/ledger.md)."
-          fi
-
       - name: Set up Go
-        if: steps.check_go.outputs.has_go_mod == 'true'
         uses: actions/setup-go@v5
         with:
           go-version: ">=1.24.0"
           check-latest: true
 
       - name: Check gofmt formatting
-        if: steps.check_go.outputs.has_go_mod == 'true'
         run: |
-          DIRS=()
-          for d in cmd internal wasm; do
-            if [ -d "$d" ]; then
-              DIRS+=("$d")
-            fi
-          done
-          if [ "${#DIRS[@]}" -gt 0 ]; then
-            UNFORMATTED=$("$(go env GOROOT)/bin/gofmt" -l "${DIRS[@]}")
-            if [ -n "$UNFORMATTED" ]; then
-              echo "::error::The following Go files are not gofmt-formatted:"
-              echo "$UNFORMATTED"
-              exit 1
-            fi
+          UNFORMATTED=$("$(go env GOROOT)/bin/gofmt" -l cmd internal wasm)
+          if [ -n "$UNFORMATTED" ]; then
+            echo "::error::The following Go files are not gofmt-formatted:"
+            echo "$UNFORMATTED"
+            exit 1
           fi
 
       - name: Verify Go modules and run go vet
-        if: steps.check_go.outputs.has_go_mod == 'true'
         run: |
           go mod verify
           go vet ./...
 
       - name: Run golangci-lint v2 (staticcheck all, revive, gosec, nakedret)
-        if: steps.check_go.outputs.has_go_mod == 'true'
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.6.2
           args: --timeout=5m
 
       - name: Run identypo & govulncheck
-        if: steps.check_go.outputs.has_go_mod == 'true'
         run: |
           go run github.com/AlexsJones/identypo@latest ./...
           go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
       - name: Run Go unit & concurrency race tests
-        if: steps.check_go.outputs.has_go_mod == 'true'
         run: go test -race -count=1 -timeout 10m ./...
 
       - name: Compile WebAssembly DSP module (GOOS=js GOARCH=wasm)
-        if: steps.check_go.outputs.has_go_mod == 'true'
         run: |
-          if [ -d wasm/dsp ]; then
-            mkdir -p public/wasm
-            GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp
-            ls -lh public/wasm/aurialis-dsp.wasm
-          fi
+          mkdir -p public/wasm
+          GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp
+          ls -lh public/wasm/aurialis-dsp.wasm
 
   frontend-quality:
     name: Next.js 16, TypeScript & Bundle Gate
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    outputs:
-      has_pkg: ${{ steps.check_pkg.outputs.has_pkg }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check for package.json
-        id: check_pkg
-        run: |
-          if [ -f package.json ]; then
-            echo "has_pkg=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_pkg=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::package.json not yet scaffolded (tracked under WASM-2 in .claude/war-room/ledger.md)."
-          fi
-
       - name: Set up pnpm
-        if: steps.check_pkg.outputs.has_pkg == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
 
       - name: Set up Node.js
-        if: steps.check_pkg.outputs.has_pkg == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: "pnpm"
 
       - name: Install dependencies (pnpm frozen-lockfile)
-        if: steps.check_pkg.outputs.has_pkg == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck (tsc --noEmit)
-        if: steps.check_pkg.outputs.has_pkg == 'true'
         run: pnpm exec tsc --noEmit
 
-      - name: Lint (ESLint v9 strictTypeChecked, --max-warnings=0)
-        if: steps.check_pkg.outputs.has_pkg == 'true'
+      - name: Lint (ESLint v9, --max-warnings=0)
         run: pnpm run lint
 
       - name: Dead-code & spellcheck gates (knip & cspell)
-        if: steps.check_pkg.outputs.has_pkg == 'true'
         run: |
-          if jq -e '.scripts.knip or .devDependencies.knip' package.json >/dev/null 2>&1; then
-            pnpm exec knip
-          fi
-          if jq -e '.scripts.cspell or .devDependencies.cspell' package.json >/dev/null 2>&1; then
-            pnpm exec cspell lint "**/*.{ts,tsx,go,md}"
-          fi
+          pnpm exec knip
+          pnpm exec cspell lint "**/*.{ts,tsx,go,md}"
 
       - name: Run Vitest unit & component suite
-        if: steps.check_pkg.outputs.has_pkg == 'true'
         run: pnpm test
 
       - name: Build Next.js 16 production bundle
-        if: steps.check_pkg.outputs.has_pkg == 'true'
         run: pnpm run build
 
   backend-newman:
@@ -213,38 +160,24 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check if backend & Postman suite are present
-        id: check_newman
-        run: |
-          if [ -f go.mod ] && [ -d cmd/aurialis ] && [ -d tests/postman ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Backend cmd/aurialis or tests/postman not yet scaffolded."
-          fi
-
       - name: Set up Go
-        if: steps.check_newman.outputs.ready == 'true'
         uses: actions/setup-go@v5
         with:
           go-version: ">=1.24.0"
           check-latest: true
 
       - name: Set up pnpm
-        if: steps.check_newman.outputs.ready == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
 
       - name: Set up Node.js
-        if: steps.check_newman.outputs.ready == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: "pnpm"
 
       - name: Install dependencies & run Postman/Newman PR Suite
-        if: steps.check_newman.outputs.ready == 'true'
         run: |
           pnpm install --frozen-lockfile
           MAX_UPLOAD_BYTES_OVERRIDE=209715200 pnpm run test:backend:postman
@@ -258,37 +191,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Check if Playwright suite is present
-        id: check_pw
-        run: |
-          if [ -f package.json ] && [ -d e2e ]; then
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Playwright e2e/ suite not yet scaffolded."
-          fi
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ">=1.24.0"
+          check-latest: true
 
       - name: Set up pnpm
-        if: steps.check_pw.outputs.ready == 'true'
         uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
 
       - name: Set up Node.js
-        if: steps.check_pw.outputs.ready == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "24"
           cache: "pnpm"
 
       - name: Install dependencies & Playwright Chromium
-        if: steps.check_pw.outputs.ready == 'true'
         run: |
           pnpm install --frozen-lockfile
           pnpm exec playwright install --with-deps chromium
 
       - name: Run Playwright E2E, Responsive & Accessibility tests
-        if: steps.check_pw.outputs.ready == 'true'
         run: pnpm exec playwright test
 
   ci-passed:

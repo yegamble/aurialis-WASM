@@ -43,7 +43,7 @@ func WasmLiveReset() uint32 {
 	return reactorBlocks.reset()
 }
 
-// WasmControlBuffer exposes the complete 56-value control vector.
+// WasmControlBuffer exposes the complete 81-value control vector.
 //
 //go:wasmexport aurialis_control_buffer
 func WasmControlBuffer() *[liveControlValues]float64 {

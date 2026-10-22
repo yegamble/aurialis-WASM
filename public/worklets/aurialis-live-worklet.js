@@ -5,7 +5,7 @@ const QUANTUM = 128;
 const SLOTS = 256;
 const FRAMES = QUANTUM * SLOTS;
 const WRITE = 0, READ = 1, GENERATION = 2, APPLIED = 4, ERROR = 5, UNDERRUNS = 6;
-const CONTROL_COUNT = 56;
+const CONTROL_COUNT = 81;
 class AurialisLiveProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();

@@ -229,9 +229,9 @@ describe("complete supported control mapping", () => {
   });
   it("maps individual compressor, saturation, stereo and supported limiter fields", () => {
     const settings = createDefaultAdvancedParams();
-    settings.compressor = { enabled: false, threshold: -22, ratio: 4.1, attack: 17, release: 340, knee: 8, makeup: 2 };
+    settings.compressor = { ...settings.compressor, enabled: false, threshold: -22, ratio: 4.1, attack: 17, release: 340, knee: 8, makeup: 2 };
     settings.saturationModule = { enabled: false, drive: 42, character: "Thick" };
-    settings.stereo = { enabled: false, width: 127, monoBass: true };
+    settings.stereo = { ...settings.stereo, enabled: false, width: 127, monoBass: true };
     settings.limiter = { enabled: true, ceiling: -2, release: 137, truePeak: false, targetLufs: -15 };
     const snapshot = structuredClone(settings);
     expect(engineParams(settings)).toMatchObject({
@@ -400,7 +400,9 @@ describe("source bandwidth constraints", () => {
       const before = structuredClone(settings);
       const next = clampAdvancedToSampleRate(settings, rate);
       expect(next.eqBands.every((band) => band.freqHz <= Math.min(18000, Math.floor(rate * 0.47)))).toBe(true);
-      expect({ ...next, eqBands: before.eqBands }).toEqual(before);
+      expect({ ...next, eqBands: before.eqBands, deHarsh: before.deHarsh, multiband: before.multiband }).toEqual(before);
+      expect(next.deHarsh.frequencyHz).toBeLessThanOrEqual(rate * 0.47);
+      expect(next.multiband.midHighHz).toBeLessThanOrEqual(rate * 0.47);
       expect(settings).toEqual(before);
       expect(engineParams(next).bands.map((band) => band.freqHz)).toEqual(next.eqBands.map((band) => band.freqHz));
     });

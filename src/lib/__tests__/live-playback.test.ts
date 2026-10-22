@@ -112,7 +112,7 @@ describe("per-track live audio lifecycle", () => {
     if (!node) throw new Error("Missing worklet fixture");
     const options = node.options.processorOptions;
     const publication = new Int32Array(options.controls, 0, 4);
-    const values = new Float64Array(options.controls, 16, 56);
+    const values = new Float64Array(options.controls, 16, 81);
     const telemetry = new Int32Array(options.header);
     expect(options.module).toBe(compiledModule);
     expect(options.entropy).toHaveLength(256);

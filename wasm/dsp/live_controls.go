@@ -8,14 +8,16 @@ import (
 
 // liveControlValues is the complete fixed numeric control ABI. Values are
 // float64 so the interface does not round the shared engine's parameters.
-const liveControlValues = 56
+const liveControlValues = 81
 
 type liveControlVector [liveControlValues]float64
 
 // Layout: global flags/gain/EQ [0:5]; five EQ bands, each frequency/gain/Q/type/
 // enabled [5:30]; compressor [30:39]; saturation [39:42]; stereo [42:46];
 // limiter [46:51]; repair [51:55]; dither bits [55]. Boolean values are exactly
-// zero or one. Filter, compressor and saturation enum order is declared below.
+// zero or one. Additive controls: auto release [56], M/S gains [57:59],
+// de-harsh [59:63], multiband enable/crossovers [63:66], three five-value
+// dynamics bands [66:81]. Filter, compressor and saturation enum order is declared below.
 // A rejected vector cannot change settings or processing history.
 func (v *liveControlVector) apply(bridge *Bridge) uint32 {
 	if bridge == nil {
@@ -35,7 +37,7 @@ func (v *liveControlVector) params() (dsp.Params, bool) {
 			return dsp.Params{}, false
 		}
 	}
-	for _, index := range [...]int{0, 1, 2, 4, 9, 14, 19, 24, 29, 30, 39, 42, 44, 46, 50, 51, 54} {
+	for _, index := range [...]int{0, 1, 2, 4, 9, 14, 19, 24, 29, 30, 39, 42, 44, 46, 50, 51, 54, 56, 59, 63} {
 		if v[index] != 0 && v[index] != 1 {
 			return dsp.Params{}, false
 		}
@@ -45,13 +47,13 @@ func (v *liveControlVector) params() (dsp.Params, bool) {
 			return dsp.Params{}, false
 		}
 	}
-	if !liveControlEnum(v[41], 3) || (v[55] != 0 && v[55] != 16 && v[55] != 24) {
+	if !liveControlEnum(v[41], 7) || (v[55] != 0 && v[55] != 16 && v[55] != 24) {
 		return dsp.Params{}, false
 	}
 
 	filters := [...]dsp.FilterType{dsp.FilterHighPass, dsp.FilterLowShelf, dsp.FilterPeaking, dsp.FilterHighShelf}
 	topologies := [...]dsp.CompTopology{dsp.CompOptical, dsp.CompVariableMu, dsp.CompFET, dsp.CompVCA}
-	characters := [...]dsp.SatCharacter{dsp.SatWarm, dsp.SatThick, dsp.SatCrisp}
+	characters := [...]dsp.SatCharacter{dsp.SatWarm, dsp.SatThick, dsp.SatCrisp, dsp.SatClean, dsp.SatTube, dsp.SatTape, dsp.SatTransformer}
 	params := dsp.Params{
 		Bypass: v[0] == 1, ABOriginal: v[1] == 1, LoudnessMatchAB: v[2] == 1,
 		InputGainDB: v[3], EQEnabled: v[4] == 1,
@@ -75,6 +77,16 @@ func (v *liveControlVector) params() (dsp.Params, bool) {
 	}
 	params.Repair = dsp.RepairParams{Enabled: v[51] == 1, DeEssDB: v[52], TransientDB: v[53], DeClip: v[54] == 1}
 	params.DitherBits = int(v[55])
+	params.Compressor.AutoRelease = v[56] == 1
+	params.Stereo.MidGainDB, params.Stereo.SideGainDB = v[57], v[58]
+	params.DeHarsh = dsp.DeHarshParams{Enabled: v[59] == 1, FrequencyHz: v[60], ThresholdDB: v[61], RangeDB: v[62]}
+	params.Multiband.Enabled = v[63] == 1
+	params.Multiband.LowMidHz, params.Multiband.MidHighHz = v[64], v[65]
+	for i := range params.Multiband.Bands {
+		o := 66 + i*5
+		params.Multiband.Bands[i] = dsp.DynamicsBandParams{ThresholdDB: v[o], Ratio: v[o+1], AttackMS: v[o+2], ReleaseMS: v[o+3], MakeupDB: v[o+4]}
+	}
+
 	if dsp.ValidateParams(params) != nil {
 		return dsp.Params{}, false
 	}

@@ -102,7 +102,7 @@ func TestLiveControlsRejectInvalidValuesWithoutMutation(t *testing.T) {
 		}
 	}
 	for _, index := range [...]int{8, 13, 18, 23, 28, 38, 41} {
-		for _, value := range []float64{-1, .5, 4} {
+		for _, value := range []float64{-1, .5, 7} {
 			vector := valid
 			vector[index] = value
 			assertRejected(vector)
@@ -114,7 +114,7 @@ func TestLiveControlsRejectInvalidValuesWithoutMutation(t *testing.T) {
 	}{
 		{3, 37}, {5, 9}, {6, 25}, {7, .09}, {31, -81}, {32, .5},
 		{33, 0}, {34, 4}, {35, 25}, {36, 37}, {37, 1001}, {40, 101},
-		{41, 3}, {43, 201}, {45, 19}, {47, 1}, {48, -4}, {49, 9},
+		{41, 7}, {43, 201}, {45, 19}, {47, 1}, {48, -4}, {49, 9},
 		{52, 25}, {53, -25}, {55, .5}, {55, 8}, {55, 32},
 	} {
 		vector := valid
@@ -129,7 +129,7 @@ func TestLiveControlsRejectInvalidValuesWithoutMutation(t *testing.T) {
 func TestLiveControlEnumsAndDither(t *testing.T) {
 	for filter := 0; filter < 4; filter++ {
 		for topology := 0; topology < 4; topology++ {
-			for character := 0; character < 3; character++ {
+			for character := 0; character < 7; character++ {
 				for _, bits := range []float64{0, 16, 24} {
 					vector := neutralLiveControls()
 					for _, index := range [...]int{8, 13, 18, 23, 28} {
@@ -178,6 +178,35 @@ func TestLiveSampleRateBounds(t *testing.T) {
 	for _, rate := range []float64{0, 7999, 192001, math.NaN(), math.Inf(1), math.Inf(-1)} {
 		if validLiveSampleRate(rate) {
 			t.Fatal("invalid sample rate accepted")
+		}
+	}
+}
+
+func TestExtendedLiveControls(t *testing.T) {
+	v := neutralLiveControls()
+	extension := []float64{1, 2, -3, 1, 4500, -24, 6, 1, 200, 4000, -24, 2, 20, 120, 1, -25, 3, 30, 150, 2, -26, 4, 40, 200, 3}
+	copy(v[56:], extension)
+	p, ok := v.params()
+	if !ok || !p.Compressor.AutoRelease || p.Stereo.MidGainDB != 2 || p.Stereo.SideGainDB != -3 || !p.DeHarsh.Enabled || p.DeHarsh.FrequencyHz != 4500 || p.DeHarsh.ThresholdDB != -24 || p.DeHarsh.RangeDB != 6 || !p.Multiband.Enabled || p.Multiband.LowMidHz != 200 || p.Multiband.MidHighHz != 4000 {
+		t.Fatal("extended module controls lost")
+	}
+	for i, b := range p.Multiband.Bands {
+		if b.ThresholdDB != float64(-24-i) || b.Ratio != float64(2+i) || b.AttackMS != float64(20+i*10) || b.MakeupDB != float64(1+i) {
+			t.Fatal("multiband controls reordered")
+		}
+	}
+	for _, index := range []int{56, 59, 63} {
+		invalid := v
+		invalid[index] = .5
+		if _, accepted := invalid.params(); accepted {
+			t.Fatal("nonboolean accepted")
+		}
+	}
+	for _, index := range []int{57, 58, 60, 61, 62, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80} {
+		invalid := v
+		invalid[index] = math.Inf(1)
+		if _, accepted := invalid.params(); accepted {
+			t.Fatal("nonfinite extension accepted")
 		}
 	}
 }

@@ -27,7 +27,7 @@ func TestWriteNativeParityFixture(t *testing.T) {
 	}
 	var fixtures []nativeParityFixture
 	for _, rate := range []float64{44100, 48000, 96000} {
-		for _, mode := range []string{"neutral", "gain", "chain", "bypass", "monitor"} {
+		for _, mode := range []string{"neutral", "gain", "chain", "bypass", "monitor", "extended", "tube", "tape", "transformer"} {
 			p := dsp.DefaultParams()
 			if mode == "gain" {
 				p.InputGainDB = -6
@@ -49,6 +49,29 @@ func TestWriteNativeParityFixture(t *testing.T) {
 				p.InputGainDB = -12
 				p.Limiter.CeilingDBTP = -12
 				p.DitherBits = 16
+			}
+			if mode == "extended" {
+				p.Compressor.AutoRelease = true
+				p.Compressor.Ratio = 2
+				p.Compressor.ThresholdDB = -24
+				p.Stereo.MidGainDB = 2
+				p.Stereo.SideGainDB = -3
+				p.DeHarsh = dsp.DeHarshParams{Enabled: true, FrequencyHz: 4500, ThresholdDB: -24, RangeDB: 3}
+				p.Multiband = dsp.MultibandParams{Enabled: true, LowMidHz: 200, MidHighHz: 4000}
+				for i := range p.Multiband.Bands {
+					p.Multiband.Bands[i] = dsp.DynamicsBandParams{ThresholdDB: -24, Ratio: 2, AttackMS: 20, ReleaseMS: 120, MakeupDB: 1}
+				}
+			}
+			switch mode {
+			case "tube":
+				p.Saturation.Character = dsp.SatTube
+			case "tape":
+				p.Saturation.Character = dsp.SatTape
+			case "transformer":
+				p.Saturation.Character = dsp.SatTransformer
+			}
+			if mode == "tube" || mode == "tape" || mode == "transformer" {
+				p.Saturation.Amount = 30
 			}
 			f := nativeParityFixture{Rate: rate, Params: p, Left: make([]float32, 1024), Right: make([]float32, 1024), OutputLeft: make([]float32, 1024), OutputRight: make([]float32, 1024)}
 			// Rational integer arithmetic produces exact identical native/JS inputs.

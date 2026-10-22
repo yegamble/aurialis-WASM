@@ -119,20 +119,22 @@ type RepairParams struct {
 
 // Params holds the complete, orthogonal parameter state for the mastering chain.
 type Params struct {
-	Bypass          bool                   `json:"bypass"`
-	ABOriginal      bool                   `json:"abOriginal"`
-	LoudnessMatchAB bool                   `json:"loudnessMatchAb"`
-	InputGainDB     float64                `json:"inputGainDb"`
-	EQEnabled       bool                   `json:"eqEnabled"`
-	Bands           [NumEQBands]BandParams `json:"bands"`
-	Compressor      CompressorParams       `json:"compressor"`
-	Saturation      SaturationParams       `json:"saturation"`
-	Stereo          StereoParams           `json:"stereo"`
-	Limiter         LimiterParams          `json:"limiter"`
-	Repair          RepairParams           `json:"repair"`
-	DeHarsh         DeHarshParams          `json:"deHarsh"`
-	Multiband       MultibandParams        `json:"multiband"`
-	DitherBits      int                    `json:"ditherBits"`
+	// Omitted/zero retains the original algorithm. Version 2 is not implemented.
+	AlgorithmVersion uint32                 `json:"algorithmVersion,omitempty"`
+	Bypass           bool                   `json:"bypass"`
+	ABOriginal       bool                   `json:"abOriginal"`
+	LoudnessMatchAB  bool                   `json:"loudnessMatchAb"`
+	InputGainDB      float64                `json:"inputGainDb"`
+	EQEnabled        bool                   `json:"eqEnabled"`
+	Bands            [NumEQBands]BandParams `json:"bands"`
+	Compressor       CompressorParams       `json:"compressor"`
+	Saturation       SaturationParams       `json:"saturation"`
+	Stereo           StereoParams           `json:"stereo"`
+	Limiter          LimiterParams          `json:"limiter"`
+	Repair           RepairParams           `json:"repair"`
+	DeHarsh          DeHarshParams          `json:"deHarsh"`
+	Multiband        MultibandParams        `json:"multiband"`
+	DitherBits       int                    `json:"ditherBits"`
 }
 
 // DefaultParams returns a neutral, bit-transparent default parameter set.

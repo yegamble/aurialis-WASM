@@ -1,3 +1,4 @@
+// cspell:words RMSDB
 package mastering
 
 import (
@@ -130,7 +131,10 @@ func AnalyzeFeaturesContext(ctx context.Context, buf *audio.Buffer, onProgress f
 		}
 		result.Bands[i] = band
 	}
-	result.SibilanceRatioDB = ratioDB(total.sibilancePower, total.spectralPower)
+	result.SibilanceRatioDB = featureFloorDB
+	if total.spectralPower > 1e-20 {
+		result.SibilanceRatioDB = ratioDB(total.sibilancePower, total.spectralPower)
+	}
 	if onProgress != nil {
 		onProgress(65, "Aggregating one-second features and neutral change points...")
 	}
@@ -182,6 +186,20 @@ func sourceIdentityContext(ctx context.Context, buf *audio.Buffer) (SourceIdenti
 }
 
 func measureSpectrumContext(ctx context.Context, buf *audio.Buffer, fftSize int) ([]spectralSummary, error) {
+	// Remove only the whole-source DC mean from spectral analysis. Energy and
+	// stereo diagnostics retain the original samples; local means would attenuate bass.
+	var meanLeft, meanRight float64
+	for i := range buf.Left {
+		if i%4096 == 0 {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+		}
+		meanLeft += float64(buf.Left[i])
+		meanRight += float64(buf.Right[i])
+	}
+	meanLeft /= float64(len(buf.Left))
+	meanRight /= float64(len(buf.Right))
 	scratch := make([]complex128, fftSize)
 	summaries := make([]spectralSummary, 0, (len(buf.Left)+fftSize-1)/fftSize)
 	for start := 0; start < len(buf.Left); start += fftSize {
@@ -204,7 +222,7 @@ func measureSpectrumContext(ctx context.Context, buf *audio.Buffer, fftSize int)
 				weight = 0.5 - 0.5*math.Cos(2*math.Pi*float64(i-start)/float64(end-start))
 			}
 			weightPower += weight * weight
-			scratch[i-start] = complex(left*weight, right*weight)
+			scratch[i-start] = complex((left-meanLeft)*weight, (right-meanRight)*weight)
 		}
 		count := float64(end - start)
 		summary.power /= count

@@ -1,4 +1,5 @@
 // Verify the compiled WASI reactor through its real restricted browser host.
+// cspell:words sched oneoff fdstat prestat
 import { readFile } from "node:fs/promises";
 import { webcrypto } from "node:crypto";
 import assert from "node:assert/strict";
@@ -109,6 +110,42 @@ for (const [index, fixture] of fixtures.entries()) {
     compare(output[3][frame], fixture.outputRight[frame], "reset changed right settings or history");
   }
 }
+// Exercise control transitions on the real reactor without resetting between
+// edits. Constant-setting parity alone cannot expose frozen model-local audio.
+const neutral = fixtures.find(f => f.rate === 48000 && !f.params.bypass
+  && f.params.inputGainDb === 0 && f.params.saturation.amount === 0
+  && f.params.compressor.ratio === 1 && !f.params.limiter.enabled
+  && f.params.bands.every(band => band.gainDb === 0));
+assert.ok(neutral);
+for (const rate of [8000, 48000, 192000]) {
+  for (const character of ["Crisp", "Tape", "Transformer"]) {
+    const params = { ...structuredClone(neutral.params), inputGainDb: 0.0001,
+      saturation: { enabled: true, amount: 100, character } };
+    const modelKernel = await configuredKernel({ rate, params });
+    const inputL = new Float32Array(128), inputR = new Float32Array(128);
+    for (let block = 0; block < 200; block++) {
+      for (let frame = 0; frame < 128; frame++) {
+        inputL[frame] = 0.4 * Math.cos(2 * Math.PI * 100 * (block * 128 + frame) / rate);
+        inputR[frame] = -inputL[frame];
+      }
+      modelKernel.render(inputL, inputR);
+    }
+    modelKernel.controls().set(packLiveControls({ ...params,
+      saturation: { ...params.saturation, character: "Thick" } }));
+    assert.equal(modelKernel.wasm.aurialis_set_controls(), 1);
+    inputL.fill(0); inputR.fill(0);
+    for (let block = 0; block < 400; block++) modelKernel.render(inputL, inputR);
+    modelKernel.controls().set(packLiveControls(params));
+    assert.equal(modelKernel.wasm.aurialis_set_controls(), 1);
+    for (let block = 0; block < 10; block++) {
+      const output = modelKernel.render(inputL, inputR);
+      for (const channel of [2, 3]) for (const sample of output[channel])
+        assert.ok(Number.isFinite(sample) && Math.abs(sample) < 1e-8,
+          `${character} replayed old model audio at ${rate} Hz: ${sample}`);
+    }
+  }
+}
+console.log("wasm-realtime: 9 model-history transitions passed through numeric controls without reset");
 const active = fixtures.find(f => f.rate === 48000 && f.params.saturation.character === "Crisp");
 assert.ok(active);
 const kernel = await configuredKernel(active);

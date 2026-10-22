@@ -206,3 +206,63 @@ func (e *Engine) rebaseSaturation() {
 		}
 	}
 }
+
+// Clear histories when their signal path stops running. Frozen delay samples
+// must not be replayed after a later reactivation. Running stages, coefficients,
+// M/S gain smoothing, monitoring calibration and dither state are preserved.
+func (e *Engine) clearStoppedStageHistory(prev Params) {
+	next := e.params
+	all := !prev.Bypass && next.Bypass
+	if all || (prev.EQEnabled && !next.EQEnabled) {
+		e.eqState = [NumEQBands][2]svfState{}
+	}
+	wasComp := prev.Compressor.Enabled && (prev.Compressor.Ratio > 1.0001 || math.Abs(prev.Compressor.MakeupDB) >= 1e-7)
+	isComp := next.Compressor.Enabled && (next.Compressor.Ratio > 1.0001 || math.Abs(next.Compressor.MakeupDB) >= 1e-7)
+	if all || (wasComp && !isComp) {
+		e.compPeakEnv, e.compEnvDB, e.compSlowDB, e.lastGRDB = 0, 0, 0, 0
+	}
+	if prev.Compressor.AutoRelease && !next.Compressor.AutoRelease {
+		e.compSlowDB = 0
+	}
+	if all || (wasComp && !isComp) || (prev.Compressor.SidechainHPFHz > 10 && next.Compressor.SidechainHPFHz <= 10) {
+		e.scHPFState = [2][2]svfState{}
+	}
+	wasSat := prev.Saturation.Enabled && prev.Saturation.Amount >= 1e-5 && prev.Saturation.Character != SatClean
+	isSat := next.Saturation.Enabled && next.Saturation.Amount >= 1e-5 && next.Saturation.Character != SatClean
+	if all || (wasSat && !isSat) {
+		e.satPrevX, e.satPrevF1, e.satPrevIn = [2]float64{}, [2]float64{}, [2]float64{}
+		e.dcPrevX, e.dcPrevY = [2]float64{}, [2]float64{}
+	}
+	// Model-specific filters stop advancing when another processing path is
+	// selected. Shared ADAA/input/DC histories still belong to the running chain.
+	if all || (wasSat && !isSat) || (prev.Saturation.Character == SatCrisp && next.Saturation.Character != SatCrisp) {
+		e.ironLP, e.ironHP = [2]float64{}, [2]float64{}
+	}
+	wasColor := prev.Saturation.Character == SatTube || prev.Saturation.Character == SatTape || prev.Saturation.Character == SatTransformer
+	isColor := next.Saturation.Character == SatTube || next.Saturation.Character == SatTape || next.Saturation.Character == SatTransformer
+	if all || (wasSat && !isSat) || (wasColor && !isColor) {
+		e.extended.colorLP = [2]float64{}
+	}
+	if all || (prev.Stereo.Enabled && prev.Stereo.MonoBass && (!next.Stereo.Enabled || !next.Stereo.MonoBass)) {
+		e.xoverSide = [4]svfState{}
+		e.xoverLow, e.xoverHigh = [2][2]svfState{}, [2][2]svfState{}
+	}
+	if all || (prev.Repair.Enabled && prev.Repair.DeEssDB > 1e-5 && (!next.Repair.Enabled || next.Repair.DeEssDB <= 1e-5)) {
+		e.deEssState, e.deEssEnv = [2]svfState{}, 0
+	}
+	if all || (prev.Repair.Enabled && math.Abs(prev.Repair.TransientDB) > 1e-5 && (!next.Repair.Enabled || math.Abs(next.Repair.TransientDB) <= 1e-5)) {
+		e.transFast, e.transSlow = 0, 0
+	}
+	if all || (prev.DeHarsh.Enabled && !next.DeHarsh.Enabled) {
+		e.extended.harshState = [2]svfState{}
+		e.extended.harshEnvelope, e.extended.harshGain = 0, 0
+	}
+	if all || (prev.Multiband.Enabled && !next.Multiband.Enabled) {
+		e.extended.splitState = [2][2]float64{}
+		e.extended.bandEnvelope = [3]float64{}
+	}
+	if all || (prev.Limiter.Enabled && !next.Limiter.Enabled) {
+		e.limPrevL, e.limPrevR = [3]float64{}, [3]float64{}
+		e.limEnvLin, e.lastLimGRDB = 1, 0
+	}
+}

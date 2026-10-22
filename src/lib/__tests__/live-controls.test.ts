@@ -68,4 +68,50 @@ describe("fixed Go live control ABI", () => {
     expect(() => packLiveControls({ ...value, bands: value.bands.slice(1) })).toThrow("five EQ");
     expect(() => packLiveControls({ ...value, compressor: { ...value.compressor, topology: "unknown" } })).toThrow("unsupported");
   });
+  it.each([2, 4])("rejects %i multiband bands before creating or changing a shared packet", (count) => {
+    const value = params();
+    const malformed = params();
+    if (count === 2) malformed.multiband.bands.pop();
+    else malformed.multiband.bands.push({ ...malformed.multiband.bands[0] });
+    expect(() => packLiveControls(malformed)).toThrow("three multiband bands");
+    expect(() => createLiveControls(malformed, 1)).toThrow("three multiband bands");
+
+    const controls = createLiveControls(value, 7);
+    const before = new Uint8Array(controls.buffer).slice();
+    expect(() => { controls.publish(malformed, 8); }).toThrow("three multiband bands");
+    expect(new Uint8Array(controls.buffer)).toEqual(before);
+
+    controls.publish({ ...value, inputGainDb: 4 }, 9);
+    expect(Array.from(new Int32Array(controls.buffer, 0, 4))).toEqual([4, 9, 0, 0]);
+    expect(new Float64Array(controls.buffer, 16, 81)[3]).toBe(4);
+  });
+  it.each(["EQ", "multiband"] as const)("rejects sparse %s bands before changing the packet", (module) => {
+    const value = params();
+    const malformed = params();
+    const bands = module === "EQ" ? malformed.bands : malformed.multiband.bands;
+    Reflect.deleteProperty(bands, 1);
+    expect(() => packLiveControls(malformed)).toThrow("81 values");
+    expect(() => createLiveControls(malformed, 1)).toThrow("81 values");
+
+    const controls = createLiveControls(value, 7);
+    const before = new Uint8Array(controls.buffer).slice();
+    expect(() => { controls.publish(malformed, 8); }).toThrow("81 values");
+    expect(new Uint8Array(controls.buffer)).toEqual(before);
+    controls.publish(value, 9);
+    expect(Array.from(new Int32Array(controls.buffer, 0, 4))).toEqual([4, 9, 0, 0]);
+  });
+  it("preserves the 81-value zero extension for legacy settings", () => {
+    const legacy = params();
+    Reflect.deleteProperty(legacy, "deHarsh");
+    Reflect.deleteProperty(legacy, "multiband");
+    Reflect.deleteProperty(legacy.compressor, "autoRelease");
+    Reflect.deleteProperty(legacy.stereo, "midGainDb");
+    Reflect.deleteProperty(legacy.stereo, "sideGainDb");
+    const packed = packLiveControls(legacy);
+    expect(packed.length).toBe(81);
+    expect(Array.from(packed.slice(56))).toEqual(new Array<number>(25).fill(0));
+    const controls = createLiveControls(legacy, 7);
+    expect(Array.from(new Float64Array(controls.buffer, 16, 81))).toEqual(Array.from(packed));
+    expect(Array.from(new Int32Array(controls.buffer, 0, 4))).toEqual([2, 7, 0, 0]);
+  });
 });

@@ -163,6 +163,47 @@ test("a failed live WASI asset reports the error and Retry playback restores aud
   await info.attach("live engine asset retry", { body: JSON.stringify({ attempts, output: await outputLevel(page) }, null, 2), contentType: "application/json" });
 });
 
+test("a live WASI failure after keyboard pause reports immediately and retries successfully", async ({ page }) => {
+  await observeOutput(page);
+  await uploadProject(page, "qa-paused-asset-retry.wav", 12);
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  let started: (() => void) | undefined;
+  const requested = new Promise<void>((resolve) => { started = resolve; });
+  let attempts = 0;
+  await page.route("**/wasm/aurialis-realtime.wasm", async (route) => {
+    attempts++;
+    if (attempts === 1) {
+      started?.();
+      await held;
+      await route.fulfill({ status: 503, contentType: "text/plain", body: "QA paused engine failure" });
+    } else await route.continue();
+  });
+  try {
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await requested;
+    await expect(page.getByRole("button", { name: "Starting playback", exact: true })).toBeDisabled();
+    await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); });
+    await page.keyboard.press("Space");
+    await expect(page.getByRole("button", { name: "Play", exact: true })).toBeEnabled();
+    release?.();
+    const retry = page.getByRole("button", { name: "Retry playback", exact: true });
+    await expect(retry).toBeVisible();
+    await expect(page.locator(".workspace-canvas").getByRole("alert")).toContainText("audio engine could not be loaded");
+    await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
+    expect(await outputLevel(page)).toBeNull();
+    await retry.click();
+    await expect(page.getByRole("button", { name: "Play", exact: true })).toBeEnabled();
+    await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");
+    await play(page);
+    await expect.poll(() => audibleDb(page)).toBeCloseTo(-19.03, 0);
+    expect(attempts).toBe(2);
+    await expect(page.locator(".workspace-canvas").getByRole("alert")).toHaveCount(0);
+  } finally {
+    release?.();
+  }
+});
+
 test("leaving during held live WASI initialization cancels it and reopening creates one playable graph", async ({ page }, info) => {
   await observeOutput(page);
   let nodes = 0;

@@ -195,6 +195,78 @@ describe("per-track live audio lifecycle", () => {
     expect(errors).toHaveBeenCalledTimes(1);
     controller.dispose();
   });
+  it.each(["network rejection", "timeout"])("cleans up %s after Pause and succeeds on the first retry", async (failure) => {
+    vi.useFakeTimers();
+    const { contexts, nodes, fetchModule } = graphHarness();
+    let rejectFetch: ((error: Error) => void) | undefined;
+    let completeFetch: ((response: Response) => void) | undefined;
+    fetchModule.mockReturnValueOnce(new Promise<Response>((resolve, reject) => {
+      completeFetch = resolve;
+      rejectFetch = reject;
+    }));
+    const errors = vi.fn();
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams(), { onError: errors });
+    const firstPlay = controller.play();
+    const firstRequest = fetchModule.mock.calls[0]?.[1];
+    controller.pause();
+    if (failure === "timeout") await vi.advanceTimersByTimeAsync(15_000);
+    else rejectFetch?.(new Error("Network unavailable"));
+    await firstPlay;
+    expect(contexts[0]?.close).toHaveBeenCalledTimes(1);
+    expect(firstRequest?.signal?.aborted).toBe(true);
+    expect(controller.getState()).toMatchObject({ ready: false, playing: false, loading: false });
+    expect(errors).toHaveBeenCalledTimes(1);
+    await controller.play();
+    expect(fetchModule).toHaveBeenCalledTimes(2);
+    expect(contexts).toHaveLength(2);
+    expect(nodes).toHaveLength(1);
+    expect(contexts[1]?.createBufferSource).toHaveBeenCalledOnce();
+    expect(controller.getState()).toMatchObject({ ready: true, playing: true, loading: false, error: null });
+    // A request that ignores abort must not attach a graph to a later retry.
+    completeFetch?.(new Response(new Uint8Array([0]), { status: 200 }));
+    await vi.waitFor(() => {
+      expect(WebAssembly.compile).toHaveBeenCalledTimes(failure === "timeout" ? 2 : 1);
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(nodes).toHaveLength(1);
+    expect(contexts[1]?.close).not.toHaveBeenCalled();
+    expect(errors).toHaveBeenCalledTimes(1);
+    controller.dispose();
+  });
+  it("reports a shared initialization failure once across overlapping Play attempts", async () => {
+    const { contexts, fetchModule } = graphHarness();
+    let rejectFetch: ((error: Error) => void) | undefined;
+    fetchModule.mockReturnValueOnce(new Promise<Response>((_resolve, reject) => { rejectFetch = reject; }));
+    const errors = vi.fn();
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams(), { onError: errors });
+    const firstPlay = controller.play();
+    controller.pause();
+    const secondPlay = controller.play();
+    rejectFetch?.(new Error("Network unavailable"));
+    await Promise.all([firstPlay, secondPlay]);
+    expect(contexts[0]?.close).toHaveBeenCalledTimes(1);
+    expect(errors).toHaveBeenCalledTimes(1);
+    await controller.play();
+    expect(fetchModule).toHaveBeenCalledTimes(2);
+    expect(controller.getState()).toMatchObject({ ready: true, playing: true, error: null });
+    controller.dispose();
+  });
+  it("ignores a pending request rejection after disposal", async () => {
+    const { contexts, fetchModule } = graphHarness();
+    let rejectFetch: ((error: Error) => void) | undefined;
+    fetchModule.mockReturnValueOnce(new Promise<Response>((_resolve, reject) => { rejectFetch = reject; }));
+    const errors = vi.fn(), states = vi.fn();
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams(), { onError: errors, onState: states });
+    const firstPlay = controller.play();
+    controller.pause();
+    controller.dispose();
+    const callsAfterDispose = states.mock.calls.length;
+    rejectFetch?.(new Error("Late network failure"));
+    await firstPlay;
+    expect(contexts[0]?.close).toHaveBeenCalledTimes(1);
+    expect(states).toHaveBeenCalledTimes(callsAfterDispose);
+    expect(errors).not.toHaveBeenCalled();
+  });
   it("fails explicitly when isolation is missing and clears audible meter values", async () => {
     vi.stubGlobal("crossOriginIsolated", false);
     const meters = vi.fn(), errors = vi.fn();

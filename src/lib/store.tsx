@@ -16,6 +16,9 @@ import type {
   Album,
   AdvancedParams,
   CompressorParams,
+  DeHarshParams,
+  MultibandParams,
+  MultibandBandParams,
   EQBandId,
   EQBandParams,
   LimiterParams,
@@ -89,6 +92,9 @@ type StoreAction =
   | { type: "UPDATE_STEREO"; trackId: string; patch: Partial<StereoParams> }
   | { type: "UPDATE_LIMITER"; trackId: string; patch: Partial<LimiterParams> }
   | { type: "UPDATE_REPAIR"; trackId: string; patch: Partial<RepairParams> }
+  | { type: "UPDATE_DE_HARSH"; trackId: string; patch: Partial<DeHarshParams> }
+  | { type: "UPDATE_MULTIBAND"; trackId: string; patch: Partial<Omit<MultibandParams, "bands">> }
+  | { type: "UPDATE_MULTIBAND_BAND"; trackId: string; index: 0 | 1 | 2; patch: Partial<MultibandBandParams> }
   | { type: "UPDATE_INPUT_GAIN"; trackId: string; input: number }
   | { type: "RESET_ADVANCED"; trackId: string }
   | { type: "DELETE_TRACK"; id: string }
@@ -304,6 +310,24 @@ export function reduceStoreState(
         })),
       };
 
+    case "UPDATE_DE_HARSH":
+    case "UPDATE_MULTIBAND":
+    case "UPDATE_MULTIBAND_BAND":
+      return {
+        ...state,
+        tracks: updateTrackInList(state.tracks, action.trackId, (track) => {
+          const advanced = { ...track.advanced };
+          if (action.type === "UPDATE_DE_HARSH") advanced.deHarsh = { ...advanced.deHarsh, ...action.patch };
+          else if (action.type === "UPDATE_MULTIBAND") advanced.multiband = { ...advanced.multiband, ...action.patch };
+          else {
+            const bands: MultibandParams["bands"] = [...advanced.multiband.bands];
+            bands[action.index] = { ...bands[action.index], ...action.patch };
+            advanced.multiband = { ...advanced.multiband, bands };
+          }
+          return { ...track, advanced: clampAdvancedToSampleRate(advanced, track.sampleRate), simpleCustom: true, updatedAt: new Date().toISOString() };
+        }),
+      };
+
     case "RESET_ADVANCED":
       return {
         ...state,
@@ -355,7 +379,15 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
   if (typeof raw !== "object" || raw === null) return null;
   const candidate = raw as {
     tracks?: (Omit<Track, "advanced"> & {
-      advanced?: Partial<AdvancedParams>;
+      advanced?: Omit<Partial<AdvancedParams>, "compressor" | "stereo" | "saturationModule" | "limiter" | "repair" | "deHarsh" | "multiband"> & {
+        compressor?: Partial<CompressorParams>;
+        stereo?: Partial<StereoParams>;
+        saturationModule?: Partial<SaturationParams>;
+        limiter?: Partial<LimiterParams>;
+        repair?: Partial<RepairParams>;
+        deHarsh?: Partial<DeHarshParams>;
+        multiband?: Omit<Partial<MultibandParams>, "bands"> & { bands?: Partial<MultibandBandParams>[] };
+      };
     })[];
     albums?: Album[];
     stems?: unknown;
@@ -393,6 +425,14 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
         limiter: {
           ...baseAdv.limiter,
           ...(track.advanced?.limiter ?? {}),
+        },
+        deHarsh: { ...baseAdv.deHarsh, ...track.advanced?.deHarsh },
+        multiband: {
+          ...baseAdv.multiband,
+          ...track.advanced?.multiband,
+          // Index originates from the fixed three-band default tuple, never an external key.
+          // eslint-disable-next-line security/detect-object-injection
+          bands: baseAdv.multiband.bands.map((band, index) => ({ ...band, ...track.advanced?.multiband?.bands?.[index] })) as MultibandParams["bands"],
         },
         repair: {
           ...baseAdv.repair,

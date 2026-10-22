@@ -348,7 +348,16 @@ export function createLivePlayback(
         // A prior Pause can suspend the context while the module is still
         // loading. Resume inside this Play gesture before waiting for ready.
         const resuming = initialization ? audio?.resume() : undefined;
-        initialization ??= initialize();
+        if (!initialization) {
+          const attempt = initialize();
+          initialization = attempt;
+          // Pause invalidates Play intent, but the initialization still owns
+          // its graph until it succeeds or fails. A failed old attempt must
+          // never tear down a graph created by a later retry.
+          void attempt.catch((error: unknown) => {
+            if (!isDisposed() && initialization === attempt) fail(error);
+          });
+        }
         await Promise.all([initialization, resuming]);
         if (isDisposed() || ticket !== playTicket || !audio) return;
         await audio.resume();

@@ -345,3 +345,10 @@ The current artifact is SHA256 `fa45eaa59a0c294b47d8794ba40280136ae207d5f74fc522
 | Source remote CI | [Run 39597252997](https://github.com/yegamble/aurialis-WASM/actions/runs/39597252997) passed all six jobs at exact `e91d2f0f9c1b40dadb416fbff69714daeeb31aef`, including Playwright/unified gate | Recorded green source checkpoint; [live PR checks](https://github.com/yegamble/aurialis-WASM/pull/2/checks) show newer documentation-commit status |
 
 The Technical Writer synchronized current contracts and this evidence across the six owned documents. Full repository spelling including the hidden ledger/repo-map exited 0 (114 files, zero issues); all 48 local Markdown links resolve and the six-file diff whitespace check exited 0. The corrective subset is locally verified and **open — awaiting merge**; owner approval is absent. Trained AI/stems, musical automation, spectral matching, broad album/resource capacity, certified hardware/true-peak/platform behavior and the original fetch root cause remain open or unverified. Prior failed attempts, observer limitations and resource messages remain in the historical record.
+
+
+## CI live-audio baseline correction — 2026-10-21
+
+Run 39711192709 passed every gate except the Add Air live test (52/53 browser cases). Its fixed theoretical RMS assertion expected -9.49 dBFS but the Linux speaker feed measured -10.098 dBFS. The test now measures B Original on the same device, verifies neutral A Processed matches within 0.1 dB, then retains independent activation changes and restoration within 0.1 dB. A bounded original level check still rejects silence or excessive gain. Application processing is unchanged.
+
+Verification: full local Chromium suite **53/53 passed (2.3 minutes)**; TypeScript, repository lint and changed-test spelling passed. Direct ESLint invocation on the E2E file reported that E2E files are excluded; the configured repository lint passed afterward. Remote CI rerun pending. Status: **open — awaiting merge**.

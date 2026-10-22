@@ -185,8 +185,20 @@ for (const shortcut of shortcuts) {
     await expect(page.getByRole("button", { name: "Play", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Reset modules", exact: true }).click();
     await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");
+    await page.getByRole("button", { name: "B Original", exact: true }).click();
     await page.getByRole("button", { name: "Play", exact: true }).click();
-    await expect.poll(async () => (await outputLevel(page))?.rmsDbfs ?? -Infinity).toBeCloseTo(-9.49, 0);
+    // Device resampling changes high-frequency amplitude. Measure the original
+    // through the same speaker feed instead of assuming its theoretical RMS.
+    await expect.poll(async () => (await outputLevel(page))?.rmsDbfs ?? -Infinity).toBeGreaterThan(-12);
+    const original = await outputLevel(page);
+    if (!original) throw new Error("Missing original live PCM");
+    expect(original.rmsDbfs).toBeLessThan(-8);
+    await page.getByRole("button", { name: "A Processed", exact: true }).click();
+    await expect.poll(async () => {
+      const value = await outputLevel(page);
+      if (!value || value.frames < original.frames + original.sampleRate / 2) return Infinity;
+      return Math.abs(value.rmsDbfs - original.rmsDbfs);
+    }).toBeLessThan(0.1);
     const baseline = await outputLevel(page);
     if (!baseline) throw new Error("Missing live PCM baseline");
     const button = page.getByRole("button", { name: shortcut.label, exact: true });

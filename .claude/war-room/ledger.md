@@ -39,6 +39,38 @@ RETAINED FAILURES: First parity attempt raced a mid/side source change and passe
 
 The [research contract](../../docs/mastering-controls-research.md) and [task evidence](../../docs/tasks.md) record sources, values and limitations. Documentation sync is complete for this local checkpoint; remote CI and owner-authorized merge remain required.
 
+## War-room ruling — 2026-10-22 Mastering Upgrade Blueprint (`/war-room`, review only)
+
+**Seats:** `aurialis-dsp-plugin-engineer`, `aurialis-backend`, `aurialis-frontend`, `aurialis-devils-advocate`, `aurialis-grammy-veteran` (read-only, lighter models per owner budget request). Rounds B/C were skipped under usage-budget rule 5 because no seat disputed another seat's BLOCKER or REQUIRED item. No application code was modified.
+
+The Chair confirmed these blueprint claims are stale: the live ABI has 81 values (not 56), `compSlowDB` and `ironHP` are in use, and `AdvancedDynamics.tsx` already exposes knee, makeup, sidechain HPF, auto release, M/S, mono-bass frequency, De-Harsh and multiband. Prompt 1 is already fulfilled by [the upgrade spec](../../docs/design/waves-parity-and-hardware-emulation-spec.md) (`1539b6a`). That spec stays canonical, and the blueprint's equations and genre numbers are inputs to calibrate, not acceptance evidence.
+
+```text
+DECISION:            BLOCK (sequencing) — no new implementation branch until codex/advanced-mastering-controls is merged to main.
+WHY:                 Finished-means-merged; new DSP/UI slices touch the same engine.go / AurialisWorkstation.tsx files (devils-advocate-1).
+DISSENTING VIEW:     None.
+```
+
+| ID | Pri | Blueprint item | Decision | Acceptance / gate |
+|---|---|---|---|---|
+| `MUB-0` | P0 | Merge `codex/advanced-mastering-controls` | BLOCK prerequisite | Owner PR merge plus green remote CI; then branch per slice off `main`. |
+| `MUB-1` | P1 | Prompt 1: spec | REJECT (duplicate) | Already committed. Tau unit clarified in §4 (seconds = ms × 1e-3). |
+| `MUB-2A` | P1 | DSP foundation | ACCEPT (spec §7 step 1) | `AlgorithmVersion` (v1 default, v2 opt-in), versioned 82-value ABI handshake, `LatencyFrames()` plus drain, fixed delay buffers. v1 PCM bit-exact (max abs err 0) on all 333 fixtures; 0 allocs/op at block sizes 1/127/128/129/4096 and 8–192 kHz. |
+| `MUB-2B` | P1 | Compressor topologies | MODIFY | v2 only; one topology per commit, Optical first (separate fast/slow states; long-burst recovery ≥2× slower than a 50 ms burst; steady-state error ≤0.1 dB). Generic labels only (Optical/Vari-Mu/VCA/FET), no hardware product names. |
+| `MUB-2C` | P2 | Saturation oversampling and LR4 | MODIFY | Polyphase FIR with measured stop-band rejection ≥60 dB; separate tape/transformer state; LR4 all-pass applied to Mid *and* Side; branches −6.02 dB ±0.1 at crossover; phase ≤1°; width=0 null ≤1e-6. |
+| `MUB-2D` | P1 | Lookahead limiter | MODIFY | 2 ms time-based lookahead (`ceil(fs*0.002)`, ≤384 frames), not 64 fixed samples. ≤ ceiling+0.05 dBTP verified against an independent oversampled oracle on final output. |
+| `MUB-3A` | P1 | Analysis and segmentation | MODIFY (spec §7 step 5) | Standalone `AnalyzeFeatures`/neutral `Section 1..N` with confidence; aggregated Hann FFT frames (a 4096-point FFT ≠ a 1 s window); silence gives 1 section; step change localized ≤250 ms; band power ±0.5 dB on tones/noise. |
+| `MUB-3B` | P1 | ScriptV2 render route and data-driven moves | ACCEPT (step 6) | Closed target allowlist; `script` mutually exclusive with `params`/`profile` (400); EQ proposals ±3 dB regularized fit; Newman cases added. |
+| `MUB-3C` | P2 | Reference endpoint | DEFER (step 7) | Both WAV parts through CDR; joint memory reservation `(src+ref) frames` in `admitLocked`; amount=0 identity; protect-low within 0.25 dB. |
+| `MUB-4A` | P1 | EQ band type, band enable, limiter release UI | ACCEPT (first UI slice after MUB-0) | DSP and live-control indices already carry them (`live-controls.ts:30,37`). Shared primitives, ≥44 px, six widths plus axe; each control must change exported *and* live PCM. |
+| `MUB-4B` | P2 | Topology / true-peak / repair UI | DEFER | Exposed only after MUB-2B/2D and repair DSP pass, and after `browser-engine.ts:28-31,60` guards are removed with real behavior. |
+| `MUB-4C` | P2 | Deep wiring, timeline, Reference view | DEFER | Gated on MUB-3A/3B/3C. |
+| `MUB-4D` | P2 | Simple Precise/Organic/Elevated + Depth/Presence | MODIFY (calibration step 7) | Aurialis design, not Waves coefficients; zero intensity neutral; order-commutative; bounded per spec §6. |
+| `MUB-4E` | — | Loudness-matched A/B toggle | DECLINED | Conflicts with recorded owner decision (spec §2). The owner may reopen this explicitly. |
+| `MUB-5` | P2 | Genre matrix (blueprint §4) | MODIFY | Keep the conservative recipes in `docs/mastering-controls-research.md`. Blueprint values are candidates only. Section-move caps: ≤+0.8 dB EQ, ≤+8% width, ≤+0.5 dB drive delta; all profiles ≤ −1.0 dBTP (grammy-veteran-1). |
+
+Recommended next command after MUB-0 merges: `/war-room-loop feature=wasm-dsp` (MUB-2A), with MUB-4A as a parallel non-overlapping frontend slice.
+
 ## Iteration Log
 
 | Iteration | Date | Scope | Active Seats | Outcome |

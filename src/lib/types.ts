@@ -7,7 +7,7 @@ export type ProfileId =
   | "metal_wall"
   | "pop_punk_air";
 
-export type SaturationCharacter = "Warm" | "Thick" | "Crisp";
+export type SaturationCharacter = "Warm" | "Thick" | "Crisp" | "Clean" | "Tube" | "Tape" | "Transformer";
 
 export type EQFilterType = "highpass" | "lowshelf" | "peaking" | "highshelf";
 
@@ -31,6 +31,8 @@ export type CompressorParams = {
   release: number;
   knee: number;
   makeup: number;
+  sidechainHpfHz: number;
+  autoRelease: boolean;
 };
 
 export type SaturationParams = {
@@ -43,6 +45,31 @@ export type StereoParams = {
   enabled: boolean;
   width: number;
   monoBass: boolean;
+  crossoverHz: number;
+  midGainDb: number;
+  sideGainDb: number;
+};
+
+export type DeHarshParams = {
+  enabled: boolean;
+  frequencyHz: number;
+  thresholdDb: number;
+  rangeDb: number;
+};
+
+export type MultibandBandParams = {
+  thresholdDb: number;
+  ratio: number;
+  attackMs: number;
+  releaseMs: number;
+  makeupDb: number;
+};
+
+export type MultibandParams = {
+  enabled: boolean;
+  lowMidHz: number;
+  midHighHz: number;
+  bands: [MultibandBandParams, MultibandBandParams, MultibandBandParams];
 };
 
 export type LimiterParams = {
@@ -81,6 +108,8 @@ export type AdvancedParams = {
   stereo: StereoParams;
   limiter: LimiterParams;
   repair: RepairParams;
+  deHarsh: DeHarshParams;
+  multiband: MultibandParams;
 };
 
 export type MeasuredAudioMetrics = {
@@ -107,7 +136,18 @@ export type Metrics = {
 
 export type TrackStatus = "draft" | "ready" | "mastered" | "needs-review";
 
+export type ShortcutUndo = {
+  air?: EQBandParams;
+  mud?: EQBandParams;
+  tape?: SaturationParams;
+  tapeLegacy?: number;
+  glue?: CompressorParams;
+  glueLegacy?: Pick<AdvancedParams, "threshold" | "ratio" | "attack" | "release">;
+  eqBaseline?: { enabled: boolean; bands: AdvancedParams["eqBands"] };
+};
+
 export type Track = {
+  shortcutUndo?: ShortcutUndo;
   /** Only an explicit Simple selection establishes a preset association. */
   simpleCustom?: boolean;
   persistenceWarning?: string;

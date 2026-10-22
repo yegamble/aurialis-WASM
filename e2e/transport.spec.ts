@@ -54,3 +54,21 @@ test("keyboard holds retain focus and focused controls keep their own arrow beha
   await expect.poll(() => meters.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
   expect(Number(await page.locator(".transport").getAttribute("data-position"))).toBe(position);
 });
+
+test("wide transport centers Play and uses a legible ten-second icon", async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await uploadProject(page, "transport-layout.wav", 5);
+  const transport = page.locator(".transport");
+  const play = page.getByRole("button", { name: "Play", exact: true });
+  const barBox = await transport.boundingBox();
+  const playBox = await play.boundingBox();
+  expect(barBox).not.toBeNull();
+  expect(playBox).not.toBeNull();
+  expect(Math.abs((playBox!.x + playBox!.width / 2) - (barBox!.x + barBox!.width / 2))).toBeLessThan(1);
+  const forward = page.getByRole("button", { name: "Skip forward 10 seconds", exact: true });
+  await expect(forward.locator("svg text")).toHaveText("10");
+  const backBox = await page.getByRole("button", { name: "Restart track", exact: true }).boundingBox();
+  const forwardBox = await forward.boundingBox();
+  expect(backBox?.width).toBe(forwardBox?.width);
+  expect(backBox?.y).toBe(forwardBox?.y);
+});

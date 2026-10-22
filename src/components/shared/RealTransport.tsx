@@ -19,7 +19,7 @@ type RealTransportProps = {
   handover?: boolean;
 };
 
-const actionClass = "touch-none select-none grid size-[44px] shrink-0 place-items-center rounded-full border border-transparent bg-transparent text-ink transition-colors hover:enabled:bg-paper-deep disabled:cursor-not-allowed disabled:opacity-45";
+const actionClass = "touch-none select-none grid size-[44px] shrink-0 place-items-center rounded-full border border-transparent bg-transparent text-ink [&_svg]:size-5 transition-colors hover:enabled:bg-paper-deep disabled:cursor-not-allowed disabled:opacity-45";
 
 
 /** Pointer and keyboard holds share one cancellable session; a hold never also skips a song. */
@@ -124,8 +124,8 @@ export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal,
       aria-label="Playback transport" aria-busy={loading || handover}
       data-position={position} data-playing={playing} data-ready={state?.ready ?? false}
       data-parameter-version={state?.parameterVersion ?? 0} data-applied-version={state?.appliedVersion ?? 0}>
-      <div className="grid min-w-0 grid-cols-[minmax(188px,1fr)_60px] items-center gap-x-2 gap-y-1 @min-[520px]:grid-cols-[minmax(94px,1fr)_auto_minmax(164px,1fr)]">
-        <div className="ab-toggle col-start-1 row-start-1 inline-flex w-fit justify-self-start rounded-full border border-line bg-paper-deep p-[3px] @min-[520px]:justify-self-start" role="group" aria-label="Processed and original audio">
+      <div className="grid min-w-0 grid-cols-[minmax(188px,1fr)_60px] items-center gap-x-2 gap-y-1 @min-[640px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+        <div className="ab-toggle col-start-1 row-start-1 inline-flex w-fit justify-self-start rounded-full border border-line bg-paper-deep p-[3px] @min-[640px]:justify-self-start" role="group" aria-label="Processed and original audio">
           {([false, true] as const).map((isOriginal) => {
             const selected = sourceReady && original === isOriginal;
             return (
@@ -133,16 +133,17 @@ export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal,
                 title={isOriginal ? "B · Original source" : "A · Processed output"} aria-pressed={selected}
                 className={`min-h-[44px] min-w-[44px] rounded-full border-0 px-2.5 text-[11px] font-semibold disabled:cursor-not-allowed disabled:opacity-45 ${selected ? "is-active bg-clay-dark text-white" : "bg-transparent text-ink-soft hover:enabled:bg-paper"}`}
                 onClick={() => { onOriginal(isOriginal); }}>
-                {isOriginal ? "B" : "A"} <span className="@min-[520px]:hidden @min-[700px]:inline">{isOriginal ? "Original" : "Processed"}</span>
+                {isOriginal ? "B" : "A"} <span className="@min-[640px]:hidden @min-[700px]:inline">{isOriginal ? "Original" : "Processed"}</span>
               </button>
             );
           })}
         </div>
-        <div className="col-start-1 row-start-2 grid grid-cols-[repeat(4,44px)] items-center justify-self-start gap-1 @min-[520px]:col-start-2 @min-[520px]:row-start-1 @min-[520px]:grid-cols-[44px_52px_44px_44px] @min-[520px]:justify-self-center @min-[520px]:gap-1.5" role="group" aria-label="Track playback controls">
+        <div className="col-start-1 row-start-2 grid grid-cols-[repeat(4,44px)] items-center justify-self-start gap-1 @min-[640px]:col-start-2 @min-[640px]:row-start-1 @min-[640px]:grid-cols-[44px_44px_52px_44px_44px] @min-[640px]:justify-self-center @min-[640px]:gap-1.5" role="group" aria-label="Track playback controls">
+          <span aria-hidden="true" className="hidden @min-[640px]:block" />
           <button type="button" className={actionClass} aria-label="Restart track" aria-description="Tap to restart this track. Hold to rewind." title="Restart track · Hold to rewind" disabled={unavailable || loading} {...backActions}>
             <Icon name="skip-back" />
           </button>
-          <button type="button" className="play-button grid size-[44px] @min-[520px]:size-[52px] shrink-0 place-items-center rounded-full border border-clay-dark bg-clay text-white shadow-sm transition-colors hover:enabled:bg-clay-dark disabled:cursor-not-allowed disabled:opacity-45"
+          <button type="button" className="play-button grid size-[44px] @min-[640px]:size-[52px] shrink-0 place-items-center rounded-full border border-clay-dark bg-clay text-white shadow-sm transition-colors hover:enabled:bg-clay-dark disabled:cursor-not-allowed disabled:opacity-45"
             aria-label={loading ? "Starting playback" : playing ? "Pause" : "Play"} title={playing ? "Pause" : "Play"}
             disabled={unavailable || loading} onClick={() => { if (playing) onPause(); else void onPlay(); }}>
             <Icon name={loading ? "refresh-cw" : playing ? "pause" : "play"} className={loading ? "spin" : ""} width="24" height="24" />
@@ -156,11 +157,11 @@ export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal,
             <Icon name="repeat" />
           </button>
         </div>
-        <div className="contents @min-[520px]:col-start-3 @min-[520px]:row-start-1 @min-[520px]:flex @min-[520px]:min-w-0 @min-[520px]:items-center @min-[520px]:justify-self-end @min-[520px]:gap-2">
+        <div className="contents @min-[640px]:col-start-3 @min-[640px]:row-start-1 @min-[640px]:flex @min-[640px]:min-w-0 @min-[640px]:items-center @min-[640px]:justify-self-end @min-[640px]:gap-2">
           <span className="transport-time col-start-2 row-start-1 w-[78px] justify-self-end shrink-0 whitespace-nowrap text-right text-[11px] text-ink-soft tabular-nums">{formatTime(position)} <span aria-hidden="true">/</span> {formatTime(duration)}</span>
-          <label className="volume-control col-start-2 row-start-2 flex min-h-[44px] shrink-0 items-center justify-self-end @min-[520px]:gap-1" title="Playback volume · Double-click or press Backspace to reset to 100%">
+          <label className="volume-control col-start-2 row-start-2 flex min-h-[44px] shrink-0 items-center justify-self-end @min-[640px]:gap-1" title="Playback volume · Double-click or press Backspace to reset to 100%">
             <span className="sr-only">Volume</span><Icon name="volume" width="16" height="16" />
-            <input className="min-h-[44px] w-[44px] min-w-[44px] @min-[520px]:w-[56px] accent-clay-dark" type="range" aria-label="Playback volume" min={0} max={1} step={0.01} value={state?.volume ?? 1} disabled={unavailable}
+            <input className="min-h-[44px] w-[44px] min-w-[44px] @min-[640px]:w-[56px] accent-clay-dark" type="range" aria-label="Playback volume" min={0} max={1} step={0.01} value={state?.volume ?? 1} disabled={unavailable}
               aria-description="Double-click or press Backspace to reset volume to 100%."
               onDoubleClick={() => { onVolume(1); }} onKeyDown={(event) => { if (event.key === "Backspace") { event.preventDefault(); onVolume(1); } }}
               onChange={(event) => { onVolume(Number(event.target.value)); }} />

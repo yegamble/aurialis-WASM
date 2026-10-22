@@ -11,11 +11,15 @@ import {
   type ReactNode,
 } from "react";
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP } from "./audio-dsp";
+import { normalizeShortcutUndo, pruneShortcutUndo, toggleMasteringShortcut, type MasteringShortcut } from "./mastering-shortcuts";
 import { masteringTargets } from "./mastering-targets";
 import type {
   Album,
   AdvancedParams,
   CompressorParams,
+  DeHarshParams,
+  MultibandParams,
+  MultibandBandParams,
   EQBandId,
   EQBandParams,
   LimiterParams,
@@ -62,6 +66,7 @@ type StoreState = {
 
 type StoreAction =
   | { type: "ADD_TRACK"; track: Track }
+  | { type: "TOGGLE_MASTERING_SHORTCUT"; trackId: string; shortcut: MasteringShortcut }
   | { type: "UPDATE_TRACK"; id: string; patch: Partial<Track> }
   | { type: "APPLY_NORMALIZED_GAIN"; id: string; expected: AdvancedParams; input: number }
   | {
@@ -89,6 +94,9 @@ type StoreAction =
   | { type: "UPDATE_STEREO"; trackId: string; patch: Partial<StereoParams> }
   | { type: "UPDATE_LIMITER"; trackId: string; patch: Partial<LimiterParams> }
   | { type: "UPDATE_REPAIR"; trackId: string; patch: Partial<RepairParams> }
+  | { type: "UPDATE_DE_HARSH"; trackId: string; patch: Partial<DeHarshParams> }
+  | { type: "UPDATE_MULTIBAND"; trackId: string; patch: Partial<Omit<MultibandParams, "bands">> }
+  | { type: "UPDATE_MULTIBAND_BAND"; trackId: string; index: 0 | 1 | 2; patch: Partial<MultibandBandParams> }
   | { type: "UPDATE_INPUT_GAIN"; trackId: string; input: number }
   | { type: "RESET_ADVANCED"; trackId: string }
   | { type: "DELETE_TRACK"; id: string }
@@ -109,7 +117,7 @@ function updateTrackInList(
   id: string,
   updater: (track: Track) => Track,
 ): Track[] {
-  return tracks.map((track) => (track.id === id ? updater(track) : track));
+  return tracks.map((track) => (track.id === id ? pruneShortcutUndo(updater(track)) : track));
 }
 
 export function reduceStoreState(
@@ -117,6 +125,8 @@ export function reduceStoreState(
   action: StoreAction,
 ): StoreState {
   switch (action.type) {
+    case "TOGGLE_MASTERING_SHORTCUT":
+      return { ...state, tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({ ...track, ...toggleMasteringShortcut(track, action.shortcut), simpleCustom: true, updatedAt: new Date().toISOString() })) };
     case "ADD_TRACK":
       return { ...state, tracks: [{ ...action.track, simpleCustom: action.track.simpleCustom ?? true }, ...state.tracks] };
 
@@ -150,6 +160,7 @@ export function reduceStoreState(
           const limiterTarget = { targetLufs: target.targetLufs, ceiling: target.ceiling };
           return {
             ...next,
+            shortcutUndo: directionChanged ? {} : track.shortcutUndo ?? {},
             simpleCustom: directionChanged ? false : track.simpleCustom ?? true,
             advanced: directionChanged ? { ...mapped, limiter: { ...mapped.limiter, ...limiterTarget } } : { ...track.advanced, limiter: { ...track.advanced.limiter, ...limiterTarget } },
             updatedAt: new Date().toISOString(),
@@ -304,12 +315,31 @@ export function reduceStoreState(
         })),
       };
 
+    case "UPDATE_DE_HARSH":
+    case "UPDATE_MULTIBAND":
+    case "UPDATE_MULTIBAND_BAND":
+      return {
+        ...state,
+        tracks: updateTrackInList(state.tracks, action.trackId, (track) => {
+          const advanced = { ...track.advanced };
+          if (action.type === "UPDATE_DE_HARSH") advanced.deHarsh = { ...advanced.deHarsh, ...action.patch };
+          else if (action.type === "UPDATE_MULTIBAND") advanced.multiband = { ...advanced.multiband, ...action.patch };
+          else {
+            const bands: MultibandParams["bands"] = [...advanced.multiband.bands];
+            bands[action.index] = { ...bands[action.index], ...action.patch };
+            advanced.multiband = { ...advanced.multiband, bands };
+          }
+          return { ...track, advanced: clampAdvancedToSampleRate(advanced, track.sampleRate), simpleCustom: true, updatedAt: new Date().toISOString() };
+        }),
+      };
+
     case "RESET_ADVANCED":
       return {
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
           ...track,
           simpleCustom: true,
+          shortcutUndo: {},
           advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate),
           updatedAt: new Date().toISOString(),
         })),
@@ -355,7 +385,15 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
   if (typeof raw !== "object" || raw === null) return null;
   const candidate = raw as {
     tracks?: (Omit<Track, "advanced"> & {
-      advanced?: Partial<AdvancedParams>;
+      advanced?: Omit<Partial<AdvancedParams>, "compressor" | "stereo" | "saturationModule" | "limiter" | "repair" | "deHarsh" | "multiband"> & {
+        compressor?: Partial<CompressorParams>;
+        stereo?: Partial<StereoParams>;
+        saturationModule?: Partial<SaturationParams>;
+        limiter?: Partial<LimiterParams>;
+        repair?: Partial<RepairParams>;
+        deHarsh?: Partial<DeHarshParams>;
+        multiband?: Omit<Partial<MultibandParams>, "bands"> & { bands?: Partial<MultibandBandParams>[] };
+      };
     })[];
     albums?: Album[];
     stems?: unknown;
@@ -367,8 +405,9 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
     const restored: Track & { script?: unknown } = { ...track, advanced: createDefaultAdvancedParams() };
     delete restored.script;
     delete restored.releaseScore;
-    return {
+    return pruneShortcutUndo({
       ...restored,
+      shortcutUndo: normalizeShortcutUndo(track.shortcutUndo),
       simpleCustom: track.simpleCustom !== false,
       mode: track.mode === "deep" ? "advanced" : track.mode,
       advanced: clampAdvancedToSampleRate({
@@ -394,12 +433,20 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
           ...baseAdv.limiter,
           ...(track.advanced?.limiter ?? {}),
         },
+        deHarsh: { ...baseAdv.deHarsh, ...track.advanced?.deHarsh },
+        multiband: {
+          ...baseAdv.multiband,
+          ...track.advanced?.multiband,
+          // Index originates from the fixed three-band default tuple, never an external key.
+          // eslint-disable-next-line security/detect-object-injection
+          bands: baseAdv.multiband.bands.map((band, index) => ({ ...band, ...track.advanced?.multiband?.bands?.[index] })) as MultibandParams["bands"],
+        },
         repair: {
           ...baseAdv.repair,
           ...(track.advanced?.repair ?? {}),
         },
       }, track.sampleRate),
-    };
+    });
   });
   return {
     tracks,

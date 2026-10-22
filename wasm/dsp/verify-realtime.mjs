@@ -41,7 +41,7 @@ async function createKernel(fixture) {
   const pointers = [0, 1, 2, 3].map(channel => wasm.aurialis_live_buffer(channel) >>> 0);
   const controlPointer = wasm.aurialis_control_buffer() >>> 0;
   for (const [index, pointer] of [...pointers, controlPointer].entries()) {
-    const length = index === 4 ? 56 * 8 : 128 * 4;
+    const length = index === 4 ? 81 * 8 : 128 * 4;
     assert.ok(pointer > 0 && pointer % (index === 4 ? 8 : 4) === 0);
     assert.ok(pointer + length <= wasm.memory.buffer.byteLength);
     for (let previous = 0; previous < index; previous++) {
@@ -55,7 +55,7 @@ async function createKernel(fixture) {
     if (buffer !== wasm.memory.buffer) {
       buffer = wasm.memory.buffer;
       channels = pointers.map(pointer => new Float32Array(buffer, pointer, 128));
-      controls = new Float64Array(buffer, controlPointer, 56);
+      controls = new Float64Array(buffer, controlPointer, 81);
     }
   }
   refresh();

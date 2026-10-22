@@ -8,6 +8,7 @@ const params = () => engineParams(createDefaultAdvancedParams());
 describe("fixed Go live control ABI", () => {
   it("maps all fields to their specified numeric positions", () => {
     const controls: ReturnType<typeof engineParams> = {
+      ...params(),
       bypass: true, abOriginal: false, loudnessMatchAb: true, inputGainDb: -6, eqEnabled: false,
       bands: [
         { freqHz: 35, gainDb: -1, q: 0.5, type: "high_pass", enabled: true },
@@ -16,11 +17,13 @@ describe("fixed Go live control ABI", () => {
         { freqHz: 3000, gainDb: 4, q: 0.8, type: "high_shelf", enabled: false },
         { freqHz: 14000, gainDb: -5, q: 0.9, type: "peaking", enabled: true },
       ],
-      compressor: { enabled: false, thresholdDb: -21, ratio: 3, attackMs: 9, releaseMs: 130, kneeDb: 5, makeupDb: 2, sidechainHpfHz: 95, topology: "vca" },
+      compressor: { enabled: false, thresholdDb: -21, ratio: 3, attackMs: 9, releaseMs: 130, kneeDb: 5, makeupDb: 2, sidechainHpfHz: 95, autoRelease: true, topology: "vca" },
       saturation: { enabled: true, amount: 23, character: "Crisp" },
-      stereo: { enabled: false, widthPct: 125, monoBass: true, crossoverHz: 120 },
+      stereo: { enabled: false, widthPct: 125, monoBass: true, crossoverHz: 120, midGainDb: 2, sideGainDb: -1 },
       limiter: { enabled: true, ceilingDbtp: -0.7, targetLufs: -12, releaseMs: 70, truePeak: true },
       repair: { enabled: true, deEssDb: 3, transientDb: -2, deClip: true }, ditherBits: 24,
+      deHarsh: {enabled: true, frequencyHz: 4000, thresholdDb: -20, rangeDb: 4},
+      multiband: {enabled: false, lowMidHz: 200, midHighHz: 4000, bands: [{thresholdDb: -24, ratio: 1.5, attackMs: 30, releaseMs: 150, makeupDb: 0}, {thresholdDb: -24, ratio: 1.5, attackMs: 30, releaseMs: 150, makeupDb: 0}, {thresholdDb: -24, ratio: 1.5, attackMs: 30, releaseMs: 150, makeupDb: 0}]},
     };
     expect(Array.from(packLiveControls(controls))).toEqual([
       1, 0, 1, -6, 0,
@@ -28,6 +31,8 @@ describe("fixed Go live control ABI", () => {
       3000, 4, 0.8, 3, 0, 14000, -5, 0.9, 2, 1,
       0, -21, 3, 9, 130, 5, 2, 95, 3,
       1, 23, 2, 0, 125, 1, 120, 1, -0.7, -12, 70, 1, 1, 3, -2, 1, 24,
+      1, 2, -1, 1, 4000, -20, 4, 0, 200, 4000,
+      -24, 1.5, 30, 150, 0, -24, 1.5, 30, 150, 0, -24, 1.5, 30, 150, 0,
     ]);
   });
   it("encodes each supported compressor and saturation enumeration", () => {
@@ -36,7 +41,7 @@ describe("fixed Go live control ABI", () => {
       value.compressor.topology = topology;
       expect(packLiveControls(value)[38]).toBe(code);
     }
-    for (const [code, character] of (["Warm", "Thick", "Crisp"] as const).entries()) {
+    for (const [code, character] of (["Warm", "Thick", "Crisp", "Clean", "Tube", "Tape", "Transformer"] as const).entries()) {
       const value = params();
       value.saturation.character = character;
       expect(packLiveControls(value)[41]).toBe(code);
@@ -45,9 +50,9 @@ describe("fixed Go live control ABI", () => {
   it("publishes one bounded data and version snapshot and preserves it after invalid input", () => {
     const value = params();
     const controls = createLiveControls(value, 7);
-    expect(controls.buffer.byteLength).toBe(464);
+    expect(controls.buffer.byteLength).toBe(664);
     const header = new Int32Array(controls.buffer, 0, 4);
-    const payload = new Float64Array(controls.buffer, 16, 56);
+    const payload = new Float64Array(controls.buffer, 16, 81);
     expect(Array.from(header)).toEqual([2, 7, 0, 0]);
     expect(Array.from(payload)).toEqual(Array.from(packLiveControls(value)));
     controls.publish({ ...value, inputGainDb: 4 }, 8);

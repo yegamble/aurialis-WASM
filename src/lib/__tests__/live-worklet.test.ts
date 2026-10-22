@@ -19,8 +19,8 @@ function workletFixture(initialOdd = false) {
   const header = new Int32Array(new SharedArrayBuffer(8 * 4));
   const tags = new Int32Array(new SharedArrayBuffer(256 * 5 * 4));
   const samples = new Float32Array(new SharedArrayBuffer(128 * 256 * 4 * 4));
-  const controlHeader = new Int32Array(new SharedArrayBuffer(464), 0, 4);
-  const values = new Float64Array(controlHeader.buffer, 16, 56);
+  const controlHeader = new Int32Array(new SharedArrayBuffer(664), 0, 4);
+  const values = new Float64Array(controlHeader.buffer, 16, 81);
   header[2] = 1; controlHeader[0] = initialOdd ? 1 : 2; controlHeader[1] = 1; values[3] = 2;
   const memory = new WebAssembly.Memory({ initial: 1, maximum: 4 });
   let gain = 1;
@@ -33,7 +33,7 @@ function workletFixture(initialOdd = false) {
     }
     return 128;
   };
-  const applyGo = () => { gain = new Float64Array(memory.buffer, 2560, 56).at(3) ?? 0; return 1; };
+  const applyGo = () => { gain = new Float64Array(memory.buffer, 2560, 81).at(3) ?? 0; return 1; };
   const kernel = {
     memory, _initialize: vi.fn(), aurialis_init: vi.fn(() => 1),
     aurialis_live_buffer: vi.fn((channel: number) => [512, 1024, 1536, 2048].at(channel) ?? 0),

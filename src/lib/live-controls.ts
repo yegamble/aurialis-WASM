@@ -1,12 +1,20 @@
 import type { engineParams } from "./browser-engine";
 
-type EngineParams = ReturnType<typeof engineParams>;
+type CurrentEngineParams = ReturnType<typeof engineParams>;
+// Frozen/native legacy fixtures predate the additive controls. Their missing
+// fields intentionally encode the old zero/disabled ABI extension.
+type EngineParams = Omit<CurrentEngineParams, "compressor" | "stereo" | "deHarsh" | "multiband"> & {
+ compressor: Omit<CurrentEngineParams["compressor"], "autoRelease"> & {autoRelease?: boolean};
+ stereo: Omit<CurrentEngineParams["stereo"], "midGainDb" | "sideGainDb"> & {midGainDb?: number; sideGainDb?: number};
+ deHarsh?: CurrentEngineParams["deHarsh"];
+ multiband?: CurrentEngineParams["multiband"];
+};
 
-const CONTROL_COUNT = 56;
+const CONTROL_COUNT = 81;
 const CONTROL_OFFSET = Int32Array.BYTES_PER_ELEMENT * 4;
 const filterTypes = ["high_pass", "low_shelf", "peaking", "high_shelf"];
 const compressorTypes = ["optical", "vari_mu", "fet", "vca"];
-const saturationTypes = ["Warm", "Thick", "Crisp"];
+const saturationTypes = ["Warm", "Thick", "Crisp", "Clean", "Tube", "Tape", "Transformer"];
 
 function enumCode(values: string[], value: string): number {
   const code = values.indexOf(value);
@@ -28,6 +36,10 @@ export function packLiveControls(params: EngineParams): Float64Array<ArrayBuffer
     Number(params.limiter.enabled), params.limiter.ceilingDbtp, params.limiter.targetLufs,
     params.limiter.releaseMs, Number(params.limiter.truePeak),
     Number(params.repair.enabled), params.repair.deEssDb, params.repair.transientDb, Number(params.repair.deClip), params.ditherBits,
+    Number(params.compressor.autoRelease ?? false), params.stereo.midGainDb ?? 0, params.stereo.sideGainDb ?? 0,
+    Number(params.deHarsh?.enabled ?? false), params.deHarsh?.frequencyHz ?? 0, params.deHarsh?.thresholdDb ?? 0, params.deHarsh?.rangeDb ?? 0,
+    Number(params.multiband?.enabled ?? false), params.multiband?.lowMidHz ?? 0, params.multiband?.midHighHz ?? 0,
+    ...(params.multiband?.bands.flatMap((band) => [band.thresholdDb, band.ratio, band.attackMs, band.releaseMs, band.makeupDb]) ?? new Array<number>(15).fill(0)),
   ]);
   if (!values.every(Number.isFinite)) throw new Error("Live audio controls must be finite.");
   return values;

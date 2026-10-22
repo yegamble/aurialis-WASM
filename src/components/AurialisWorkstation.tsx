@@ -17,6 +17,7 @@ import {
 import { clearNextPlaybackHandoff, reconcileNextPlaybackHandoff, stageNextPlaybackHandoff, takeNextPlaybackHandoff } from "@/lib/playback-handoff";
 import { currentMasteringTarget, masteringTargets } from "@/lib/mastering-targets";
 import { bindPlaybackControls } from "@/lib/media-session";
+import { ExtendedCompressorControls, ExtendedStereoControls, FrequencyDynamicsControls, MasteringShortcuts } from "./shared/AdvancedDynamics";
 import { DSPModule } from "./shared/DSPModule";
 import { RealTransport } from "./shared/RealTransport";
 import { createLivePlayback, type LiveMeter, type LivePlaybackController, type LivePlaybackState, type LiveSpectrum } from "@/lib/live-playback";
@@ -1312,7 +1313,7 @@ function MasterView({ trackId }: { trackId: string }) {
               processing={processing}
               sourceReady={source !== null}
               onApply={(next) => {
-                dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next } });
+                dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next, shortcutUndo: {} } });
                 setMessage("Profile applied to live playback. Adjust it in Advanced mode while you listen.");
               }}
             />
@@ -1415,6 +1416,7 @@ function AdvancedControls({
         }}
       />
 
+      <MasteringShortcuts track={track} />
       <DSPModule title="Equalizer">
       <SpectrumChart
         seed={track.seed}
@@ -1583,6 +1585,7 @@ function AdvancedControls({
           });
         }}
       />
+      <fieldset disabled={adv.compressor.autoRelease} className="min-w-0 border-0 p-0 disabled:opacity-60">
       <SliderField
         label="Release"
         value={adv.compressor.release}
@@ -1600,6 +1603,8 @@ function AdvancedControls({
         }}
       />
 
+      </fieldset>
+      <ExtendedCompressorControls track={track} />
       </DSPModule>
       <DSPModule title="Stereo image">
       <label className="check-row">
@@ -1650,9 +1655,10 @@ function AdvancedControls({
         <span>
           <Icon name="check" />
         </span>
-        Mono bass below 110 Hz
+        Mono bass
       </label>
 
+      <ExtendedStereoControls track={track} />
       </DSPModule>
       <DSPModule title="Saturation">
       <label className="check-row">
@@ -1672,6 +1678,7 @@ function AdvancedControls({
         </span>
         Enable saturation
       </label>
+      <fieldset disabled={adv.saturationModule.character === "Clean"} className="min-w-0 border-0 p-0 disabled:opacity-60">
       <SliderField
         label="Saturation"
         value={adv.saturationModule.drive}
@@ -1688,13 +1695,15 @@ function AdvancedControls({
           });
         }}
       />
+      </fieldset>
+      {adv.saturationModule.character === "Clean" && <p className="text-xs text-[var(--ink-soft)]">Clean leaves the signal unchanged. Your drive setting is retained for the other characters.</p>}
       <ControlGroup label="Saturation character">
         <div
           className="choice-grid"
           role="group"
           aria-label="Saturation character"
         >
-          {(["Warm", "Thick", "Crisp"] as SaturationCharacter[]).map((char) => (
+          {(["Clean", "Tube", "Tape", "Transformer", ...(["Warm", "Thick", "Crisp"].includes(adv.saturationModule.character) ? [adv.saturationModule.character] : [])] as SaturationCharacter[]).map((char) => (
             <button
               type="button"
               key={char}
@@ -1719,6 +1728,7 @@ function AdvancedControls({
       </ControlGroup>
 
       </DSPModule>
+      <FrequencyDynamicsControls track={track} />
       <DSPModule title="Sample-peak limiter">
       <label className="check-row">
         <input
@@ -1759,7 +1769,7 @@ function AdvancedControls({
         variant="secondary"
         icon={<Icon name="rotate-ccw" />}
         onClick={() => {
-          dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate) } });
+          dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate), shortcutUndo: {} } });
         }}
       >
         Reset modules

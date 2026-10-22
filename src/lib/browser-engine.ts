@@ -55,7 +55,8 @@ export function engineParams(advanced: AdvancedParams) {
       releaseMs: advanced.compressor.release,
       kneeDb: advanced.compressor.knee,
       makeupDb: advanced.compressor.makeup,
-      sidechainHpfHz: 90,
+      sidechainHpfHz: advanced.compressor.sidechainHpfHz,
+      autoRelease: advanced.compressor.autoRelease,
       topology: "optical",
     },
     saturation: {
@@ -67,7 +68,9 @@ export function engineParams(advanced: AdvancedParams) {
       enabled: advanced.stereo.enabled,
       widthPct: advanced.stereo.width,
       monoBass: advanced.stereo.monoBass,
-      crossoverHz: 110,
+      crossoverHz: advanced.stereo.crossoverHz,
+      midGainDb: advanced.stereo.midGainDb,
+      sideGainDb: advanced.stereo.sideGainDb,
     },
     limiter: {
       enabled: advanced.limiter.enabled,
@@ -77,6 +80,8 @@ export function engineParams(advanced: AdvancedParams) {
       truePeak: false,
     },
     repair: { enabled: false, deEssDb: 0, transientDb: 0, deClip: false },
+    deHarsh: advanced.deHarsh,
+    multiband: advanced.multiband,
     ditherBits: 0,
   };
 }

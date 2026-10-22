@@ -23,6 +23,14 @@ const (
 // SatCharacter identifies a heuristic harmonic transfer shape.
 type SatCharacter string
 
+// Original coloration models; legacy character names retain their prior curves.
+const (
+	SatClean       SatCharacter = "Clean"
+	SatTube        SatCharacter = "Tube"
+	SatTape        SatCharacter = "Tape"
+	SatTransformer SatCharacter = "Transformer"
+)
+
 const (
 	// SatWarm selects an asymmetric polynomial with even-order harmonics.
 	SatWarm SatCharacter = "Warm"
@@ -68,6 +76,7 @@ type CompressorParams struct {
 	ReleaseMS      float64      `json:"releaseMs"`
 	KneeDB         float64      `json:"kneeDb"`
 	MakeupDB       float64      `json:"makeupDb"`
+	AutoRelease    bool         `json:"autoRelease"`
 	SidechainHPFHz float64      `json:"sidechainHpfHz"`
 	Topology       CompTopology `json:"topology"`
 }
@@ -84,6 +93,8 @@ type StereoParams struct {
 	Enabled     bool    `json:"enabled"`
 	WidthPct    float64 `json:"widthPct"`
 	MonoBass    bool    `json:"monoBass"`
+	MidGainDB   float64 `json:"midGainDb"`
+	SideGainDB  float64 `json:"sideGainDb"`
 	CrossoverHz float64 `json:"crossoverHz"`
 }
 
@@ -119,6 +130,8 @@ type Params struct {
 	Stereo          StereoParams           `json:"stereo"`
 	Limiter         LimiterParams          `json:"limiter"`
 	Repair          RepairParams           `json:"repair"`
+	DeHarsh         DeHarshParams          `json:"deHarsh"`
+	Multiband       MultibandParams        `json:"multiband"`
 	DitherBits      int                    `json:"ditherBits"`
 }
 
@@ -205,6 +218,7 @@ type stageCoeffs struct {
 
 // Engine executes the real-time and offline mastering DSP chain with zero heap allocations per block.
 type Engine struct {
+	extended   extendedState
 	sampleRate float64
 	params     Params
 	stages     stageCoeffs
@@ -292,8 +306,11 @@ func (e *Engine) SetParams(next Params) {
 	}
 	prev := e.params
 	e.params = next
-	if prev.Compressor != next.Compressor || prev.Saturation != next.Saturation || prev.Stereo != next.Stereo || prev.Limiter != next.Limiter || prev.Repair != next.Repair {
+	if prev.Compressor != next.Compressor || prev.Saturation != next.Saturation || prev.Stereo != next.Stereo || prev.Limiter != next.Limiter || prev.Repair != next.Repair || prev.DeHarsh != next.DeHarsh || prev.Multiband != next.Multiband {
 		e.recomputeStageCoeffs()
+	}
+	if prev.Saturation != next.Saturation {
+		e.rebaseSaturation()
 	}
 	for i := 0; i < NumEQBands; i++ {
 		if prev.Bands[i] != next.Bands[i] {
@@ -331,6 +348,8 @@ func (e *Engine) SetBand(index int, band BandParams) {
 
 // Reset clears filter delay lines and envelope followers back to zero silence.
 func (e *Engine) Reset() {
+	e.extended = extendedState{}
+	e.recomputeExtended()
 	e.eqState = [NumEQBands][2]svfState{}
 	e.scHPFState = [2][2]svfState{}
 	e.compPeakEnv = 0.0
@@ -367,6 +386,7 @@ func (e *Engine) LastGainReductionDB() float64 {
 }
 
 func (e *Engine) recomputeStageCoeffs() {
+	e.recomputeExtended()
 	c := &e.params.Compressor
 	e.stages.compPeakDecay = math.Exp(-1.0 / (0.025 * e.sampleRate))
 	attMS := math.Max(0.02, c.AttackMS)
@@ -622,10 +642,13 @@ func (e *Engine) isChainNeutral() bool {
 	if p.Compressor.Enabled && math.Abs(p.Compressor.MakeupDB) >= 1e-7 {
 		return false
 	}
-	if p.Saturation.Enabled && p.Saturation.Amount >= 1e-5 {
+	if p.Saturation.Enabled && p.Saturation.Amount >= 1e-5 && p.Saturation.Character != SatClean {
 		return false
 	}
-	if p.Stereo.Enabled && (math.Abs(p.Stereo.WidthPct-100.0) >= 1e-5 || p.Stereo.MonoBass) {
+	if p.Stereo.Enabled && (math.Abs(p.Stereo.WidthPct-100.0) >= 1e-5 || p.Stereo.MonoBass || p.Stereo.MidGainDB != 0 || p.Stereo.SideGainDB != 0 || math.Abs(e.extended.currentMid-e.extended.midGain) > 1e-7 || math.Abs(e.extended.currentSide-e.extended.sideGain) > 1e-7) {
+		return false
+	}
+	if p.DeHarsh.Enabled || p.Multiband.Enabled {
 		return false
 	}
 	if p.Limiter.Enabled {
@@ -680,8 +703,8 @@ func (e *Engine) ProcessBlock(inL, inR, outL, outR []float32) {
 	}
 
 	compActive := e.params.Compressor.Enabled && (e.params.Compressor.Ratio > 1.0001 || math.Abs(e.params.Compressor.MakeupDB) >= 1e-7)
-	satActive := e.params.Saturation.Enabled && e.params.Saturation.Amount >= 1e-5
-	stereoActive := e.params.Stereo.Enabled && (math.Abs(e.params.Stereo.WidthPct-100.0) >= 1e-5 || e.params.Stereo.MonoBass)
+	satActive := e.params.Saturation.Enabled && e.params.Saturation.Amount >= 1e-5 && e.params.Saturation.Character != SatClean
+	stereoActive := e.params.Stereo.Enabled && (math.Abs(e.params.Stereo.WidthPct-100.0) >= 1e-5 || e.params.Stereo.MonoBass || e.params.Stereo.MidGainDB != 0 || e.params.Stereo.SideGainDB != 0 || math.Abs(e.extended.currentMid-e.extended.midGain) > 1e-7 || math.Abs(e.extended.currentSide-e.extended.sideGain) > 1e-7)
 	repairActive := e.params.Repair.Enabled && (math.Abs(e.params.Repair.DeEssDB) >= 1e-7 || math.Abs(e.params.Repair.TransientDB) >= 1e-7 || e.params.Repair.DeClip)
 	limActive := e.params.Limiter.Enabled
 
@@ -706,6 +729,13 @@ func (e *Engine) ProcessBlock(inL, inR, outL, outR []float32) {
 					r = processSVF(c, &e.eqState[b][1], r)
 				}
 			}
+		}
+
+		if e.params.DeHarsh.Enabled {
+			l, r = e.processDeHarsh(l, r)
+		}
+		if e.params.Multiband.Enabled {
+			l, r = e.processMultiband(l, r)
 		}
 
 		// Stage 3: Program-Dependent Stereo Compressor with 90 Hz Sidechain HPF
@@ -874,6 +904,11 @@ func (e *Engine) processCompressorSample(l, r float64) (float64, float64) {
 	// Detector peak decay adds a separate 25 ms release response.
 	attCoeff := e.stages.compAttack
 	relCoeff := e.stages.compRelease
+	if c.AutoRelease {
+		e.compSlowDB = e.extended.autoMemory*e.compSlowDB + (1-e.extended.autoMemory)*targetGRDB
+		weight := math.Min(1, e.compSlowDB/6)
+		relCoeff = e.extended.autoFast + weight*(e.extended.autoSlow-e.extended.autoFast)
+	}
 
 	if targetGRDB > e.compEnvDB {
 		e.compEnvDB = attCoeff*e.compEnvDB + (1.0-attCoeff)*targetGRDB
@@ -921,6 +956,9 @@ func adaaWarmWave(x, drive float64) (float64, float64) {
 }
 
 func (e *Engine) processSaturationSample(l, r float64) (float64, float64) {
+	if e.params.Saturation.Character == SatTube || e.params.Saturation.Character == SatTape || e.params.Saturation.Character == SatTransformer {
+		return e.processNewSaturation(l, r)
+	}
 	amt := e.stages.satAmount
 	drive := e.stages.satDrive
 	norm := e.stages.satNorm
@@ -970,6 +1008,8 @@ func (e *Engine) processSaturationSample(l, r float64) (float64, float64) {
 				e.satPrevX[ch] = xShaped
 				e.satPrevF1[ch] = f1
 				y *= norm
+			case SatClean, SatTube, SatTape, SatTransformer:
+				y = x // New models are dispatched before this legacy loop.
 			case SatThick:
 				fallthrough
 			default:
@@ -1003,8 +1043,11 @@ func (e *Engine) processSaturationSample(l, r float64) (float64, float64) {
 
 func (e *Engine) processStereoSample(l, r float64) (float64, float64) {
 	width := e.stages.stereoWidth
-	mid := 0.5 * (l + r)
-	side := 0.5 * (l - r)
+	smooth := e.extended.gainSmooth
+	e.extended.currentMid = smooth*e.extended.currentMid + (1-smooth)*e.extended.midGain
+	e.extended.currentSide = smooth*e.extended.currentSide + (1-smooth)*e.extended.sideGain
+	mid := 0.5 * (l + r) * e.extended.currentMid
+	side := 0.5 * (l - r) * e.extended.currentSide
 
 	if !e.params.Stereo.MonoBass {
 		side *= width

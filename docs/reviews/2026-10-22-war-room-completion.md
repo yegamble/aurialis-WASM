@@ -1,6 +1,6 @@
 # Whole-product completion review — October 22, 2026
 
-Status: **in progress; product incomplete**. Reviewed baseline: `f5ec9ad`, clean `main`. The owner requested all planned features and a comparison with professional Waves workflows. This record distinguishes implemented behavior, required work and executed evidence.
+Status: **bounded wave locally verified; open — awaiting merge. Product incomplete**. Reviewed baseline: `f5ec9ad`, clean `main`. The owner requested all planned features and a comparison with professional Waves workflows. This record distinguishes implemented behavior, required work and executed evidence.
 
 ## Evidence and scope
 
@@ -42,7 +42,35 @@ Current Tube/Tape alias fixtures at drive 10 measured about −71.4 dBFS, and at
 
 Baseline TypeScript, configured ESLint and knip exited 0. Baseline Vitest exited 0: 18 files, 275 tests. DSP council ran native DSP/WASM package tests; backend council ran jobs/server/mastering race tests successfully after using writable temporary Go caches. No baseline HTTP, fresh browser or all-product completion claim follows from those results.
 
-Integration, expanded browser audio checks, independent adversarial review, documentation synchronization and merge remain pending. Current implementation branches are isolated; the primary checkout stays on main.
+### Implemented bounded wave and retained failures
+
+MUB-2A now preserves algorithm 1 and the production 81-value packet, exposes negotiated ABI 2 with explicit algorithm 1, rejects unsupported algorithms atomically and reports zero buffered latency/drain. MUB-3A now provides measured features through bounded cancellable jobs and the Deep original-source panel. MUB-4A exposes supported band type/enable and limiter release, with high-pass-specific semantics and a single selected 44 px chart target. Whole-product acceptance remains open.
+
+The loop retained and corrected these failures:
+
+- Initial white-noise low-band integration differed by about +0.88 dB; fractional bin overlap corrected bandwidth integration.
+- The 192 kHz/90 Hz fixture missed power by 0.5687 dB with FFT 4096; rate-scaled resolution corrected it. Final FFT sizes are 1024–16384.
+- Hann windows without overlap lost boundary impulses: one impulse train reported −113.01 dBFS band power against a −36.12 dBFS raw RMS. Padded 75% overlap, hop-weighted global power and independent exact raw-energy windows corrected the coverage. Independent impulse-shift tests now differ from analytic band power by at most 0.0000404 dB on the declared corpus. Edge impulses, unusual 8001 Hz rate, subnormal/MaxFloat32 samples and DC-offset checks passed.
+- The first measured-analysis browser run was 0/2 because the client expected `completed`/`canceled`; the native API uses `done`/`cancelled`. The real API contract and fixtures were corrected.
+- Cancel initially waited for held admission. The corrected UI detaches immediately while eventual admission is deleted. An independent actual-browser probe restored controls in 60 ms before release, completed a distinct retry while the old response stayed held, and preserved the new result after deleting the old job. Settings remained unchanged.
+- Mobile EQ targets overlapped at 320 px; only the selected marker is now interactive, with equivalent band buttons and fields. An incorrect high-shelf test oracle and a circular-target corner probe were corrected separately without changing production audio.
+- The first integrated 61-case browser suite passed 60; a stale disclosure-text assertion was updated. The next run passed 60 but exposed a phase-dependent Tape Warmth measurement. On the declared 44.1 kHz probe, 1024-frame neutral RMS spans about 0.0586 dB; full-period live Tape delta was −0.0946734 dB and native delta −0.0953524 dB. Test-only full-period observation retained the >0.08 dB requirement. Two predetermined complete shortcut sets passed 8/8 in 87.578 seconds without retries; the final complete suite passed 61/61 in 3.1 minutes.
+- An initial target-lint command attempted to execute a cross-compiled linter. The native linter reran both WASM-target checks with zero issues. No production defect is inferred from that tool invocation.
+
+### Current observed integrated evidence
+
+Runtime source: `fd782c9`, with subsequent test/comment/documentation commits. Tested binary SHA-256: `8552941fc6e8b3d9b95fe2ecd378c539f3fe24b7fecf2521741fc1582b410171`. The primary checkout remains clean on main; changes are isolated in `codex/product-completion`.
+
+| Tier | Observed result |
+| --- | --- |
+| unit/static | TypeScript, configured lint, knip, 302 frontend units across 20 files, strict typing for new E2E files and 146-file spelling passed. Go format/modules/vet/exact lint 2.15/identifiers/vulnerability/full race passed after the overlap correction; both WASM target lint checks passed. |
+| wasm-bridge | All 333 frozen native fixtures matched exactly through legacy JSON, direct and restricted WASI paths; ABI 2/algorithm 1 also matched, with malformed-packet atomicity, nine history transitions and zero buffered drain. |
+| independent metering | 15 FFmpeg comparisons passed: maximum 0.0542 LU loudness and 0.0312 dB peak error on the declared corpus. This does not certify the limiter. |
+| newman-e2e / api-curl | Final 22 requests / 27 assertions and raw Host/Origin/oversize probes passed, including new measured-analysis lifecycle cases. Frequency decomposition in legacy tests is not trained separation. |
+| compiled-binary-smoke | Dual-module production build and empty-directory embedded smoke passed. |
+| playwright-a11y-responsive | New measured-analysis and supported EQ/limiter cases passed, including six generated-result widths and twelve populated EQ states. Final complete suite exited 0: 61/61 in 3.1 minutes after the full-period observer correction, on the same tested binary. Prior 60/61 failures remain above. |
+
+Independent QA/Devil’s Advocate accepted the corrected measured-feature mathematics, source identity, bounded retention/cancellation and supported controls at their scoped checkpoints. Technical Writer/Product Engineer identified documentation corrections now applied. Final local browser acceptance passed. Technical Writer accepted contract accuracy and Product Engineer accepted the atomic commit structure; the final synchronized evidence received their review. Remote checks must pass before owner merge and are tracked in the pull request. Status remains open — awaiting merge. Four loop iterations cover review/implementation, UI/calibration correction, integrated adversarial tests and Hann/observer correction; no all-product completion is claimed.
 
 ## Sources and limits
 

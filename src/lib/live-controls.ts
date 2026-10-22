@@ -25,6 +25,10 @@ function enumCode(values: string[], value: string): number {
 // This fixed vector is the shared Go WASI control ABI, not a second DSP model.
 export function packLiveControls(params: EngineParams): Float64Array<ArrayBuffer> {
   if (params.bands.length !== 5) throw new Error("Live audio requires five EQ bands.");
+  // Runtime callers can violate the statically declared three-band tuple.
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  if (params.multiband && params.multiband.bands.length !== 3)
+    throw new Error("Live audio requires three multiband bands.");
   const values = new Float64Array([
     Number(params.bypass), Number(params.abOriginal), Number(params.loudnessMatchAb), params.inputGainDb, Number(params.eqEnabled),
     ...params.bands.flatMap((band) => [band.freqHz, band.gainDb, band.q, enumCode(filterTypes, band.type), Number(band.enabled)]),
@@ -41,6 +45,7 @@ export function packLiveControls(params: EngineParams): Float64Array<ArrayBuffer
     Number(params.multiband?.enabled ?? false), params.multiband?.lowMidHz ?? 0, params.multiband?.midHighHz ?? 0,
     ...(params.multiband?.bands.flatMap((band) => [band.thresholdDb, band.ratio, band.attackMs, band.releaseMs, band.makeupDb]) ?? new Array<number>(15).fill(0)),
   ]);
+  if (values.length !== CONTROL_COUNT) throw new Error("The live audio control packet must contain 81 values.");
   if (!values.every(Number.isFinite)) throw new Error("Live audio controls must be finite.");
   return values;
 }

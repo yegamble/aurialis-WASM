@@ -74,39 +74,94 @@ func jsSetBand(_ js.Value, args []js.Value) any {
 }
 
 func finiteJS(x float64) bool { return !math.IsNaN(x) && !math.IsInf(x, 0) }
-func float32Array(value js.Value) bool {
-	return value.Type() == js.TypeObject && !value.IsNull() && value.InstanceOf(js.Global().Get("Float32Array"))
+
+// Cache the genuine typed-array accessors. Own properties such as length,
+// buffer and byteOffset do not describe a typed array's backing storage.
+var channelIntrinsics = loadChannelIntrinsics()
+
+type typedArrayIntrinsics struct {
+	float32Type, uint8Type, sharedType       js.Value
+	length, offset, buffer, tag, hasInstance js.Value
 }
-func frameCount(args []js.Value) int {
-	if len(args) < 2 || !float32Array(args[0]) || !float32Array(args[1]) {
-		return 0
+
+func loadChannelIntrinsics() typedArrayIntrinsics {
+	global := js.Global()
+	object := global.Get("Object")
+	float32Type := global.Get("Float32Array")
+	prototype := object.Call("getPrototypeOf", float32Type.Get("prototype"))
+	getter := func(key any) js.Value {
+		return object.Call("getOwnPropertyDescriptor", prototype, key).Get("get")
 	}
-	n := args[0].Length()
-	if n < 1 || n > maxBridgeFrames || args[1].Length() != n {
-		return 0
+	return typedArrayIntrinsics{
+		float32Type: float32Type, uint8Type: global.Get("Uint8Array"), sharedType: global.Get("SharedArrayBuffer"),
+		length: getter("length"), offset: getter("byteOffset"), buffer: getter("buffer"),
+		tag:         getter(global.Get("Symbol").Get("toStringTag")),
+		hasInstance: object.Call("getOwnPropertyDescriptor", global.Get("Function").Get("prototype"), global.Get("Symbol").Get("hasInstance")).Get("value"),
 	}
-	return n
 }
 
 type channelByteView struct {
-	value  js.Value
-	buffer js.Value
-	offset float64
+	value, samples, buffer js.Value
+	offset, length         float64
+	shared                 bool
 }
 
-func channelBytes(value js.Value, n int) channelByteView {
-	buffer := value.Get("buffer")
-	offset := value.Get("byteOffset").Float()
-	return channelByteView{
-		value:  js.Global().Get("Uint8Array").New(buffer, offset, n*4),
-		buffer: buffer,
-		offset: offset,
+func inspectChannel(value js.Value) (channelByteView, bool) {
+	if value.Type() != js.TypeObject || value.IsNull() {
+		return channelByteView{}, false
 	}
+	tag := channelIntrinsics.tag.Call("call", value)
+	if tag.Type() != js.TypeString || tag.String() != "Float32Array" || !channelIntrinsics.hasInstance.Call("call", channelIntrinsics.float32Type, value).Bool() {
+		return channelByteView{}, false
+	}
+	buffer := channelIntrinsics.buffer.Call("call", value)
+	return channelByteView{
+		samples: value, buffer: buffer,
+		offset: channelIntrinsics.offset.Call("call", value).Float(),
+		length: channelIntrinsics.length.Call("call", value).Float(),
+		shared: channelIntrinsics.sharedType.Type() == js.TypeFunction && channelIntrinsics.hasInstance.Call("call", channelIntrinsics.sharedType, buffer).Bool(),
+	}, true
 }
 
-func readChannels(args []js.Value, n int) bool {
+// All property inspection and byte-view construction finishes before DSP state
+// can advance. A JS exception from invalid/detached views rejects only this call.
+// Never recover processing errors after the engine has consumed a block.
+func prepareChannels(args []js.Value) (channels [4]channelByteView, n int) {
+	defer func() {
+		if recover() != nil {
+			channels, n = [4]channelByteView{}, 0
+		}
+	}()
+	if len(args) != 2 && len(args) != 4 {
+		return channels, 0
+	}
+	for index, value := range args {
+		channel, valid := inspectChannel(value)
+		if !valid {
+			return channels, 0
+		}
+		channels[index] = channel
+	}
+	length := channels[0].length
+	if length < 1 || length > maxBridgeFrames || channels[1].length != length {
+		return channels, 0
+	}
+	n = int(length)
+	if len(args) == 2 {
+		channels[2], channels[3] = channels[0], channels[1]
+	}
+	for index, channel := range channels {
+		if channel.length < length {
+			return channels, 0
+		}
+		channels[index].value = channelIntrinsics.uint8Type.New(channel.buffer, channel.offset, n*4)
+	}
+	return channels, n
+}
+
+func readChannels(channels [4]channelByteView, n int) bool {
 	for channel := 0; channel < 2; channel++ {
-		view := channelBytes(args[channel], n)
+		view := channels[channel]
 		raw := bridgeBytes[channel][:n*4]
 		if js.CopyBytesToGo(raw, view.value) != len(raw) {
 			return false
@@ -126,17 +181,16 @@ func readChannels(args []js.Value, n int) bool {
 	return true
 }
 
-func writeChannels(dstL, dstR js.Value, n int) {
-	left, right := channelBytes(dstL, n), channelBytes(dstR, n)
-	sharedType := js.Global().Get("SharedArrayBuffer")
-	shared := sharedType.Type() == js.TypeFunction && left.buffer.InstanceOf(sharedType) && right.buffer.InstanceOf(sharedType)
+func writeChannels(channels [4]channelByteView, n int) {
+	left, right := channels[2], channels[3]
+	shared := left.shared && right.shared
 	if shared || (left.buffer.Equal(right.buffer) && left.offset < right.offset+float64(n*4) && right.offset < left.offset+float64(n*4)) {
 		// Shifted overlapping destinations depend on the original interleaved
 		// L[i], R[i] ordering. Shared buffers can alias through distinct cloned
 		// wrappers, so conservatively preserve the ordering for those too.
 		for i := 0; i < n; i++ {
-			dstL.SetIndex(i, float64(bridgeBuffers[2][i]))
-			dstR.SetIndex(i, float64(bridgeBuffers[3][i]))
+			left.samples.SetIndex(i, float64(bridgeBuffers[2][i]))
+			right.samples.SetIndex(i, float64(bridgeBuffers[3][i]))
 		}
 		return
 	}
@@ -159,30 +213,20 @@ func jsProcessBlock(_ js.Value, args []js.Value) any {
 	if len(args) != 2 && len(args) != 4 {
 		return 0
 	}
-	n := frameCount(args)
-	if n == 0 {
-		return 0
-	}
-	dstL, dstR := args[0], args[1]
-	if len(args) == 4 {
-		dstL, dstR = args[2], args[3]
-		if !float32Array(dstL) || !float32Array(dstR) || dstL.Length() < n || dstR.Length() < n {
-			return 0
-		}
-	}
-	if !readChannels(args, n) {
+	channels, n := prepareChannels(args)
+	if n == 0 || !readChannels(channels, n) {
 		return 0
 	}
 	globalBridge.ProcessBlock(bridgeBuffers[0][:n], bridgeBuffers[1][:n], bridgeBuffers[2][:n], bridgeBuffers[3][:n])
-	writeChannels(dstL, dstR, n)
+	writeChannels(channels, n)
 	return n
 }
 func jsMeasure(_ js.Value, args []js.Value) any {
 	if len(args) != 2 {
 		return "{}"
 	}
-	n := frameCount(args)
-	if n == 0 || !readChannels(args, n) {
+	channels, n := prepareChannels(args)
+	if n == 0 || !readChannels(channels, n) {
 		return "{}"
 	}
 	metrics := globalBridge.Measure(bridgeBuffers[0][:n], bridgeBuffers[1][:n])

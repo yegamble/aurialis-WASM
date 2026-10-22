@@ -15,6 +15,19 @@ describe("one canonical mastering snapshot", () => {
     expect(trackOf(changed).simpleCustom).toBe(false);
   });
 
+  it("preserves other bands, modules and retained gain when changing a filter type or bypass", () => {
+    const initial = selected();
+    const before = trackOf(initial);
+    const typed = reduceStoreState(initial, { type: "UPDATE_EQ_BAND", trackId: before.id, bandId: "mid", patch: { type: "highpass" } });
+    const bypassed = reduceStoreState(typed, { type: "UPDATE_EQ_BAND", trackId: before.id, bandId: "mid", patch: { enabled: false } });
+    expect(trackOf(bypassed).advanced).toEqual({ ...before.advanced, eqBands: before.advanced.eqBands.map((band) => band.id === "mid" ? { ...band, type: "highpass", enabled: false } : band) });
+    expect(trackOf(bypassed).simpleCustom).toBe(true);
+    const restored = normalizeHydratedState(bypassed);
+    expect(restored?.tracks[0]?.advanced).toEqual(trackOf(bypassed).advanced);
+    const viewed = reduceStoreState(bypassed, { type: "UPDATE_TRACK", id: before.id, patch: { mode: "simple" } });
+    expect(trackOf(viewed).advanced).toBe(trackOf(bypassed).advanced);
+  });
+
   it("changes only the view when switching modes in either direction", () => {
     let state = selected(); const snapshot = trackOf(state).advanced;
     for (const mode of ["simple", "advanced", "simple", "advanced"] as const) {

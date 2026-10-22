@@ -19,6 +19,7 @@ import { currentMasteringTarget, masteringTargets } from "@/lib/mastering-target
 import { bindPlaybackControls } from "@/lib/media-session";
 import { ExtendedCompressorControls, ExtendedStereoControls, FrequencyDynamicsControls, MasteringShortcuts } from "./shared/AdvancedDynamics";
 import { DSPModule } from "./shared/DSPModule";
+import { EQBandControls, LimiterReleaseControl } from "./shared/EQBandControls";
 import { RealTransport } from "./shared/RealTransport";
 import { createLivePlayback, type LiveMeter, type LivePlaybackController, type LivePlaybackState, type LiveSpectrum } from "@/lib/live-playback";
 import { usePathname, useRouter } from "next/navigation";
@@ -1396,7 +1397,6 @@ function AdvancedControls({
   const defaults = clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate);
   const selectedBand =
     adv.eqBands.find((b) => b.id === activeBandId) ?? adv.eqBands[1];
-  const defaultBand = defaults.eqBands.find((band) => band.id === selectedBand.id) ?? defaults.eqBands[1];
 
   return (
     <div className="control-stack">
@@ -1469,56 +1469,7 @@ function AdvancedControls({
         </div>
       </ControlGroup>
 
-      <SliderField
-        label={`${selectedBand.label} gain`}
-        value={selectedBand.gainDb}
-        defaultValue={defaultBand.gainDb}
-        min={-12}
-        max={12}
-        step={0.5}
-        unit="dB"
-        onChange={(gainDb) => {
-          dispatch({
-            type: "UPDATE_EQ_BAND",
-            trackId: track.id,
-            bandId: selectedBand.id,
-            patch: { gainDb },
-          });
-        }}
-      />
-      <SliderField
-        label={`${selectedBand.label} frequency`}
-        value={Math.min(selectedBand.freqHz, Math.floor(track.sampleRate * 0.47))}
-        defaultValue={defaultBand.freqHz}
-        min={20}
-        max={Math.min(18000, Math.floor(track.sampleRate * 0.47))}
-        step={1}
-        unit="Hz"
-        onChange={(freqHz) => {
-          dispatch({
-            type: "UPDATE_EQ_BAND",
-            trackId: track.id,
-            bandId: selectedBand.id,
-            patch: { freqHz },
-          });
-        }}
-      />
-      <SliderField
-        label={`${selectedBand.label} Q`}
-        value={selectedBand.q}
-        defaultValue={defaultBand.q}
-        min={0.3}
-        max={8.0}
-        step={0.001}
-        onChange={(q) => {
-          dispatch({
-            type: "UPDATE_EQ_BAND",
-            trackId: track.id,
-            bandId: selectedBand.id,
-            patch: { q },
-          });
-        }}
-      />
+      <EQBandControls track={track} band={selectedBand} />
 
       </DSPModule>
       <DSPModule title="Compressor">
@@ -1765,6 +1716,8 @@ function AdvancedControls({
           });
         }}
       />
+
+      <LimiterReleaseControl track={track} />
 
       </DSPModule>
       <Button

@@ -61,7 +61,7 @@ for _ in $(seq 1 40); do
   sleep 0.1
 done
 
-echo "==> Running Newman collection (TS-001 through TS-015)..."
+echo "==> Running Newman collection (TS-001 through TS-020)..."
 pnpm exec newman run tests/postman/aurialis-backend.postman_collection.json \
   --env-var "baseUrl=${BASE_URL}" \
   --env-var "validWavPath=${VALID_WAV}" \

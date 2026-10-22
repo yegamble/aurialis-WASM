@@ -8,9 +8,11 @@ The Chair and three independent councils covered DSP/audio engineering, frontend
 
 PR #3 (`97964fc`), PR #4 (`ef18a7f`) and PR #5 (`f5ec9ad`) are ancestors of the reviewed main branch. The earlier MUB-0 sequencing prerequisite is therefore resolved. Earlier failures and acceptance records remain historical evidence.
 
-## Required work
+## Required work at baseline f5ec9ad
 
-| Area | Current behavior | Outstanding acceptance |
+This table records the reviewed baseline, before the implementation wave below.
+
+| Area | Baseline behavior | Outstanding acceptance |
 | --- | --- | --- |
 | DSP compatibility | One immediate legacy engine, 81-number static ABI | Explicit algorithm/capability negotiation, latency/drain contract and retained legacy PCM |
 | Compressor | Topology labels share one detector/curve | Distinct Optical, Variable-Mu, VCA and FET algorithms with measured transfer and recovery |

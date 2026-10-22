@@ -9,7 +9,7 @@ Current routes are implemented by `internal/server`; exact DSP structs are in `i
 
 `features.version` is `"1.0"`. Its `source` contains `pcmHash`, `sampleRate` and `frames`. SHA-256 covers little-endian uint32 sample rate, uint32 channel count 2, uint64 frame count, then interleaved little-endian L/R Float32 bits. This binds measurements to reconstructed stereo PCM and layout.
 
-The five bands are 20–120, 120–500, 500–2000, 2000–6000 and 6000–20000 Hz. Each reports `lowHz`, `highHz`, `usableHighHz`, `bandwidthHz`, `powerDb`, `densityDbPerHz` and `valid`; unavailable bandwidth is explicit. Power is stereo-averaged mean square; unequal band widths are not interchangeable tonal targets. DC is excluded from spectral diagnostics while original RMS/stereo energy retains it. Normalized Hann FFT frames (512–16384 samples, chosen by rate) aggregate into one-second windows at quarter-second hops. Very short sources use their available duration.
+The five bands are 20–120, 120–500, 500–2000, 2000–6000 and 6000–20000 Hz. Each reports `lowHz`, `highHz`, `usableHighHz`, `bandwidthHz`, `powerDb`, `densityDbPerHz` and `valid`; unavailable bandwidth is explicit. Power is stereo-averaged mean square; unequal band widths are not interchangeable tonal targets. DC is excluded from spectral diagnostics while original RMS/stereo energy retains it. Normalized Hann FFT frames (1024–16384 samples, chosen by rate) use 75% overlap and padded endpoints with constant squared-window coverage, then aggregate into one-second windows at quarter-second hops. Raw RMS/stereo windows use original samples independently of spectral weighting. Very short sources use their available duration.
 
 `frames` contains `centerFrame`, `rmsDb`, `centroidHz`, `sideMidDb` and `crestDb`. `windowCrestPercentiles` holds p10/p50/p90. `sibilanceRatioDb` is 6–12 kHz power relative to usable power at or above 20 Hz; it is neither a sibilance diagnosis nor a crest factor. Finite floors/conventions and bandwidth warnings accompany low-information signals.
 
@@ -45,13 +45,14 @@ Both root and `/api` aliases exist for health, render, analysis, separation and 
 |---|---|
 | `GET /health` | 200 readiness JSON, actual embedded WASM availability, profile names and explicitly heuristic model/analysis identity. This is not a browser WASM execution test. |
 | `POST /master/render` | Synchronous native DSP render from actual uploaded audio; 200 WAV or JSON. |
+| `POST /analyze/features` | 202 source-bound spectral/neutral-change-point diagnostic job; used by Deep measured-source analysis. |
 | `POST /analyze/deep` | 202 experimental deterministic energy/section analysis job. No trained AI/LLM inference; disabled in the product UI. |
 | `POST /separate` | 202 deterministic frequency-based decomposition job for 2–6 outputs. No trained instrument separation; disabled in the product UI. |
 | `GET /jobs/{id}` | 200 job snapshot; `/status` and `/result` aliases return the same snapshot. `?wait=1` waits up to four seconds while queued/running. |
 | `DELETE /jobs/{id}` | Cancels queued/running work and clears terminal artifacts too; repeated cancellation of a retained record is idempotent. Missing or expired ID returns 404. |
 | `GET /jobs/{id}/stems/{stemName}` | 200 WAV when an artifact exists; optional `.wav` suffix; 404 otherwise. Traversal components are rejected. |
 
-`GET /health` reports `status: "ok"`, `service: "aurialis-wasm"`, `version: "0.1.0"`, `wasmDsp: true`, `wasmDspReady` based on embedded module presence, `gpu: false`, `models: ["deterministic-frequency-split"]`, `separationMethod: "deterministic-frequency-split"`, `analysisMethod: "deterministic-energy-heuristics"`, numeric `maxUploadBytes`, `maxAudioFileBytes`, `maxDecodedFrames`, `maxConcurrentAudioRequests`, `jobMemoryBudgetBytes`, and `profiles`. The readiness field does not load or execute WASM.
+`GET /health` reports `status: "ok"`, `service: "aurialis-wasm"`, `version: "0.1.0"`, `wasmDsp: true`, `wasmDspReady` based on embedded module presence, `gpu: false`, `models: ["deterministic-frequency-split"]`, `separationMethod: "deterministic-frequency-split"`, `analysisMethod: "deterministic-energy-heuristics"`, `featureAnalysisMethod: "normalized-hann-spectrum-and-novelty"`, `featureAnalysisVersion: "1.0"`, numeric `maxUploadBytes`, `maxAudioFileBytes`, `maxDecodedFrames`, `maxConcurrentAudioRequests`, `jobMemoryBudgetBytes`, and `profiles`. The readiness field does not load or execute WASM.
 
 ### Rendering
 

@@ -121,10 +121,23 @@ jobs:
       - name: Run WASM signal verification
         run: bash scripts/test-wasm.sh
 
-      - name: Compare meters with independent FFmpeg reference
+      - name: Install FFmpeg for independent meter verification
+        timeout-minutes: 5
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          if ! command -v ffmpeg >/dev/null 2>&1; then
+            # Slow Azure archive downloads exhausted the failed jobs' budget.
+            if [ -f /etc/apt/apt-mirrors.txt ]; then
+              sudo sed -i 's|http://azure\.archive\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
+            fi
+            APT_OPTIONS=(-o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+            sudo apt-get "${APT_OPTIONS[@]}" update
+            sudo apt-get "${APT_OPTIONS[@]}" install -y --no-install-recommends ffmpeg
+          fi
+          ffmpeg -version
+
+      - name: Compare meters with independent FFmpeg reference
+        timeout-minutes: 3
+        run: |
           python3 wasm/dsp/verify_meters.py
 
   frontend-quality:

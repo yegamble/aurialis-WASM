@@ -136,82 +136,39 @@ export function createDefaultAdvancedParams(
   };
 }
 
-type BiquadCoeffs = {
-  b0: number;
-  b1: number;
-  b2: number;
-  a1: number;
-  a2: number;
+type EqResponseCoefficients = {
+  g: number;
+  k: number;
+  m0: number;
+  m1: number;
+  m2: number;
 };
 
-function calcBiquadCoeffs(
+// Match the existing Go TPT EQ, including its legacy shelf corners and
+// gain-dependent bell Q. This predicts that engine; it does not process audio.
+function eqResponseCoefficients(
   band: EQBandParams,
   sampleRate: number,
-): BiquadCoeffs {
-  if (!band.enabled) {
-    return { b0: 1, b1: 0, b2: 0, a1: 0, a2: 0 };
-  }
-  const fc = Math.max(20, Math.min(0.47 * sampleRate, band.freqHz));
-  const q = Math.max(0.1, Math.min(18, band.q));
-  const w0 = (2 * Math.PI * fc) / sampleRate;
-  const cosW0 = Math.cos(w0);
-  const sinW0 = Math.sin(w0);
-  const alpha = sinW0 / (2 * q);
-  const A = Math.pow(10, band.gainDb / 40);
-
-  let b0 = 1;
-  let b1 = 0;
-  let b2 = 0;
-  let a0 = 1;
-  let a1 = 0;
-  let a2 = 0;
-
+): EqResponseCoefficients {
+  const clampFrequency = (frequency: number) => Math.min(sampleRate * 0.485, Math.max(10, frequency));
+  const q = band.q < 0.1 ? 0.707 : band.q;
+  const amplitude = Math.pow(10, band.gainDb / 40);
   switch (band.type) {
     case "highpass":
-      b0 = (1 + cosW0) / 2;
-      b1 = -(1 + cosW0);
-      b2 = (1 + cosW0) / 2;
-      a0 = 1 + alpha;
-      a1 = -2 * cosW0;
-      a2 = 1 - alpha;
-      break;
+      return { g: Math.tan(Math.PI * clampFrequency(band.freqHz) / sampleRate), k: 1 / q, m0: 1, m1: -1 / q, m2: -1 };
     case "lowshelf": {
-      const twoSqrtAAlpha = 2 * Math.sqrt(A) * alpha;
-      b0 = A * (A + 1 - (A - 1) * cosW0 + twoSqrtAAlpha);
-      b1 = 2 * A * (A - 1 - (A + 1) * cosW0);
-      b2 = A * (A + 1 - (A - 1) * cosW0 - twoSqrtAAlpha);
-      a0 = A + 1 + (A - 1) * cosW0 + twoSqrtAAlpha;
-      a1 = -2 * (A - 1 + (A + 1) * cosW0);
-      a2 = A + 1 + (A - 1) * cosW0 - twoSqrtAAlpha;
-      break;
+      const k = 1.22 * 0.707 / q;
+      return { g: Math.tan(Math.PI * clampFrequency(band.freqHz * 1.85) / sampleRate) / Math.sqrt(amplitude), k, m0: 1, m1: k * (amplitude - 1), m2: amplitude * amplitude - 1 };
     }
-    case "peaking":
-      b0 = 1 + alpha * A;
-      b1 = -2 * cosW0;
-      b2 = 1 - alpha * A;
-      a0 = 1 + alpha / A;
-      a1 = -2 * cosW0;
-      a2 = 1 - alpha / A;
-      break;
     case "highshelf": {
-      const twoSqrtAAlpha = 2 * Math.sqrt(A) * alpha;
-      b0 = A * (A + 1 + (A - 1) * cosW0 + twoSqrtAAlpha);
-      b1 = -2 * A * (A - 1 + (A + 1) * cosW0);
-      b2 = A * (A + 1 + (A - 1) * cosW0 - twoSqrtAAlpha);
-      a0 = A + 1 - (A - 1) * cosW0 + twoSqrtAAlpha;
-      a1 = 2 * (A - 1 - (A + 1) * cosW0);
-      a2 = A + 1 - (A - 1) * cosW0 - twoSqrtAAlpha;
-      break;
+      const k = 1.23 * 0.707 / q;
+      return { g: Math.tan(Math.PI * clampFrequency(band.freqHz / 1.54) / sampleRate) * Math.sqrt(amplitude), k, m0: amplitude * amplitude, m1: k * (1 - amplitude) * amplitude, m2: 1 - amplitude * amplitude };
+    }
+    case "peaking": {
+      const k = 1 / (q * (1 + 0.25 * Math.abs(band.gainDb)) * amplitude);
+      return { g: Math.tan(Math.PI * clampFrequency(band.freqHz) / sampleRate), k, m0: 1, m1: k * (amplitude * amplitude - 1), m2: 0 };
     }
   }
-
-  return {
-    b0: b0 / a0,
-    b1: b1 / a0,
-    b2: b2 / a0,
-    a1: a1 / a0,
-    a2: a2 / a0,
-  };
 }
 
 export function computeEqMagnitudeDb(
@@ -219,26 +176,25 @@ export function computeEqMagnitudeDb(
   bands: readonly EQBandParams[],
   sampleRate = 48000,
 ): number {
-  const w = (2 * Math.PI * freqHz) / sampleRate;
-  const cos1 = Math.cos(w);
-  const sin1 = Math.sin(w);
-  const cos2 = Math.cos(2 * w);
-  const sin2 = Math.sin(2 * w);
-
+  if (!Number.isFinite(freqHz) || !Number.isFinite(sampleRate) || sampleRate < 8000 || sampleRate > 192000) return 0;
+  const probe = Math.max(0, Math.min(sampleRate / 2, freqHz));
+  const t = Math.tan(Math.PI * probe / sampleRate);
   let totalGainDb = 0;
   for (const band of bands) {
-    if (!band.enabled) continue;
-    if (band.type !== "highpass" && Math.abs(band.gainDb) < 1e-4) continue;
-    const c = calcBiquadCoeffs(band, sampleRate);
-    const numRe = c.b0 + c.b1 * cos1 + c.b2 * cos2;
-    const numIm = -(c.b1 * sin1 + c.b2 * sin2);
-    const denRe = 1 + c.a1 * cos1 + c.a2 * cos2;
-    const denIm = -(c.a1 * sin1 + c.a2 * sin2);
-    const numMagSq = numRe * numRe + numIm * numIm;
-    const denMagSq = Math.max(1e-18, denRe * denRe + denIm * denIm);
-    totalGainDb += 10 * Math.log10(numMagSq / denMagSq);
+    if (!band.enabled || (band.type !== "highpass" && Math.abs(band.gainDb) < 1e-7)) continue;
+    const { g, k, m0, m1, m2 } = eqResponseCoefficients(band, sampleRate);
+    // The TPT integrator has s = j*t/g: V1 = j*g*t/D, V2 = g*g/D.
+    // Evaluate m0 + m1*V1 + m2*V2 without allocating complex numbers.
+    const denominatorReal = g * g - t * t;
+    const denominatorImaginary = k * g * t;
+    const numeratorReal = m0 * denominatorReal + m2 * g * g;
+    const numeratorImaginary = (m0 * k + m1) * g * t;
+    const numerator = Math.hypot(numeratorReal, numeratorImaginary);
+    const denominator = Math.hypot(denominatorReal, denominatorImaginary);
+    if (numerator === 0) return -240;
+    totalGainDb += 20 * Math.log10(numerator / denominator);
   }
-  return totalGainDb;
+  return Math.max(-240, totalGainDb);
 }
 
 type SimpleGenre = {

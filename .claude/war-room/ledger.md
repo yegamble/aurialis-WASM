@@ -494,3 +494,55 @@ Frontend TypeScript/lint/knip and 211 units in 17 files passed for the unchanged
 The current Newman rerun exited 0: 17 requests, 22 assertions and raw DNS-rebinding 403/upload-limit 413 probes passed. The complete Chromium suite exited 0: 54/54 in 3.0 minutes, including the new paused-init regression (1.8 seconds within this run), six-width axe checks, a 10.5-second large import and the 62-control PCM matrix in 30.5 seconds.
 
 **Round E ruling:** QA and Devil’s Advocate independently accepted the stage/model-history, paused-initialization and packet-publication corrections with no new in-scope P0/P1 after the follow-up. Technical Writer confirmed all five documentation surfaces match the source and evidence. The bounded follow-up is locally verified; **open — awaiting merge**. New remote CI and owner merge remain pending. Constant-setting identity and these scoped lifecycle tests do not certify hardware fidelity, alias suppression, true-peak limiting or universally click-free automation.
+
+
+## WASM DSP offline bridge safety and EQ prediction — 2026-10-22
+
+Prior PR #4 was owner-merged at `ef18a7f`. Its documentation checkpoint `e237876` passed both recorded remote runs: [39720716299](https://github.com/yegamble/aurialis-WASM/actions/runs/39720716299), [39720713174](https://github.com/yegamble/aurialis-WASM/actions/runs/39720713174). Current work uses isolated branch `codex/wasm-dsp-bridge-safety`; previous wave records remain chronological evidence, not fresh acceptance.
+
+### Round D — align the approximate EQ response prediction
+
+DECISION: ACCEPT — P1 required correction.
+WHY: The TypeScript prediction used RBJ math while the native engine uses TPT filters with shelf corner scaling and gain-dependent bell Q. Low shelf +6 dB at 250 Hz measured 5.898 versus displayed 3 dB, and at 500 Hz measured 2.413 versus displayed 0.376 dB; high shelf at 12 kHz measured 5.824 versus displayed 3 dB; a 1 kHz bell probed at 500 Hz measured 0.784 versus displayed 2.826 dB.
+DISSENTING VIEW: Retain the existing approximate label. A prediction aligned with the native filter equations is not a certified hardware curve or a measured live device response.
+AFFECTED LAYER: nextjs-ui, wasm-dsp.
+USER / AUDIO IMPACT: Make the settings prediction describe the implemented filter response without changing the Go audio algorithm, styling or dependencies.
+BUNDLE / TEST IMPACT: Existing TypeScript response math plus a compact independent native sine-response fixture; no added production dependency.
+ACCEPTANCE CRITERIA: Prediction agrees with native response at fixture rates/frequencies, disabled/neutral bands remain correct, and requested/source-rate limits remain explicit.
+TEST PLAN: Native sine oracle, frontend prediction cases, static/unit gates and browser response/editor regression coverage.
+DOCS TO UPDATE: README, API, architecture, tasks and this ledger as behavior warrants.
+
+### Round D — preflight intrinsic typed-array metadata
+
+DECISION: ACCEPT — P1 required correction.
+WHY: A genuine one-element Float32Array with a spoofed own length of eight caused an oversized Uint8Array construction panic and Go runtime termination at the offline JS/WASM boundary.
+DISSENTING VIEW: No ordinary GUI trigger or host-machine compromise was established. This is a malformed browser-library caller, not evidence of an upload or localhost-security bypass.
+AFFECTED LAYER: wasm-dsp.
+USER / AUDIO IMPACT: Use intrinsic branding and metadata for all input/destination checks before DSP state advances; reject unusable views while retaining a usable bridge.
+BUNDLE / TEST IMPACT: Boundary preflight and actual compiled-WASM adversarial tests; preserve shared storage, nonzero offsets, output alias ordering and numeric zeros.
+ACCEPTANCE CRITERIA: Shadowed properties cannot enlarge memory views, malformed inputs/destinations do not advance engine history, and subsequent valid blocks process normally.
+TEST PLAN: Actual legacy WASM tests with genuine shadowed Float32Arrays, fake/detached/invalid views as applicable, shared/offset/alias/zero regressions and native/WASM parity.
+DOCS TO UPDATE: README, API, architecture, tasks and this ledger.
+
+DEFER — P2: Native cross-output aliasing still has no demonstrated application caller. Do not add a generic alias framework or a broad exception catch after processing. Version 2/hardware-parity blueprints remain specifications only.
+
+### EQ response failure and corrected prediction
+
+EQ correction `39339d9` introduces 61 actual native sine configurations and 183 frequency probes across 8/44.1/48/96/192 kHz. The frontend fixture comparison allows less than 0.01 dB error for those cases. The engineer reported 64 EQ tests and 275 frontend units passing. The new browser regression failed against the earlier packaged response at 320 px: plotted 3.25 dB versus independent native 5.89847 dB, with a ±0.25 dB allowance for chart sampling and SVG rounding. The corrected packaged regression then passed at 320 and 1440 px in 551 ms within the fresh browser run; the original failed checkpoint remains retained. Independent Devil’s Advocate stress checks passed 24 configurations / 72 probes using ten-second native Float32 sine renders, Q 20 and gain ±24 dB at 8/48/192 kHz; maximum prediction error was 0.00000668 dB. An initial two-second high-Q probe differed by 0.06498 dB; extending settling resolved it without code or tolerance changes. The current Newman rerun passed 17 requests / 22 assertions plus raw curl probes.
+
+### Round E — fresh integrated checkpoint
+
+Source `3888681` includes EQ prediction `39339d9` and browser regression `554b6c7`. Native formatting, module verification, vet, exact CI lint 2.15.0, identifier, vulnerability and race gates passed; the identifier check used its `go run` fallback. Frontend TypeScript/lint/knip, configured spelling over 129 files and 275 units in 18 files passed. Bridge JS-target vet and exact CI lint passed; direct spelling checked the changed Go/MJS bridge files with zero issues. The fresh integrated binary build rebuilt both WASM modules, the frontend and Go executable; empty-directory smoke passed.
+
+Fresh compiled verification passed 279+54 legacy/native fixtures with maximum error 0 plus shadowed-metadata, malformed-view rejection/history and subsequent-valid-processing checks. Direct and restricted-WASI parity each matched all 333 fixtures exactly, and nine retained model-history transitions passed. The rebuilt-assets native API rerun passed 17 requests / 22 assertions plus raw curl probes. QA independently passed 48 fresh compiled-module boundary cases, including eight invalid-view families across all four channel positions, throwing own metadata and a resized ArrayBuffer. Rejected calls preserved destinations and active Crisp/compressor history; the next valid block exactly matched its control. The original own-length-eight probe processed its actual one stored frame and the runtime remained usable. QA and Devil’s Advocate found no new in-scope P0/P1 in the corrected source. The complete Chromium suite exited 0: 55/55 in 3.4 minutes, including the new EQ plot regression at 320/1440 px in 551 ms, all six-width axe checks, the 62-control export PCM matrix in 32.7 seconds and a 13.1-second large import.
+
+**Round E ruling:** QA and Devil’s Advocate independently accepted the corrected prediction and offline bridge with no new in-scope P0/P1. Product Engineer accepted the bounded scope and atomic commit history; Technical Writer confirmed the five documentation surfaces match the implementation and evidence. The follow-up is locally verified; **open — awaiting merge**. New remote CI and owner merge remain pending. The approximate prediction is not a certified device/hardware response, and malformed library-call resilience is not evidence of an ordinary GUI failure or host-machine compromise.
+
+
+## CI FFmpeg provisioning repair — 2026-10-22
+
+The user authorized repairing the failed PR #5 CI gate. Both [run 39790348108](https://github.com/yegamble/aurialis-WASM/actions/runs/39790348108) and [run 39790323228](https://github.com/yegamble/aurialis-WASM/actions/runs/39790323228) timed out during FFmpeg installation after more than 18 minutes. Logs listed 100 new packages, including a 27.4 MB recommended speech-language package and graphics drivers. Go/static, race and parity steps and the frontend job passed; the independent meter comparison did not execute.
+
+Workflow correction `72839a1` reuses an installed FFmpeg or provisions it with `--no-install-recommends`, two acquisition retries and 30-second HTTP/HTTPS timeouts. Logs also showed slow core-package downloads from the Azure archive; only when installation is needed and `/etc/apt/apt-mirrors.txt` exists, the workflow replaces that URL with Ubuntu’s official HTTPS archive. Package signature validation remains enabled. Separate five-minute provisioning and three-minute comparison step limits retain the independent meter assertions and existing job timeout. No production code or API contract changes.
+
+Local actionlint 1.7.7 passed. All 15 actual FFmpeg comparisons passed, with maximum reported differences of 0.0542 LU and 0.0312 dB; the whitespace check was clean. New remote evidence remains pending. Status: **open — awaiting merge**, with CI verification still required. Preserve the failed provisioning checkpoints; successful local application gates do not replace the missing remote meter comparison.

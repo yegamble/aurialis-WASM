@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { webcrypto } from "node:crypto";
 import assert from "node:assert/strict";
+import { packLiveControls } from "../../src/lib/live-controls.ts";
 
 const [modulePath, runtimePath, ...fixturePaths] = process.argv.slice(2);
 assert.ok(modulePath && runtimePath && fixturePaths.length, "supply module.wasm wasm_exec.js fixture files");
@@ -19,6 +20,13 @@ assert.equal(wasm.aurialis_live_process.length, 0);
 assert.equal(wasm.aurialis_live_reset.length, 0);
 void go.run(instance);
 assert.equal(globalThis.aurialisDSPReady, true);
+assert.equal(wasm.aurialis_control_count(1), 81);
+assert.equal(wasm.aurialis_control_count(2), 82);
+assert.equal(wasm.aurialis_control_count(3), 0);
+assert.equal(wasm.aurialis_algorithm_supported(1), 1);
+assert.equal(wasm.aurialis_algorithm_supported(2), 0);
+assert.equal(wasm.aurialis_latency_frames(), 0);
+assert.equal(wasm.aurialis_live_drain(), 0);
 const pointers = [0, 1, 2, 3].map(channel => wasm.aurialis_live_buffer(channel) >>> 0);
 for (let channel = 0; channel < 4; channel++) {
   const pointer = pointers[channel];
@@ -123,5 +131,23 @@ assert.equal(previousView.byteLength, 0);
 for (let channel = 0; channel < 4; channel++) assert.equal(wasm.aurialis_live_buffer(channel) >>> 0, pointers[channel]);
 const afterGrowth = renderDirect(new Float32Array(128).fill(.125), new Float32Array(128).fill(-.25));
 assert.equal(afterGrowth[2][127], .125); assert.equal(afterGrowth[3][127], -.25);
-console.log(`wasm-live-direct: ${fixtures.length} native fixtures matched exactly; fixed pointers, validation, zero sign, shared controls/state/reset and one-page memory growth passed`);
+// Exercise the appended packet through the JS module's direct exports as well.
+for (const [index, fixture] of fixtures.entries()) {
+  init(fixture.rate, fixture.params);
+  const versioned = new Float64Array(wasm.mem.buffer, wasm.aurialis_control_buffer_v2() >>> 0, 82);
+  versioned.set(packLiveControls(fixture.params, 2));
+  assert.equal(wasm.aurialis_set_controls_v2(82), 1);
+  const inputLeft = Float32Array.from(fixture.left), inputRight = Float32Array.from(fixture.right);
+  for (let start = 0; start < inputLeft.length; start += 128) {
+    const output = renderDirect(inputLeft.subarray(start, start + 128), inputRight.subarray(start, start + 128));
+    for (let frame = 0; frame < 128; frame++) {
+      compare(output[2][frame], fixture.outputLeft[start + frame], `JS ABI2 left fixture${index} frame${start + frame}`);
+      compare(output[3][frame], fixture.outputRight[start + frame], `JS ABI2 right fixture${index} frame${start + frame}`);
+    }
+  }
+  const outputBeforeDrain = refresh().map(channel => channel.slice());
+  assert.equal(wasm.aurialis_live_drain(), 0);
+  assert.deepEqual(refresh(), outputBeforeDrain);
+}
+console.log(`wasm-live-direct: ${fixtures.length} native fixtures matched exactly; JSON and ABI2/algorithm1 paths matched; fixed pointers, validation, zero sign, shared controls/state/reset and one-page memory growth passed`);
 process.exit(0);

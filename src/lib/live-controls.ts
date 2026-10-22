@@ -8,6 +8,7 @@ type EngineParams = Omit<CurrentEngineParams, "compressor" | "stereo" | "deHarsh
  stereo: Omit<CurrentEngineParams["stereo"], "midGainDb" | "sideGainDb"> & {midGainDb?: number; sideGainDb?: number};
  deHarsh?: CurrentEngineParams["deHarsh"];
  multiband?: CurrentEngineParams["multiband"];
+ algorithmVersion?: number;
 };
 
 const CONTROL_COUNT = 81;
@@ -23,7 +24,10 @@ function enumCode(values: string[], value: string): number {
 }
 
 // This fixed vector is the shared Go WASI control ABI, not a second DSP model.
-export function packLiveControls(params: EngineParams): Float64Array<ArrayBuffer> {
+export function packLiveControls(params: EngineParams, abiVersion: number = 1): Float64Array<ArrayBuffer> {
+  if (abiVersion !== 1 && abiVersion !== 2) throw new Error("Unsupported live control ABI.");
+  const algorithmVersion = params.algorithmVersion === undefined ? 1 : params.algorithmVersion;
+  if (algorithmVersion !== 0 && algorithmVersion !== 1) throw new Error("Unsupported DSP algorithm version.");
   if (params.bands.length !== 5) throw new Error("Live audio requires five EQ bands.");
   // Runtime callers can violate the statically declared three-band tuple.
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
@@ -47,16 +51,21 @@ export function packLiveControls(params: EngineParams): Float64Array<ArrayBuffer
   ]);
   if (values.length !== CONTROL_COUNT) throw new Error("The live audio control packet must contain 81 values.");
   if (!values.every(Number.isFinite)) throw new Error("Live audio controls must be finite.");
-  return values;
+  if (abiVersion === 1) return values;
+  const versioned = new Float64Array(CONTROL_COUNT + 1);
+  versioned.set(values);
+  versioned[81] = 1;
+  return versioned;
 }
 
-export function createLiveControls(params: EngineParams, version: number) {
-  const buffer = new SharedArrayBuffer(CONTROL_OFFSET + CONTROL_COUNT * Float64Array.BYTES_PER_ELEMENT);
+export function createLiveControls(params: EngineParams, version: number, abiVersion: number = 1) {
+  const count = packLiveControls(params, abiVersion).length;
+  const buffer = new SharedArrayBuffer(CONTROL_OFFSET + count * Float64Array.BYTES_PER_ELEMENT);
   const header = new Int32Array(buffer, 0, 4);
-  const values = new Float64Array(buffer, CONTROL_OFFSET, CONTROL_COUNT);
+  const values = new Float64Array(buffer, CONTROL_OFFSET, count);
   function publish(next: EngineParams, nextVersion: number): void {
     // Validate/allocate on the UI thread before beginning the atomic publication.
-    const packed = packLiveControls(next);
+    const packed = packLiveControls(next, abiVersion);
     const sequence = Atomics.load(header, 0);
     Atomics.store(header, 0, sequence + 1);
     values.set(packed);

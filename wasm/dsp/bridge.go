@@ -91,3 +91,17 @@ func (b *Bridge) Measure(left, right []float32) dsp.Metrics {
 	m.GainReductionDB = gr
 	return m
 }
+
+// LatencyFrames reports buffered DSP delay, excluding transport delay.
+func (b *Bridge) LatencyFrames() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.engine.LatencyFrames()
+}
+
+// Drain writes only buffered tail frames and returns their count.
+func (b *Bridge) Drain(outL, outR []float32) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.engine.Drain(outL, outR)
+}

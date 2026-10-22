@@ -28,3 +28,6 @@ func WasmLiveProcess() uint32 {
 func WasmLiveReset() uint32 {
 	return liveBlocks.reset()
 }
+
+func runtimeBridge() *Bridge          { return globalBridge }
+func runtimeBlocks() *liveBlockBridge { return &liveBlocks }

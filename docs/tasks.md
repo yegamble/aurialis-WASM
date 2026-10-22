@@ -37,6 +37,10 @@ Failures retained: adversarial signal probes found De-Harsh range overshoot and 
 
 **Ruling:** accept the bounded local expansion; **open — awaiting merge**, with new PR and remote CI pending. Source sharing, presets and selected measurements do not establish Waves equivalence, named-hardware fidelity, linear-phase multiband, alias-free saturation, true-peak certification or all-settings smooth automation. Broader product requirements remain open.
 
+## Starting-point activation feedback — verified locally
+
+The reported Add Air/Cut Mud/Tape Warmth/Glue Comp buttons applied settings without displaying an active state. The correction derives their highlight and accessible pressed state from canonical settings. Independent shortcuts may remain active together, relevant edits/bypass clear their match, and reapplication does not accumulate processing. Verification: 186 unit tests, TypeScript, ESLint, knip, repository spelling, production build and standalone binary smoke passed. The five new browser cases independently measured changed exported PCM, identical repeated exports, visible and accessible selection, keyboard activation, bypass/edit clearing, coexistence and reload persistence. The full Chromium suite passed 47/47 in 2.1 minutes, including six-width accessibility and 62-control export isolation. Devil’s Advocate review found no blocking issue. Status: **open — awaiting merge**.
+
 ## Historical corrective checkpoints
 
 The chronological record below preserves statuses and pending work **as observed at each earlier checkpoint**. The final acceptance section supersedes their current-status implications without deleting failures or expanding their evidence scope.

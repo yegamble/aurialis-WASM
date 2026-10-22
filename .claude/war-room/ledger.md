@@ -338,3 +338,11 @@ All six source jobs in [remote CI 39597252997](https://github.com/yegamble/auria
 Technical Writer final checks exited 0: repository spelling including hidden ledger/repo-map checked 114 files with zero issues, 48 local links resolve, and six-file diff whitespace checks are clean.
 
 **Round E ruling:** the bounded corrective subset is locally verified and **open — awaiting merge**. Documentation is synchronized; owner approval and merge are absent. Keep broader AI/trained stems/automation/reference matching/album capacity/hardware and platform certification requirements open. Original fetch causation remains **UNVERIFIED**. No whole-product completion or merge is claimed.
+
+
+## Starting-point activation feedback — 2026-10-22
+
+DECISION: Derive Add Air, Cut Mud, Tape Warmth and Glue Comp highlights and accessible pressed states from their relevant canonical settings. Keep the existing idempotent apply behavior; do not add hidden toggle state or undo other module edits.
+WHY: The controls applied settings but gave no persistent activation feedback. Independent matches may coexist, and relevant edits or bypass must clear a match. Source-rate-clamped EQ values must still match their starting point.
+EVIDENCE: 186 unit tests; TypeScript, ESLint, knip and spelling; production build and standalone smoke passed. Five focused browser cases verified actual PCM changes, repeat idempotence, visible/accessible selection, keyboard, bypass/edit clearing, coexistence and persistence. Full Chromium suite passed 47/47 in 2.1 minutes. Devil’s Advocate review found no blocker. The first build inside the sandbox stalled; the permitted build rerun passed.
+STATUS: open — awaiting merge.

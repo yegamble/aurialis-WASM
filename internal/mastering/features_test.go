@@ -1,5 +1,7 @@
 package mastering
 
+// cspell:words RMSDB
+
 import (
 	"context"
 	"encoding/json"

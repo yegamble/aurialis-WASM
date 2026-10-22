@@ -3,6 +3,26 @@
 
 Current routes are implemented by `internal/server`; exact DSP structs are in `internal/audio/dsp/engine.go` and the experimental script schema is in `internal/mastering/mastering.go`. No API presence alone establishes a verified product workflow. See [tasks](tasks.md) for evidence and open requirements.
 
+## Measured source features
+
+`POST /api/analyze/features` (alias `/analyze/features`) accepts one multipart `file` through the existing reconstruction and admission path. Options and query parameters are rejected. It returns the existing **202** job envelope with `kind: "analyze_features"`. Health advertises `featureAnalysisMethod` and `featureAnalysisVersion`. Poll `GET /api/jobs/{jobId}?wait=1`; the native status values are `queued`, `running`, `done`, `failed` and `cancelled`. A `done` response includes `features`, not a mastering script. `DELETE /api/jobs/{jobId}` cancels and releases retained summaries. Failed delivery of the admission response cancels that job.
+
+`features.version` is `"1.0"`. Its `source` contains `pcmHash`, `sampleRate` and `frames`. SHA-256 covers little-endian uint32 sample rate, uint32 channel count 2, uint64 frame count, then interleaved little-endian L/R Float32 bits. This binds measurements to reconstructed stereo PCM and layout.
+
+The five bands are 20–120, 120–500, 500–2000, 2000–6000 and 6000–20000 Hz. Each reports `lowHz`, `highHz`, `usableHighHz`, `bandwidthHz`, `powerDb`, `densityDbPerHz` and `valid`; unavailable bandwidth is explicit. Power is stereo-averaged mean square; unequal band widths are not interchangeable tonal targets. DC is excluded from spectral diagnostics while original RMS/stereo energy retains it. Normalized Hann FFT frames (512–16384 samples, chosen by rate) aggregate into one-second windows at quarter-second hops. Very short sources use their available duration.
+
+`frames` contains `centerFrame`, `rmsDb`, `centroidHz`, `sideMidDb` and `crestDb`. `windowCrestPercentiles` holds p10/p50/p90. `sibilanceRatioDb` is 6–12 kHz power relative to usable power at or above 20 Hz; it is neither a sibilance diagnosis nor a crest factor. Finite floors/conventions and bandwidth warnings accompany low-information signals.
+
+`sections` partition the exact source-frame interval with neutral `Section N` names, `roleHint: "unknown"` and `confidence`. Confidence is a bounded novelty-strength heuristic, not a calibrated musical-role probability. Boundaries require eight-second spacing on sufficiently long sources; silence, constant fixtures and short clips can have one section. No EQ proposal, processing move, Verse/Chorus classification or trained-model claim is returned.
+
+The job reserves decoded input plus 16 MiB analysis headroom; retained feature arrays are charged conservatively until cancellation/expiration. GET snapshots deep-copy mutable feature slices. Existing 256 MiB/64-job limits, worker timeout, retention, Host/Origin and upload bounds apply. Browser source analysis releases its admitted job after copying successful diagnostics, and deletes a known admitted job after Cancel. Cancel detaches the UI immediately even when the admission response is held; bounded transport failure falls back to server timeout/retention.
+
+## DSP compatibility and capability foundation
+
+The optional `params.algorithmVersion` accepts omitted/zero/one as unchanged algorithm 1; null, fractional, negative and unimplemented values are rejected. The sonic algorithm is independent of the numeric control ABI. Existing 81-value controls remain supported and production still publishes its 664-byte shared packet. Negotiated ABI 2 appends explicit algorithm ID 1 as value 82, through a separate buffer/setter; it does not enable algorithm 2 or migrate the shared packet.
+
+Both WASM modules export `aurialis_control_count(abi)` (81 for 1, 82 for 2, zero otherwise), `aurialis_algorithm_supported(version)` (one only for explicit algorithm 1), `aurialis_latency_frames()` and `aurialis_live_drain()`. The appended interface uses `aurialis_control_buffer_v2` and `aurialis_set_controls_v2(count)`; invalid length/version rejects atomically. The worklet requires implemented algorithm 1, matching current count and zero buffered latency before playing. Native `LatencyFrames()` and `Drain()` currently return zero; drain preserves destination contents and does not synthesize an IIR-decay extension. Transport alignment and filter phase are separate from buffered DSP latency.
+
 ## Security and resource contract
 
 The executable binds only to loopback IPs (default `127.0.0.1:8080`). `AURIALIS_ADDR` takes precedence over `PORT`, then `-addr`; a numeric `PORT` becomes `127.0.0.1:<port>`. The request Host must match an allowed local authority and the actual port. A supplied Origin must be HTTP with the same authority; `null` is rejected. Fetch Metadata permits only `none` or `same-origin` when supplied. Rejections return 403 JSON. These checks do not provide remote authentication.

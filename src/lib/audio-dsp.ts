@@ -2,6 +2,7 @@ import type {
   AdvancedParams,
   EQBandParams,
   ProfileId,
+  SaturationCharacter,
 } from "./types";
 
 function defaultEqBands(): [
@@ -98,6 +99,8 @@ export function createDefaultAdvancedParams(
       release,
       knee: 6,
       makeup: 0,
+      sidechainHpfHz: 90,
+      autoRelease: false,
     },
     saturationModule: {
       enabled: true,
@@ -108,6 +111,14 @@ export function createDefaultAdvancedParams(
       enabled: true,
       width,
       monoBass: false,
+      crossoverHz: 110,
+      midGainDb: 0,
+      sideGainDb: 0,
+    },
+    deHarsh: { enabled: false, frequencyHz: 4500, thresholdDb: -24, rangeDb: 3 },
+    multiband: {
+      enabled: false, lowMidHz: 200, midHighHz: 4000,
+      bands: [0, 1, 2].map(() => ({ thresholdDb: -24, ratio: 1.5, attackMs: 30, releaseMs: 150, makeupDb: 0 })) as AdvancedParams["multiband"]["bands"],
     },
     limiter: {
       enabled: false,
@@ -230,168 +241,76 @@ export function computeEqMagnitudeDb(
   return totalGainDb;
 }
 
+type SimpleGenre = {
+  eq: [number, number, number, number, number];
+  threshold: number; ratio: number; attack: number; release: number;
+  sidechain: number; drive: number; width: number; monoBass: boolean;
+};
+
+// Independent starting points, informed by conservative mastering practice.
+// These are not Waves presets or source-adaptive analysis. See docs/mastering-controls-research.md.
+const simpleGenres = {
+  Pop: { eq: [0.2, -0.3, 0, 0.2, 0.5], threshold: -16, ratio: 1.8, attack: 30, release: 200, sidechain: 90, drive: 2, width: 104, monoBass: false },
+  "Hip-hop": { eq: [0.6, -0.4, 0, 0.3, 0.1], threshold: -16, ratio: 1.8, attack: 30, release: 200, sidechain: 120, drive: 3, width: 102, monoBass: true },
+  Rock: { eq: [0.2, -0.5, 0, 0.4, 0.2], threshold: -16, ratio: 2, attack: 30, release: 150, sidechain: 90, drive: 4, width: 104, monoBass: false },
+  Electronic: { eq: [0.5, -0.4, 0, 0.1, 0.6], threshold: -15, ratio: 2, attack: 25, release: 150, sidechain: 120, drive: 3, width: 106, monoBass: true },
+  Acoustic: { eq: [0, -0.2, 0.2, 0, 0.3], threshold: -14, ratio: 1.5, attack: 40, release: 300, sidechain: 60, drive: 0, width: 100, monoBass: false },
+  "R&B": { eq: [0.4, 0.2, 0.1, -0.2, 0.3], threshold: -17, ratio: 1.7, attack: 30, release: 250, sidechain: 100, drive: 3, width: 102, monoBass: true },
+} satisfies Record<string, SimpleGenre>;
+type SimpleTone = {
+  eq: [number, number, number, number, number];
+  ratio: number; drive: number; width: number; character: SaturationCharacter;
+};
+const simpleTones = {
+  Warm: { eq: [0.3, 0.5, 0, -0.4, 0], ratio: 0, drive: 5, width: 0, character: "Tube" },
+  Open: { eq: [0, -0.4, 0, 0.3, 0.9], ratio: -0.2, drive: 0, width: 4, character: "Tube" },
+  Punchy: { eq: [0.4, -0.3, 0, 0.4, 0.1], ratio: 0.2, drive: 2, width: 0, character: "Transformer" },
+  Intimate: { eq: [0, 0.3, 0.5, 0, -0.3], ratio: -0.1, drive: 3, width: -6, character: "Tube" },
+  Wide: { eq: [0, 0, 0, 0, 0.2], ratio: -0.1, drive: 0, width: 12, character: "Tape" },
+  Clean: { eq: [0, 0, 0, 0, 0], ratio: -0.3, drive: 0, width: 0, character: "Clean" },
+} satisfies Record<string, SimpleTone>;
+
 export function mapSimpleToDSP(
   genre: string,
   tone: string,
   intensity: number,
   target: string,
 ): AdvancedParams {
-  // A direction is a complete preset. Re-applying it must never compound the
-  // previous render's EQ, makeup gain or other module settings.
+  // Rebuild from defaults: repeated selections never compound an earlier curve.
   const base = createDefaultAdvancedParams();
-  const k = Math.max(0, Math.min(100, intensity)) / 100;
-
-  const bands: [
-    EQBandParams,
-    EQBandParams,
-    EQBandParams,
-    EQBandParams,
-    EQBandParams,
-  ] = [
-    { ...base.eqBands[0] },
-    { ...base.eqBands[1] },
-    { ...base.eqBands[2] },
-    { ...base.eqBands[3] },
-    { ...base.eqBands[4] },
-  ];
-
-  let satCharacter: "Warm" | "Thick" | "Crisp" = "Warm";
-  let satDrive = Math.round(10 * k * 10) / 10;
-  let compThresh = Math.round((-16 - 6 * k) * 10) / 10;
-  let compRatio = Math.round((2 + 1.5 * k) * 10) / 10;
-  let compAttack = 25;
-  let compRelease = 200;
-  let width = Math.round(100 + 15 * k);
-  let monoBass = false;
-
-  if (tone === "Warm") {
-    bands[0].gainDb = Math.round(1.8 * k * 10) / 10;
-    bands[1].gainDb = Math.round(2.4 * k * 10) / 10;
-    bands[3].gainDb = Math.round(-0.8 * k * 10) / 10;
-    bands[4].gainDb = Math.round(0.5 * k * 10) / 10;
-    satCharacter = "Warm";
-    satDrive = Math.round((15 + 25 * k) * 10) / 10;
-    compThresh = Math.round((-18 - 4 * k) * 10) / 10;
-    compRatio = 2.5;
-  } else if (tone === "Open") {
-    bands[0].gainDb = Math.round(0.5 * k * 10) / 10;
-    bands[1].gainDb = Math.round(-0.5 * k * 10) / 10;
-    bands[3].gainDb = Math.round(2.0 * k * 10) / 10;
-    bands[4].gainDb = Math.round(3.2 * k * 10) / 10;
-    satCharacter = "Crisp";
-    satDrive = Math.round((8 + 12 * k) * 10) / 10;
-    width = Math.round(105 + 20 * k);
-  } else if (tone === "Punchy") {
-    bands[0].gainDb = Math.round(2.8 * k * 10) / 10;
-    bands[1].gainDb = Math.round(1.0 * k * 10) / 10;
-    bands[2].gainDb = Math.round(-1.2 * k * 10) / 10;
-    bands[3].gainDb = Math.round(1.8 * k * 10) / 10;
-    satCharacter = "Thick";
-    satDrive = Math.round((12 + 20 * k) * 10) / 10;
-    compThresh = Math.round((-20 - 6 * k) * 10) / 10;
-    compRatio = 3.5;
-    compAttack = 15;
-    compRelease = 110;
-    monoBass = true;
-  } else if (tone === "Intimate") {
-    bands[0].gainDb = Math.round(0.5 * k * 10) / 10;
-    bands[1].gainDb = Math.round(1.5 * k * 10) / 10;
-    bands[2].gainDb = Math.round(2.0 * k * 10) / 10;
-    bands[3].gainDb = Math.round(0.8 * k * 10) / 10;
-    bands[4].gainDb = Math.round(-0.5 * k * 10) / 10;
-    satCharacter = "Warm";
-    satDrive = Math.round((14 + 18 * k) * 10) / 10;
-    compThresh = Math.round((-22 - 4 * k) * 10) / 10;
-    compRatio = 2.2;
-    compAttack = 20;
-    compRelease = 280;
-    width = 95;
-  } else if (tone === "Wide") {
-    bands[0].gainDb = Math.round(1.0 * k * 10) / 10;
-    bands[3].gainDb = Math.round(1.5 * k * 10) / 10;
-    bands[4].gainDb = Math.round(2.5 * k * 10) / 10;
-    satCharacter = "Crisp";
-    satDrive = Math.round((10 + 15 * k) * 10) / 10;
-    width = Math.round(115 + 30 * k);
-    monoBass = true;
-  } else if (tone === "Clean") {
-    bands[0].gainDb = Math.round(0.5 * k * 10) / 10;
-    bands[4].gainDb = Math.round(1.0 * k * 10) / 10;
-    satCharacter = "Crisp";
-    satDrive = Math.round(5 * k * 10) / 10;
-    compThresh = Math.round((-14 - 3 * k) * 10) / 10;
-    compRatio = 1.6;
-    width = 100;
-  }
-
-  if (genre === "Hip-hop") {
-    bands[0].gainDb = Math.round((bands[0].gainDb + 2.0 * k) * 10) / 10;
-    monoBass = true;
-  } else if (genre === "Rock") {
-    bands[3].gainDb = Math.round((bands[3].gainDb + 1.2 * k) * 10) / 10;
-    satDrive = Math.round((satDrive + 8 * k) * 10) / 10;
-  } else if (genre === "Electronic") {
-    bands[0].gainDb = Math.round((bands[0].gainDb + 2.2 * k) * 10) / 10;
-    bands[4].gainDb = Math.round((bands[4].gainDb + 2.0 * k) * 10) / 10;
-    monoBass = true;
-  } else if (genre === "Acoustic") {
-    bands[2].gainDb = Math.round((bands[2].gainDb + 1.0 * k) * 10) / 10;
-    satDrive = Math.min(satDrive, 12);
-    compRatio = Math.min(compRatio, 2.0);
-  } else if (genre === "R&B") {
-    bands[0].gainDb = Math.round((bands[0].gainDb + 1.6 * k) * 10) / 10;
-    bands[1].gainDb = Math.round((bands[1].gainDb + 1.2 * k) * 10) / 10;
-    satCharacter = "Warm";
-  }
-
-  let targetLufs = -14.0;
-  let ceiling = -1.0;
-  if (target === "Loud") {
-    targetLufs = -9.0;
-    ceiling = -0.2;
-  } else if (target === "Dynamic" || target === "Podcast") {
-    targetLufs = -16.0;
-    ceiling = -1.0;
-  }
-
+  const k = Number.isFinite(intensity) ? Math.max(0, Math.min(100, intensity)) / 100 : 0;
+  const direction = Object.entries(simpleGenres).find(([name]) => name === genre)?.[1] ?? simpleGenres.Pop;
+  const intention = Object.entries(simpleTones).find(([name]) => name === tone)?.[1] ?? simpleTones.Clean;
+  const round = (value: number) => Math.round(value * 100) / 100 + 0;
+  const bands = base.eqBands.map((band, index) => ({
+    ...band,
+    // A broad bell avoids using two overlapping low shelves for mud control.
+    type: index === 1 ? "peaking" as const : band.type,
+    q: index === 1 ? 0.7 : band.q,
+    gainDb: round(((direction.eq.at(index) ?? 0) + (intention.eq.at(index) ?? 0)) * k),
+  })) as AdvancedParams["eqBands"];
+  const threshold = round(-6 + (direction.threshold + 6) * k);
+  const ratio = round(1 + (direction.ratio + intention.ratio - 1) * k);
+  const drive = intention.character === "Clean" ? 0 : round((direction.drive + intention.drive) * k);
+  const width = round(100 + (direction.width + intention.width - 100) * k);
+  const monoBass = k > 0 && (direction.monoBass || tone === "Wide");
+  const attack = tone === "Punchy" ? 30 : direction.attack;
+  const release = tone === "Punchy" ? 150 : direction.release;
   return {
     ...base,
-    repair: { ...base.repair, enabled: false },
-    input: 0,
-    threshold: compThresh,
-    ratio: compRatio,
-    attack: compAttack,
-    release: compRelease,
-    width,
-    saturation: satDrive,
-    eqEnabled: true,
+    threshold, ratio, attack, release, width, saturation: drive,
     eqBands: bands,
     compressor: {
-      ...base.compressor,
-      enabled: true,
-      threshold: compThresh,
-      ratio: compRatio,
-      attack: compAttack,
-      release: compRelease,
+      ...base.compressor, enabled: k > 0, threshold, ratio, attack, release,
+      sidechainHpfHz: direction.sidechain,
+      autoRelease: true,
     },
-    saturationModule: {
-      ...base.saturationModule,
-      enabled: satDrive > 0,
-      drive: satDrive,
-      character: satCharacter,
-    },
-    stereo: {
-      ...base.stereo,
-      enabled: true,
-      width,
-      monoBass,
-    },
+    saturationModule: { enabled: drive > 0, drive, character: intention.character },
+    stereo: { ...base.stereo, enabled: k > 0, width, monoBass, crossoverHz: 110 },
     limiter: {
-      ...base.limiter,
-      enabled: true,
-      targetLufs,
-      ceiling,
-      truePeak: false,
+      ...base.limiter, enabled: true,
+      targetLufs: target === "Loud" ? -9 : target === "Dynamic" || target === "Podcast" ? -16 : -14,
+      ceiling: target === "Loud" ? -0.2 : -1,
     },
   };
 }
@@ -400,7 +319,14 @@ export function mapProfileToDSP(
   profile: ProfileId,
   baseParams?: AdvancedParams,
 ): AdvancedParams {
-  const base = baseParams ?? createDefaultAdvancedParams();
+  const defaults = createDefaultAdvancedParams();
+  const base = {
+    ...defaults, ...baseParams,
+    compressor: { ...defaults.compressor, ...baseParams?.compressor },
+    stereo: { ...defaults.stereo, ...baseParams?.stereo },
+    deHarsh: { ...defaults.deHarsh, ...baseParams?.deHarsh },
+    multiband: { ...defaults.multiband, ...baseParams?.multiband },
+  };
   const bands: [
     EQBandParams,
     EQBandParams,
@@ -563,11 +489,16 @@ export function mapProfileToDSP(
 }
 
 // Keep the displayed and processed EQ frequencies inside the source bandwidth.
-// Other controls and module enable states retain their exact values.
+// Keep frequency-selective modules below Nyquist while retaining enable states.
 export function clampAdvancedToSampleRate(settings: AdvancedParams, sampleRate: number): AdvancedParams {
   if (!Number.isFinite(sampleRate) || sampleRate < 8000 || sampleRate > 192000)
     throw new Error("Unsupported source sample rate.");
   const maximum = Math.min(18000, Math.floor(sampleRate * 0.47));
   const band = (value: EQBandParams): EQBandParams => ({ ...value, freqHz: Math.max(20, Math.min(maximum, value.freqHz)) });
-  return { ...settings, eqBands: [band(settings.eqBands[0]), band(settings.eqBands[1]), band(settings.eqBands[2]), band(settings.eqBands[3]), band(settings.eqBands[4])] };
+  return {
+    ...settings,
+    eqBands: [band(settings.eqBands[0]), band(settings.eqBands[1]), band(settings.eqBands[2]), band(settings.eqBands[3]), band(settings.eqBands[4])],
+    deHarsh: { ...settings.deHarsh, frequencyHz: Math.max(1000, Math.min(maximum, settings.deHarsh.frequencyHz)) },
+    multiband: { ...settings.multiband, midHighHz: Math.max(1500, Math.min(maximum, settings.multiband.midHighHz)) },
+  };
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strings"
 )
 
 // ValidateParams rejects non-finite and unsupported settings before they reach
@@ -89,7 +90,10 @@ func DecodeParamsJSON(data []byte, base Params) (Params, error) {
 	if err := validateJSONValues(object); err != nil {
 		return base, err
 	}
-	if raw, ok := object["bands"]; ok {
+	for key, raw := range object {
+		if !strings.EqualFold(key, "bands") {
+			continue
+		}
 		var bands []json.RawMessage
 		if err := json.Unmarshal(raw, &bands); err != nil {
 			return base, err
@@ -112,12 +116,18 @@ func DecodeParamsJSON(data []byte, base Params) (Params, error) {
 			}
 		}
 	}
-	if raw, ok := object["multiband"]; ok {
+	for key, raw := range object {
+		if !strings.EqualFold(key, "multiband") {
+			continue
+		}
 		var multiband map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &multiband); err != nil {
 			return base, err
 		}
-		if rawBands, supplied := multiband["bands"]; supplied {
+		for key, rawBands := range multiband {
+			if !strings.EqualFold(key, "bands") {
+				continue
+			}
 			var bands []map[string]json.RawMessage
 			if err := json.Unmarshal(rawBands, &bands); err != nil {
 				return base, err

@@ -228,9 +228,14 @@ func (m *Manager) admitLocked(job *Job, buf *audio.Buffer, stemCount int) error 
 	if buf == nil || buf.Frames < 1 || buf.Frames > audio.MaxDecodedFrames || len(buf.Left) != buf.Frames || len(buf.Right) != buf.Frames {
 		return errors.New("invalid audio buffer")
 	}
-	// Retain input stereo floats and reserve the worst-case 24-bit stereo stems
-	// before enqueueing. Workers cannot exceed the shared memory budget.
-	reservation := int64(buf.Frames)*(8+int64(stemCount)*6) + int64(stemCount)*44
+	// Reserve input stereo float PCM plus all simultaneously live float stem
+	// buffers and encoded 16-bit artifacts. Deep rendering also needs a stereo
+	// float output. Scratch/headroom covers metering history and small objects.
+	bytesPerFrame := int64(16)
+	if stemCount > 0 {
+		bytesPerFrame = 8 + int64(stemCount)*12
+	}
+	reservation := int64(buf.Frames)*bytesPerFrame + int64(stemCount)*44 + 16*1024*1024
 	if len(m.jobs) >= MaxRetainedJobs || reservation > MaxMemoryBytes-m.usedBytes {
 		return ErrQueueFull
 	}

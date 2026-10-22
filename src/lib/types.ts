@@ -83,6 +83,20 @@ export type AdvancedParams = {
   repair: RepairParams;
 };
 
+export type MeasuredAudioMetrics = {
+  integratedLufs: number;
+  shortTermLufs: number;
+  truePeakDbtp: number;
+  samplePeakDbfs: number;
+  dynamicRangeDb: number;
+  correlation: number;
+  lowBassCorrelation: number;
+  dcLeftDbfs: number;
+  dcRightDbfs: number;
+  clippingSamples: number;
+  gainReductionDb: number;
+};
+
 export type Metrics = {
   lufs: number;
   peak: number;
@@ -91,65 +105,14 @@ export type Metrics = {
   correlation: number;
 };
 
-export type MoveLane = "Volume" | "EQ" | "Comp/Sat" | "Width" | "AI Repair";
-
-export type Move = {
-  id: string;
-  lane: MoveLane;
-  parameter: string;
-  start: number;
-  end: number;
-  value: number;
-  originalValue: number;
-  points: [number, number][];
-  reason: string;
-  edited: boolean;
-  muted: boolean;
-};
-
-export type SectionType =
-  | "intro"
-  | "verse"
-  | "chorus"
-  | "bridge"
-  | "drop"
-  | "breakdown"
-  | "outro"
-  | "unknown";
-
-export type Section = {
-  id: string;
-  type: SectionType;
-  start: number;
-  end: number;
-  loudness: number;
-  centroid: number;
-};
-
-export type ArtifactFinding = {
-  stem: string;
-  classification: string;
-  confidence: number;
-  narrowness: number;
-  spectralCollapse: number;
-  correlations: number[];
-};
-
-export type MasteringScript = {
-  version: 1;
-  trackId: string;
-  sampleRate: number;
-  duration: number;
-  profile: ProfileId;
-  sections: Section[];
-  moves: Move[];
-  findings: ArtifactFinding[];
-};
-
 export type TrackStatus = "draft" | "ready" | "mastered" | "needs-review";
 
 export type Track = {
+  /** Only an explicit Simple selection establishes a preset association. */
+  simpleCustom?: boolean;
   persistenceWarning?: string;
+  measurements?: MeasuredAudioMetrics;
+  measurementKind?: "source" | "album-render";
   id: string;
   title: string;
   filename: string;
@@ -170,24 +133,7 @@ export type Track = {
   metrics: Metrics;
   advanced: AdvancedParams;
   profile: ProfileId;
-  script?: MasteringScript;
   releaseScore?: number;
-};
-
-export type Stem = {
-  id: string;
-  name: string;
-  level: number;
-  pan: number;
-  muted: boolean;
-  solo: boolean;
-};
-
-export type StemProject = {
-  trackId: string;
-  count: number;
-  complete: boolean;
-  stems: Stem[];
 };
 
 export type Album = {

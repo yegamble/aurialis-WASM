@@ -19,7 +19,7 @@ Our architectural goal is a **single compiled Go binary** (`aurialis`) that embe
      - *Shell Trap*: Non-interactive shells on macOS may default to an older `.nvm` Node (`v19.9.0`). Always ensure `~/.nvm/versions/node/v26.12.0/bin` is on `PATH` (or run via `mise exec --`).
    - **Package Manager**: **`pnpm` (`pnpm@10.33.0`) ONLY**. Never use `npm` or `yarn`, and never commit `package-lock.json` or `yarn.lock`.
    - **Next.js & React**: Latest **Next.js 16** (`^16.4.2`, App Router, static/standalone embedding) + **React 19** + **TypeScript 5.8+** (`strict: true`).
-   - **Go**: **Go 1.26+** (`go1.26.2`), compiling both the native host binary (`cmd/aurialis`) and WebAssembly DSP modules (`GOOS=js GOARCH=wasm` / `GOOS=wasip1 GOARCH=wasm`).
+   - **Go**: **Go 1.26+** (`go1.26.10`), compiling both the native host binary (`cmd/aurialis`) and WebAssembly DSP modules (`GOOS=js GOARCH=wasm` / `GOOS=wasip1 GOARCH=wasm`).
 2. **Low-Bundle, Zero-Icon-Library Frontend**:
    - **Styling**: **Tailwind CSS v4** (`@import 'tailwindcss';` and `@theme` tokens) for all styling.
    - **Icons**: **Hand-crafted inline SVGs ONLY**. External icon libraries (`lucide-react`, `@heroicons/react`, `react-icons`, `feather-icons`, font icons, or emoji glyphs) are **strictly forbidden** in production code to keep the client bundle minimal.

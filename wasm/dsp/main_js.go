@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"encoding/json"
 	"math"
 	"syscall/js"
@@ -16,6 +17,10 @@ const maxBridgeFrames = 65536
 
 var globalBridge = NewBridge(48000)
 var bridgeBuffers [4][maxBridgeFrames]float32
+
+// Fixed byte scratch keeps the JS transfer bounded without unsafe float aliases.
+// Input bytes are no longer needed when these buffers encode the output.
+var bridgeBytes [2][maxBridgeFrames * 4]byte
 
 func jsInit(_ js.Value, args []js.Value) any {
 	if len(args) != 1 || args[0].Type() != js.TypeNumber {
@@ -82,16 +87,74 @@ func frameCount(args []js.Value) int {
 	}
 	return n
 }
+
+type channelByteView struct {
+	value  js.Value
+	buffer js.Value
+	offset float64
+}
+
+func channelBytes(value js.Value, n int) channelByteView {
+	buffer := value.Get("buffer")
+	offset := value.Get("byteOffset").Float()
+	return channelByteView{
+		value:  js.Global().Get("Uint8Array").New(buffer, offset, n*4),
+		buffer: buffer,
+		offset: offset,
+	}
+}
+
 func readChannels(args []js.Value, n int) bool {
-	for i := 0; i < n; i++ {
-		left, right := args[0].Index(i).Float(), args[1].Index(i).Float()
-		if !finiteJS(left) || !finiteJS(right) {
+	for channel := 0; channel < 2; channel++ {
+		view := channelBytes(args[channel], n)
+		raw := bridgeBytes[channel][:n*4]
+		if js.CopyBytesToGo(raw, view.value) != len(raw) {
 			return false
 		}
-		bridgeBuffers[0][i], bridgeBuffers[1][i] = float32(left), float32(right)
+		for i := 0; i < n; i++ {
+			bits := binary.LittleEndian.Uint32(raw[i*4:])
+			if bits == 0x80000000 {
+				bits = 0 // syscall/js numeric transfers canonicalize negative zero.
+			}
+			sample := math.Float32frombits(bits)
+			if !finiteJS(float64(sample)) {
+				return false
+			}
+			bridgeBuffers[channel][i] = sample
+		}
 	}
 	return true
 }
+
+func writeChannels(dstL, dstR js.Value, n int) {
+	left, right := channelBytes(dstL, n), channelBytes(dstR, n)
+	sharedType := js.Global().Get("SharedArrayBuffer")
+	shared := sharedType.Type() == js.TypeFunction && left.buffer.InstanceOf(sharedType) && right.buffer.InstanceOf(sharedType)
+	if shared || (left.buffer.Equal(right.buffer) && left.offset < right.offset+float64(n*4) && right.offset < left.offset+float64(n*4)) {
+		// Shifted overlapping destinations depend on the original interleaved
+		// L[i], R[i] ordering. Shared buffers can alias through distinct cloned
+		// wrappers, so conservatively preserve the ordering for those too.
+		for i := 0; i < n; i++ {
+			dstL.SetIndex(i, float64(bridgeBuffers[2][i]))
+			dstR.SetIndex(i, float64(bridgeBuffers[3][i]))
+		}
+		return
+	}
+	for channel := 0; channel < 2; channel++ {
+		raw := bridgeBytes[channel][:n*4]
+		for i := 0; i < n; i++ {
+			sample := bridgeBuffers[channel+2][i]
+			bits := math.Float32bits(sample)
+			if sample == 0 {
+				bits = 0 // Match the original SetIndex numeric transfer.
+			}
+			binary.LittleEndian.PutUint32(raw[i*4:], bits)
+		}
+	}
+	js.CopyBytesToJS(left.value, bridgeBytes[0][:n*4])
+	js.CopyBytesToJS(right.value, bridgeBytes[1][:n*4])
+}
+
 func jsProcessBlock(_ js.Value, args []js.Value) any {
 	if len(args) != 2 && len(args) != 4 {
 		return 0
@@ -111,10 +174,7 @@ func jsProcessBlock(_ js.Value, args []js.Value) any {
 		return 0
 	}
 	globalBridge.ProcessBlock(bridgeBuffers[0][:n], bridgeBuffers[1][:n], bridgeBuffers[2][:n], bridgeBuffers[3][:n])
-	for i := 0; i < n; i++ {
-		dstL.SetIndex(i, float64(bridgeBuffers[2][i]))
-		dstR.SetIndex(i, float64(bridgeBuffers[3][i]))
-	}
+	writeChannels(dstL, dstR, n)
 	return n
 }
 func jsMeasure(_ js.Value, args []js.Value) any {

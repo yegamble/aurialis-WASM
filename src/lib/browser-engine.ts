@@ -1,4 +1,4 @@
-import type { AdvancedParams } from "./types";
+import type { AdvancedParams, MeasuredAudioMetrics } from "./types";
 
 export interface StereoPCM {
   left: Float32Array<ArrayBuffer>;
@@ -25,6 +25,10 @@ declare global {
   }
 }
 export function engineParams(advanced: AdvancedParams) {
+  if (advanced.limiter.enabled && advanced.limiter.truePeak)
+    throw new Error("True-peak limiting is unavailable. Use the sample-peak limiter.");
+  if (advanced.repair.enabled)
+    throw new Error("Audio repair is unavailable. Disable repair to render.");
   return {
     bypass: false,
     abOriginal: false,
@@ -40,7 +44,7 @@ export function engineParams(advanced: AdvancedParams) {
           ? "low_shelf"
           : band.type === "highshelf"
             ? "high_shelf"
-            : "peaking",
+            : band.type === "highpass" ? "high_pass" : "peaking",
       enabled: band.enabled,
     })),
     compressor: {
@@ -115,6 +119,56 @@ async function loadEngine(): Promise<void> {
   return loading;
 }
 let engineQueue: Promise<unknown> = Promise.resolve();
+
+async function audioRequest(
+  data: FormData,
+  signal?: AbortSignal,
+  json = false,
+): Promise<Response> {
+  signal?.throwIfAborted();
+  try {
+    return await fetch("/api/master/render", {
+      method: "POST",
+      body: data,
+      ...(json ? { headers: { Accept: "application/json" } } : {}),
+      ...(signal ? { signal } : {}),
+    });
+  } catch (error: unknown) {
+    signal?.throwIfAborted();
+    const address = typeof location === "undefined" ? "this address" : location.origin;
+    throw new Error(
+      `Could not reach the local audio server at ${address}. Check that Aurialis is running, then try again. If your browser reports a blocked local connection, check this site's local-network permission.`,
+      { cause: error },
+    );
+  }
+}
+
+async function audioError(response: Response, fallback: string): Promise<Error> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return new Error(`${fallback} (HTTP ${String(response.status)}).`);
+  }
+  if (typeof body === "object" && body !== null) {
+    if ("detail" in body && typeof body.detail === "string") return new Error(body.detail);
+    if ("message" in body && typeof body.message === "string") return new Error(body.message);
+    if ("error" in body && typeof body.error === "string") return new Error(body.error);
+  }
+  return new Error(fallback);
+}
+
+async function readAudioResponse<T>(read: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  try {
+    const result = await read();
+    signal?.throwIfAborted();
+    return result;
+  } catch (error: unknown) {
+    signal?.throwIfAborted();
+    throw new Error("The local audio response was interrupted or unreadable. Check that Aurialis is still running, then try again.", { cause: error });
+  }
+}
+
 export function processPreview(
   source: StereoPCM,
   advanced: AdvancedParams,
@@ -160,29 +214,17 @@ export async function serverRender(
   file: Blob,
   params: object,
   bitDepth: 16 | 24 | 32,
+  signal?: AbortSignal,
 ): Promise<Blob> {
+  signal?.throwIfAborted();
   const data = new FormData();
   data.append("file", file, "source.wav");
   data.append("params", JSON.stringify(params));
   data.append("bitDepth", String(bitDepth));
-  const response = await fetch("/api/master/render", {
-    method: "POST",
-    body: data,
-  });
-  if (!response.ok) {
-    const body: unknown = await response.json();
-    let message = "Audio processing failed. Please try again.";
-    if (typeof body === "object" && body !== null) {
-      if ("detail" in body && typeof body.detail === "string")
-        message = body.detail;
-      else if ("message" in body && typeof body.message === "string")
-        message = body.message;
-      else if ("error" in body && typeof body.error === "string")
-        message = body.error;
-    }
-    throw new Error(message);
-  }
-  return response.blob();
+  const response = await audioRequest(data, signal);
+  if (!response.ok)
+    throw await audioError(response, "Audio processing failed. Please try again.");
+  return readAudioResponse(() => response.blob(), signal);
 }
 export async function readCanonicalWAV(blob: Blob): Promise<StereoPCM> {
   const data = new DataView(await blob.arrayBuffer());
@@ -262,44 +304,13 @@ export function previewWAV(pcm: StereoPCM): Blob {
   }
   return new Blob([data], { type: "audio/wav" });
 }
-export function computeRmsValue(pcm: StereoPCM): number {
-  let sum = 0;
-  for (let i = 0; i < pcm.left.length; i++) {
-    const l = pcm.left.at(i) ?? 0,
-      r = pcm.right.at(i) ?? 0;
-    sum += l * l + r * r;
-  }
-  return Math.sqrt(sum / (pcm.left.length * 2));
-}
-
-export function measuredLevels(pcm: StereoPCM): {
-  peak: string;
-  rms: string;
-  crest: string;
-} {
-  let peak = 0,
-    sum = 0;
-  for (let i = 0; i < pcm.left.length; i++) {
-    const l = pcm.left.at(i) ?? 0,
-      r = pcm.right.at(i) ?? 0;
-    peak = Math.max(peak, Math.abs(l), Math.abs(r));
-    sum += l * l + r * r;
-  }
-  const rms = Math.sqrt(sum / (pcm.left.length * 2));
-  const db = (n: number) => (n > 0 ? (20 * Math.log10(n)).toFixed(1) : "−∞");
-  return {
-    peak: db(peak),
-    rms: db(rms),
-    crest: rms > 0 ? (20 * Math.log10(peak / rms)).toFixed(1) : "—",
-  };
-}
 export function sourcePeaks(pcm: StereoPCM): number[] {
-  const size = Math.max(1, Math.ceil(pcm.left.length / 96));
-  return Array.from({ length: 96 }, (_, index) => {
+  const count = Math.min(2048, pcm.left.length);
+  return Array.from({ length: count }, (_, index) => {
     let peak = 0;
     for (
-      let i = index * size;
-      i < Math.min((index + 1) * size, pcm.left.length);
+      let i = Math.floor(index * pcm.left.length / count);
+      i < Math.floor((index + 1) * pcm.left.length / count);
       i++
     )
       peak = Math.max(
@@ -309,4 +320,157 @@ export function sourcePeaks(pcm: StereoPCM): number[] {
       );
     return peak;
   });
+}
+
+type AudioMeasurement = {
+  sampleRate: number;
+  frames: number;
+  duration: number;
+  beforeMetrics: MeasuredAudioMetrics;
+  afterMetrics: MeasuredAudioMetrics;
+};
+
+/** Receive the reconstructed source and its measurements without uploading it twice. */
+export async function importAudio(file: Blob, signal?: AbortSignal): Promise<{ canonical: Blob; measurement: AudioMeasurement }> {
+  const form = new FormData();
+  form.append("file", file, "source.wav");
+  form.append("params", JSON.stringify({ bypass: true }));
+  form.append("bitDepth", "32");
+  const response = await audioRequest(form, signal);
+  if (!response.ok) throw await audioError(response, "Audio import failed.");
+  const header = response.headers.get("X-Aurialis-Source-Metrics");
+  let measurement: AudioMeasurement;
+  try {
+    if (!header || header.length > 4096) throw new Error("The local server returned incomplete source measurements. Restart Aurialis and try again.");
+    let body: unknown;
+    try { body = JSON.parse(header) as unknown; }
+    catch { throw new Error("The local server returned invalid source measurements."); }
+    measurement = audioMeasurement(body);
+  } catch (error) {
+    await response.body?.cancel().catch(() => undefined);
+    throw error;
+  }
+  const canonical = await readAudioResponse(() => response.blob(), signal);
+  if (canonical.size !== 44 + measurement.frames * 8)
+    throw new Error("The reconstructed audio transfer was incomplete. Try importing the source again.");
+  return { canonical, measurement };
+}
+
+function metricObject(value: unknown): MeasuredAudioMetrics {
+  if (typeof value !== "object" || value === null)
+    throw new Error("The server returned invalid audio measurements.");
+  const number = (key: keyof MeasuredAudioMetrics): number => {
+    // Keys are the fixed measurement schema below, never user-provided keys.
+    // eslint-disable-next-line security/detect-object-injection
+    const result: unknown = (value as Record<string, unknown>)[key];
+    if (typeof result !== "number" || !Number.isFinite(result))
+      throw new Error("The server returned incomplete audio measurements.");
+    return result;
+  };
+  return {
+    integratedLufs: number("integratedLufs"),
+    shortTermLufs: number("shortTermLufs"),
+    truePeakDbtp: number("truePeakDbtp"),
+    samplePeakDbfs: number("samplePeakDbfs"),
+    dynamicRangeDb: number("dynamicRangeDb"),
+    correlation: number("correlation"),
+    lowBassCorrelation: number("lowBassCorrelation"),
+    dcLeftDbfs: number("dcLeftDbfs"),
+    dcRightDbfs: number("dcRightDbfs"),
+    clippingSamples: number("clippingSamples"),
+    gainReductionDb: number("gainReductionDb"),
+  };
+}
+
+export async function measureAudio(
+  file: Blob,
+  params: object = { bypass: true },
+  signal?: AbortSignal,
+): Promise<AudioMeasurement> {
+  const form = new FormData();
+  form.append("file", file, "source.wav");
+  form.append("params", JSON.stringify(params));
+  form.append("format", "json");
+  const response = await audioRequest(form, signal, true);
+  if (!response.ok) throw await audioError(response, "Audio measurement failed.");
+  const body: unknown = await readAudioResponse(() => response.json() as Promise<unknown>, signal);
+  return audioMeasurement(body);
+}
+
+function audioMeasurement(body: unknown): AudioMeasurement {
+  if (typeof body !== "object" || body === null || !("sampleRate" in body)
+    || !("frames" in body) || !("duration" in body)
+    || !("beforeMetrics" in body) || !("afterMetrics" in body)
+    || typeof body.sampleRate !== "number" || !Number.isFinite(body.sampleRate)
+    || body.sampleRate < 8000 || body.sampleRate > 192000
+    || typeof body.frames !== "number" || !Number.isSafeInteger(body.frames) || body.frames < 1
+    || typeof body.duration !== "number" || !Number.isFinite(body.duration) || body.duration <= 0
+    || Math.abs(body.duration - body.frames / body.sampleRate) > 0.001)
+    throw new Error("The server returned invalid audio measurements.");
+  return {
+    sampleRate: body.sampleRate,
+    frames: body.frames,
+    duration: body.duration,
+    beforeMetrics: metricObject(body.beforeMetrics),
+    afterMetrics: metricObject(body.afterMetrics),
+  };
+}
+
+// range/dynamics are legacy display slots for measured crest factor, not LRA.
+export function trackMetrics(metrics: MeasuredAudioMetrics) {
+  return {
+    lufs: metrics.integratedLufs,
+    peak: metrics.truePeakDbtp,
+    range: metrics.dynamicRangeDb,
+    dynamics: metrics.dynamicRangeDb,
+    correlation: metrics.correlation,
+  };
+}
+
+// Explicit Simple-mode automatic gain. Advanced rendering never calls this.
+// Fail rather than claiming a target when nonlinear processing or available
+// sample-peak limiting cannot meet both loudness and the measured peak ceiling.
+export async function normalizeSimpleAudio(
+  file: Blob,
+  settings: AdvancedParams,
+  targetLufs: number,
+  signal?: AbortSignal,
+): Promise<AdvancedParams> {
+  if (!Number.isFinite(targetLufs) || targetLufs < -36 || targetLufs > -5)
+    throw new Error("Choose a loudness target between −36 and −5 LUFS.");
+  let candidate = structuredClone(settings);
+  let previous: { input: number; loudness: number } | undefined;
+  let lower = -36;
+  let upper = 36;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    signal?.throwIfAborted();
+    const { afterMetrics } = await measureAudio(file, engineParams(candidate), signal);
+    signal?.throwIfAborted();
+    const difference = targetLufs - afterMetrics.integratedLufs;
+    if (afterMetrics.integratedLufs <= -69.9)
+      throw new Error("The source is too quiet to normalize reliably.");
+    if (Math.abs(difference) <= 0.2) {
+      if (afterMetrics.truePeakDbtp > candidate.limiter.ceiling + 0.2)
+        throw new Error("This loudness target exceeds the measured peak ceiling. Choose a quieter target.");
+      return candidate;
+    }
+    // Input gain precedes compression and saturation, so one dB of input does
+    // not necessarily produce one LU of output. Estimate that response from
+    // measured renders, retaining a bracket when the slope changes or flattens.
+    if (difference > 0) lower = Math.max(lower, candidate.input);
+    else upper = Math.min(upper, candidate.input);
+    let nextInput = candidate.input + difference;
+    if (previous) {
+      const slope = (afterMetrics.integratedLufs - previous.loudness) / (candidate.input - previous.input);
+      nextInput = Number.isFinite(slope) && slope > 0.01
+        ? candidate.input + difference / slope
+        : (lower + upper) / 2;
+      if (nextInput <= lower || nextInput >= upper) nextInput = (lower + upper) / 2;
+    }
+    nextInput = Math.max(-36, Math.min(36, nextInput));
+    if (Math.abs(nextInput - candidate.input) < 0.001) break;
+    previous = { input: candidate.input, loudness: afterMetrics.integratedLufs };
+    candidate = { ...candidate, input: nextInput };
+  }
+  throw new Error("This loudness target could not be reached safely. Choose a quieter target or adjust dynamics.");
 }

@@ -8,7 +8,7 @@
     "node": ">=26.12.0"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "bash scripts/dev.sh",
     "build": "next build && node scripts/sync-webui.mjs",
     "start": "./aurialis",
     "lint": "eslint --max-warnings=0 src",

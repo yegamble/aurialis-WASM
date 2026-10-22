@@ -16,6 +16,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/yegamble/Aurialis-WASM/internal/audio"
 	"github.com/yegamble/Aurialis-WASM/internal/server"
 )
 
@@ -135,11 +136,11 @@ func (b *blockingBody) Read(_ []byte) (int, error) {
 }
 func (*blockingBody) Close() error { return nil }
 
-func TestAudioAdmissionRejectsBeforeReadingThirdBody(t *testing.T) {
+func TestAudioAdmissionRejectsBeforeReadingSecondBody(t *testing.T) {
 	srv := server.New(server.Config{})
 	defer srv.Close()
 	var group sync.WaitGroup
-	bodies := make([]*blockingBody, 2)
+	bodies := make([]*blockingBody, 1)
 	for i := range bodies {
 		b := &blockingBody{started: make(chan struct{}), release: make(chan struct{})}
 		bodies[i] = b
@@ -167,8 +168,8 @@ func TestAudioAdmissionRejectsBeforeReadingThirdBody(t *testing.T) {
 	r.Host = "127.0.0.1:8080"
 	w := httptest.NewRecorder()
 	srv.Handler().ServeHTTP(w, r)
-	if w.Code != 429 {
-		t.Fatalf("third request status=%d", w.Code)
+	if w.Code != 503 {
+		t.Fatalf("second request status=%d", w.Code)
 	}
 }
 
@@ -206,5 +207,17 @@ func TestStrictRenderParameters(t *testing.T) {
 		if w.Code != 400 {
 			t.Fatalf("params %s status=%d", params, w.Code)
 		}
+	}
+}
+
+func TestCanonicalFrameLimitFitsMultipartBudget(t *testing.T) {
+	// Full float-stereo PCM plus WAV header, all six permitted 64-KiB form
+	// fields, and bounded boundary/header allowance must fit the request cap.
+	worstCase := int64(audio.MaxDecodedFrames)*8 + 44 + 6*64*1024 + 64*1024
+	if worstCase >= server.DefaultMaxUploadBytes {
+		t.Fatalf("canonical request needs %d; limit %d", worstCase, server.DefaultMaxUploadBytes)
+	}
+	if server.MaxAudioFileBytes != int64(audio.MaxDecodedFrames)*8+44 {
+		t.Fatal("file and frame limits disagree")
 	}
 }

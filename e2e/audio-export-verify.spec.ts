@@ -1,23 +1,21 @@
 import { readFile } from "node:fs/promises"
 import { expect, test } from "@playwright/test"
-import { fixture, decode } from "./audio-fixture"
+import { decode } from "./audio-fixture"
+import { uploadProject } from "./workflow-fixture"
 
 test.describe("Accessible modal and honest WAV source export", () => {
-  test("a design example without source audio cannot preview or export fabricated audio", async ({ page }) => {
-    await page.goto("/master/demo-1")
-    await expect(page.getByRole("status")).toContainText("This design example has no uploaded audio")
-    await expect(page.getByRole("button", { name: "Export", exact: true })).toBeDisabled()
-    await expect(page.getByRole("button", { name: "Render preview", exact: true })).toBeDisabled()
-    await expect(page.getByRole("button", { name: "Play", exact: true })).toBeDisabled()
-    await expect(page.getByRole("button", { name: "B Processed", exact: true })).toBeDisabled()
-    await expect(page.getByRole("dialog")).toHaveCount(0)
+  test("a fresh library contains no example projects or fabricated source", async ({ page }) => {
+    await page.goto("/")
+    await expect(page.getByText("Your library starts with your own audio.", { exact: false })).toBeVisible()
+    await expect(page.getByText("Velvet Static", { exact: true })).toHaveCount(0)
+    await page.goto("/master/placeholder")
+    await expect(page.getByRole("heading", { name: "Project not found" })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Export", exact: true })).toHaveCount(0)
   })
 
   test("uploaded audio exports full-length 24-bit PCM and Escape returns focus", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 })
-    await page.goto("/")
-    await page.getByLabel("Upload audio file").setInputFiles({ name: "qa-modal-tone.wav", mimeType: "audio/wav", buffer: fixture() })
-    await expect(page).toHaveURL(/\/master\/track-/)
+    await uploadProject(page, "qa-modal-tone.wav")
     const exportButton = page.getByRole("button", { name: "Export", exact: true })
     await expect(exportButton).toBeEnabled()
     await exportButton.click()

@@ -75,7 +75,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           check-latest: true
 
       - name: Check gofmt formatting
@@ -106,11 +106,12 @@ jobs:
       - name: Run Go unit & concurrency race tests
         run: go test -race -count=1 -timeout 10m ./...
 
-      - name: Compile WebAssembly DSP module (GOOS=js GOARCH=wasm)
+      - name: Compile Go browser bridge and WASI audio reactor
         run: |
           mkdir -p public/wasm
           GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp
-          ls -lh public/wasm/aurialis-dsp.wasm
+          GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -trimpath -o public/wasm/aurialis-realtime.wasm ./wasm/dsp
+          ls -lh public/wasm/aurialis-dsp.wasm public/wasm/aurialis-realtime.wasm
 
       - name: Verify actual native and WASM signal parity
         uses: actions/setup-node@v4
@@ -165,7 +166,7 @@ jobs:
       - name: Set up Go for embedded binary
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
 
       - name: Build and smoke-test embedded production binary
         run: |
@@ -184,7 +185,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           check-latest: true
 
       - name: Set up pnpm
@@ -216,7 +217,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.26.9"
+          go-version: "1.26.10"
           check-latest: true
 
       - name: Set up pnpm

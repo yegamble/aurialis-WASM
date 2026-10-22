@@ -5,6 +5,8 @@
     "node_modules/**",
     ".next/**",
     "out/**",
+    "test-results/**",
+    "playwright-report/**",
     "internal/webui/embedded/**",
     "internal/webui/dist/**",
     "public/wasm/**",

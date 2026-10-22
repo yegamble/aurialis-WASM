@@ -17,6 +17,11 @@ export type IconName =
   | "library"
   | "menu"
   | "more-horizontal"
+  | "skip-back"
+  | "skip-forward"
+  | "forward-10"
+  | "repeat"
+  | "volume"
   | "pause"
   | "play"
   | "plus"
@@ -64,6 +69,16 @@ export function Icon({ name, title, className = "", ...props }: IconProps) {
 
 function renderPaths(name: IconName) {
   switch (name) {
+    case "skip-back":
+      return <><path d="M5 4v16" /><path d="m19 4-11 8 11 8Z" /></>;
+    case "skip-forward":
+      return <><path d="M19 4v16" /><path d="m5 4 11 8-11 8Z" /></>;
+    case "forward-10":
+      return <><path d="M20 4v6h-6" /><path d="M20 10a8 8 0 1 0-1 8" /><text x="11" y="15" textAnchor="middle" fontSize="7" fontWeight="600" stroke="none" fill="currentColor">10s</text></>;
+    case "repeat":
+      return <><path d="m17 2 4 4-4 4" /><path d="M3 11V8a2 2 0 0 1 2-2h16" /><path d="m7 22-4-4 4-4" /><path d="M21 13v3a2 2 0 0 1-2 2H3" /></>;
+    case "volume":
+      return <><path d="m11 5-5 4H3v6h3l5 4Z" /><path d="M15 8a6 6 0 0 1 0 8" /><path d="M18 5a10 10 0 0 1 0 14" /></>;
     case "album":
       return (
         <>

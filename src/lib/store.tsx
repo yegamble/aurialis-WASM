@@ -10,7 +10,8 @@ import {
   type Dispatch,
   type ReactNode,
 } from "react";
-import { createDefaultAdvancedParams, mapProfileToDSP } from "./audio-dsp";
+import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP } from "./audio-dsp";
+import { masteringTargets } from "./mastering-targets";
 import type {
   Album,
   AdvancedParams,
@@ -18,20 +19,12 @@ import type {
   EQBandId,
   EQBandParams,
   LimiterParams,
-  MasteringScript,
-  Move,
-  MoveLane,
   ProfileId,
   RepairParams,
   SaturationParams,
-  SectionType,
-  Stem,
-  StemProject,
   StereoParams,
   Track,
 } from "./types";
-
-const INITIAL_TIMESTAMP = "2026-10-20T00:00:00.000Z";
 
 export const profiles: { id: ProfileId; name: string; note: string }[] = [
   {
@@ -61,126 +54,16 @@ export const profiles: { id: ProfileId; name: string; note: string }[] = [
   },
 ];
 
-const demoTracks: Track[] = [
-  {
-    id: "demo-1",
-    title: "Velvet Static",
-    filename: "velvet-static.wav",
-    duration: 218,
-    size: 58_400_000,
-    format: "WAV",
-    sampleRate: 48000,
-    status: "ready",
-    createdAt: INITIAL_TIMESTAMP,
-    updatedAt: INITIAL_TIMESTAMP,
-    seed: 17,
-    source: "demo",
-    mode: "simple",
-    genre: "Indie",
-    tone: "Warm",
-    intensity: 58,
-    target: "Streaming",
-    metrics: {
-      lufs: -16.8,
-      peak: -2.4,
-      range: 8.9,
-      dynamics: 10.4,
-      correlation: 0.86,
-    },
-    advanced: createDefaultAdvancedParams({
-      input: 0,
-      threshold: -18,
-      ratio: 2.5,
-      attack: 28,
-      release: 220,
-      width: 106,
-      saturation: 12,
-    }),
-    profile: "indie_warmth",
-  },
-  {
-    id: "demo-2",
-    title: "Borrowed Light",
-    filename: "borrowed-light.aif",
-    duration: 194,
-    size: 47_200_000,
-    format: "AIFF",
-    sampleRate: 44100,
-    status: "mastered",
-    createdAt: INITIAL_TIMESTAMP,
-    updatedAt: INITIAL_TIMESTAMP,
-    seed: 31,
-    source: "demo",
-    mode: "advanced",
-    genre: "Alternative",
-    tone: "Open",
-    intensity: 67,
-    target: "Streaming",
-    metrics: {
-      lufs: -14.1,
-      peak: -1.1,
-      range: 7.2,
-      dynamics: 8.8,
-      correlation: 0.91,
-    },
-    advanced: createDefaultAdvancedParams({
-      input: 1.2,
-      threshold: -20,
-      ratio: 3,
-      attack: 20,
-      release: 180,
-      width: 112,
-      saturation: 9,
-    }),
-    profile: "modern_pop_polish",
-  },
-  {
-    id: "demo-3",
-    title: "After the Rain",
-    filename: "after-the-rain.mp3",
-    duration: 246,
-    size: 9_800_000,
-    format: "MP3",
-    sampleRate: 44100,
-    status: "needs-review",
-    createdAt: INITIAL_TIMESTAMP,
-    updatedAt: INITIAL_TIMESTAMP,
-    seed: 52,
-    source: "demo",
-    mode: "deep",
-    genre: "Electronic",
-    tone: "Wide",
-    intensity: 72,
-    target: "Loud",
-    metrics: {
-      lufs: -12.7,
-      peak: -0.4,
-      range: 5.8,
-      dynamics: 7.1,
-      correlation: 0.72,
-    },
-    advanced: createDefaultAdvancedParams({
-      input: 1.8,
-      threshold: -21,
-      ratio: 3.5,
-      attack: 15,
-      release: 160,
-      width: 118,
-      saturation: 17,
-    }),
-    profile: "modern_pop_polish",
-  },
-];
-
 type StoreState = {
   tracks: Track[];
   albums: Album[];
-  stems: StemProject[];
+  stems: never[];
 };
 
 type StoreAction =
   | { type: "ADD_TRACK"; track: Track }
   | { type: "UPDATE_TRACK"; id: string; patch: Partial<Track> }
+  | { type: "APPLY_NORMALIZED_GAIN"; id: string; expected: AdvancedParams; input: number }
   | {
       type: "UPDATE_SIMPLE";
       id: string;
@@ -209,15 +92,6 @@ type StoreAction =
   | { type: "UPDATE_INPUT_GAIN"; trackId: string; input: number }
   | { type: "RESET_ADVANCED"; trackId: string }
   | { type: "DELETE_TRACK"; id: string }
-  | { type: "SAVE_SCRIPT"; id: string; script: MasteringScript }
-  | { type: "UPDATE_MOVE"; trackId: string; move: Move }
-  | { type: "SAVE_STEMS"; project: StemProject }
-  | {
-      type: "UPDATE_STEM";
-      trackId: string;
-      stemId: string;
-      patch: Partial<Omit<Stem, "id">>;
-    }
   | { type: "ADD_ALBUM"; album: Album }
   | { type: "UPDATE_ALBUM"; id: string; patch: Partial<Album> }
   | { type: "DELETE_ALBUM"; id: string }
@@ -225,7 +99,7 @@ type StoreAction =
   | { type: "RESET_WORKSPACE" };
 
 export const initialStoreState: StoreState = {
-  tracks: demoTracks,
+  tracks: [],
   albums: [],
   stems: [],
 };
@@ -244,7 +118,7 @@ export function reduceStoreState(
 ): StoreState {
   switch (action.type) {
     case "ADD_TRACK":
-      return { ...state, tracks: [action.track, ...state.tracks] };
+      return { ...state, tracks: [{ ...action.track, simpleCustom: action.track.simpleCustom ?? true }, ...state.tracks] };
 
     case "UPDATE_TRACK":
       return {
@@ -252,18 +126,35 @@ export function reduceStoreState(
         tracks: updateTrackInList(state.tracks, action.id, (track) => ({
           ...track,
           ...action.patch,
+          ...(action.patch.advanced ? { simpleCustom: action.patch.simpleCustom ?? true } : {}),
           updatedAt: new Date().toISOString(),
         })),
+      };
+
+    case "APPLY_NORMALIZED_GAIN":
+      return {
+        ...state,
+        tracks: updateTrackInList(state.tracks, action.id, (track) => track.advanced === action.expected ? {
+          ...track, advanced: { ...track.advanced, input: action.input }, updatedAt: new Date().toISOString(),
+        } : track),
       };
 
     case "UPDATE_SIMPLE":
       return {
         ...state,
-        tracks: updateTrackInList(state.tracks, action.id, (track) => ({
-          ...track,
-          ...action.patch,
-          updatedAt: new Date().toISOString(),
-        })),
+        tracks: updateTrackInList(state.tracks, action.id, (track) => {
+          const next = { ...track, ...action.patch };
+          const mapped = clampAdvancedToSampleRate(mapSimpleToDSP(next.genre, next.tone, next.intensity, next.target), next.sampleRate);
+          const directionChanged = action.patch.genre !== undefined || action.patch.tone !== undefined || action.patch.intensity !== undefined;
+          const target = action.patch.target === undefined ? track.advanced.limiter : masteringTargets.find((item) => item.name === action.patch.target) ?? track.advanced.limiter;
+          const limiterTarget = { targetLufs: target.targetLufs, ceiling: target.ceiling };
+          return {
+            ...next,
+            simpleCustom: directionChanged ? false : track.simpleCustom ?? true,
+            advanced: directionChanged ? { ...mapped, limiter: { ...mapped.limiter, ...limiterTarget } } : { ...track.advanced, limiter: { ...track.advanced.limiter, ...limiterTarget } },
+            updatedAt: new Date().toISOString(),
+          };
+        }),
       };
 
     case "UPDATE_INPUT_GAIN":
@@ -271,6 +162,7 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
           ...track,
+          simpleCustom: true,
           advanced: {
             ...track.advanced,
             input: action.input,
@@ -284,6 +176,7 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
           ...track,
+          simpleCustom: true,
           advanced: {
             ...track.advanced,
             eqEnabled: action.enabled,
@@ -301,6 +194,7 @@ export function reduceStoreState(
           ) as Track["advanced"]["eqBands"];
           return {
             ...track,
+            simpleCustom: true,
             advanced: {
               ...track.advanced,
               eqBands: nextBands,
@@ -320,6 +214,7 @@ export function reduceStoreState(
           };
           return {
             ...track,
+            simpleCustom: true,
             advanced: {
               ...track.advanced,
               threshold: nextComp.threshold,
@@ -343,6 +238,7 @@ export function reduceStoreState(
           };
           return {
             ...track,
+            simpleCustom: true,
             advanced: {
               ...track.advanced,
               saturation: nextSat.drive,
@@ -363,6 +259,7 @@ export function reduceStoreState(
           };
           return {
             ...track,
+            simpleCustom: true,
             advanced: {
               ...track.advanced,
               width: nextStereo.width,
@@ -378,6 +275,7 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
           ...track,
+          simpleCustom: true,
           advanced: {
             ...track.advanced,
             limiter: {
@@ -394,6 +292,7 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
           ...track,
+          simpleCustom: true,
           advanced: {
             ...track.advanced,
             repair: {
@@ -410,7 +309,8 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
           ...track,
-          advanced: createDefaultAdvancedParams(),
+          simpleCustom: true,
+          advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate),
           updatedAt: new Date().toISOString(),
         })),
       };
@@ -423,73 +323,7 @@ export function reduceStoreState(
           ...album,
           trackIds: album.trackIds.filter((id) => id !== action.id),
         })),
-        stems: state.stems.filter((project) => project.trackId !== action.id),
-      };
-
-    case "SAVE_SCRIPT":
-      return {
-        ...state,
-        tracks: updateTrackInList(state.tracks, action.id, (track) => ({
-          ...track,
-          profile: action.script.profile,
-          script: action.script,
-          advanced: mapProfileToDSP(
-            action.script.profile,
-            action.script,
-            track.advanced,
-          ),
-          updatedAt: new Date().toISOString(),
-        })),
-      };
-
-    case "UPDATE_MOVE":
-      return {
-        ...state,
-        tracks: updateTrackInList(state.tracks, action.trackId, (track) => {
-          if (!track.script) return track;
-          const updatedScript: MasteringScript = {
-            ...track.script,
-            moves: track.script.moves.map((m) =>
-              m.id === action.move.id ? action.move : m,
-            ),
-          };
-          return {
-            ...track,
-            script: updatedScript,
-            advanced: mapProfileToDSP(
-              track.profile,
-              updatedScript,
-              track.advanced,
-            ),
-            updatedAt: new Date().toISOString(),
-          };
-        }),
-      };
-
-    case "SAVE_STEMS":
-      return {
-        ...state,
-        stems: [
-          ...state.stems.filter((p) => p.trackId !== action.project.trackId),
-          action.project,
-        ],
-      };
-
-    case "UPDATE_STEM":
-      return {
-        ...state,
-        stems: state.stems.map((project) =>
-          project.trackId === action.trackId
-            ? {
-                ...project,
-                stems: project.stems.map((stem) =>
-                  stem.id === action.stemId
-                    ? { ...stem, ...action.patch }
-                    : stem,
-                ),
-              }
-            : project,
-        ),
+        stems: [],
       };
 
     case "ADD_ALBUM":
@@ -517,22 +351,27 @@ export function reduceStoreState(
   }
 }
 
-function normalizeHydratedState(raw: unknown): StoreState | null {
+export function normalizeHydratedState(raw: unknown): StoreState | null {
   if (typeof raw !== "object" || raw === null) return null;
   const candidate = raw as {
     tracks?: (Omit<Track, "advanced"> & {
       advanced?: Partial<AdvancedParams>;
     })[];
     albums?: Album[];
-    stems?: StemProject[];
+    stems?: unknown;
   };
   if (!Array.isArray(candidate.tracks)) return null;
-  const tracks: Track[] = candidate.tracks.map((track) => {
+  const tracks: Track[] = candidate.tracks.filter((track) => track.source !== "demo").map((track) => {
     const baseAdv = createDefaultAdvancedParams(track.advanced);
     const storedBands: unknown = track.advanced?.eqBands;
+    const restored: Track & { script?: unknown } = { ...track, advanced: createDefaultAdvancedParams() };
+    delete restored.script;
+    delete restored.releaseScore;
     return {
-      ...track,
-      advanced: {
+      ...restored,
+      simpleCustom: track.simpleCustom !== false,
+      mode: track.mode === "deep" ? "advanced" : track.mode,
+      advanced: clampAdvancedToSampleRate({
         ...baseAdv,
         ...track.advanced,
         eqBands:
@@ -559,13 +398,13 @@ function normalizeHydratedState(raw: unknown): StoreState | null {
           ...baseAdv.repair,
           ...(track.advanced?.repair ?? {}),
         },
-      },
+      }, track.sampleRate),
     };
   });
   return {
     tracks,
-    albums: Array.isArray(candidate.albums) ? candidate.albums : [],
-    stems: Array.isArray(candidate.stems) ? candidate.stems : [],
+    albums: Array.isArray(candidate.albums) ? candidate.albums.map((album) => ({ ...album, mastered: false, trackIds: album.trackIds.filter((id) => tracks.some((track) => track.id === id)) })) : [],
+    stems: [],
   };
 }
 
@@ -636,95 +475,3 @@ export function useStore() {
   return value;
 }
 
-export function generateScript(
-  track: Track,
-  profile: ProfileId,
-): MasteringScript {
-  const sectionTypes: SectionType[] = [
-    "intro",
-    "verse",
-    "chorus",
-    "verse",
-    "chorus",
-    "bridge",
-    "chorus",
-    "outro",
-  ];
-  const length = track.duration / sectionTypes.length;
-  const sections = sectionTypes.map((type, i) => ({
-    id: `section-${String(i)}`,
-    type,
-    start: Number((i * length).toFixed(2)),
-    end: Number(((i + 1) * length).toFixed(2)),
-    loudness: -18 + ((track.seed + i * 7) % 8),
-    centroid: 900 + ((track.seed * (i + 2) * 97) % 2400),
-  }));
-
-  const lanes: MoveLane[] = ["Volume", "EQ", "Comp/Sat", "Width", "AI Repair"];
-
-  const profileName =
-    profiles.find((p) => p.id === profile)?.name ?? "Modern Pop Polish";
-
-  const moves: Move[] = sections.flatMap((section, sectionIndex) =>
-    lanes
-      .filter(
-        (lane) => lane !== "AI Repair" || (track.seed + sectionIndex) % 4 === 0,
-      )
-      .map((lane, laneIndex) => {
-        const value =
-          Math.round(
-            (((track.seed + sectionIndex * 13 + laneIndex * 7) % 25) - 12) * 10,
-          ) / 10;
-        const start = Number((section.start + length * 0.08).toFixed(2));
-        const end = Number((section.end - length * 0.08).toFixed(2));
-        return {
-          id: `${section.id}-${String(laneIndex)}`,
-          lane,
-          parameter:
-            lane === "Volume"
-              ? "input_gain_db"
-              : lane === "EQ"
-                ? "eq_high_shelf_db"
-                : lane === "Comp/Sat"
-                  ? "compressor_threshold_db"
-                  : lane === "Width"
-                    ? "stereo_width_percent"
-                    : "ai_repair_amount",
-          start,
-          end,
-          value,
-          originalValue: value,
-          points: [
-            [start, value],
-            [end, value],
-          ],
-          reason: `${profileName} adjustment for the ${section.type}.`,
-          edited: false,
-          muted: false,
-        };
-      }),
-  );
-
-  return {
-    version: 1,
-    trackId: track.id,
-    sampleRate: track.sampleRate,
-    duration: track.duration,
-    profile,
-    sections,
-    moves,
-    findings:
-      track.seed % 2 !== 0
-        ? [
-            {
-              stem: "Upper harmony",
-              classification: "possible synthetic texture",
-              confidence: 0.68,
-              narrowness: 0.42,
-              spectralCollapse: 0.31,
-              correlations: [0.82, 0.54, 0.29],
-            },
-          ]
-        : [],
-  };
-}

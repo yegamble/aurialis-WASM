@@ -1,5 +1,5 @@
 // Package main compiles the Aurialis-WASM real-time DSP engine to WebAssembly
-// (GOOS=js GOARCH=wasm) and exposes a stateful block-processing bridge.
+// (GOOS=js/wasip1 GOARCH=wasm) and exposes a stateful block-processing bridge.
 package main
 
 import (

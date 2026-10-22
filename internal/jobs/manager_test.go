@@ -1,6 +1,7 @@
 package jobs_test
 
 import (
+	"errors"
 	"math"
 	"sync"
 	"testing"
@@ -49,7 +50,9 @@ func TestConcurrentJobSubmissionAndIdempotentCancel(t *testing.T) {
 			if idx%2 == 0 {
 				j, err := mgr.SubmitSeparate(buf, 4)
 				if err != nil {
-					t.Errorf("SubmitSeparate(%d) failed: %v", idx, err)
+					if !errors.Is(err, jobs.ErrQueueFull) {
+						t.Errorf("SubmitSeparate(%d) failed: %v", idx, err)
+					}
 					return
 				}
 				jobIDs[idx] = j.ID
@@ -60,7 +63,9 @@ func TestConcurrentJobSubmissionAndIdempotentCancel(t *testing.T) {
 			} else {
 				j, err := mgr.SubmitAnalyzeDeep(buf, mastering.ProfilePunchyCommercial)
 				if err != nil {
-					t.Errorf("SubmitAnalyzeDeep(%d) failed: %v", idx, err)
+					if !errors.Is(err, jobs.ErrQueueFull) {
+						t.Errorf("SubmitAnalyzeDeep(%d) failed: %v", idx, err)
+					}
 					return
 				}
 				jobIDs[idx] = j.ID
@@ -68,11 +73,25 @@ func TestConcurrentJobSubmissionAndIdempotentCancel(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+	accepted := 0
+	for _, id := range jobIDs {
+		if id != "" {
+			accepted++
+		}
+	}
+	if accepted == 0 {
+		t.Fatal("no job admitted within the memory budget")
+	}
 
-	deadline := time.Now().Add(10 * time.Second)
+	// This checks eventual settlement, not DSP throughput. Race instrumentation
+	// competes with other package suites on shared CI and developer machines.
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		allSettled := true
 		for _, id := range jobIDs {
+			if id == "" {
+				continue
+			} // Bounded admission may reject concurrent submissions.
 			j, ok := mgr.Get(id)
 			if !ok {
 				t.Fatalf("job %s missing", id)
@@ -87,5 +106,5 @@ func TestConcurrentJobSubmissionAndIdempotentCancel(t *testing.T) {
 		}
 		time.Sleep(25 * time.Millisecond)
 	}
-	t.Fatal("timed out waiting for 20 concurrent jobs to settle")
+	t.Fatal("timed out waiting for admitted concurrent jobs to settle")
 }

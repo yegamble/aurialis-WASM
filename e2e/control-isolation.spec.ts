@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test"
+import { uploadProject } from "./workflow-fixture"
 
 test.describe("End-to-End Parameter Orthogonality & Control Isolation", () => {
   test("adjusting Advanced EQ, Compressor, Saturation, Stereo, and Limiter controls never cross-couples", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 })
-    await page.goto("/master/demo-1")
+    await uploadProject(page)
 
     // Switch to Advanced mode
     await page.getByRole("tab", { name: "advanced" }).click()
@@ -22,11 +23,11 @@ test.describe("End-to-End Parameter Orthogonality & Control Isolation", () => {
     const lowGain = page.getByRole("slider", { name: "Low gain" })
     await expect(lowGain).toHaveValue("0")
 
-    // Verify Threshold and Stereo width remained at demo-1 initial values (-18 dB and 106%)
+    // The uploaded project's neutral compressor and width must remain unchanged.
     const thresholdSlider = page.getByRole("slider", { name: "Threshold" })
     const stereoWidthSlider = page.getByRole("slider", { name: "Stereo width" })
-    await expect(thresholdSlider).toHaveValue("-18")
-    await expect(stereoWidthSlider).toHaveValue("106")
+    await expect(thresholdSlider).toHaveValue("0")
+    await expect(stereoWidthSlider).toHaveValue("100")
 
     // Change Saturation character to Thick and verify Threshold & Width are unchanged
     await page.getByRole("button", { name: "Thick" }).click()
@@ -34,23 +35,21 @@ test.describe("End-to-End Parameter Orthogonality & Control Isolation", () => {
       "aria-pressed",
       "true",
     )
-    await expect(thresholdSlider).toHaveValue("-18")
-    await expect(stereoWidthSlider).toHaveValue("106")
+    await expect(thresholdSlider).toHaveValue("0")
+    await expect(stereoWidthSlider).toHaveValue("100")
   })
 
-  test("Deep mode and Smart Split offer full parameter control and isolation", async ({ page }) => {
-    await page.goto("/master/demo-1")
-    await expect(page.getByRole("tab", { name: "deep", exact: true })).toBeVisible()
-    await expect(page.getByRole("tab", { name: "simple", exact: true })).toBeVisible()
-    await expect(page.getByRole("tab", { name: "advanced", exact: true })).toBeVisible()
-
+  test("profiles apply real processing while unavailable separation cannot invent stems", async ({ page }) => {
+    const id = await uploadProject(page)
     await page.getByRole("tab", { name: "deep", exact: true }).click()
-    await expect(page.getByRole("button", { name: "Analyze deeply", exact: true })).toBeVisible()
-    await expect(page.getByText("Modern Pop Polish")).toBeVisible()
-
-    await page.goto("/split/demo-1")
-    await expect(page.getByRole("heading", { name: "How many stems do you need?", exact: true })).toBeVisible()
+    await expect(page.getByText("Musical section detection, timeline automation and AI repair are not available.", { exact: false })).toBeVisible()
+    await page.getByRole("button", { name: "Apply profile", exact: true }).click()
+    await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled()
+    await expect(page.getByText("Profile applied to live playback. Adjust it in Advanced mode while you listen.", { exact: true })).toBeVisible()
+    await page.goto(`/split/${id}`)
     await expect(page.getByRole("group", { name: "Stem count", exact: true })).toBeVisible()
-    await expect(page.getByRole("button", { name: "Separate into stems", exact: true })).toBeVisible()
+    await expect(page.getByText("Separation unavailable", { exact: false })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Separate into stems", exact: true })).toHaveCount(0)
+    await expect(page.locator(".stem-card")).toHaveCount(0)
   })
 })

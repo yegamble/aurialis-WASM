@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 
 type OutputProbe = {
   generation: number;
@@ -8,6 +8,7 @@ type OutputProbe = {
   sampleRate: number;
   left: number[];
   right: number[];
+  energy?: { remaining: number; frames: number; squares: number };
 };
 type ProbeWindow = Window & { qaOutput?: OutputProbe };
 
@@ -37,6 +38,14 @@ export async function observeOutput(page: Page): Promise<void> {
           probe.time = event.playbackTime;
           probe.left = Array.from(event.inputBuffer.getChannelData(0));
           probe.right = Array.from(event.inputBuffer.getChannelData(1));
+          const energy = probe.energy;
+          if (energy && energy.remaining > 0) {
+            const count = Math.min(energy.remaining, probe.left.length);
+            for (let index = 0; index < count; index++)
+              energy.squares += (probe.left[index] ?? 0) ** 2 + (probe.right[index] ?? 0) ** 2;
+            energy.remaining -= count;
+            energy.frames += count;
+          }
         };
         Reflect.apply(nativeConnect, this, [capture]);
         Reflect.apply(nativeConnect, capture, [silent]);
@@ -62,5 +71,20 @@ export async function outputLevel(page: Page) {
       rmsDbfs: rms > 0 ? 20 * Math.log10(rms) : -Infinity,
       peakDbfs: peak > 0 ? 20 * Math.log10(peak) : -Infinity,
     };
+  });
+}
+
+/** Average a whole source-period window, retaining no extra PCM buffers. */
+export async function meanOutputLevel(page: Page, frames?: number): Promise<number> {
+  await page.evaluate((count) => {
+    const probe = (window as ProbeWindow).qaOutput;
+    if (!probe) throw new Error("Missing live output probe");
+    probe.energy = { remaining: count ?? probe.sampleRate, frames: 0, squares: 0 };
+  }, frames);
+  await expect.poll(() => page.evaluate(() => (window as ProbeWindow).qaOutput?.energy?.remaining)).toBe(0);
+  return page.evaluate(() => {
+    const energy = (window as ProbeWindow).qaOutput?.energy;
+    if (!energy || !energy.frames) throw new Error("Missing live output energy");
+    return 10 * Math.log10(energy.squares / (2 * energy.frames));
   });
 }

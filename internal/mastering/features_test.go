@@ -87,6 +87,14 @@ func TestFeatureSilenceConstantAndShortSignalsHaveOneNeutralSection(t *testing.T
 			if len(result.Frames) == 0 {
 				t.Fatal("missing feature summary")
 			}
+			for _, band := range result.Bands {
+				if band.PowerDB != featureFloorDB {
+					t.Fatal("DC leaked into acoustic spectral bands", band)
+				}
+			}
+			if result.Frames[0].CentroidHz != 0 {
+				t.Fatal("silence/DC acquired a spectral centroid")
+			}
 			if _, err = json.Marshal(result); err != nil {
 				t.Fatal("non-finite JSON", err)
 			}

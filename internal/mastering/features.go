@@ -102,21 +102,17 @@ func AnalyzeFeaturesContext(ctx context.Context, buf *audio.Buffer, onProgress f
 	}
 	// Resolve the 20–120 Hz band even at 192 kHz. A fixed 4096 FFT there
 	// has 46.875 Hz bins and cannot contain the Hann spread of upper bass tones.
-	fftSize := 512
+	fftSize := 1024
 	for fftSize < buf.SampleRate/16 && fftSize < 16384 {
 		fftSize *= 2
 	}
-	summaries, err := measureSpectrumContext(ctx, buf, fftSize)
+	summaries, total, err := measureSpectrumContext(ctx, buf, fftSize)
 	if err != nil {
 		return nil, err
 	}
 	result := &AnalysisFeatures{
 		Version: "1.0", Source: identity, WindowSeconds: featureWindowSeconds,
 		HopSeconds: featureHopSeconds, FFTSize: fftSize, Warnings: []string{},
-	}
-	var total spectralSummary
-	for _, summary := range summaries {
-		addSummary(&total, summary, float64(summary.end-summary.start))
 	}
 	frames := float64(len(buf.Left))
 	nyquist := float64(buf.SampleRate) / 2
@@ -141,7 +137,7 @@ func AnalyzeFeaturesContext(ctx context.Context, buf *audio.Buffer, onProgress f
 	if onProgress != nil {
 		onProgress(65, "Aggregating one-second features and neutral change points...")
 	}
-	result.Frames, err = aggregateFeatureFrames(ctx, summaries, len(buf.Left), buf.SampleRate)
+	result.Frames, err = aggregateFeatureFrames(ctx, summaries, buf)
 	if err != nil {
 		return nil, err
 	}
@@ -191,14 +187,14 @@ func sourceIdentityContext(ctx context.Context, buf *audio.Buffer) (SourceIdenti
 	return SourceIdentity{PCMHash: hex.EncodeToString(hash.Sum(nil)), SampleRate: buf.SampleRate, Frames: int64(len(buf.Left))}, nil
 }
 
-func measureSpectrumContext(ctx context.Context, buf *audio.Buffer, fftSize int) ([]spectralSummary, error) {
+func measureSpectrumContext(ctx context.Context, buf *audio.Buffer, fftSize int) ([]spectralSummary, spectralSummary, error) {
 	// Remove only the whole-source DC mean from spectral analysis. Energy and
-	// stereo diagnostics retain the original samples; local means would attenuate bass.
+	// stereo diagnostics retain original samples; local means would attenuate bass.
 	var meanLeft, meanRight float64
 	for i := range buf.Left {
 		if i%4096 == 0 {
 			if err := ctx.Err(); err != nil {
-				return nil, err
+				return nil, spectralSummary{}, err
 			}
 		}
 		meanLeft += float64(buf.Left[i])
@@ -206,35 +202,43 @@ func measureSpectrumContext(ctx context.Context, buf *audio.Buffer, fftSize int)
 	}
 	meanLeft /= float64(len(buf.Left))
 	meanRight /= float64(len(buf.Right))
+	hop := fftSize / 4
+	// Raw energy cells partition the source exactly. Overlapping spectral windows
+	// never duplicate RMS, peak or Mid/Side samples in these time summaries.
+	summaries := make([]spectralSummary, (len(buf.Left)+hop-1)/hop)
+	for cell := range summaries {
+		start, end := cell*hop, min((cell+1)*hop, len(buf.Left))
+		raw, err := rawSummaryContext(ctx, buf, start, end)
+		if err != nil {
+			return nil, spectralSummary{}, err
+		}
+		summaries[cell] = raw
+	}
+
+	weights := make([]float64, fftSize)
+	weightPower := 0.0
+	for i := range weights {
+		weights[i] = 0.5 - 0.5*math.Cos(2*math.Pi*float64(i)/float64(fftSize))
+		weightPower += weights[i] * weights[i]
+	}
 	scratch := make([]complex128, fftSize)
-	summaries := make([]spectralSummary, 0, (len(buf.Left)+fftSize-1)/fftSize)
-	for start := 0; start < len(buf.Left); start += fftSize {
+	var total spectralSummary
+	// Periodic Hann squared windows at 75% overlap sum to exactly 1.5 for
+	// every sample. Pad both ends and include every intersecting window, so
+	// boundary transients receive the same power coverage as interior audio.
+	for start := -3 * hop; start < len(buf.Left); start += hop {
 		if err := ctx.Err(); err != nil {
-			return nil, err
+			return nil, spectralSummary{}, err
 		}
-		end := min(start+fftSize, len(buf.Left))
-		summary := spectralSummary{start: start, end: end}
 		clear(scratch)
-		weightPower := 0.0
-		for i := start; i < end; i++ {
-			left, right := float64(buf.Left[i]), float64(buf.Right[i])
-			mid, side := (left+right)/2, (left-right)/2
-			summary.power += (left*left + right*right) / 2
-			summary.midPower += mid * mid
-			summary.sidePower += side * side
-			summary.peak = math.Max(summary.peak, math.Max(math.Abs(left), math.Abs(right)))
-			weight := 1.0
-			if end-start > 1 {
-				weight = 0.5 - 0.5*math.Cos(2*math.Pi*float64(i-start)/float64(end-start))
+		for i := range scratch {
+			index := start + i
+			if index >= 0 && index < len(buf.Left) {
+				scratch[i] = complex((float64(buf.Left[index])-meanLeft)*weights[i], (float64(buf.Right[index])-meanRight)*weights[i])
 			}
-			weightPower += weight * weight
-			scratch[i-start] = complex((left-meanLeft)*weight, (right-meanRight)*weight)
 		}
-		count := float64(end - start)
-		summary.power /= count
-		summary.midPower /= count
-		summary.sidePower /= count
 		fftInPlace(scratch)
+		var spectral spectralSummary
 		for k := 0; k <= fftSize/2; k++ {
 			frequency := float64(k) * float64(buf.SampleRate) / float64(fftSize)
 			left := (scratch[k] + cmplx.Conj(scratch[(fftSize-k)%fftSize])) / 2
@@ -251,16 +255,47 @@ func measureSpectrumContext(ctx context.Context, buf *audio.Buffer, fftSize int)
 				return math.Max(0, math.Min(binHigh, high)-math.Max(binLow, low)) / (binHigh - binLow)
 			}
 			spectralPower := power * fraction(20, float64(buf.SampleRate)/2)
-			summary.spectralPower += spectralPower
-			summary.frequencyPower += frequency * spectralPower
-			summary.sibilancePower += power * fraction(6000, 12000)
+			spectral.spectralPower += spectralPower
+			spectral.frequencyPower += frequency * spectralPower
+			spectral.sibilancePower += power * fraction(6000, 12000)
 			for band := range 5 {
-				summary.bands[band] += power * fraction(spectrumEdges[band], spectrumEdges[band+1])
+				spectral.bands[band] += power * fraction(spectrumEdges[band], spectrumEdges[band+1])
 			}
 		}
-		summaries = append(summaries, summary)
+		// Weight by the hop, not the full/edge window length: summed Hann
+		// coverage divided by its full-window energy gives exactly one sample.
+		addSummary(&total, spectral, float64(hop))
+		cell := (start + fftSize/2) / hop
+		if cell >= 0 && cell < len(summaries) {
+			summaries[cell].bands = spectral.bands
+			summaries[cell].spectralPower = spectral.spectralPower
+			summaries[cell].frequencyPower = spectral.frequencyPower
+			summaries[cell].sibilancePower = spectral.sibilancePower
+		}
 	}
-	return summaries, nil
+	return summaries, total, nil
+}
+
+func rawSummaryContext(ctx context.Context, buf *audio.Buffer, start, end int) (spectralSummary, error) {
+	summary := spectralSummary{start: start, end: end}
+	for i := start; i < end; i++ {
+		if i%4096 == 0 {
+			if err := ctx.Err(); err != nil {
+				return spectralSummary{}, err
+			}
+		}
+		left, right := float64(buf.Left[i]), float64(buf.Right[i])
+		mid, side := (left+right)/2, (left-right)/2
+		summary.power += (left*left + right*right) / 2
+		summary.midPower += mid * mid
+		summary.sidePower += side * side
+		summary.peak = math.Max(summary.peak, math.Max(math.Abs(left), math.Abs(right)))
+	}
+	count := float64(end - start)
+	summary.power /= count
+	summary.midPower /= count
+	summary.sidePower /= count
+	return summary, nil
 }
 
 func fftInPlace(values []complex128) {
@@ -325,7 +360,8 @@ func summaryFrame(summary spectralSummary) FeatureFrame {
 	return FeatureFrame{CenterFrame: int64((summary.start + summary.end) / 2), RMSDB: powerDB(power), CentroidHz: centroid, SideMidDB: ratioDB(summary.sidePower, summary.midPower), CrestDB: crest}
 }
 
-func aggregateFeatureFrames(ctx context.Context, summaries []spectralSummary, frames, sampleRate int) ([]FeatureFrame, error) {
+func aggregateFeatureFrames(ctx context.Context, summaries []spectralSummary, buf *audio.Buffer) ([]FeatureFrame, error) {
+	frames, sampleRate := len(buf.Left), buf.SampleRate
 	window := min(frames, sampleRate)
 	hop := sampleRate / 4
 	result := make([]FeatureFrame, 0, frames/hop+1)
@@ -337,7 +373,18 @@ func aggregateFeatureFrames(ctx context.Context, summaries []spectralSummary, fr
 		if end == frames {
 			start = frames - window
 		}
-		result = append(result, summaryFrame(summarizeInterval(summaries, start, end)))
+		summary := summarizeInterval(summaries, start, end)
+		// Exact raw-window energy/peak is independent of FFT tiling and partial cells.
+		raw, err := rawSummaryContext(ctx, buf, start, end)
+		if err != nil {
+			return nil, err
+		}
+		count := float64(end - start)
+		summary.power = raw.power * count
+		summary.midPower = raw.midPower * count
+		summary.sidePower = raw.sidePower * count
+		summary.peak = raw.peak
+		result = append(result, summaryFrame(summary))
 		if end == frames {
 			break
 		}

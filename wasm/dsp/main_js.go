@@ -2,6 +2,8 @@
 
 package main
 
+// cspell:words nolint
+
 import (
 	"encoding/binary"
 	"encoding/json"

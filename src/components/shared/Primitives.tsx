@@ -526,7 +526,7 @@ function eqCurvePoints(
 
 function describeEqBands(bands: readonly EQBandParams[]): string {
   return bands.map((band) =>
-    `${band.label} (${String(band.freqHz)} Hz): ${band.gainDb >= 0 ? "+" : ""}${band.gainDb.toFixed(1)} dB${band.enabled ? "" : " (bypassed)"}`,
+    `${band.label} (${String(band.freqHz)} Hz): ${band.type === "highpass" ? `high-pass, Q ${String(band.q)}, gain unavailable` : `${band.gainDb >= 0 ? "+" : ""}${band.gainDb.toFixed(1)} dB`}${band.enabled ? "" : " (bypassed)"}`,
   ).join(", ");
 }
 
@@ -556,21 +556,25 @@ export function SpectrumChart({
   const maxFrequency = Math.min(20000, sampleRate * 0.47);
   const resetBand = (band: EQBandParams) => {
     const defaults = createDefaultAdvancedParams().eqBands.find((item) => item.id === band.id);
-    if (defaults) onBandChange?.(band.id, { freqHz: Math.min(maxFrequency, defaults.freqHz), gainDb: defaults.gainDb });
+    if (defaults) onBandChange?.(band.id, { freqHz: Math.min(maxFrequency, defaults.freqHz), ...(band.type === "highpass" ? {} : { gainDb: defaults.gainDb }) });
   };
-  const updateFromPointer = (id: EQBandId, event: ReactPointerEvent<HTMLButtonElement>) => {
+  const updateFromPointer = (band: EQBandParams, event: ReactPointerEvent<HTMLButtonElement>) => {
     const rect = plotRef.current?.getBoundingClientRect();
     if (!rect?.width || !rect.height) return;
     const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
     const y = Math.max(0, Math.min(60, ((event.clientY - rect.top) / rect.height) * 60));
-    onBandChange?.(id, {
+    onBandChange?.(band.id, {
       freqHz: Math.round(Math.min(maxFrequency, 20 * Math.pow(maxFrequency / 20, x))),
-      gainDb: Math.max(-12, Math.min(12, Math.round(((30 - y) / 2) * 10) / 10)),
+      ...(band.type === "highpass" ? {} : { gainDb: Math.max(-12, Math.min(12, Math.round(((30 - y) / 2) * 10) / 10)) }),
     });
   };
   const updateFromKey = (band: EQBandParams, event: ReactKeyboardEvent<HTMLButtonElement>) => {
     const gainStep = event.shiftKey ? 1 : 0.5;
     const frequencyFactor = Math.pow(2, event.shiftKey ? 1 : 1 / 12);
+    if (band.type === "highpass" && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      event.preventDefault();
+      return;
+    }
     let patch: Partial<EQBandParams>;
     switch (event.key) {
       case "Backspace": event.preventDefault(); resetBand(band); return;
@@ -632,7 +636,7 @@ export function SpectrumChart({
             const isSelected = activeBandId === band.id;
             const position = {
               left: `${String(freqToX(band.freqHz, maxFrequency))}%`,
-              top: `${String((gainToY(band.gainDb) / 60) * 100)}%`,
+              top: `${String((gainToY(band.type === "highpass" ? 0 : band.gainDb) / 60) * 100)}%`,
               zIndex: isSelected ? 2 : 1,
             };
             const marker = (
@@ -647,7 +651,7 @@ export function SpectrumChart({
                 type="button"
                 className="eq-handle absolute grid size-[44px] -translate-x-1/2 -translate-y-1/2 touch-none cursor-grab place-items-center rounded-full border-0 bg-transparent p-0 hover:bg-clay-wash/30 active:cursor-grabbing focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-clay-dark disabled:cursor-not-allowed"
                 disabled={!band.enabled}
-                aria-label={`${band.label} EQ: ${String(band.freqHz)} Hz, ${band.gainDb.toFixed(1)} dB`}
+                aria-label={`${band.label} EQ: ${String(band.freqHz)} Hz, ${band.type === "highpass" ? `high-pass, Q ${String(band.q)}, gain unavailable` : `${band.gainDb.toFixed(1)} dB`}`}
                 aria-describedby={instructionsId}
                 aria-pressed={isSelected}
                 style={position}
@@ -659,7 +663,7 @@ export function SpectrumChart({
                   event.currentTarget.setPointerCapture(event.pointerId);
                 }}
                 onPointerMove={(event) => {
-                  if (event.currentTarget.hasPointerCapture(event.pointerId)) updateFromPointer(band.id, event);
+                  if (event.currentTarget.hasPointerCapture(event.pointerId)) updateFromPointer(band, event);
                 }}
                 onPointerUp={(event) => {
                   if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
@@ -677,8 +681,9 @@ export function SpectrumChart({
         <p className="sr-only" id={instructionsId}>
           Drag to change frequency and gain. Arrow left and right change frequency;
           arrow up and down change gain. Hold Shift for larger steps. The band
-          controls provide another way to enter exact values. Double-click a node or
-          press Backspace to reset its frequency and gain.
+          controls provide another way to enter exact values. High-pass nodes change
+          frequency only and retain gain. Double-click a node or press Backspace to
+          reset its frequency and, for other filter types, gain.
         </p>
       )}
       {referenceBands && (

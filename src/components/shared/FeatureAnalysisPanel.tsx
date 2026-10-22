@@ -51,7 +51,7 @@ export function FeatureAnalysisPanel({ trackId, sourceReady }: { trackId: string
     <p className="disclosure">Measure the original audio’s frequency balance and changes in energy, tone and stereo width. These diagnostics do not identify verses or choruses, generate mastering moves, or apply processing.</p>
     <div className="flex flex-wrap gap-2">
       <Button variant="secondary" disabled={busy || !sourceReady} onClick={() => { void analyze(); }}>Analyze original audio</Button>
-      {busy && <Button variant="ghost" onClick={() => { operation.current?.abort(); setMessage("Canceling analysis…"); }}>Cancel analysis</Button>}
+      {busy && <Button variant="ghost" onClick={() => { const current = operation.current; operation.current = null; current?.abort(); setBusy(false); setProgress(0); setMessage("Analysis canceled."); }}>Cancel analysis</Button>}
     </div>
     {busy && <progress className="mt-2 w-full" aria-label="Source analysis progress" max={100} value={progress} />}
     {message && <p role="status" className="disclosure">{message}</p>}

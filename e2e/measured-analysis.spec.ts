@@ -48,8 +48,12 @@ test("Cancel racing a measured-analysis admission deletes the actual server job 
   await page.getByRole("button", { name: "Analyze original audio", exact: true }).click();
   await expect.poll(() => id).not.toBe("");
   await page.getByRole("button", { name: "Cancel analysis", exact: true }).click();
-  release?.();
   await expect(page.getByText("Analysis canceled.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Analyze original audio", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Cancel analysis", exact: true })).toHaveCount(0);
+  const deleted = page.waitForRequest((request) => request.url().endsWith(`/api/jobs/${id}`) && request.method() === "DELETE");
+  release?.();
+  await deleted;
   await expect(page.getByRole("list", { name: "Measured source sections" })).toHaveCount(0);
   const response = await page.request.get(`/api/jobs/${id}`);
   expect((await response.json() as { status: string }).status).toBe("cancel" + "led");

@@ -1,3 +1,4 @@
+// cspell:words subviews
 // Run: AURIALIS_PARITY_FIXTURE=/tmp/parity.json go test ./wasm/dsp -run TestWriteNativeParityFixture
 // Then: node wasm/dsp/verify.mjs module.wasm wasm_exec.js /tmp/parity.json
 import { readFile } from "node:fs/promises";
@@ -38,6 +39,79 @@ for (const fixture of fixtures) {
     assert.ok(Math.abs(outR[offset] - Math.fround(fixture.outputRight[offset])) <= 2e-6, "right state survived reset");
   }
 }
+// Genuine storage metadata wins over shadow properties. Invalid brands and
+// undersized backing views reject before DSP history or destinations change.
+const boundaryFixture = fixtures.find(fixture => !fixture.params.bypass && fixture.params.saturation.amount >= 25);
+assert.ok(boundaryFixture);
+const boundaryL = Float32Array.from({ length: 128 }, (_, i) => 0.23 * Math.cos(i * 0.13));
+const boundaryR = Float32Array.from({ length: 128 }, (_, i) => -0.17 * Math.sin(i * 0.23));
+function initializeBoundary() {
+  assert.equal(globalThis.aurialisDSPInit(boundaryFixture.rate), true);
+  assert.equal(globalThis.aurialisDSPSetParams(JSON.stringify(boundaryFixture.params)), true);
+}
+function renderBoundary(outL = new Float32Array(128), outR = new Float32Array(128)) {
+  assert.equal(globalThis.aurialisDSPProcessBlock(boundaryL, boundaryR, outL, outR), 128);
+  return [outL, outR];
+}
+initializeBoundary();
+const boundaryFirst = renderBoundary();
+const boundaryNext = renderBoundary();
+for (const property of ["length", "byteOffset", "buffer", Symbol.toStringTag]) {
+  initializeBoundary();
+  let reads = 0;
+  const shadowL = boundaryL.slice(), outL = new Float32Array(128), outR = new Float32Array(128);
+  for (const view of [shadowL, outR]) Object.defineProperty(view, property, {
+    get() { reads++; throw new Error("shadow metadata must not be read"); },
+  });
+  assert.equal(globalThis.aurialisDSPProcessBlock(shadowL, boundaryR, outL, outR), 128);
+  assert.deepEqual(outL, boundaryFirst[0]); assert.deepEqual(outR.slice(), boundaryFirst[1]);
+  assert.equal(globalThis.aurialisDSPMeasure(shadowL, boundaryR), globalThis.aurialisDSPMeasure(boundaryL, boundaryR));
+  assert.equal(reads, 0);
+}
+const shadowOne = Float32Array.of(0.125);
+Object.defineProperty(shadowOne, "length", { value: 8 });
+assert.equal(globalThis.aurialisDSPInit(48000), true);
+assert.equal(globalThis.aurialisDSPProcessBlock(shadowOne, Float32Array.of(0.25)), 1);
+assert.equal(shadowOne[0], 0.125);
+const detachedInput = new Float32Array(128);
+structuredClone(detachedInput.buffer, { transfer: [detachedInput.buffer] });
+const detachedOutput = new Float32Array(128);
+structuredClone(detachedOutput.buffer, { transfer: [detachedOutput.buffer] });
+const forged = Object.create(Float32Array.prototype);
+const wrongElement = new Float64Array(128);
+Object.setPrototypeOf(wrongElement, Float32Array.prototype);
+const shortInput = new Float32Array(1), shortOutput = Float32Array.of(0.5);
+Object.defineProperty(shortInput, "length", { value: 128 });
+Object.defineProperty(shortOutput, "length", { value: 128 });
+const poisonedPrototype = new Float32Array(128);
+Object.setPrototypeOf(poisonedPrototype, new Proxy(Float32Array.prototype, {
+  getPrototypeOf() { throw new Error("invalid prototype chain"); },
+}));
+const invalidViews = [
+  { name: "throwing prototype input", input: poisonedPrototype },
+  { name: "forged input", input: forged },
+  { name: "proxy input", input: new Proxy(new Float32Array(128), {}) },
+  { name: "wrong element input", input: wrongElement },
+  { name: "detached input", input: detachedInput },
+  { name: "short input with shadow length", input: shortInput },
+  { name: "forged output", output: forged },
+  { name: "proxy output", output: new Proxy(new Float32Array(128), {}) },
+  { name: "detached output", output: detachedOutput },
+  { name: "short output with shadow length", output: shortOutput },
+];
+for (const invalid of invalidViews) {
+  initializeBoundary(); renderBoundary();
+  const outL = new Float32Array(128).fill(0.5), outR = new Float32Array(128).fill(-0.5);
+  const input = invalid.input ?? boundaryL, output = invalid.output ?? outR;
+  assert.equal(globalThis.aurialisDSPProcessBlock(input, boundaryR, outL, output), 0, invalid.name);
+  assert.deepEqual(outL, new Float32Array(128).fill(0.5), `${invalid.name} changed output`);
+  assert.deepEqual(outR, new Float32Array(128).fill(-0.5), `${invalid.name} changed output`);
+  if (invalid.input) assert.equal(globalThis.aurialisDSPMeasure(input, boundaryR), "{}", invalid.name);
+  const next = renderBoundary();
+  assert.deepEqual(next[0], boundaryNext[0], `${invalid.name} advanced left history`);
+  assert.deepEqual(next[1], boundaryNext[1], `${invalid.name} advanced right history`);
+}
+assert.equal(shortOutput[0], 0.5);
 // Wrong JS types, non-finite samples, malformed JSON, and oversized blocks must
 // return failure while preserving a usable bridge rather than panic the runtime.
 assert.equal(globalThis.aurialisDSPInit(NaN), false);

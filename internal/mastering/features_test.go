@@ -225,3 +225,94 @@ func TestFeatureLowBandResolutionAndBoundarySpread(t *testing.T) {
 		}
 	}
 }
+
+func measuredBandPower(features *AnalysisFeatures) float64 {
+	power := 0.0
+	for _, band := range features.Bands {
+		if band.Valid {
+			power += math.Pow(10, band.PowerDB/10)
+		}
+	}
+	return power
+}
+
+func TestFeatureHannPowerCoverageIncludesOffsetsAndSourceEdges(t *testing.T) {
+	const rate, period, cycles = 48000, 4096, 24
+	want := 10 * math.Log10((1.0/period)*(20000.0-20)/(rate/2))
+	var reference float64
+	for position, offset := range []int{0, 1, period / 8, period / 4, period / 2, period - 1} {
+		buf := featureSignal(rate, float64(period*cycles)/rate, func(i int) (float32, float32) {
+			if i%period == offset {
+				return 1, 1
+			}
+			return 0, 0
+		})
+		result, err := AnalyzeFeaturesContext(context.Background(), buf, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual := 10 * math.Log10(measuredBandPower(result))
+		if math.Abs(actual-want) > 0.1 {
+			t.Fatalf("offset%d spectrum%g want%g; window has unequal power coverage", offset, actual, want)
+		}
+		if position == 0 {
+			reference = actual
+		} else if math.Abs(actual-reference) > 0.01 {
+			t.Fatalf("offset%d changed spectrum by%g dB", offset, actual-reference)
+		}
+		rawPower := 0.0
+		for _, sample := range buf.Left[:rate] {
+			rawPower += float64(sample) * float64(sample) / rate
+		}
+		if math.Abs(result.Frames[0].RMSDB-10*math.Log10(rawPower)) > 1e-8 {
+			t.Fatal("overlapping spectra changed raw RMS", result.Frames[0])
+		}
+	}
+	const frames = 48000
+	want = 10 * math.Log10((1.0/frames)*(20000.0-20)/(rate/2))
+	for _, offset := range []int{0, 1, frames / 2, frames - 2, frames - 1} {
+		buf := featureSignal(rate, 1, func(i int) (float32, float32) {
+			if i == offset {
+				return 1, 1
+			}
+			return 0, 0
+		})
+		result, err := AnalyzeFeaturesContext(context.Background(), buf, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual := 10 * math.Log10(measuredBandPower(result))
+		if math.Abs(actual-want) > 0.1 {
+			t.Fatalf("source-edge impulse%d spectrum%g want%g", offset, actual, want)
+		}
+		if math.Abs(result.Frames[0].RMSDB-10*math.Log10(1.0/frames)) > 1e-8 {
+			t.Fatal("source-edge raw energy changed", result.Frames[0])
+		}
+	}
+}
+
+func TestFeatureMultitonePowerIsStableAcrossWindowOffsets(t *testing.T) {
+	const rate = 48000
+	var reference [5]float64
+	for position, offset := range []int{0, 1, 512, 1024, 2048, 4095} {
+		buf := featureSignal(rate, 2, func(i int) (float32, float32) {
+			value := 0.0
+			for _, frequency := range []float64{60, 250, 1000, 3000, 9000} {
+				value += 0.05 * math.Sin(2*math.Pi*frequency*float64(i+offset)/rate)
+			}
+			return float32(value), float32(value)
+		})
+		result, err := AnalyzeFeaturesContext(context.Background(), buf, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for band, measurement := range result.Bands {
+			if position == 0 {
+				reference[band] = measurement.PowerDB
+			}
+			if math.Abs(measurement.PowerDB-reference[band]) > 0.05 {
+				t.Fatalf("offset%d band%d changed%g dB", offset, band, measurement.PowerDB-reference[band])
+			}
+		}
+	}
+}

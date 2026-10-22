@@ -1313,7 +1313,7 @@ function MasterView({ trackId }: { trackId: string }) {
               processing={processing}
               sourceReady={source !== null}
               onApply={(next) => {
-                dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next } });
+                dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next, shortcutUndo: {} } });
                 setMessage("Profile applied to live playback. Adjust it in Advanced mode while you listen.");
               }}
             />
@@ -1769,7 +1769,7 @@ function AdvancedControls({
         variant="secondary"
         icon={<Icon name="rotate-ccw" />}
         onClick={() => {
-          dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate) } });
+          dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate), shortcutUndo: {} } });
         }}
       >
         Reset modules

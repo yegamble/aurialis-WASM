@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import type { AdvancedParams } from "../src/lib/types";
 import { decode, fixture } from "./audio-fixture";
+import { observeOutput, outputLevel } from "./live-output";
 
 const shortcuts = [
   { label: "Add Air", frequency: 7000, slider: "Air gain", edit: "2", band: "Air" },
@@ -47,7 +48,7 @@ async function exported(page: Page) {
 }
 
 for (const shortcut of shortcuts) {
-  test(`${shortcut.label} activates its real settings and changes exported audio without stacking`, async ({ page }) => {
+  test(`${shortcut.label} toggles its real settings and restores exported audio independently`, async ({ page }) => {
     await upload(page, shortcut.frequency);
     const button = page.getByRole("button", { name: shortcut.label, exact: true });
     await expect(button).toHaveAttribute("aria-pressed", "false");
@@ -83,12 +84,28 @@ for (const shortcut of shortcuts) {
       for (let i = 0; i < original[channel].length; i++) maximumDifference = Math.max(maximumDifference, Math.abs(original[channel][i]! - processed[channel][i]!));
     }
     expect(maximumDifference, "Shortcut must alter actual rendered PCM").toBeGreaterThan(1e-5);
+    // A second click must disable the shortcut and recover the exact baseline.
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "false");
+    await expect(button).toHaveCSS("background-color", inactiveBackground);
+    expect(await settings(page)).toEqual(before);
+    const restored = await exported(page);
+    expect(restored.left).toEqual(original.left);
+    expect(restored.right).toEqual(original.right);
     await button.click();
     await expect(button).toHaveAttribute("aria-pressed", "true");
     expect(await settings(page)).toEqual(applied);
     const repeated = await exported(page);
     expect(repeated.left).toEqual(processed.left);
     expect(repeated.right).toEqual(processed.right);
+    // Restore history must survive hydration, not merely the current component.
+    await page.reload();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "false");
+    expect(await settings(page)).toEqual(before);
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
     const bypass = page.getByLabel(shortcut.label === "Tape Warmth" ? "Enable saturation" : shortcut.label === "Glue Comp" ? "Enable compressor" : "Enable EQ", { exact: true });
     await bypass.uncheck();
     await expect(button).toHaveAttribute("aria-pressed", "false");
@@ -120,3 +137,77 @@ test("starting points coexist, survive reload, and clear only when their own set
     await expect(page.getByRole("button", { name: shortcut.label, exact: true })).toHaveAttribute("aria-pressed", "true");
   }
 });
+
+
+test("disabling one active starting point preserves the other three and unrelated edits", async ({ page }) => {
+  await upload(page, 1000);
+  const baseline = await settings(page);
+  for (const shortcut of shortcuts) await page.getByRole("button", { name: shortcut.label, exact: true }).click();
+  await page.getByRole("slider", { name: "Input gain", exact: true }).fill("3");
+  const allActive = await settings(page);
+  for (const shortcut of shortcuts) {
+    const button = page.getByRole("button", { name: shortcut.label, exact: true });
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "false");
+    for (const other of shortcuts.filter((item) => item.label !== shortcut.label))
+      await expect(page.getByRole("button", { name: other.label, exact: true })).toHaveAttribute("aria-pressed", "true");
+    const off = await settings(page);
+    expect(off.input).toBe(3);
+    if (shortcut.label === "Add Air" || shortcut.label === "Cut Mud") {
+      const index = shortcut.label === "Add Air" ? 4 : 1;
+      expect(off.eqBands[index]).toEqual(baseline.eqBands[index]);
+      expect({ ...off, eqBands: allActive.eqBands }).toEqual(allActive);
+    } else if (shortcut.label === "Tape Warmth") {
+      expect(off.saturationModule).toEqual(baseline.saturationModule);
+      expect({ ...off, saturationModule: allActive.saturationModule, saturation: allActive.saturation }).toEqual(allActive);
+    } else {
+      expect(off.compressor).toEqual(baseline.compressor);
+      expect({ ...off, compressor: allActive.compressor, threshold: allActive.threshold, ratio: allActive.ratio, attack: allActive.attack, release: allActive.release }).toEqual(allActive);
+    }
+    await button.click();
+    expect(await settings(page)).toEqual(allActive);
+  }
+  // Remove both EQ shortcuts as well: no residual boost/cut or enabled module.
+  for (const shortcut of shortcuts) await page.getByRole("button", { name: shortcut.label, exact: true }).click();
+  expect(await settings(page)).toEqual({ ...baseline, input: 3 });
+});
+
+for (const shortcut of shortcuts) {
+  test(`${shortcut.label} changes live speaker-feed PCM and disabling restores its level`, async ({ page }) => {
+    await observeOutput(page);
+    const frequency = shortcut.label === "Add Air" ? 12000 : shortcut.frequency;
+    const wav = fixture(frequency, 30);
+    for (let offset = 44; offset < wav.length; offset += 2) wav.writeInt16LE(wav.readInt16LE(offset) * 3, offset);
+    await page.goto("/");
+    await page.getByLabel("Upload audio file").setInputFiles({ name: "qa-shortcut-live.wav", mimeType: "audio/wav", buffer: wav });
+    await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
+    await expect(page.getByRole("button", { name: "Play", exact: true })).toBeEnabled();
+    await page.getByRole("button", { name: "Reset modules", exact: true }).click();
+    await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect.poll(async () => (await outputLevel(page))?.rmsDbfs ?? -Infinity).toBeCloseTo(-9.49, 0);
+    const baseline = await outputLevel(page);
+    if (!baseline) throw new Error("Missing live PCM baseline");
+    const button = page.getByRole("button", { name: shortcut.label, exact: true });
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(async () => {
+      const value = await outputLevel(page);
+      if (!value || !Number.isFinite(value.rmsDbfs) || value.frames < baseline.frames + baseline.sampleRate / 2) return 0;
+      return Math.abs(value.rmsDbfs - baseline.rmsDbfs);
+    }).toBeGreaterThan(0.08);
+    const enabled = await outputLevel(page);
+    if (!enabled) throw new Error("Missing enabled live PCM");
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "false");
+    await expect.poll(async () => {
+      const value = await outputLevel(page);
+      if (!value || value.frames < enabled.frames + enabled.sampleRate / 2) return Infinity;
+      return Math.abs(value.rmsDbfs - baseline.rmsDbfs);
+    }).toBeLessThan(0.1);
+    const restored = await outputLevel(page);
+    expect(restored?.instanceId).toBe(baseline.instanceId);
+    expect(restored?.frames ?? 0).toBeGreaterThan(baseline.frames);
+    await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
+  });
+}

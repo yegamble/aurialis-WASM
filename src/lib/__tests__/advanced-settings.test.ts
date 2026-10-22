@@ -118,3 +118,99 @@ describe("shortcut selection reflects processing", () => {
     expect(isMasteringShortcutActive(advanced, "glue", sampleRate)).toBe(false);
   });
 });
+
+describe("independent starting-point toggles", () => {
+  function toggle(state: Parameters<typeof reduceStoreState>[0], shortcut: "air" | "mud" | "tape" | "glue") {
+    return reduceStoreState(state, { type: "TOGGLE_MASTERING_SHORTCUT", trackId, shortcut });
+  }
+  it.each(["air", "mud", "tape", "glue"] as const)("%s restores exact prior settings after reload and retains other edits", (shortcut) => {
+    const initial = { ...testStore, tracks: [{ ...track, advanced: createDefaultAdvancedParams() }] };
+    const on = toggle(initial, shortcut);
+    expect(isMasteringShortcutActive(first(on).advanced, shortcut, track.sampleRate)).toBe(true);
+    const restored = normalizeHydratedState(JSON.parse(JSON.stringify(on)));
+    if (!restored) throw new Error("Missing restored state");
+    const changed = reduceStoreState(restored, { type: "UPDATE_INPUT_GAIN", trackId, input: 3 });
+    const off = toggle(changed, shortcut);
+    expect(isMasteringShortcutActive(first(off).advanced, shortcut, track.sampleRate)).toBe(false);
+    expect(first(off).advanced).toEqual({ ...first(initial).advanced, input: 3 });
+  });
+
+  it.each(["air", "mud"] as const)("restores shared disabled EQ after %s is disabled first", (firstOff) => {
+    const advanced = createDefaultAdvancedParams();
+    advanced.eqEnabled = false;
+    advanced.eqBands[2].gainDb = 2;
+    const initial = { ...testStore, tracks: [{ ...track, advanced }] };
+    const both = toggle(toggle(initial, "air"), "mud");
+    const one = toggle(both, firstOff);
+    expect(first(one).advanced.eqEnabled).toBe(true);
+    const lastOff = firstOff === "air" ? "mud" : "air";
+    expect(isMasteringShortcutActive(first(one).advanced, lastOff, track.sampleRate)).toBe(true);
+    expect(first(toggle(one, lastOff)).advanced).toEqual(advanced);
+  });
+
+  it("keeps an unrelated manual EQ change audible after both shortcuts turn off", () => {
+    const advanced = createDefaultAdvancedParams();
+    advanced.eqEnabled = false;
+    const initial = { ...testStore, tracks: [{ ...track, advanced }] };
+    let changed = toggle(toggle(initial, "air"), "mud");
+    changed = reduceStoreState(changed, { type: "UPDATE_EQ_BAND", trackId, bandId: "mid", patch: { gainDb: 2 } });
+    changed = toggle(toggle(changed, "mud"), "air");
+    expect(first(changed).advanced.eqEnabled).toBe(true);
+    expect(first(changed).advanced.eqBands[2].gainDb).toBe(2);
+  });
+
+  it("reapplies over a manual edit, then restores that edit rather than an older snapshot", () => {
+    const initial = { ...testStore, tracks: [{ ...track, advanced: createDefaultAdvancedParams() }] };
+    let changed = toggle(initial, "air");
+    changed = reduceStoreState(changed, { type: "UPDATE_EQ_BAND", trackId, bandId: "air", patch: { gainDb: 3 } });
+    expect(first(changed).shortcutUndo?.air).toBeUndefined();
+    const edited = first(changed).advanced;
+    changed = toggle(toggle(changed, "air"), "air");
+    expect(first(changed).advanced).toEqual(edited);
+  });
+
+  it.each(["air", "mud", "tape", "glue"] as const)("turns off an existing matching %s preset without an undo record", (shortcut) => {
+    const advanced = applyMasteringShortcut(createDefaultAdvancedParams(), shortcut, track.sampleRate);
+    const initial = { ...testStore, tracks: [{ ...track, advanced }] };
+    const off = toggle(initial, shortcut);
+    expect(isMasteringShortcutActive(first(off).advanced, shortcut, track.sampleRate)).toBe(false);
+    expect(first(off).advanced).toEqual(createDefaultAdvancedParams());
+  });
+
+  it("discards malformed saved restore records instead of injecting invalid settings", () => {
+    const initial = { ...testStore, tracks: [{ ...track, shortcutUndo: { air: { id: "air", gainDb: 999 }, tape: { enabled: true, drive: 999, character: "Tape" }, glue: null, eqBaseline: { enabled: false, bands: [] } } }] };
+    const restored = normalizeHydratedState(initial);
+    if (!restored) throw new Error("Missing restored state");
+    expect(first(restored).shortcutUndo).toEqual({});
+  });
+});
+
+
+it.each(["air", "mud"] as const)("disables a latent matching band with %s turned off first", (firstOff) => {
+  for (const latent of ["air", "mud"] as const) {
+    const advanced = { ...applyMasteringShortcut(createDefaultAdvancedParams(), latent, track.sampleRate), eqEnabled: false };
+    let state: Parameters<typeof reduceStoreState>[0] = { ...testStore, tracks: [{ ...track, advanced }] };
+    const toggle = (shortcut: "air" | "mud") => { state = reduceStoreState(state, { type: "TOGGLE_MASTERING_SHORTCUT", trackId, shortcut }); };
+    toggle(latent);
+    toggle(latent === "air" ? "mud" : "air");
+    toggle(firstOff);
+    expect(isMasteringShortcutActive(first(state).advanced, firstOff, track.sampleRate)).toBe(false);
+    const lastOff = firstOff === "air" ? "mud" : "air";
+    expect(isMasteringShortcutActive(first(state).advanced, lastOff, track.sampleRate)).toBe(true);
+    toggle(lastOff);
+    expect(first(state).advanced).toEqual(advanced);
+  }
+});
+
+
+it("disables the final latent shortcut while preserving unrelated live EQ edits", () => {
+  const advanced = { ...applyMasteringShortcut(createDefaultAdvancedParams(), "air", track.sampleRate), eqEnabled: false };
+  let state: Parameters<typeof reduceStoreState>[0] = { ...testStore, tracks: [{ ...track, advanced }] };
+  state = reduceStoreState(state, { type: "TOGGLE_MASTERING_SHORTCUT", trackId, shortcut: "air" });
+  state = reduceStoreState(state, { type: "UPDATE_EQ_BAND", trackId, bandId: "mid", patch: { gainDb: 2 } });
+  state = reduceStoreState(state, { type: "TOGGLE_MASTERING_SHORTCUT", trackId, shortcut: "air" });
+  expect(isMasteringShortcutActive(first(state).advanced, "air", track.sampleRate)).toBe(false);
+  expect(first(state).advanced.eqBands[4].enabled).toBe(false);
+  expect(first(state).advanced.eqEnabled).toBe(true);
+  expect(first(state).advanced.eqBands[2].gainDb).toBe(2);
+});

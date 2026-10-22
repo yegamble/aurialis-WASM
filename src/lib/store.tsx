@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP } from "./audio-dsp";
+import { normalizeShortcutUndo, pruneShortcutUndo, toggleMasteringShortcut, type MasteringShortcut } from "./mastering-shortcuts";
 import { masteringTargets } from "./mastering-targets";
 import type {
   Album,
@@ -65,6 +66,7 @@ type StoreState = {
 
 type StoreAction =
   | { type: "ADD_TRACK"; track: Track }
+  | { type: "TOGGLE_MASTERING_SHORTCUT"; trackId: string; shortcut: MasteringShortcut }
   | { type: "UPDATE_TRACK"; id: string; patch: Partial<Track> }
   | { type: "APPLY_NORMALIZED_GAIN"; id: string; expected: AdvancedParams; input: number }
   | {
@@ -115,7 +117,7 @@ function updateTrackInList(
   id: string,
   updater: (track: Track) => Track,
 ): Track[] {
-  return tracks.map((track) => (track.id === id ? updater(track) : track));
+  return tracks.map((track) => (track.id === id ? pruneShortcutUndo(updater(track)) : track));
 }
 
 export function reduceStoreState(
@@ -123,6 +125,8 @@ export function reduceStoreState(
   action: StoreAction,
 ): StoreState {
   switch (action.type) {
+    case "TOGGLE_MASTERING_SHORTCUT":
+      return { ...state, tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({ ...track, ...toggleMasteringShortcut(track, action.shortcut), simpleCustom: true, updatedAt: new Date().toISOString() })) };
     case "ADD_TRACK":
       return { ...state, tracks: [{ ...action.track, simpleCustom: action.track.simpleCustom ?? true }, ...state.tracks] };
 
@@ -156,6 +160,7 @@ export function reduceStoreState(
           const limiterTarget = { targetLufs: target.targetLufs, ceiling: target.ceiling };
           return {
             ...next,
+            shortcutUndo: directionChanged ? {} : track.shortcutUndo ?? {},
             simpleCustom: directionChanged ? false : track.simpleCustom ?? true,
             advanced: directionChanged ? { ...mapped, limiter: { ...mapped.limiter, ...limiterTarget } } : { ...track.advanced, limiter: { ...track.advanced.limiter, ...limiterTarget } },
             updatedAt: new Date().toISOString(),
@@ -334,6 +339,7 @@ export function reduceStoreState(
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
           ...track,
           simpleCustom: true,
+          shortcutUndo: {},
           advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate),
           updatedAt: new Date().toISOString(),
         })),
@@ -399,8 +405,9 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
     const restored: Track & { script?: unknown } = { ...track, advanced: createDefaultAdvancedParams() };
     delete restored.script;
     delete restored.releaseScore;
-    return {
+    return pruneShortcutUndo({
       ...restored,
+      shortcutUndo: normalizeShortcutUndo(track.shortcutUndo),
       simpleCustom: track.simpleCustom !== false,
       mode: track.mode === "deep" ? "advanced" : track.mode,
       advanced: clampAdvancedToSampleRate({
@@ -439,7 +446,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
           ...(track.advanced?.repair ?? {}),
         },
       }, track.sampleRate),
-    };
+    });
   });
   return {
     tracks,

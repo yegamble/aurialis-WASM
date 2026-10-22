@@ -1,7 +1,7 @@
 "use client";
 
 import { createDefaultAdvancedParams, clampAdvancedToSampleRate } from "@/lib/audio-dsp";
-import { applyMasteringShortcut, isMasteringShortcutActive, type MasteringShortcut } from "@/lib/mastering-shortcuts";
+import { isMasteringShortcutActive, type MasteringShortcut } from "@/lib/mastering-shortcuts";
 import { useStore } from "@/lib/store";
 import type { MultibandBandParams, Track } from "@/lib/types";
 import { DSPModule } from "./DSPModule";
@@ -21,9 +21,9 @@ export function MasteringShortcuts({ track }: { track: Track }) {
     { id: "glue", label: "Glue Comp", detail: "Compressor: −18 dB, 2:1, 30 ms attack, automatic release, 90 Hz sidechain, 6 dB knee, zero makeup." },
   ];
   return <DSPModule title="Starting points">
-    <p className="text-sm text-[var(--ink-soft)]">Apply a starting point, then refine its settings below. Highlighted buttons match your current settings. Editing those settings clears the highlight. Reapplying a shortcut does not add more processing.</p>
+    <p className="text-sm text-[var(--ink-soft)]">Toggle a starting point on to apply it, or off to restore its previous settings. Other controls stay in place. Editing its settings clears the highlight.</p>
     <div className="grid grid-cols-2 gap-2">{shortcuts.map((shortcut) => <Button key={shortcut.id} variant="secondary" aria-pressed={isMasteringShortcutActive(track.advanced, shortcut.id, track.sampleRate)} className="aria-pressed:border-ink aria-pressed:bg-ink aria-pressed:text-paper" title={shortcut.detail} onClick={() => {
-      dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: applyMasteringShortcut(track.advanced, shortcut.id, track.sampleRate) } });
+      dispatch({ type: "TOGGLE_MASTERING_SHORTCUT", trackId: track.id, shortcut: shortcut.id });
     }}>{shortcut.label}</Button>)}</div>
     <ul className="space-y-1 text-xs text-[var(--ink-soft)]">{shortcuts.map((shortcut) => <li key={shortcut.id}><strong>{shortcut.label}:</strong> {shortcut.detail}</li>)}</ul>
   </DSPModule>;

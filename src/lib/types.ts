@@ -136,7 +136,18 @@ export type Metrics = {
 
 export type TrackStatus = "draft" | "ready" | "mastered" | "needs-review";
 
+export type ShortcutUndo = {
+  air?: EQBandParams;
+  mud?: EQBandParams;
+  tape?: SaturationParams;
+  tapeLegacy?: number;
+  glue?: CompressorParams;
+  glueLegacy?: Pick<AdvancedParams, "threshold" | "ratio" | "attack" | "release">;
+  eqBaseline?: { enabled: boolean; bands: AdvancedParams["eqBands"] };
+};
+
 export type Track = {
+  shortcutUndo?: ShortcutUndo;
   /** Only an explicit Simple selection establishes a preset association. */
   simpleCustom?: boolean;
   persistenceWarning?: string;

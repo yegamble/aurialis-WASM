@@ -3,6 +3,7 @@ package server_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -72,5 +73,35 @@ func TestMeasuredFeatureAPIRejectsUnsupportedOptionsAndInvalidAudio(t *testing.T
 		if recorder.Code != http.StatusBadRequest {
 			t.Fatalf("unsupported feature request returned%d: %s", recorder.Code, recorder.Body.String())
 		}
+	}
+}
+
+type failedFeatureDelivery struct{ *httptest.ResponseRecorder }
+
+func (writer failedFeatureDelivery) Write(data []byte) (int, error) {
+	_, _ = writer.ResponseRecorder.Write(data)
+	return 0, errors.New("submission transport closed")
+}
+
+func TestMeasuredFeatureSubmissionDeliveryFailureCancelsAdmittedJob(t *testing.T) {
+	srv := server.New(server.Config{Workers: 1})
+	defer srv.Close()
+	recorder := httptest.NewRecorder()
+	writer := failedFeatureDelivery{ResponseRecorder: recorder}
+	srv.Handler().ServeHTTP(writer, newMultipartRequest(t, http.MethodPost, "/api/analyze/features", "source.wav", buildTestWAV(t, 8000, 0.25), nil))
+	var submitted jobs.Job
+	if err := json.Unmarshal(recorder.Body.Bytes(), &submitted); err != nil || submitted.ID == "" {
+		t.Fatal("failed to capture admitted identity", err)
+	}
+	poll := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/jobs/"+submitted.ID, nil)
+	poll.Host = "127.0.0.1:8080"
+	recorder = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(recorder, poll)
+	var job jobs.Job
+	if err := json.Unmarshal(recorder.Body.Bytes(), &job); err != nil {
+		t.Fatal(err)
+	}
+	if job.Status != jobs.StatusCanceled || job.Features != nil {
+		t.Fatalf("failed delivery orphaned analysis: %+v", job)
 	}
 }

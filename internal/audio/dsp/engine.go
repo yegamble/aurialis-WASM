@@ -297,8 +297,8 @@ func (e *Engine) Params() Params {
 	return e.params
 }
 
-// SetParams updates the engine parameter vector while preserving filter states and only
-// recomputing coefficients for bands or crossovers whose parameters actually changed.
+// SetParams preserves running-stage histories and clears delay samples when a
+// stage stops. It recomputes only coefficients whose parameters actually changed.
 // Invalid updates are ignored atomically; call ValidateParams to obtain an error.
 func (e *Engine) SetParams(next Params) {
 	if ValidateParams(next) != nil {
@@ -314,7 +314,11 @@ func (e *Engine) SetParams(next Params) {
 	}
 	for i := 0; i < NumEQBands; i++ {
 		if prev.Bands[i] != next.Bands[i] {
+			wasActive := e.eqCoeffs[i].active
 			e.eqCoeffs[i] = computeBandCoeffs(e.sampleRate, next.Bands[i])
+			if wasActive && !e.eqCoeffs[i].active {
+				e.eqState[i] = [2]svfState{}
+			}
 		}
 	}
 	if prev.Compressor.SidechainHPFHz != next.Compressor.SidechainHPFHz {
@@ -326,6 +330,7 @@ func (e *Engine) SetParams(next Params) {
 	if prev.Repair.DeEssDB != next.Repair.DeEssDB || prev.Repair.Enabled != next.Repair.Enabled {
 		e.deEssCoeffs = computeBandpassSVF(e.sampleRate, 6500.0, 2.0)
 	}
+	e.clearStoppedStageHistory(prev)
 }
 
 // SetBand updates exclusively EQ band index [0..4] without touching any other band or module.
@@ -343,7 +348,11 @@ func (e *Engine) SetBand(index int, band BandParams) {
 		return
 	}
 	e.params.Bands[index] = band
+	wasActive := e.eqCoeffs[index].active
 	e.eqCoeffs[index] = computeBandCoeffs(e.sampleRate, band)
+	if wasActive && !e.eqCoeffs[index].active {
+		e.eqState[index] = [2]svfState{}
+	}
 }
 
 // Reset clears filter delay lines and envelope followers back to zero silence.

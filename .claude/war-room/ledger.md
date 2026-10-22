@@ -15,9 +15,29 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 The latest whole-product review audited local and remote `main` at `ade7736` (the only live branch). The blanket verification claims in the historical activation record are withdrawn. The corrected design archive matches the canonical checked-in Figma source exactly.
 
-[The baseline audit](../../docs/reviews/2026-10-21-war-room-audit.md) records 17 recovery findings. The corrective subset on `codex/war-room-product-audit` is now **locally verified — open, awaiting merge**: direct Go WASI playback, canonical settings, import/recovery, transport and responsive repairs passed the recorded gates, all 39 local browser cases, bounded five-minute actual-song output and six-job source CI at `e91d2f0`. The change is [draft PR #2](https://github.com/yegamble/aurialis-WASM/pull/2), with owner approval absent.
+[The baseline audit](../../docs/reviews/2026-10-21-war-room-audit.md) records 17 recovery findings. The earlier corrective subset on `codex/war-room-product-audit` was **locally verified — open, awaiting merge**: direct Go WASI playback, canonical settings, import/recovery, transport and responsive repairs passed the recorded gates, all 39 local browser cases, bounded five-minute actual-song output and six-job source CI at `e91d2f0`. The owner merged [PR #2](https://github.com/yegamble/aurialis-WASM/pull/2) on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`.
 
 Broader trained separation, source-derived AI analysis, musical automation, spectral matching, hardware/true-peak/platform certification and arbitrary-workload capacity remain open. The chronological entries below retain failures and pending statuses as they stood at each checkpoint; the final acceptance entry supersedes their current-status implications without erasing them. Original “Failed to fetch” causation remains unverified.
+
+## Current expansion — Advanced mastering controls and preset calibration
+
+**Status: locally verified — open, awaiting merge (`codex/advanced-mastering-controls`).** The owner requested audio-engineer and DSP-plugin-engineer implementation informed by public Waves documentation. Prior corrective PR #2 was independently owner-merged; this new scope requires a new PR, remote CI and merge. Earlier accepted runtime evidence remains historical.
+
+DECISION: ACCEPT the bounded local implementation of original processing controls and conservative Simple recipes; remote CI and merge remain pending.
+
+WHY: Makeup/knee/detector and stereo crossover were hidden or fixed; mid/side gain, adaptive release, dynamic de-harsh, three-band dynamics and named coloration now have shared DSP and UI wiring. Simple genres remain starting points, not proprietary Waves recipes or source-adaptive mastering.
+
+AFFECTED LAYER: wasm-dsp, go-backend, nextjs-ui, qa, docs.
+
+USER / AUDIO IMPACT: Canonical state and idempotent shortcuts retain explicit control. Legacy sessions preserve old character choices and new stages default off. Clean is identity; manual Release is inactive during automatic recovery, and retained values return when their modes change.
+
+DISSENT / LIMITS: De-Harsh overshoot and large saturation drive-change transients were reproduced and corrected through Q normalization and antiderivative-history rebasing, with tests of those cases. First-order complementary multiband is not linear-phase or steep band isolation. Named coloration is not a hardware clone or alias-free guarantee. Zero runtime counters and fixture parity do not certify all host scheduling, signals or transitions.
+
+CURRENT EVIDENCE: Stable binary `dce7b7f8513a2fe0d272059727b4a97fb43346e7745021e31efc40b84b6abb69`; 183 units, final TypeScript/lint/knip, 121-file zero-issue spelling, Go vet/race and full native/JS/WASI quality/security gates passed. All 333 native/offline/direct/live fixtures matched exactly. Stable build, empty-directory binary smoke, Newman 17 requests/22 assertions and raw curl probes passed. Final Chromium **42/42 in 2.2 minutes**, including the **62-control export matrix in 31.7 seconds**, passed. Isolated Brave **3/3 actual-output checks in 17.9 seconds** passed. These are unit, wasm-bridge, api-curl, newman-e2e, playwright-a11y-responsive and compiled-binary-smoke evidence at the documented scope.
+
+RETAINED FAILURES: First parity attempt raced a mid/side source change and passed after a stable rebuild. Threshold and Tape/Tape Warmth strict-selector ambiguities were corrected; the preceding full suite was 41/42 (62 exports passed in 43.2 seconds), then exact-selector targeted checks and final 42/42 passed. Earlier simultaneous Brave imports failed 2/3 with server busy/admission responses; isolated rerun passed. None of these observations erases the actual DSP defects corrected above or certifies arbitrary workloads.
+
+The [research contract](../../docs/mastering-controls-research.md) and [task evidence](../../docs/tasks.md) record sources, values and limitations. Documentation sync is complete for this local checkpoint; remote CI and owner-authorized merge remain required.
 
 ## Iteration Log
 

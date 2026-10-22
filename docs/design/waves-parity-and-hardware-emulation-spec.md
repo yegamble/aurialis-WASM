@@ -89,7 +89,7 @@ Latency must be constant within a prepared graph across bypass, saturation drive
 
 ### Compressor topologies
 
-Keep stereo detection linked. Define gain reduction as a nonnegative dB quantity. Specify whether Attack/Release controls use 63.2% time constants or the current 91.8% settling convention; v1 retains its convention. For v2 use `a(tau)=exp(-1/(fs*tau))`, with UI documentation and tests consistent with that definition.
+Keep stereo detection linked. Define gain reduction as a nonnegative dB quantity. Specify whether Attack/Release controls use 63.2% time constants or the current 91.8% settling convention; v1 retains its convention. For v2 use `a(tau)=exp(-1/(fs*tau))` with `tau` in seconds (UI milliseconds × 1e-3), with UI documentation and tests consistent with that definition.
 
 - Optical: maintain fast gain reduction and slow exposure memory separately. Initial candidate: 60 ms fast recovery, 1.2 s exposure integration, a 0.5–3.5 s slow recovery varying with exposure. Blend the two reduction states using bounded exposure. Soft knee at least 6 dB. These are calibration candidates, not an LA-2A replica claim.
 - Variable-Mu: a continuous progressive gain-reduction curve may start with `x=max(0,detectorDb-(thresholdDb-6))`, `r=1+(ratio-1)*x/(x+6)`, `GR=x*(1-1/r)`. Test continuity and monotonicity. Keep coloration as a separately controlled anti-aliased stage; do not silently add a second saturation stage on topology selection.

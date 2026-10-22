@@ -1,5 +1,6 @@
-// cspell:words RMSDB
 package mastering
+
+// cspell:words RMSDB
 
 import (
 	"context"
@@ -99,8 +100,10 @@ func AnalyzeFeaturesContext(ctx context.Context, buf *audio.Buffer, onProgress f
 	if onProgress != nil {
 		onProgress(10, "Measuring normalized spectrum and stereo energy...")
 	}
-	fftSize := 256
-	for fftSize < buf.SampleRate/32 && fftSize < 4096 {
+	// Resolve the 20–120 Hz band even at 192 kHz. A fixed 4096 FFT there
+	// has 46.875 Hz bins and cannot contain the Hann spread of upper bass tones.
+	fftSize := 512
+	for fftSize < buf.SampleRate/16 && fftSize < 16384 {
 		fftSize *= 2
 	}
 	summaries, err := measureSpectrumContext(ctx, buf, fftSize)

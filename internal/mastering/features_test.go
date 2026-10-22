@@ -181,3 +181,40 @@ func TestFeatureSourceBindingCancellationAndWindowCadence(t *testing.T) {
 		t.Fatal("in-flight cancellation ignored", err)
 	}
 }
+
+func TestFeatureLowBandResolutionAndBoundarySpread(t *testing.T) {
+	for _, rate := range []int{8000, 44100, 48000, 96000, 192000} {
+		for _, frequency := range []float64{60, 70, 90} {
+			buf := featureSignal(rate, 2, func(i int) (float32, float32) {
+				value := float32(0.25 * math.Sin(2*math.Pi*frequency*float64(i)/float64(rate)))
+				return value, value
+			})
+			result, err := AnalyzeFeaturesContext(context.Background(), buf, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 10 * math.Log10(0.25*0.25/2)
+			if math.Abs(result.Bands[0].PowerDB-want) > 0.5 {
+				t.Fatalf("rate%d low tone%g power%g want%g FFT%d", rate, frequency, result.Bands[0].PowerDB, want, result.FFTSize)
+			}
+		}
+	}
+	for _, rate := range []int{48000, 192000} {
+		for band, frequency := range []float64{120, 500, 2000, 6000} {
+			buf := featureSignal(rate, 2, func(i int) (float32, float32) {
+				value := float32(0.25 * math.Sin(2*math.Pi*frequency*float64(i)/float64(rate)))
+				return value, value
+			})
+			result, err := AnalyzeFeaturesContext(context.Background(), buf, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			left := math.Pow(10, result.Bands[band].PowerDB/10)
+			right := math.Pow(10, result.Bands[band+1].PowerDB/10)
+			want := 0.25 * 0.25 / 2
+			if math.Abs(10*math.Log10((left+right)/want)) > 0.5 || left/want < 0.2 || right/want < 0.2 || left/want > 0.8 || right/want > 0.8 {
+				t.Fatalf("rate%d boundary%g did not retain and share Hann power: left%g right%g want%g", rate, frequency, left, right, want)
+			}
+		}
+	}
+}

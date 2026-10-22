@@ -275,3 +275,94 @@ func TestRepairPathsClearIndependently(t *testing.T) {
 		}
 	}
 }
+
+func TestSaturationModelPathsDoNotReplayAudio(t *testing.T) {
+	models := []SatCharacter{SatWarm, SatThick, SatCrisp, SatClean, SatTube, SatTape, SatTransformer}
+	for _, rate := range []float64{8000, 48000, 192000} {
+		for _, from := range []SatCharacter{SatCrisp, SatTube, SatTape, SatTransformer} {
+			for _, away := range models {
+				p := extendedTestParams()
+				p.Saturation.Amount = 100
+				p.Saturation.Character = from
+				e := NewEngine(rate)
+				e.SetParams(p)
+				var left, right, outLeft, outRight [128]float32
+				for block := 0; block < 20; block++ {
+					for i := range left {
+						left[i] = float32(.4 * math.Cos(2*math.Pi*100*float64(block*128+i)/rate))
+						right[i] = -left[i]
+					}
+					e.ProcessBlock(left[:], right[:], outLeft[:], outRight[:])
+				}
+				p.Saturation.Character = away
+				e.SetParams(p)
+				clear(left[:])
+				clear(right[:])
+				for block := 0; block < 500; block++ {
+					e.ProcessBlock(left[:], right[:], outLeft[:], outRight[:])
+				}
+				p.Saturation.Character = from
+				e.SetParams(p)
+				for block := 0; block < 4; block++ {
+					e.ProcessBlock(left[:], right[:], outLeft[:], outRight[:])
+					for i := range outLeft {
+						if math.Abs(float64(outLeft[i])) > 1e-7 || math.Abs(float64(outRight[i])) > 1e-7 {
+							t.Fatalf("%s through %s at %.0f Hz replayed old audio: %g/%g", from, away, rate, outLeft[i], outRight[i])
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestSaturationModelPathEditsPreserveSharedHistory(t *testing.T) {
+	for _, from := range []SatCharacter{SatCrisp, SatTube, SatTape, SatTransformer} {
+		for _, to := range []SatCharacter{SatWarm, SatThick, SatCrisp, SatTube, SatTape, SatTransformer} {
+			p := extendedTestParams()
+			p.Saturation.Amount = 70
+			p.Saturation.Character = from
+			e := NewEngine(48000)
+			e.SetParams(p)
+			var left, right, outLeft, outRight [128]float32
+			for i := range left {
+				left[i] = float32(.4 * math.Cos(float64(i)*.1))
+				right[i] = -left[i]
+			}
+			e.ProcessBlock(left[:], right[:], outLeft[:], outRight[:])
+			before := *e
+			p.Saturation.Character = to
+			e.SetParams(p)
+			if e.satPrevX != before.satPrevX || e.satPrevIn != before.satPrevIn || e.dcPrevX != before.dcPrevX || e.dcPrevY != before.dcPrevY || e.eqState != before.eqState || e.compEnvDB != before.compEnvDB {
+				t.Fatalf("%s to %s reset shared running history", from, to)
+			}
+			if from == SatCrisp && to != SatCrisp && (e.ironLP != ([2]float64{}) || e.ironHP != ([2]float64{})) {
+				t.Fatal("stopped Crisp filter retained history")
+			}
+			if from != SatCrisp && (to == SatWarm || to == SatThick || to == SatCrisp) && e.extended.colorLP != ([2]float64{}) {
+				t.Fatal("stopped coloration filter retained history")
+			}
+			if from != SatCrisp && (to == SatTube || to == SatTape || to == SatTransformer) && e.extended.colorLP != before.extended.colorLP {
+				t.Fatal("running coloration filter lost history")
+			}
+		}
+	}
+}
+
+func TestSaturationModelPathEditsDoNotAllocate(t *testing.T) {
+	models := []SatCharacter{SatCrisp, SatThick, SatTube, SatTape, SatTransformer, SatWarm}
+	p := extendedTestParams()
+	p.Saturation.Amount = 70
+	e := NewEngine(48000)
+	e.SetParams(p)
+	var in, left, right [128]float32
+	index := 0
+	if n := testing.AllocsPerRun(100, func() {
+		p.Saturation.Character = models[index%len(models)]
+		index++
+		e.SetParams(p)
+		e.ProcessBlock(in[:], in[:], left[:], right[:])
+	}); n != 0 {
+		t.Fatalf("saturation model path edits allocated %g times", n)
+	}
+}

@@ -232,7 +232,15 @@ func (e *Engine) clearStoppedStageHistory(prev Params) {
 	if all || (wasSat && !isSat) {
 		e.satPrevX, e.satPrevF1, e.satPrevIn = [2]float64{}, [2]float64{}, [2]float64{}
 		e.dcPrevX, e.dcPrevY = [2]float64{}, [2]float64{}
+	}
+	// Model-specific filters stop advancing when another processing path is
+	// selected. Shared ADAA/input/DC histories still belong to the running chain.
+	if all || (wasSat && !isSat) || (prev.Saturation.Character == SatCrisp && next.Saturation.Character != SatCrisp) {
 		e.ironLP, e.ironHP = [2]float64{}, [2]float64{}
+	}
+	wasColor := prev.Saturation.Character == SatTube || prev.Saturation.Character == SatTape || prev.Saturation.Character == SatTransformer
+	isColor := next.Saturation.Character == SatTube || next.Saturation.Character == SatTape || next.Saturation.Character == SatTransformer
+	if all || (wasSat && !isSat) || (wasColor && !isColor) {
 		e.extended.colorLP = [2]float64{}
 	}
 	if all || (prev.Stereo.Enabled && prev.Stereo.MonoBass && (!next.Stereo.Enabled || !next.Stereo.MonoBass)) {

@@ -25,3 +25,26 @@ export function applyMasteringShortcut(advanced: AdvancedParams, shortcut: Maste
   }
   return clampAdvancedToSampleRate(next, sampleRate);
 }
+
+/** Selection follows the audible settings, including sample-rate-limited EQ. */
+export function isMasteringShortcutActive(advanced: AdvancedParams, shortcut: MasteringShortcut, sampleRate: number): boolean {
+  const expected = applyMasteringShortcut(advanced, shortcut, sampleRate);
+  if (shortcut === "air" || shortcut === "mud") {
+    const id = shortcut === "air" ? "air" : "low";
+    const actualBand = advanced.eqBands.find((band) => band.id === id);
+    const expectedBand = expected.eqBands.find((band) => band.id === id);
+    return advanced.eqEnabled && !!actualBand && !!expectedBand &&
+      actualBand.enabled === expectedBand.enabled && actualBand.type === expectedBand.type &&
+      actualBand.freqHz === expectedBand.freqHz && actualBand.gainDb === expectedBand.gainDb && actualBand.q === expectedBand.q;
+  }
+  if (shortcut === "tape") {
+    const actual = advanced.saturationModule;
+    return actual.enabled && actual.character === expected.saturationModule.character && actual.drive === expected.saturationModule.drive;
+  }
+  // Manual release is retained but inaudible while automatic release is enabled.
+  const actual = advanced.compressor;
+  const target = expected.compressor;
+  return actual.enabled && actual.autoRelease && actual.threshold === target.threshold &&
+    actual.ratio === target.ratio && actual.attack === target.attack &&
+    actual.sidechainHpfHz === target.sidechainHpfHz && actual.knee === target.knee && actual.makeup === target.makeup;
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultAdvancedParams } from "../audio-dsp";
-import { applyMasteringShortcut } from "../mastering-shortcuts";
+import { applyMasteringShortcut, isMasteringShortcutActive } from "../mastering-shortcuts";
 import { normalizeHydratedState, reduceStoreState } from "../store";
 import { testStore } from "./fixtures";
 
@@ -89,5 +89,32 @@ describe("transparent mastering shortcuts", () => {
   it("limits air frequency on low-rate audio and exposes glue through canonical compressor values", () => {
     expect(applyMasteringShortcut(createDefaultAdvancedParams(), "air", 8000).eqBands[4].freqHz).toBeLessThan(4000);
     expect(applyMasteringShortcut(createDefaultAdvancedParams(), "glue", 48000).compressor).toMatchObject({ enabled: true, threshold: -18, ratio: 2, attack: 30, autoRelease: true, sidechainHpfHz: 90, knee: 6, makeup: 0 });
+  });
+});
+
+
+describe("shortcut selection reflects processing", () => {
+  it.each([8000, 48000, 192000])("keeps all four independent shortcuts selected at %i Hz", (sampleRate) => {
+    const shortcuts = ["air", "mud", "tape", "glue"] as const;
+    let advanced = createDefaultAdvancedParams();
+    for (const shortcut of shortcuts) {
+      expect(isMasteringShortcutActive(advanced, shortcut, sampleRate)).toBe(false);
+      advanced = applyMasteringShortcut(advanced, shortcut, sampleRate);
+      expect(isMasteringShortcutActive(advanced, shortcut, sampleRate)).toBe(true);
+    }
+    for (const shortcut of shortcuts) expect(isMasteringShortcutActive(advanced, shortcut, sampleRate)).toBe(true);
+    advanced.input = 3;
+    for (const shortcut of shortcuts) expect(isMasteringShortcutActive(advanced, shortcut, sampleRate)).toBe(true);
+    advanced.eqBands[4].gainDb = 0;
+    expect(isMasteringShortcutActive(advanced, "air", sampleRate)).toBe(false);
+    expect(isMasteringShortcutActive(advanced, "mud", sampleRate)).toBe(true);
+    advanced.eqEnabled = false;
+    expect(isMasteringShortcutActive(advanced, "mud", sampleRate)).toBe(false);
+    advanced.saturationModule.drive = 11;
+    expect(isMasteringShortcutActive(advanced, "tape", sampleRate)).toBe(false);
+    advanced.compressor.release = 500;
+    expect(isMasteringShortcutActive(advanced, "glue", sampleRate)).toBe(true);
+    advanced.compressor.autoRelease = false;
+    expect(isMasteringShortcutActive(advanced, "glue", sampleRate)).toBe(false);
   });
 });

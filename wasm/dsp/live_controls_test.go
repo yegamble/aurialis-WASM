@@ -199,7 +199,7 @@ func TestExtendedLiveControls(t *testing.T) {
 		invalid := v
 		invalid[index] = .5
 		if _, accepted := invalid.params(); accepted {
-			t.Fatal("nonboolean accepted")
+			t.Fatal("non-boolean accepted")
 		}
 	}
 	for _, index := range []int{57, 58, 60, 61, 62, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80} {

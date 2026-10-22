@@ -84,6 +84,13 @@ func TestLegacyLatencyDrainAndAllocationContract(t *testing.T) {
 				p.Compressor.ThresholdDB, p.Compressor.Ratio = -20, 2
 				p.Saturation.Amount, p.Stereo.WidthPct = 20, 125
 				p.Stereo.MonoBass, p.Limiter.Enabled = true, true
+				p.Repair = RepairParams{Enabled: true, DeEssDB: 3, TransientDB: 2, DeClip: true}
+				p.DeHarsh = DeHarshParams{Enabled: true, FrequencyHz: 4000, ThresholdDB: -24, RangeDB: 3}
+				p.Multiband = MultibandParams{Enabled: true, LowMidHz: 200, MidHighHz: 4000}
+				for i := range p.Multiband.Bands {
+					p.Multiband.Bands[i] = DynamicsBandParams{ThresholdDB: -24, Ratio: 2, AttackMS: 20, ReleaseMS: 120}
+				}
+				p.DitherBits = 16
 				e.SetParams(p)
 				in, left, right := make([]float32, frames), make([]float32, frames), make([]float32, frames)
 				in[len(in)-1] = .2
@@ -98,6 +105,8 @@ func TestLegacyLatencyDrainAndAllocationContract(t *testing.T) {
 				if allocations := testing.AllocsPerRun(10, func() { e.ProcessBlock(in, in, left, right); e.Drain(left, right) }); allocations != 0 {
 					t.Fatalf("processing allocated %g", allocations)
 				}
+				p.DitherBits = 0
+				e.SetParams(p)
 				e.Reset()
 				clear(in)
 				e.ProcessBlock(in, in, left, right)

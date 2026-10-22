@@ -5,7 +5,7 @@ const QUANTUM = 128;
 const SLOTS = 256;
 const FRAMES = QUANTUM * SLOTS;
 const WRITE = 0, READ = 1, GENERATION = 2, APPLIED = 4, ERROR = 5, UNDERRUNS = 6;
-const CONTROL_COUNT = 81;
+const LEGACY_CONTROL_COUNT = 81;
 class AurialisLiveProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
@@ -55,10 +55,14 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       } catch (error) { this.fail(error); }
     };
     try {
-      if (!(config.controls instanceof SharedArrayBuffer) || config.controls.byteLength !== 16 + CONTROL_COUNT * 8)
+      this.controlAbiVersion = config.controlAbiVersion === undefined ? 1 : config.controlAbiVersion;
+      if (this.controlAbiVersion !== 1 && this.controlAbiVersion !== 2)
+        throw new Error("The live audio control ABI is unsupported.");
+      this.controlCount = LEGACY_CONTROL_COUNT + (this.controlAbiVersion === 2 ? 1 : 0);
+      if (!(config.controls instanceof SharedArrayBuffer) || config.controls.byteLength !== 16 + this.controlCount * 8)
         throw new Error("The live audio settings buffer is invalid.");
       this.controlHeader = new Int32Array(config.controls, 0, 4);
-      this.controlValues = new Float64Array(config.controls, 16, CONTROL_COUNT);
+      this.controlValues = new Float64Array(config.controls, 16, this.controlCount);
       const origin = config.clockOriginMs;
       if (!Number.isFinite(origin) || origin <= 0)
         throw new Error("The audio initialization clock is invalid.");
@@ -69,11 +73,21 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         || typeof exports._initialize !== "function" || typeof exports.aurialis_init !== "function"
         || typeof exports.aurialis_live_buffer !== "function" || typeof exports.aurialis_control_buffer !== "function"
         || typeof exports.aurialis_live_process !== "function" || typeof exports.aurialis_live_reset !== "function"
-        || typeof exports.aurialis_set_controls !== "function")
+        || typeof exports.aurialis_set_controls !== "function"
+        || typeof exports.aurialis_control_count !== "function" || typeof exports.aurialis_algorithm_supported !== "function"
+        || typeof exports.aurialis_latency_frames !== "function" || typeof exports.aurialis_live_drain !== "function")
         throw new Error("The live audio engine is missing its fixed-buffer interface.");
       host.attach(exports.memory);
       exports._initialize();
       if (exports.aurialis_init(sampleRate) !== 1) throw new Error("The live audio engine rejected the output rate.");
+      if (exports.aurialis_control_count(this.controlAbiVersion) !== this.controlCount
+        || exports.aurialis_algorithm_supported(1) !== 1)
+        throw new Error("The live audio engine and settings capabilities do not match.");
+      if (exports.aurialis_latency_frames() !== 0)
+        throw new Error("The live audio engine requires unsupported latency compensation.");
+      if (this.controlAbiVersion === 2 && (typeof exports.aurialis_control_buffer_v2 !== "function"
+        || typeof exports.aurialis_set_controls_v2 !== "function"))
+        throw new Error("The live audio engine is missing its versioned settings interface.");
       this.kernel = exports;
       this.refreshBuffers();
       host.beginRender();
@@ -92,19 +106,19 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     if (this.kernel.memory.buffer === this.memoryBuffer) return;
     const pointers = [];
     for (let channel = 0; channel < 4; channel++) pointers.push(this.kernel.aurialis_live_buffer(channel));
-    pointers.push(this.kernel.aurialis_control_buffer());
+    pointers.push(this.controlAbiVersion === 2 ? this.kernel.aurialis_control_buffer_v2() : this.kernel.aurialis_control_buffer());
     const buffer = this.kernel.memory.buffer;
     for (let index = 0; index < pointers.length; index++) {
       const raw = pointers[index];
       if (!Number.isInteger(raw) || raw < -2147483648 || raw > 2147483647)
         throw new Error("The live audio engine returned an invalid buffer address.");
       pointers[index] = raw >>> 0;
-      const bytes = index === 4 ? CONTROL_COUNT * 8 : QUANTUM * 4;
+      const bytes = index === 4 ? this.controlCount * 8 : QUANTUM * 4;
       const alignment = index === 4 ? 8 : 4;
       if (pointers[index] === 0 || pointers[index] % alignment !== 0 || pointers[index] + bytes > buffer.byteLength)
         throw new Error("The live audio engine returned an invalid buffer address.");
       for (let previous = 0; previous < index; previous++) {
-        const previousBytes = previous === 4 ? CONTROL_COUNT * 8 : QUANTUM * 4;
+        const previousBytes = previous === 4 ? this.controlCount * 8 : QUANTUM * 4;
         if (pointers[index] < pointers[previous] + previousBytes && pointers[previous] < pointers[index] + bytes)
           throw new Error("The live audio engine returned overlapping buffers.");
       }
@@ -113,7 +127,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.right = new Float32Array(buffer, pointers[1], QUANTUM);
     this.outLeft = new Float32Array(buffer, pointers[2], QUANTUM);
     this.outRight = new Float32Array(buffer, pointers[3], QUANTUM);
-    this.controls = new Float64Array(buffer, pointers[4], CONTROL_COUNT);
+    this.controls = new Float64Array(buffer, pointers[4], this.controlCount);
     this.memoryBuffer = buffer;
   }
   applyControls() {
@@ -123,11 +137,13 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     if (!Number.isInteger(version) || version <= 0) throw new Error("The live audio settings version is invalid.");
     if (version === this.controlVersion) return true;
     this.refreshBuffers();
-    for (let index = 0; index < CONTROL_COUNT; index++) this.controls[index] = this.controlValues[index];
+    for (let index = 0; index < this.controlCount; index++) this.controls[index] = this.controlValues[index];
     // Values AND their applied version belong to this one stable transaction.
     // Never retry/spin on the render thread: retain the prior chain this block.
     if (sequence !== Atomics.load(this.controlHeader, 0)) return false;
-    if (this.kernel.aurialis_set_controls() !== 1) throw new Error("The live audio engine rejected these settings.");
+    const accepted = this.controlAbiVersion === 2
+      ? this.kernel.aurialis_set_controls_v2(this.controlCount) : this.kernel.aurialis_set_controls();
+    if (accepted !== 1) throw new Error("The live audio engine rejected these settings.");
     this.refreshBuffers();
     this.controlVersion = version;
     return true;

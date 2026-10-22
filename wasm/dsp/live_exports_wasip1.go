@@ -56,3 +56,6 @@ func WasmControlBuffer() *[liveControlValues]float64 {
 func WasmSetControls() uint32 {
 	return reactorControls.apply(reactorBridge)
 }
+
+func runtimeBridge() *Bridge          { return reactorBridge }
+func runtimeBlocks() *liveBlockBridge { return &reactorBlocks }

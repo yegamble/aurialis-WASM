@@ -115,3 +115,33 @@ describe("fixed Go live control ABI", () => {
     expect(Array.from(new Int32Array(controls.buffer, 0, 4))).toEqual([2, 7, 0, 0]);
   });
 });
+
+
+describe("negotiated append-only live controls", () => {
+  it("retains 81 legacy values and appends the explicit v1 algorithm in ABI 2", () => {
+    const legacy = packLiveControls(params());
+    const versioned = packLiveControls(params(), 2);
+    expect(legacy.length).toBe(81);
+    expect(versioned.length).toBe(82);
+    expect(Array.from(versioned.subarray(0, 81))).toEqual(Array.from(legacy));
+    expect(versioned[81]).toBe(1);
+    expect(packLiveControls({ ...params(), algorithmVersion: 0 }, 2)[81]).toBe(1);
+    expect(packLiveControls({ ...params(), algorithmVersion: 1 })).toEqual(legacy);
+    const publication = createLiveControls(params(), 1, 2);
+    expect(publication.buffer.byteLength).toBe(672);
+    expect(new Float64Array(publication.buffer, 16, 82)[81]).toBe(1);
+  });
+  it("rejects explicit null versions and unsupported packet ABIs", () => {
+    const invalid = { ...params(), algorithmVersion: 1 };
+    Reflect.set(invalid, "algorithmVersion", null);
+    expect(() => packLiveControls(invalid)).toThrow("Unsupported DSP algorithm version");
+    expect(() => packLiveControls(params(), 3)).toThrow("Unsupported live control ABI");
+  });
+  it.each([2, -1, 1.5, NaN, Infinity])("rejects algorithm %s before publishing a transaction", (algorithmVersion) => {
+    const publication = createLiveControls(params(), 1, 2);
+    const before = new Uint8Array(publication.buffer).slice();
+    expect(() => { publication.publish({ ...params(), algorithmVersion }, 2); }).toThrow("Unsupported DSP algorithm version");
+    expect(new Uint8Array(publication.buffer)).toEqual(before);
+    expect(() => packLiveControls({ ...params(), algorithmVersion })).toThrow("Unsupported DSP algorithm version");
+  });
+});

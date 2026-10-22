@@ -31,6 +31,8 @@ Retained failed checkpoints: noise bandwidth bias, 192 kHz low-band resolution, 
 
 QA/Devil’s Advocate accepted the bounded corrections with no remaining in-scope must-fix; Technical Writer/Product Engineer accepted synchronized contracts and atomic commits, subject to recording final evidence. Four loop iterations are recorded; the default owner merge gate remains. Remote checks are tracked in the PR and must pass before owner merge. The whole product, sonic v2 and Waves equivalence remain open; no merge or all-product completion is claimed.
 
+Remote checkpoint: [Remote PR run 39836685651](https://github.com/yegamble/aurialis-WASM/actions/runs/39836685651) passed every verification job except the browser job, which finished 60/61. Its measured-analysis case passed all diagnostics and six-width accessibility assertions, then failed writing a screenshot to macOS-only `/private/tmp` on Linux. The test now uses Playwright’s per-test output directory; no application code, assertion or threshold changed. Strict typing/spelling and the corrected two-case browser run passed (2/2 in 6.1 seconds). Corrected remote acceptance remains pending in PR checks; the earlier local 61/61 checkpoint is retained separately.
+
 ## Current ruling — 2026-10-21 product recovery
 
 The latest whole-product review audited local and remote `main` at `ade7736` (the only live branch). The blanket verification claims in the historical activation record are withdrawn. The corrected design archive matches the canonical checked-in Figma source exactly.

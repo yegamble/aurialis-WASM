@@ -2,7 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { uploadProject } from "./workflow-fixture";
 
-test("Deep measures original source without changing settings and presents accessible source diagnostics at six widths", async ({ page }) => {
+test("Deep measures original source without changing settings and presents accessible source diagnostics at six widths", async ({ page }, info) => {
   await uploadProject(page, "qa-measured-source.wav");
   await page.getByRole("tab", { name: "advanced", exact: true }).click();
   await page.getByRole("slider", { name: "Input gain", exact: true }).fill("6");
@@ -28,9 +28,9 @@ test("Deep measures original source without changing settings and presents acces
     const report = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
     expect(report.violations, `${String(width)}px measured analysis`).toEqual([]);
   }
-  await page.screenshot({ path: "/private/tmp/aurialis-measured-analysis-desktop.png", fullPage: true });
+  await page.screenshot({ path: info.outputPath("measured-analysis-desktop.png"), fullPage: true });
   await page.setViewportSize({ width: 320, height: 1000 });
-  await page.screenshot({ path: "/private/tmp/aurialis-measured-analysis-mobile.png", fullPage: true });
+  await page.screenshot({ path: info.outputPath("measured-analysis-mobile.png"), fullPage: true });
 });
 
 test("Cancel racing a measured-analysis admission deletes the actual server job and cannot display late results", async ({ page }) => {

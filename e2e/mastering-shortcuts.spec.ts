@@ -175,7 +175,8 @@ test("disabling one active starting point preserves the other three and unrelate
 for (const shortcut of shortcuts) {
   test(`${shortcut.label} changes live speaker-feed PCM and disabling restores its level`, async ({ page }) => {
     await observeOutput(page);
-    const frequency = shortcut.label === "Add Air" ? 12000 : shortcut.frequency;
+    // Keep the tone below Nyquist even when the browser opens a 24 kHz device.
+    const frequency = shortcut.frequency;
     const wav = fixture(frequency, 30);
     for (let offset = 44; offset < wav.length; offset += 2) wav.writeInt16LE(wav.readInt16LE(offset) * 3, offset);
     await page.goto("/");

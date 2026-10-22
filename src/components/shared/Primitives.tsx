@@ -642,8 +642,8 @@ export function SpectrumChart({
             const marker = (
               <span aria-hidden="true" className={`eq-marker block shrink-0 rounded-full border-2 border-paper ${isSelected ? "size-[12px] ring-2 ring-clay-dark ring-offset-2 ring-offset-paper" : "size-[10px] ring-1 ring-clay-dark"} ${band.enabled ? "bg-clay" : "bg-ink-soft"}`} />
             );
-            if (!onBandChange) {
-              return <span key={band.id} className="absolute -translate-x-1/2 -translate-y-1/2" style={position}>{marker}</span>;
+            if (!onBandChange || !isSelected) {
+              return <span key={band.id} aria-hidden="true" className="eq-static-marker pointer-events-none absolute -translate-x-1/2 -translate-y-1/2" style={position}>{marker}</span>;
             }
             return (
               <button
@@ -679,7 +679,8 @@ export function SpectrumChart({
       </div>
       {onBandChange && (
         <p className="sr-only" id={instructionsId}>
-          Drag to change frequency and gain. Arrow left and right change frequency;
+          Select a band using the band controls, then drag its node to change
+          frequency and gain. Arrow left and right change frequency;
           arrow up and down change gain. Hold Shift for larger steps. The band
           controls provide another way to enter exact values. High-pass nodes change
           frequency only and retain gain. Double-click a node or press Backspace to

@@ -11,6 +11,22 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Whole-product loop — 2026-10-22, current session
+
+**Status: in progress; product incomplete.** Baseline `f5ec9ad` is clean main, including merged PRs #3/#4/#5. MUB-0 is resolved; its earlier blocking ruling below is historical. The [whole-product review](../../docs/reviews/2026-10-22-war-room-completion.md) records surviving requirements and the supplied Gemini conversation’s stale claims.
+
+Round A councils: DSP/audio/target audience; frontend/design/Devil’s Advocate; backend/security/QA. Round B challenges narrowed the compatibility claim to implemented algorithm 1 and required high-pass-specific control semantics and refined change-point localization. Round C accepted those revisions. Round D accepts isolated MUB-2A compatibility/capability foundation, MUB-3A measured features/neutral sections and MUB-4A supported EQ/limiter controls. Sonic v2, automation, trained stems, measured reference/album consistency and platform acceptance remain open. Existing passing gates cannot close them.
+
+| Item | Decision | Current status |
+| --- | --- | --- |
+| MUB-0 | Prerequisite resolved by merged PR #3 | verified merge ancestor `97964fc` |
+| MUB-2A | Implement version/capability foundation; advertise algorithm 1 only, latency 0/drain 0 | in-progress (`codex/dsp-version-foundation`) |
+| MUB-3A | Implement bounded measured source features and neutral sections; no invented moves | in-progress (`codex/measured-analysis`) |
+| MUB-4A | Expose supported band enable/type and limiter release; prove live/export effects | in-progress (`codex/supported-eq-controls`) |
+| Whole product | Original full planned scope retained | open — acoustic and product requirements remain |
+
+Baseline TypeScript, configured lint, knip and 275 Vitest cases passed in the isolated integration checkout. These are baseline static/unit results, not acceptance of the implementation wave. The default loop budget is four iterations and the default merge policy remains owner-gated; no merge or all-product completion is claimed.
+
 ## Current ruling — 2026-10-21 product recovery
 
 The latest whole-product review audited local and remote `main` at `ade7736` (the only live branch). The blanket verification claims in the historical activation record are withdrawn. The corrected design archive matches the canonical checked-in Figma source exactly.

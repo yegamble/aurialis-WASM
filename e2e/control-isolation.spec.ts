@@ -30,8 +30,8 @@ test.describe("End-to-End Parameter Orthogonality & Control Isolation", () => {
     await expect(stereoWidthSlider).toHaveValue("100")
 
     // Change Saturation character to Tape and verify Threshold & Width are unchanged
-    await page.getByRole("button", { name: "Tape" }).click()
-    await expect(page.getByRole("button", { name: "Tape" })).toHaveAttribute(
+    await page.getByRole("button", { name: "Tape", exact: true }).click()
+    await expect(page.getByRole("button", { name: "Tape", exact: true })).toHaveAttribute(
       "aria-pressed",
       "true",
     )

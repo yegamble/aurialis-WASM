@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import type { AdvancedParams } from "../src/lib/types";
 import { decode, fixture } from "./audio-fixture";
-import { observeOutput, outputLevel } from "./live-output";
+import { meanOutputLevel, observeOutput, outputLevel } from "./live-output";
 
 const shortcuts = [
   { label: "Add Air", frequency: 7000, slider: "Air gain", edit: "2", band: "Air" },
@@ -173,7 +173,7 @@ test("disabling one active starting point preserves the other three and unrelate
 });
 
 for (const shortcut of shortcuts) {
-  test(`${shortcut.label} changes live speaker-feed PCM and disabling restores its level`, async ({ page }) => {
+  test(`${shortcut.label} changes live speaker-feed PCM and disabling restores its level`, async ({ page }, info) => {
     await observeOutput(page);
     // Keep the tone below Nyquist even when the browser opens a 24 kHz device.
     const frequency = shortcut.frequency;
@@ -193,34 +193,46 @@ for (const shortcut of shortcuts) {
     const original = await outputLevel(page);
     if (!original) throw new Error("Missing original live PCM");
     expect(original.rmsDbfs).toBeLessThan(-8);
+    const originalMean = await meanOutputLevel(page);
     await page.getByRole("button", { name: "A Processed", exact: true }).click();
     await expect.poll(async () => {
       const value = await outputLevel(page);
       if (!value || value.frames < original.frames + original.sampleRate / 2) return Infinity;
       return Math.abs(value.rmsDbfs - original.rmsDbfs);
     }).toBeLessThan(0.1);
+    const baselineMean = await meanOutputLevel(page);
+    expect(Math.abs(baselineMean - originalMean)).toBeLessThan(0.1);
     const baseline = await outputLevel(page);
     if (!baseline) throw new Error("Missing live PCM baseline");
     const button = page.getByRole("button", { name: shortcut.label, exact: true });
     await button.click();
     await expect(button).toHaveAttribute("aria-pressed", "true");
     await expect.poll(async () => {
-      const value = await outputLevel(page);
-      if (!value || !Number.isFinite(value.rmsDbfs) || value.frames < baseline.frames + baseline.sampleRate / 2) return 0;
-      return Math.abs(value.rmsDbfs - baseline.rmsDbfs);
-    }).toBeGreaterThan(0.08);
+      const transport = page.locator(".transport");
+      return Number(await transport.getAttribute("data-parameter-version")) - Number(await transport.getAttribute("data-applied-version"));
+    }).toBe(0);
+    await expect.poll(async () => (await outputLevel(page))?.frames ?? 0).toBeGreaterThan(baseline.frames + baseline.sampleRate / 2);
+    // A 1024-frame callback contains fractional tone periods at device rates.
+    // Its phase-dependent RMS can vary by 0.059 dB without any signal change.
+    // Integrate one full second of actual speaker-feed PCM, preserving the
+    // activation threshold while excluding callback phase and settling buffers.
+    const enabledMean = await meanOutputLevel(page);
+    expect(Math.abs(enabledMean - baselineMean)).toBeGreaterThan(0.08);
     const enabled = await outputLevel(page);
     if (!enabled) throw new Error("Missing enabled live PCM");
     await button.click();
     await expect(button).toHaveAttribute("aria-pressed", "false");
     await expect.poll(async () => {
-      const value = await outputLevel(page);
-      if (!value || value.frames < enabled.frames + enabled.sampleRate / 2) return Infinity;
-      return Math.abs(value.rmsDbfs - baseline.rmsDbfs);
-    }).toBeLessThan(0.1);
+      const transport = page.locator(".transport");
+      return Number(await transport.getAttribute("data-parameter-version")) - Number(await transport.getAttribute("data-applied-version"));
+    }).toBe(0);
+    await expect.poll(async () => (await outputLevel(page))?.frames ?? 0).toBeGreaterThan(enabled.frames + enabled.sampleRate / 2);
+    const restoredMean = await meanOutputLevel(page);
+    expect(Math.abs(restoredMean - baselineMean)).toBeLessThan(0.1);
     const restored = await outputLevel(page);
     expect(restored?.instanceId).toBe(baseline.instanceId);
     expect(restored?.frames ?? 0).toBeGreaterThan(baseline.frames);
     await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
+    await info.attach("whole-period-shortcut-levels", { body: JSON.stringify({ shortcut: shortcut.label, sampleRate: baseline.sampleRate, originalMean, baselineMean, enabledMean, restoredMean, activationDeltaDb: enabledMean - baselineMean, restorationDeltaDb: restoredMean - baselineMean }, null, 2), contentType: "application/json" });
   });
 }

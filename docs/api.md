@@ -84,6 +84,8 @@ The current MasteringScript schema uses **string** `version`, `profile`, `summar
 
 ## Browser transport and request boundary
 
+The legacy offline JS/WASM entrypoint uses intrinsic typed-array branding and metadata when checking its input and destination views. It validates all views before advancing DSP state, preserving existing shared-buffer, offset, alias-order and zero behavior. Shadowed properties on a genuine `Float32Array` cannot make its byte view exceed the actual array storage. This is a browser-library boundary correction; no ordinary GUI trigger or host-machine security compromise is established.
+
 Live numeric settings require five EQ bands, three multiband bands when supplied, and exactly 81 finite values. Encoding completes before the shared packet enters its odd/even publication transaction. Rejected packet shapes preserve the prior payload, version and sequence; a later valid update can still be published. The current UI and hydration already preserve three multiband bands, so this correction addresses malformed runtime callers rather than a demonstrated ordinary GUI failure.
 
 **A Processed** is the default and **B Original** selects aligned dry audio. The transport offers no Match level option or automatic loudness matching. Live playback calls the Go WASI reactor directly in AudioWorklet with a fixed numeric control buffer; it adds no new HTTP processing endpoint. The browser may resample source audio to the device context rate, while native export preserves the source rate, so cross-rate sample identity is not an API guarantee. Live settings take effect at block boundaries. The 8 ms A/B crossfade and monitor-volume ramp do not establish continuous parameter smoothing or sample-accurate musical automation.

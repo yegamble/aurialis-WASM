@@ -24,14 +24,14 @@ test.describe("End-to-End Parameter Orthogonality & Control Isolation", () => {
     await expect(lowGain).toHaveValue("0")
 
     // The uploaded project's neutral compressor and width must remain unchanged.
-    const thresholdSlider = page.getByRole("slider", { name: "Threshold" })
+    const thresholdSlider = page.getByRole("slider", { name: "Threshold", exact: true })
     const stereoWidthSlider = page.getByRole("slider", { name: "Stereo width" })
     await expect(thresholdSlider).toHaveValue("0")
     await expect(stereoWidthSlider).toHaveValue("100")
 
-    // Change Saturation character to Thick and verify Threshold & Width are unchanged
-    await page.getByRole("button", { name: "Thick" }).click()
-    await expect(page.getByRole("button", { name: "Thick" })).toHaveAttribute(
+    // Change Saturation character to Tape and verify Threshold & Width are unchanged
+    await page.getByRole("button", { name: "Tape" }).click()
+    await expect(page.getByRole("button", { name: "Tape" })).toHaveAttribute(
       "aria-pressed",
       "true",
     )

@@ -63,7 +63,7 @@ async function exported(page: Page) {
   return { params, pcm };
 }
 
-test("all 31 visible audio controls independently change actual exported PCM", async ({ page }, testInfo) => {
+test("advanced audio controls independently change actual exported PCM", async ({ page }, testInfo) => {
   test.setTimeout(300_000);
   await page.addInitScript(() => {
     const nativeFetch = window.fetch.bind(window);
@@ -116,15 +116,26 @@ test("all 31 visible audio controls independently change actual exported PCM", a
   await check("Compressor ratio", slider("Ratio", 6), ["compressor.ratio"]);
   await check("Compressor attack", slider("Attack", 80), ["compressor.attackMs"]);
   await check("Compressor release", slider("Release", 450), ["compressor.releaseMs"]);
+  await check("Compressor knee", slider("Knee", 18), ["compressor.kneeDb"]);
+  await check("Compressor makeup", slider("Makeup gain", 3), ["compressor.makeupDb"]);
+  await check("Compressor detector filter", slider("Sidechain HPF", 500), ["compressor.sidechainHpfHz"]);
+  await check("Automatic release", toggle("Auto release"), ["compressor.autoRelease"]);
   await check("Compressor enable", toggle("Enable compressor"), ["compressor.enabled"]);
   await reset();
   await check("Saturation drive", slider("Saturation", 30), ["saturation.amount"]);
-  await check("Saturation Thick", () => page.getByRole("button", { name: "Thick", exact: true }).click(), ["saturation.character"]);
-  await check("Saturation Crisp", () => page.getByRole("button", { name: "Crisp", exact: true }).click(), ["saturation.character"]);
+  await check("Saturation Tube", () => page.getByRole("button", { name: "Tube", exact: true }).click(), ["saturation.character"]);
+  await check("Saturation Tape", () => page.getByRole("button", { name: "Tape", exact: true }).click(), ["saturation.character"]);
+  await check("Saturation Transformer", () => page.getByRole("button", { name: "Transformer", exact: true }).click(), ["saturation.character"]);
+  await check("Clean saturation", () => page.getByRole("button", { name: "Clean", exact: true }).click(), ["saturation.character"]);
+  await expect(page.getByRole("slider", { name: "Saturation", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Tube", exact: true }).click();
   await check("Saturation enable", toggle("Enable saturation"), ["saturation.enabled"]);
   await reset();
   await check("Stereo width", slider("Stereo width", 150), ["stereo.widthPct"]);
-  await check("Mono bass", toggle("Mono bass below 110 Hz"), ["stereo.monoBass"]);
+  await check("Mono bass", toggle("Mono bass"), ["stereo.monoBass"]);
+  await check("Mono bass crossover", slider("Bass mono frequency", 500), ["stereo.crossoverHz"]);
+  await check("Mid channel", slider("Mid channel gain", -6), ["stereo.midGainDb"]);
+  await check("Side channel", slider("Side channel gain", -6), ["stereo.sideGainDb"]);
   await check("Stereo enable", toggle("Enable stereo"), ["stereo.enabled"]);
   await reset();
   await slider("Input gain", 6)();
@@ -133,6 +144,24 @@ test("all 31 visible audio controls independently change actual exported PCM", a
   await check("Limiter enable", toggle("Enable limiter"), ["limiter.enabled"]);
   await expect(page.getByLabel("Enable limiter", { exact: true })).toBeChecked();
   await check("Limiter ceiling", slider("Limiter ceiling", -1), ["limiter.ceilingDbtp"]);
-  expect(results).toHaveLength(31);
+  await reset();
+  await slider("De-Harsh threshold", -50)();
+  await check("De-Harsh enable", toggle("Enable De-Harsh"), ["deHarsh.enabled"]);
+  await check("De-Harsh frequency", slider("De-Harsh frequency", 7000), ["deHarsh.frequencyHz"]);
+  await check("De-Harsh threshold", slider("De-Harsh threshold", -20), ["deHarsh.thresholdDb"]);
+  await slider("De-Harsh threshold", -50)();
+  await check("De-Harsh range", slider("De-Harsh range", 9), ["deHarsh.rangeDb"]);
+  await reset();
+  await check("Multiband enable", toggle("Enable multiband"), ["multiband.enabled"]);
+  await check("Low crossover", slider("Low / Mid crossover", 500), ["multiband.lowMidHz"]);
+  await check("High crossover", slider("Mid / High crossover", 6000), ["multiband.midHighHz"]);
+  for (const [index, band] of ["Low", "Mid", "High"].entries()) {
+    await check(`${band} dynamics threshold`, slider(`${band} band threshold`, -45), [`multiband.bands.${index}.thresholdDb`]);
+    await check(`${band} dynamics ratio`, slider(`${band} band ratio`, 4), [`multiband.bands.${index}.ratio`]);
+    await check(`${band} dynamics attack`, slider(`${band} band attack`, 100), [`multiband.bands.${index}.attackMs`]);
+    await check(`${band} dynamics release`, slider(`${band} band release`, 600), [`multiband.bands.${index}.releaseMs`]);
+    await check(`${band} dynamics makeup`, slider(`${band} band makeup`, 3), [`multiband.bands.${index}.makeupDb`]);
+  }
+  expect(results).toHaveLength(62);
   await testInfo.attach("independent-audio-controls", { body: JSON.stringify(results, null, 2), contentType: "application/json" });
 });

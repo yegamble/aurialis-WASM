@@ -161,9 +161,9 @@ test("Simple and Advanced share one audible settings snapshot without changing s
     }
     const preset = await savedTrack(page, id);
     expect(preset.advanced.input).toBe(0);
-    expect(preset.advanced.eqBands.map((band) => band.gainDb)).toEqual([0.3, 0, 0, 0.6, 0.5]);
-    expect(preset.advanced.compressor).toMatchObject({ threshold: -15.5, ratio: 1.6, attack: 25, release: 200 });
-    expect(preset.advanced.saturationModule).toMatchObject({ drive: 6.5, character: "Crisp" });
+    expect(preset.advanced.eqBands.map((band) => band.gainDb)).toEqual([0.1, -0.25, 0, 0.2, 0.1]);
+    expect(preset.advanced.compressor).toMatchObject({ threshold: -11, ratio: 1.35, attack: 30, release: 150 });
+    expect(preset.advanced.saturationModule).toMatchObject({ drive: 0, character: "Clean" });
     await expect(page.getByRole("button", { name: "Rock", exact: true })).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByRole("button", { name: "Clean", exact: true })).toHaveAttribute("aria-pressed", "true");
     // Capture the preset's steady output after compressor/filter ballistics settle.

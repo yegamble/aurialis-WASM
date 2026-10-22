@@ -15,7 +15,7 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 The latest whole-product review audited local and remote `main` at `ade7736` (the only live branch). The blanket verification claims in the historical activation record are withdrawn. The corrected design archive matches the canonical checked-in Figma source exactly.
 
-[The baseline audit](../../docs/reviews/2026-10-21-war-room-audit.md) records 17 recovery findings. The earlier corrective subset on `codex/war-room-product-audit` was **locally verified — open, awaiting merge**: direct Go WASI playback, canonical settings, import/recovery, transport and responsive repairs passed the recorded gates, all 39 local browser cases, bounded five-minute actual-song output and six-job source CI at `e91d2f0`. The owner merged [PR #2](https://github.com/yegamble/aurialis-WASM/pull/2) on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`.
+[The baseline audit](../../docs/reviews/2026-10-21-war-room-audit.md) records 17 recovery findings. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, canonical settings, import/recovery, transport and responsive repairs passed the recorded gates, all 39 local browser cases, bounded five-minute actual-song output and six-job source CI at `e91d2f0`. The owner merged [PR #2](https://github.com/yegamble/aurialis-WASM/pull/2) on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`.
 
 Broader trained separation, source-derived AI analysis, musical automation, spectral matching, hardware/true-peak/platform certification and arbitrary-workload capacity remain open. The chronological entries below retain failures and pending statuses as they stood at each checkpoint; the final acceptance entry supersedes their current-status implications without erasing them. Original “Failed to fetch” causation remains unverified.
 
@@ -360,3 +360,42 @@ STATUS: open — awaiting merge.
 Run 39711192709 passed every gate except the Add Air live test (52/53 browser cases). Its fixed theoretical RMS assertion expected -9.49 dBFS but the Linux speaker feed measured -10.098 dBFS. The test now measures B Original on the same device, verifies neutral A Processed matches within 0.1 dB, then retains independent activation changes and restoration within 0.1 dB. A bounded original level check still rejects silence or excessive gain. Application processing is unchanged.
 
 Verification: full local Chromium suite **53/53 passed (2.3 minutes)**; TypeScript, repository lint and changed-test spelling passed. Direct ESLint invocation on the E2E file reported that E2E files are excluded; the configured repository lint passed afterward. Remote CI rerun pending. Status: **open — awaiting merge**.
+
+
+## WASM DSP validation and transition follow-up — 2026-10-21
+
+Scope: `/war-room-loop feature=wasm-dsp`, owner-gated merge. Work continues in isolated integration branch `codex/wasm-dsp-verification` based on current `main` merge `97964fc`; the shared checkout changed during review and was left untouched.
+
+### Round D — DSP JSON array shape
+
+DECISION: ACCEPT — P1 required correction.
+WHY: QA reproduced an oversized `Bands` array bypassing the exact-key check while Go's case-insensitive struct decoder accepted it and truncated the extra band. Apply the existing shape checks to every accepted case variant, including multiband and nested band keys.
+DISSENTING VIEW: Broad canonical-casing enforcement and duplicate-key parser changes were declined; they would change unrelated API behavior. Identical duplicate keys retain existing last-value semantics.
+AFFECTED LAYER: wasm-dsp, go-backend.
+USER / AUDIO IMPACT: Reject malformed settings instead of silently interpreting a truncated array; preserve active settings and bridge history after rejection.
+BUNDLE / TEST IMPACT: No production dependency or browser bundle change; targeted Go boundary tests.
+ACCEPTANCE CRITERIA: Every supplied EQ alias has five complete bands, every multiband alias has three complete dynamics bands, and malformed array shapes cannot be hidden by correctly shaped aliases. Numeric ranges are checked after final decoded alias resolution.
+TEST PLAN: Focused count/completeness, alias and rejection-state tests; fresh Go/WASM, frontend, packaging, API and browser gates.
+DOCS TO UPDATE: README, API, architecture, tasks and this ledger.
+
+### Round D — saturation transition evidence
+
+DECISION: MODIFY — retain the initial defect evidence; verify the existing repair and strengthen regression coverage.
+WHY: The initial continuous-ramp probe measured a 90.408226 Thick saturation sample on an amount change from 40 to 41. The current source already contains antiderivative-history rebasing; the replay measured approximately 0.0069. This loop does not claim to implement that existing production correction.
+DISSENTING VIEW: A whole-engine reset, new smoothing framework, extra oversampling or limiter masking was declined as unnecessary for the quotient-history defect.
+AFFECTED LAYER: wasm-dsp.
+USER / AUDIO IMPACT: Guard against reintroducing artificial impulses when a saturation curve changes while preserving unrelated stage history.
+BUNDLE / TEST IMPACT: Focused continuous-ramp tests; no production algorithm change from this item.
+ACCEPTANCE CRITERIA: Small drive edits, directed character transitions and inactive updates remain finite and bounded around the antiderivative fallback thresholds; unchanged/rejected updates preserve state.
+TEST PLAN: Native regression and compiled bridge parity; distinguish these bounded fixtures from hardware, alias or universal smooth-automation certification.
+DOCS TO UPDATE: Architecture, tasks and this ledger.
+
+### Round E — fresh integration checkpoint
+
+Source: `1126fa5`, including JSON correction `eb78aab`. The Chair observed full Go race/module/vet/identifier/vulnerability gates and local lint 2.6.2 exiting 0; exact CI lint 2.15.0 also exited 0 with zero issues. Formatting output was empty. Compiled JS-target saturation transition/allocation tests and compiled bridge JSON-rejection history checks passed. Native/legacy/direct/restricted-WASI parity passed all 333 fixtures with exact output, maximum error 0. Production binary build and standalone empty-directory smoke passed. TypeScript, frontend lint, knip and 202 units in 17 files passed; configured spelling checked 125 files with zero issues.
+
+Retained setup failures: the first build used an external dependency symlink and failed; a locked installation inside the isolated checkout resolved it. An extra all-hidden-files spelling scan found 183 preexisting dictionary issues across 41 files, outside the configured passing gate. The first API run used the skill's 200 MB override and failed startup validation against the supported maximum of 135266304 bytes; the default-limit rerun passed with 17 requests, 22 assertions and raw DNS-rebinding 403/upload-limit 413 probes.
+
+Direct binary curl probes returned 200 for valid uppercase EQ/multiband arrays and 400 for oversized, undersized and differently cased masked arrays. The first multiband probe omitted required crossover values and failed its expected-200 assertion; adding 200/4000 Hz crossovers made all four multiband probes pass. The complete Chromium suite exited 0: 53/53 in 3.9 minutes, including six-width axe checks, live effects, 62 control/export comparisons and a 30.9-second large import. Agent synchronization passed for all 11 definitions.
+
+**Round E ruling:** QA and Devil’s Advocate accepted the focused JSON validation correction and saturation regression coverage with no new in-scope P0/P1 defect. Technical Writer confirmed the five documentation surfaces match the integrated diff. The bounded follow-up is locally verified; **open — awaiting merge**. Owner merge and remote CI remain pending; broad hardware, alias, true-peak and all-settings automation certification remain open. Prior gate results elsewhere in this ledger remain historical.

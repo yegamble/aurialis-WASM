@@ -49,6 +49,10 @@ The canonical snapshot now includes compressor sidechain HPF and automatic relea
 
 The [research and preset tables](mastering-controls-research.md) distinguish published Waves workflow guidance from original Aurialis implementation choices. Simple genre/tone presets use small EQ moves, restrained ratios and coloration, and modest width changes. Intensity scales EQ/drive from zero, ratio from 1:1 and width from 100%; zero disables the preset compressor, saturation and stereo stage. The target limiter remains independently configured. De-Harsh and multiband remain off until explicitly enabled. Fixed presets cannot diagnose a mix or promise a particular gain reduction/loudness.
 
+### DSP settings validation
+
+Native rendering and the legacy JS/WASM bridge share `DecodeParamsJSON`. Supplied EQ arrays require five complete bands; supplied multiband arrays require three complete dynamics bands. The shape guards inspect every case-insensitive alias accepted by Go's struct decoder, including nested multiband keys. This prevents alternate casing from bypassing shape validation and silently truncating an oversized fixed array. Rejected bridge updates preserve active parameters and processing history. Identical duplicate JSON keys retain the decoder's existing last-value semantics. The numeric live WASI ABI uses its separate fixed-vector validation.
+
 ### Added DSP algorithms and limits
 
 The processing order is input/legacy repair → EQ → optional De-Harsh → optional multiband → broadband compressor → saturation → stereo → sample limiter/output/dither. The user-facing repair workflow remains unavailable; De-Harsh is a separate stage.

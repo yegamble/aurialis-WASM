@@ -37,7 +37,8 @@ test("EQ handles support keyboard and dragging without changing other bands or m
     return track.advanced;
   }, id);
   const before = await settings();
-  const handle = page.locator(".eq-handle").nth(2);
+  await page.getByRole("tab", { name: "Mid", exact: true }).click();
+  const handle = page.getByRole("button", { name: /^Mid EQ:/ });
   await handle.focus();
   await page.keyboard.press("ArrowUp");
   await page.keyboard.press("ArrowRight");

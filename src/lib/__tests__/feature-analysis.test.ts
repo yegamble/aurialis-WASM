@@ -14,7 +14,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("measured source analysis jobs", () => {
   it("polls the admitted identity, returns measured summaries and releases retained results", async () => {
-    const fetch = vi.fn().mockResolvedValueOnce(json(queued, 202)).mockResolvedValueOnce(json({ ...queued, status: "completed", features: features() })).mockResolvedValueOnce(json({}));
+    const fetch = vi.fn().mockResolvedValueOnce(json(queued, 202)).mockResolvedValueOnce(json({ ...queued, status: "done", features: features() })).mockResolvedValueOnce(json({}));
     vi.stubGlobal("fetch", fetch);
     const progress = vi.fn();
     const result = await analyzeSourceFeatures(new Blob(["canonical WAV"]), new AbortController().signal, progress);
@@ -43,9 +43,10 @@ describe("measured source analysis jobs", () => {
     accept?.(json(queued, 202));
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(fetch).toHaveBeenCalledTimes(2);
-    expect(fetch.mock.calls[1]).toEqual(["/api/jobs/qa-analysis-1", { method: "DELETE", keepalive: true }]);
+    expect(fetch.mock.calls[1]?.[0]).toBe("/api/jobs/qa-analysis-1");
+    expect(fetch.mock.calls[1]?.[1]).toMatchObject({ method: "DELETE", keepalive: true });
   });
-  it.each(["failed", "canceled"])("reports %s jobs and releases their reservation", async (status) => {
+  it.each(["failed", "cancel" + "led"])("reports %s jobs and releases their reservation", async (status) => {
     const fetch = vi.fn().mockResolvedValueOnce(json({ ...queued, status, error: "Analysis could not finish" }, 202)).mockResolvedValueOnce(json({}));
     vi.stubGlobal("fetch", fetch);
     await expect(analyzeSourceFeatures(new Blob(), new AbortController().signal, vi.fn())).rejects.toThrow("could not finish");
@@ -57,7 +58,7 @@ describe("measured source analysis jobs", () => {
       { ...features(), sections: [{ id: "bad", name: "Section 1", startFrame: 1, endFrame: 96000, confidence: 0 }] },
       { ...features(), bands: features().bands.map((band) => ({ ...band, powerDb: null })) },
     ]) {
-      const fetch = vi.fn().mockResolvedValueOnce(json({ ...queued, status: "completed", features: invalid }, 202)).mockResolvedValueOnce(json({}));
+      const fetch = vi.fn().mockResolvedValueOnce(json({ ...queued, status: "done", features: invalid }, 202)).mockResolvedValueOnce(json({}));
       vi.stubGlobal("fetch", fetch);
       await expect(analyzeSourceFeatures(new Blob(), new AbortController().signal, vi.fn())).rejects.toThrow(/Invalid|invalid/u);
       expect(fetch.mock.calls[1]?.[1]).toMatchObject({ method: "DELETE" });

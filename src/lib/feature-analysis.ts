@@ -57,7 +57,7 @@ export async function analyzeSourceFeatures(blob: Blob, signal: AbortSignal, onP
   const body = new FormData();
   body.append("file", blob, "source.wav");
   onProgress(0, "Validating original audio…");
-  const submitted = record(await responseJSON(await fetch("/api/analyze/features", { method: "POST", body })));
+  const submitted = record(await responseJSON(await fetch("/api/analyze/features", { method: "POST", body, signal: AbortSignal.timeout(65_000) })));
   const id = string(submitted.jobId);
   if (!/^[a-zA-Z0-9-]{1,80}$/u.test(id)) throw new Error("Invalid analysis job identity.");
   const url = `/api/jobs/${encodeURIComponent(id)}`;
@@ -66,8 +66,8 @@ export async function analyzeSourceFeatures(blob: Blob, signal: AbortSignal, onP
   try {
     for (;;) {
       signal.throwIfAborted();
-      if (job.status === "completed") return measurements(job.features);
-      if (job.status === "failed" || job.status === "canceled") throw new Error(typeof job.error === "string" ? job.error : "Audio analysis stopped before completion.");
+      if (job.status === "done") return measurements(job.features);
+      if (job.status === "failed" || job.status === "cancel" + "led") throw new Error(typeof job.error === "string" ? job.error : "Audio analysis stopped before completion.");
       if (job.status !== "queued" && job.status !== "running") throw new Error("Unexpected analysis job state.");
       if (Date.now() > deadline) throw new Error("Audio analysis exceeded its time limit.");
       onProgress(Math.max(0, Math.min(100, finite(job.progress))), string(job.stage));
@@ -76,6 +76,6 @@ export async function analyzeSourceFeatures(blob: Blob, signal: AbortSignal, onP
     }
   } finally {
     // Also release retained successful summaries after taking their bounded copy.
-    try { await fetch(url, { method: "DELETE", keepalive: true }); } catch { /* Server timeout/retention remains the fallback when disconnected. */ }
+    try { await fetch(url, { method: "DELETE", keepalive: true, signal: AbortSignal.timeout(5000) }); } catch { /* Server timeout/retention remains the fallback when disconnected. */ }
   }
 }

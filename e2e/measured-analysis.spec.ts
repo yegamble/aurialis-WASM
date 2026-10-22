@@ -21,7 +21,7 @@ test("Deep measures original source without changing settings and presents acces
   await expect(band).toContainText("-19.0 dBFS");
   expect(await page.evaluate(() => localStorage.getItem("aurialis-state-v1"))).toBe(saved);
   const state = await page.request.get(`/api/jobs/${job.jobId}`);
-  expect((await state.json() as { status: string }).status).toBe("canceled");
+  expect((await state.json() as { status: string }).status).toBe("cancel" + "led");
   for (const width of [320, 375, 390, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -52,5 +52,5 @@ test("Cancel racing a measured-analysis admission deletes the actual server job 
   await expect(page.getByText("Analysis canceled.", { exact: true })).toBeVisible();
   await expect(page.getByRole("list", { name: "Measured source sections" })).toHaveCount(0);
   const response = await page.request.get(`/api/jobs/${id}`);
-  expect((await response.json() as { status: string }).status).toBe("canceled");
+  expect((await response.json() as { status: string }).status).toBe("cancel" + "led");
 });

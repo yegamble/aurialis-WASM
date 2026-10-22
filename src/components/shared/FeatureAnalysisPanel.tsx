@@ -17,7 +17,7 @@ export function FeatureAnalysisPanel({ trackId, sourceReady }: { trackId: string
     setMessage("");
     setError("");
     setBusy(false);
-    return () => { operation.current?.abort(); };
+    return () => { const current = operation.current; operation.current = null; current?.abort(); };
   }, [trackId, sourceReady]);
 
   async function analyze() {

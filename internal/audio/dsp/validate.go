@@ -25,6 +25,8 @@ func ValidateParams(p Params) error {
 		{"compressor.makeupDb", p.Compressor.MakeupDB, -24, 36},
 		{"compressor.sidechainHpfHz", p.Compressor.SidechainHPFHz, 0, 1000},
 		{"saturation.amount", p.Saturation.Amount, 0, 100},
+		{"stereo.midGainDb", p.Stereo.MidGainDB, -24, 24},
+		{"stereo.sideGainDb", p.Stereo.SideGainDB, -24, 24},
 		{"stereo.widthPct", p.Stereo.WidthPct, 0, 200},
 		{"stereo.crossoverHz", p.Stereo.CrossoverHz, 20, 1000},
 		{"limiter.ceilingDbtp", p.Limiter.CeilingDBTP, -24, 0},
@@ -54,9 +56,12 @@ func ValidateParams(p Params) error {
 		return errors.New("unsupported compressor topology")
 	}
 	switch p.Saturation.Character {
-	case SatWarm, SatThick, SatCrisp:
+	case SatWarm, SatThick, SatCrisp, SatClean, SatTube, SatTape, SatTransformer:
 	default:
 		return errors.New("unsupported saturation character")
+	}
+	if err := validateExtended(p); err != nil {
+		return err
 	}
 	if p.DitherBits != 0 && p.DitherBits != 16 && p.DitherBits != 24 {
 		return errors.New("ditherBits must be 0, 16, or 24")
@@ -103,6 +108,31 @@ func DecodeParamsJSON(data []byte, base Params) (Params, error) {
 			for _, field := range []string{"freqHz", "gainDb", "q", "type", "enabled"} {
 				if _, ok := band[field]; !ok {
 					return base, fmt.Errorf("band requires %s", field)
+				}
+			}
+		}
+	}
+	if raw, ok := object["multiband"]; ok {
+		var multiband map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &multiband); err != nil {
+			return base, err
+		}
+		if rawBands, supplied := multiband["bands"]; supplied {
+			var bands []map[string]json.RawMessage
+			if err := json.Unmarshal(rawBands, &bands); err != nil {
+				return base, err
+			}
+			if len(bands) != 3 {
+				return base, errors.New("multiband requires exactly three bands")
+			}
+			for _, band := range bands {
+				if err := validateJSONValues(band); err != nil {
+					return base, err
+				}
+				for _, field := range []string{"thresholdDb", "ratio", "attackMs", "releaseMs", "makeupDb"} {
+					if _, exists := band[field]; !exists {
+						return base, fmt.Errorf("multiband band requires %s", field)
+					}
 				}
 			}
 		}

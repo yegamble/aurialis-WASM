@@ -346,3 +346,10 @@ DECISION: Derive Add Air, Cut Mud, Tape Warmth and Glue Comp highlights and acce
 WHY: The controls applied settings but gave no persistent activation feedback. Independent matches may coexist, and relevant edits or bypass must clear a match. Source-rate-clamped EQ values must still match their starting point.
 EVIDENCE: 186 unit tests; TypeScript, ESLint, knip and spelling; production build and standalone smoke passed. Five focused browser cases verified actual PCM changes, repeat idempotence, visible/accessible selection, keyboard, bypass/edit clearing, coexistence and persistence. Full Chromium suite passed 47/47 in 2.1 minutes. Devil’s Advocate review found no blocker. The first build inside the sandbox stalled; the permitted build rerun passed.
 STATUS: open — awaiting merge.
+
+
+## Reversible starting points and transport alignment — 2026-10-21
+
+DECISION: Replace apply-only clicks with reversible per-shortcut toggles. Preserve unrelated controls and independent shortcuts, validate persisted restoration records, and clear stale ownership on preset/reset operations. Center the wide transport and simplify the skip icon.
+EVIDENCE: 202 unit tests, frontend static gates, spelling, production build and standalone smoke passed; 13 focused browser cases passed. Full suite: 52/53 passed; the remaining 12 kHz fixture vanished at a 24 kHz device Nyquist frequency. Test-only correction to 7 kHz passed three repeated live runs. No full-suite repeat after that correction. Legacy mirror and identity issues found in initial unit checks were fixed.
+STATUS: open — awaiting merge.

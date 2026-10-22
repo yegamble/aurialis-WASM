@@ -163,6 +163,9 @@ func AnalyzeFeaturesContext(ctx context.Context, buf *audio.Buffer, onProgress f
 	if onProgress != nil {
 		onProgress(100, "Measured features ready; no musical roles or processing inferred")
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return result, nil
 }
 

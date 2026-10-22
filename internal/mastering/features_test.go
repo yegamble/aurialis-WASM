@@ -111,7 +111,7 @@ func TestFeatureTransitionsAreLocalizedAtMultipleRates(t *testing.T) {
 				if i >= boundary {
 					switch kind {
 					case "energy":
-						amplitude = 0.2
+						amplitude = 0.1
 					case "spectrum":
 						frequency = 2500
 					}
@@ -175,10 +175,17 @@ func TestFeatureSourceBindingCancellationAndWindowCadence(t *testing.T) {
 	if _, err = AnalyzeFeaturesContext(ctx, buf, nil); !errors.Is(err, context.Canceled) {
 		t.Fatal("pre-canceled context ignored", err)
 	}
-	ctx, cancel = context.WithCancel(context.Background())
-	defer cancel()
-	if _, err = AnalyzeFeaturesContext(ctx, buf, func(int, string) { cancel() }); !errors.Is(err, context.Canceled) {
-		t.Fatal("in-flight cancellation ignored", err)
+	for _, stage := range []int{10, 65, 100} {
+		ctx, cancel = context.WithCancel(context.Background())
+		_, err = AnalyzeFeaturesContext(ctx, buf, func(progress int, _ string) {
+			if progress == stage {
+				cancel()
+			}
+		})
+		cancel()
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("cancellation at stage%d ignored: %v", stage, err)
+		}
 	}
 }
 

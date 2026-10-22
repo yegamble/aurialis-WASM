@@ -64,6 +64,8 @@ import {
   statusLabel,
 } from "./shared/Primitives";
 
+import { FeatureAnalysisPanel } from "./shared/FeatureAnalysisPanel";
+
 type WorkstationRoute =
   | "home"
   | "library"
@@ -1914,7 +1916,7 @@ function DeepControls({ track, processing, sourceReady, onApply }: {
           ))}
         </div>
       </ControlGroup>
-      <p className="disclosure">Musical section detection, timeline automation and AI repair are not available. These profiles apply the same settings throughout your track.</p>
+      <p className="disclosure">Musical role detection, timeline automation and AI repair are not available. These profiles apply the same settings throughout your track.</p>
       <Button className="full-button" disabled={processing || !sourceReady} icon={<Icon name="sparkles" />}
         onClick={() => {
           const params = clampAdvancedToSampleRate(mapProfileToDSP(selectedProfile), track.sampleRate);
@@ -1923,6 +1925,7 @@ function DeepControls({ track, processing, sourceReady, onApply }: {
         }}>
         {processing ? "Rendering profile…" : "Apply profile"}
       </Button>
+      <FeatureAnalysisPanel trackId={track.id} sourceReady={sourceReady} />
     </div>
   );
 }

@@ -87,6 +87,10 @@ Five real user WAVs of approximately 35–47 MB each passed the single-request B
 
 `internal/jobs` owns the experimental Deep-analysis and heuristic separation queues and cancellation. These APIs are not connected to enabled product workflows. Multipart bodies have a hard 129 MiB cap, audio files a 128 MiB plus canonical-header cap, and decoding a 16,777,216-frame cap. One expensive POST is admitted at a time; another receives retryable 503 before body allocation. Job decoded input, float output, encoded artifacts and scratch reservations are bounded at 256 MiB, retention at 64 records, and worker count at four. These are finite working/admission budgets, not a total RSS guarantee. Isolated 3/5-minute native render and canonical re-upload measurements are recorded in the task tracker; full browser/album-scale and arbitrary concurrency behavior require separate evidence. Jobs time out after two minutes; terminal artifacts expire after 15 minutes. See [`api.md`](api.md).
 
+## CI reference-tool provisioning
+
+The Go/WASM job separates FFmpeg provisioning from independent meter verification. It reuses an installed executable or installs without recommended packages, using two acquisition retries and 30-second HTTP/HTTPS timeouts. If installation is required and `/etc/apt/apt-mirrors.txt` exists, CI replaces the observed slow Azure archive URL with Ubuntu’s official HTTPS archive; APT signature validation remains enabled. Provisioning has a five-minute step limit; `verify_meters.py` has a separate three-minute limit. The existing job timeout and comparison assertions remain. FFmpeg is used only for verification, while the production binary remains self-contained. The failed provisioning checkpoints and pending remote result are recorded in [tasks](tasks.md).
+
 ## UI and remaining product scope
 
 Next.js 16 App Router, React 19, strict TypeScript and Tailwind v4 provide the warm editorial design. Production icons are custom inline SVGs. Shared controls and the shell support mobile and desktop layouts; automated axe and overflow checks are evidence for tested routes and interactions, not blanket WCAG certification.

@@ -137,6 +137,8 @@ Every commit pushed to any branch (`branches: ['**']`) and every pull request tr
 5. **`playwright-e2e`** — Runs mobile-first responsive (`320px`–`1440px`), axe WCAG 2.2 AA, control-isolation, and WAV export verification.
 6. **`ci-passed`** — Unified gate that fails if any upstream job fails or is cancelled.
 
+The Go/WASM job reuses FFmpeg when it is already available. Otherwise, a separate five-minute provisioning step installs it without recommended packages, with two acquisition retries and 30-second HTTP/HTTPS timeouts. When installation is needed, an existing APT mirror file switches the observed slow Azure archive URL to Ubuntu’s official HTTPS archive; package signature checks remain enabled. The independent meter comparison has its own three-minute limit and still runs when provisioning succeeds. FFmpeg is a verification tool, not a production runtime dependency.
+
 ---
 
 ## Verification status

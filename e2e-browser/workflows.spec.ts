@@ -1,9 +1,12 @@
+// cspell:words spinbutton
 import { expect, test, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fixture, decode } from "../e2e/audio-fixture";
 import { engineParams } from "../src/lib/browser-engine";
-import type { AdvancedParams } from "../src/lib/types";
+import type { AdvancedParams, Track } from "../src/lib/types";
+import type { ScriptV2 } from "../src/lib/deep-mastering";
+import { captureDeepDevice, capturedDevice, capturedProgress } from "../e2e/deep-capture";
 
 function observeNetwork(context: BrowserContext) {
   const requests: { method: string; url: string; bodyBytes: number }[] = [];
@@ -27,19 +30,22 @@ async function settings(page: Page, id: string) {
     return track.advanced;
   }, id);
 }
-async function nativeRender(info: TestInfo, source: Buffer, advanced: AdvancedParams, bitDepth: number) {
+async function nativeRender(info: TestInfo, source: Buffer, advanced: AdvancedParams, bitDepth: number, script?: ScriptV2) {
   const directory = info.outputPath("native-oracle");
   await mkdir(directory, { recursive: true });
   await writeFile(directory + "/source.wav", source);
-  await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", params: JSON.stringify(engineParams(advanced)), bitDepth }));
+  await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", ...(script ? { script: JSON.stringify(script) } : { params: JSON.stringify(engineParams(advanced)) }), bitDepth }));
   execFileSync("go", ["test", "./internal/browserjobs", "-run", "^TestWriteBrowserOracle$", "-count=1"], { env: { ...process.env, AURIALIS_BROWSER_ORACLE_DIR: directory }, stdio: "pipe" });
   return { audio: await readFile(directory + "/native.wav"), metadata: JSON.parse(await readFile(directory + "/native.json", "utf8")) as { afterMetrics: { integratedLufs: number; samplePeakDbfs: number } } };
 }
 async function assertPrivate(info: TestInfo, requests: ReturnType<typeof observeNetwork>) {
   expect(requests.length).toBeGreaterThan(0);
   expect(requests.filter((request) => !["GET", "HEAD"].includes(request.method) || request.bodyBytes > 0)).toEqual([]);
-  expect(requests.every((request) => new URL(request.url).origin === "http://127.0.0.1:3927")).toBe(true);
-  await info.attach("all-browser-and-worker-network-requests", { body: JSON.stringify(requests, null, 2), contentType: "application/json" });
+  const origin = new URL(info.project.use.baseURL ?? "http://127.0.0.1:3927").origin;
+  expect(requests.every((request) => new URL(request.url).origin === origin)).toBe(true);
+  const path = info.outputPath("network-inventory.json");
+  await writeFile(path, JSON.stringify(requests, null, 2));
+  await info.attach("all-browser-and-worker-network-requests", { path, contentType: "application/json" });
 }
 
 test("measured Reference applies and exports the real local proposal with no audio requests", async ({ page, context }, info) => {
@@ -93,5 +99,68 @@ test("album WAVs and release measurements run on the device without an audio ser
   await expect(page.getByRole("button", { name: "Download JSON report", exact: true })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText(`${native.metadata.afterMetrics.integratedLufs.toFixed(1)} LUFS`, { exact: true })).toBeVisible();
   await expect(page.getByText(`${native.metadata.afterMetrics.samplePeakDbfs.toFixed(1)} dBFS`, { exact: true })).toBeVisible();
+  await assertPrivate(info, requests);
+});
+
+
+test("Deep analysis compilation live apply and source-bound export keep every audio byte local", async ({ page, context }, info) => {
+  const requests = observeNetwork(context);
+  await captureDeepDevice(page, 48000);
+  const source = fixture(997, 3), id = await upload(page, source, "private-deep-source.wav");
+  const project = () => page.evaluate((id) => {
+    const track = (JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as { tracks: Track[] }).tracks.find((item) => item.id === id);
+    if (!track) throw new Error("Missing Deep source project");
+    return track;
+  }, id);
+  const original = await project();
+  await page.getByRole("tab", { name: "deep", exact: true }).click();
+  await page.getByRole("button", { name: "Analyze Deep proposal", exact: true }).click();
+  await expect(page.getByText("Measured proposal ready. Your applied processing has not changed.", { exact: true })).toBeVisible({ timeout: 30_000 });
+  const proposed = await project();
+  expect(proposed.advanced).toEqual(original.advanced);
+  expect(proposed.deepMastering?.proposal.source).toEqual(original.sourceIdentity);
+  expect(proposed.deepMastering?.applied).toBeUndefined();
+  expect(proposed.deepMastering?.proposal.moves).toHaveLength(0);
+  await page.getByRole("button", { name: "Add baseline move", exact: true }).click();
+  for (const point of [1, 2]) {
+    const value = page.getByRole("spinbutton", { name: `Point ${String(point)} value`, exact: true });
+    await value.fill("3");
+    await value.blur();
+  }
+  await page.getByRole("button", { name: "Close move editor", exact: true }).click();
+  expect((await project()).advanced).toEqual(original.advanced);
+  await page.getByRole("button", { name: "Apply Deep proposal", exact: true }).click();
+  await expect.poll(async () => (await project()).deepMastering?.applied?.revision ?? 0).toBeGreaterThan(0);
+  const accepted = await project(), applied = accepted.deepMastering?.applied;
+  if (!applied) throw new Error("Missing accepted source-bound Deep script");
+  expect(applied.source).toEqual(original.sourceIdentity);
+  expect(applied.moves).toHaveLength(1);
+  expect(applied.moves[0]?.points.map((point) => point.value)).toEqual([3, 3]);
+  expect(accepted.deepMastering?.before?.advanced).toEqual(original.advanced);
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect.poll(async () => (await capturedProgress(page))?.frames ?? 0, { timeout: 10_000 }).toBeGreaterThanOrEqual(16384);
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  const capture = await capturedDevice(page);
+  if (!capture) throw new Error("Missing actual local Deep playback PCM");
+  expect(capture.missing).toBe(0);
+  expect(capture.compiledMoves).toBe(applied.moves.length);
+  const native = await nativeRender(info, source, accepted.advanced, 32, applied), pcm = decode(native.audio);
+  let maximumLiveError = 0;
+  for (let frame = 0; frame < 16384; frame++) {
+    maximumLiveError = Math.max(maximumLiveError, Math.abs((pcm.left[frame] ?? Infinity) - (capture.outputLeft[frame] ?? 0)), Math.abs((pcm.right[frame] ?? Infinity) - (capture.outputRight[frame] ?? 0)));
+  }
+  expect(maximumLiveError).toBeLessThan(1e-6);
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("button", { name: "32-bit Float", exact: true }).click();
+  const downloading = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Render & download WAV", exact: true }).click();
+  const downloaded = await downloading, path = await downloaded.path();
+  if (!path) throw new Error("Missing browser-local Deep script export");
+  expect(await downloaded.failure()).toBeNull();
+  expect(await readFile(path)).toEqual(native.audio);
+  const evidence = info.outputPath("actual-local-Deep-evidence.json");
+  await writeFile(evidence, JSON.stringify({ source: applied.source, revision: applied.revision, compiledMoves: capture.compiledMoves, capturedFrames: 16384, maximumLiveError, exactNativeWavBytes: native.audio.length }, null, 2));
+  await info.attach("actual-local-Deep-evidence", { path: evidence, contentType: "application/json" });
   await assertPrivate(info, requests);
 });

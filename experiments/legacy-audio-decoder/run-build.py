@@ -14,6 +14,7 @@ LIMITS = {
     "cpus": 2, "memoryBytes": 4 * 1024**3, "pids": 256,
     "tmpfsBytes": 512 * 1024**2, "wallSeconds": 1800,
     "outputBytes": 2 * 1024**3, "minimumFreeBytes": 6 * 1024**3,
+    "beforeBuildMinimumBytes": 6 * 1024**3 + 2 * 1024**3 + 512 * 1024**2,
 }
 
 
@@ -58,7 +59,7 @@ def main():
 
     signal.signal(signal.SIGTERM, interrupted)
     try:
-        if shutil.disk_usage(output).free < LIMITS["minimumFreeBytes"]:
+        if shutil.disk_usage(output).free < LIMITS["beforeBuildMinimumBytes"]:
             resource_failure = "disk-headroom-before-build"
             raise RuntimeError(resource_failure)
         command(["image", "inspect", IMAGE], checked=True)

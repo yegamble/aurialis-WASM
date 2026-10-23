@@ -18,7 +18,10 @@
     "image": "emscripten/emsdk@sha256:badbe38bedc8f4ff88a5a24672a2d59606015ba9a3bbe69801ad2fbdf75ab500",
     "indexDigest": "sha256:fb7864e398acfda863dfcea78b8bc8adad359fa60c6a0bbeb845931de64aa68a",
     "metadata": "https://hub.docker.com/v2/repositories/emscripten/emsdk/tags/6.0.13",
-    "metadataUpdated": "2026-10-19T19:53:26.829897Z"
+    "metadataUpdated": "2026-10-19T19:53:26.829897Z",
+    "configDigest": "sha256:3244ee7601e2d2dff738e5ef09a6830f5459fbd9048c1336b96307ffc082ad6d",
+    "compressedContentBytes": 859519629,
+    "observedUnpackedBytes": 2624479232
   },
   "policy": {
     "heapBytes": 67108864,
@@ -102,6 +105,9 @@
     "tmpfsBytes": 536870912,
     "wallSeconds": 1800,
     "outputBytes": 2147483648,
-    "minimumFreeBytes": 6442450944
+    "minimumFreeBytes": 6442450944,
+    "maximumUnpackedImageBytes": 4294967296,
+    "beforeImagePullMinimumBytes": 14281292429,
+    "beforeBuildMinimumBytes": 9126805504
   }
 }

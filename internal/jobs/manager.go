@@ -43,6 +43,9 @@ const (
 	KindAnalyzeDeep Kind = "analyze_deep"
 	// KindAnalyzeDeepV2 is a source-bound measured ScriptV2 proposal job.
 	KindAnalyzeDeepV2 Kind = "analyze_deep_v2"
+	// KindAnalyzeReference produces a measured source/reference EQ proposal.
+	KindAnalyzeReference Kind = "analyze_reference"
+
 	// KindAnalyzeFeatures measures spectra and neutral change points without proposing processing.
 	KindAnalyzeFeatures Kind = "analyze_features"
 )
@@ -63,22 +66,23 @@ type StemDescriptor struct {
 
 // Job holds the state and result artifacts of an asynchronous audio processing task.
 type Job struct {
-	ID        string                      `json:"jobId"`
-	JobID     string                      `json:"job_id"`
-	Kind      Kind                        `json:"kind"`
-	Status    Status                      `json:"status"`
-	Progress  int                         `json:"progress"`
-	Stage     string                      `json:"stage"`
-	Profile   string                      `json:"profile,omitempty"`
-	StemCount int                         `json:"stemCount,omitempty"`
-	Error     string                      `json:"error,omitempty"`
-	Detail    string                      `json:"detail,omitempty"`
-	CreatedAt time.Time                   `json:"createdAt"`
-	UpdatedAt time.Time                   `json:"updatedAt"`
-	ScriptV2  *mastering.ScriptV2         `json:"scriptV2,omitempty"`
-	Script    *mastering.Script           `json:"script,omitempty"`
-	Features  *mastering.AnalysisFeatures `json:"features,omitempty"`
-	Stems     []StemDescriptor            `json:"stems,omitempty"`
+	ID                string                       `json:"jobId"`
+	JobID             string                       `json:"job_id"`
+	Kind              Kind                         `json:"kind"`
+	Status            Status                       `json:"status"`
+	Progress          int                          `json:"progress"`
+	Stage             string                       `json:"stage"`
+	Profile           string                       `json:"profile,omitempty"`
+	StemCount         int                          `json:"stemCount,omitempty"`
+	Error             string                       `json:"error,omitempty"`
+	Detail            string                       `json:"detail,omitempty"`
+	CreatedAt         time.Time                    `json:"createdAt"`
+	UpdatedAt         time.Time                    `json:"updatedAt"`
+	ReferenceProposal *mastering.ReferenceProposal `json:"referenceProposal,omitempty"`
+	ScriptV2          *mastering.ScriptV2          `json:"scriptV2,omitempty"`
+	Script            *mastering.Script            `json:"script,omitempty"`
+	Features          *mastering.AnalysisFeatures  `json:"features,omitempty"`
+	Stems             []StemDescriptor             `json:"stems,omitempty"`
 
 	stemWAVs      map[string][]byte
 	cancel        context.CancelFunc
@@ -243,6 +247,17 @@ func (m *Manager) admitLocked(job *Job, buf *audio.Buffer, stemCount int) error 
 	reservation := int64(buf.Frames)*bytesPerFrame + int64(stemCount)*44 + 16*1024*1024
 	if job.Kind == KindAnalyzeDeepV2 {
 		reservation += 16 * 1024 * 1024
+	}
+	return m.admitReservationLocked(job, reservation)
+}
+
+func (m *Manager) admitReservationLocked(job *Job, reservation int64) error {
+	if m.closed {
+		return errors.New("job manager is closed")
+	}
+	m.pruneLocked(time.Now())
+	if reservation < 1 {
+		return errors.New("invalid job reservation")
 	}
 	if len(m.jobs) >= MaxRetainedJobs || reservation > MaxMemoryBytes-m.usedBytes {
 		return ErrQueueFull
@@ -506,6 +521,7 @@ func (m *Manager) Cancel(id string) (*Job, bool) {
 		j.Stems = nil
 		j.Script = nil
 		j.ScriptV2 = nil
+		j.ReferenceProposal = nil
 		j.Features = nil
 		j.UpdatedAt = time.Now().UTC()
 	}
@@ -520,6 +536,7 @@ func (m *Manager) Cancel(id string) (*Job, bool) {
 
 func (m *Manager) cloneJob(j *Job) *Job {
 	cp := *j
+	cp.ReferenceProposal = j.ReferenceProposal.Clone()
 	if j.ScriptV2 != nil {
 		cp.ScriptV2 = j.ScriptV2.Clone()
 	}
@@ -544,6 +561,9 @@ func retainedBytes(job *Job) int64 {
 	}
 	if job.ScriptV2 != nil {
 		bytes += mastering.MaxScriptV2Bytes
+	}
+	if job.ReferenceProposal != nil {
+		bytes += MaxReferenceResultBytes
 	}
 	return bytes + job.Features.StorageBytes()
 }

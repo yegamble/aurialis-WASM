@@ -49,9 +49,16 @@ fs.writeFileSync(process.argv[1], buf);
 fs.writeFileSync(process.argv[2], Buffer.from("%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF\n"));
 ' "${VALID_WAV}" "${SPOOF_PDF}"
 
-echo "==> Building aurialis single binary and starting on ${BASE_URL} (max upload cap = 1 MB for fast 413 probe)..."
-go build -o "${TMP_DIR}/aurialis" ./cmd/aurialis
-"${TMP_DIR}/aurialis" -addr "127.0.0.1:${PORT}" -max-upload-bytes 1048576 -workers 4 &
+BINARY="${AURIALIS_TEST_BINARY:-}"
+if [ -n "$BINARY" ]; then
+  python3 scripts/ci-artifacts.py verify --binary "$BINARY"
+  test "$BINARY" = "$PWD/aurialis"
+else
+  BINARY="${TMP_DIR}/aurialis"
+  go build -o "$BINARY" ./cmd/aurialis
+fi
+echo "==> Starting validated aurialis on ${BASE_URL} (max upload cap = 1 MB for fast 413 probe)..."
+"$BINARY" -addr "127.0.0.1:${PORT}" -max-upload-bytes 1048576 -workers 4 &
 SERVER_PID=$!
 
 for _ in $(seq 1 40); do

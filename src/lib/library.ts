@@ -26,6 +26,7 @@ export async function duplicateProject(track: Track, signal: AbortSignal): Promi
   delete copy.sourceAudioId;
   delete copy.retiredSourceAudioIds;
   delete copy.releaseScore;
+  delete copy.releaseReview;
   delete copy.importNotice;
   const saved = await saveAudio(copy.id, blob);
   if (signal.aborted) { await discardStagedAudio(copy.id, saved.durable); signal.throwIfAborted(); }
@@ -41,6 +42,6 @@ export function replacementProject(track: Track, file: File, imported: Awaited<R
   };
   delete next.sourceIdentity;
   if (source.sourceIdentity) next.sourceIdentity = source.sourceIdentity;
-  delete next.script; delete next.masteringScript; delete next.analysisRevision; delete next.releaseScore; delete next.deepMastering;
+  delete next.script; delete next.masteringScript; delete next.analysisRevision; delete next.releaseScore; delete next.releaseReview; delete next.deepMastering;
   return next;
 }

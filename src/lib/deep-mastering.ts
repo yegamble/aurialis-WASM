@@ -205,3 +205,9 @@ export function deepSettingsSnapshot(track: Track): DeepSettingsSnapshot {
 export function advancedMatchesScript(advanced: AdvancedParams, script: ScriptV2): boolean {
   return sameJSON(engineParams(advanced), engineParams(advancedFromScript(script)));
 }
+
+/** Immutable accepted revisions make cache identity independent of schedule size. */
+export function appliedRevisionKey(track: Track): string | null {
+  const script = track.deepMastering?.applied;
+  return script ? ["script", track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0, script.source.pcmHash, script.revision].join(":") : null;
+}

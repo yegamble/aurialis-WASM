@@ -88,7 +88,7 @@ func (l *studioPostGuardLimiter) resetHistory() {
 	l.audio = [2][studioPostGuardLimiterCapacity]float64{}
 	l.peaks = [studioPostGuardLimiterCapacity]studioPostGuardLimiterPeak{}
 	l.detector = studioPostGuardDetector{}
-	l.envelope = studioGainEnvelope{}
+	l.envelope.resetHistory()
 	l.frame = 0
 	l.fastGain, l.slowGain, l.exposure, l.lastGain = 1, 1, 0, 1
 }
@@ -100,7 +100,7 @@ func (l *studioPostGuardLimiter) envelopeTiming() (int, int) {
 	return studioPostGuardAvailability, 0
 }
 func (l *studioPostGuardLimiter) rebuildEnvelope() {
-	l.envelope = studioGainEnvelope{}
+	l.envelope.resetHistory()
 	delay, hold := l.envelopeTiming()
 	for _, peak := range l.peaks {
 		birth := peak.frame + int64(studioPostGuardAvailability+delay)

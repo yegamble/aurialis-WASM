@@ -106,6 +106,10 @@ func BenchmarkStudioPartitionedGraphPairedCallbackCost(b *testing.B) {
 }
 
 func TestStudioPartitionedGuardModesAndRebuiltBirths(t *testing.T) {
+	testStudioPartitionedGuardModesAndRebuiltBirths(t, false)
+}
+
+func testStudioPartitionedGuardModesAndRebuiltBirths(t *testing.T, iterative bool) {
 	for _, rate := range []float64{8000, 44100, 48000, 96000, 192000} {
 		params := studioLimiterGainTestParams()
 		guard, err := prepareStudioPostGuardLimiter(rate, params)
@@ -113,6 +117,7 @@ func TestStudioPartitionedGuardModesAndRebuiltBirths(t *testing.T) {
 			t.Fatal(err)
 		}
 		path := prepareStudioPartitionedPostGuardPath(&guard)
+		guard.envelope.iterative = iterative
 		latency := guard.latency
 		for frame := range 15000 {
 			changed := true
@@ -149,6 +154,9 @@ func TestStudioPartitionedGuardModesAndRebuiltBirths(t *testing.T) {
 				input = 0
 			}
 			left, right := path.process(&guard, input, input*.7)
+			if guard.envelope.invalid || guard.envelope.iterative != iterative {
+				t.Fatal("control rebuild changed traversal or entered invalid fallback")
+			}
 			clock := guard.frame - 1
 			want := studioPostGuardScalarBound(&guard, clock-int64(guard.latency))
 			got := guard.envelope.bound(clock)

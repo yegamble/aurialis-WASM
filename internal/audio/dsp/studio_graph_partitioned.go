@@ -19,3 +19,14 @@ func prepareStudioPartitionedAudibleGraph(rate float64, params Params, frames in
 	}
 	return g, nil
 }
+
+// This distinct PRIVATE comparison chooses iterative envelope traversal only.
+// Its coefficients, physical support, clocks, latency and margins are unchanged.
+func prepareStudioIterativePartitionedAudibleGraph(rate float64, params Params, frames int64, repeat bool) (*studioGraph, error) {
+	g, err := prepareStudioPartitionedAudibleGraph(rate, params, frames, repeat)
+	if err != nil {
+		return nil, err
+	}
+	g.gain.envelope.iterative, g.guard.envelope.iterative = true, true
+	return g, nil
+}

@@ -48,7 +48,7 @@ func prepareStudioLimiterGain4x(rate float64, params LimiterParams) (studioLimit
 
 func (l *studioLimiterGain4x) resetHistory() {
 	l.audio = [2][studioLimiterHighCapacity]float64{}
-	l.envelope = studioGainEnvelope{}
+	l.envelope.resetHistory()
 	l.frame = 0
 	l.fastGain, l.slowGain, l.exposure, l.lastGain = 1, 1, 0, 1
 }

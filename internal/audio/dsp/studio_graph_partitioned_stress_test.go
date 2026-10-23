@@ -22,6 +22,10 @@ func TestStudioPartitionedGraphFiniteOutputStressCorpus(t *testing.T) {
 // the complete active prefix at high rates, where the old .173/.319Fs pair is
 // intentionally above the distinct candidate's20kHz audio passband.
 func TestStudioPartitionedGraphActiveAudibleBandFinalOutput(t *testing.T) {
+	testStudioGraphActiveAudibleBandFinalOutput(t, mustStudioPartitionedAudibleGraph)
+}
+
+func testStudioGraphActiveAudibleBandFinalOutput(t *testing.T, factory studioAudibleGraphTestFactory) {
 	for _, rate := range []float64{8000, 44100, 48000, 96000, 192000} {
 		for mode := range 2 {
 			const count = 2048
@@ -38,7 +42,7 @@ func TestStudioPartitionedGraphActiveAudibleBandFinalOutput(t *testing.T) {
 			}
 			params := studioAudibleGraphActiveParams()
 			params.Compressor.MakeupDB, params.DitherBits = 12, 24
-			g := mustStudioPartitionedAudibleGraph(t, rate, params, count, false)
+			g := factory(t, rate, params, count, false)
 			a, b := renderStudioGraph(t, g, left, right, 129)
 			maximum := -1000.0
 			for _, channel := range [][]float32{a[g.latency:], b[g.latency:]} {

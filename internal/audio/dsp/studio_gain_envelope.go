@@ -14,7 +14,8 @@ type studioEnvelopeLine struct {
 // Callers keep delay+lookahead+hold below studioEnvelopeChunk and insert events
 // before querying their clock. Rebuilds must clip expired history with addActive.
 type studioGainEnvelope struct {
-	trees [2][2 * studioEnvelopeChunk]studioEnvelopeLine
+	trees              [2][2 * studioEnvelopeChunk]studioEnvelopeLine
+	iterative, invalid bool
 }
 
 func (e *studioGainEnvelope) node(tree, index int, epoch int64) *studioEnvelopeLine {
@@ -73,7 +74,11 @@ func (e *studioGainEnvelope) addSegment(from, to, birth int64, slope, offset flo
 		epoch := from / studioEnvelopeChunk
 		base := epoch * studioEnvelopeChunk
 		end := min(to, base+studioEnvelopeChunk-1)
-		e.insertRange(int(epoch&1), 1, 0, studioEnvelopeChunk-1, int(from-base), int(end-base), epoch, slope, offset+slope*float64(base-birth))
+		if e.iterative {
+			e.insertRangeIterative(int(epoch&1), int(from-base), int(end-base), epoch, slope, offset+slope*float64(base-birth))
+		} else {
+			e.insertRange(int(epoch&1), 1, 0, studioEnvelopeChunk-1, int(from-base), int(end-base), epoch, slope, offset+slope*float64(base-birth))
+		}
 		from = end + 1
 	}
 }
@@ -100,6 +105,9 @@ func (e *studioGainEnvelope) addActive(now, birth int64, lookahead, hold int, re
 }
 
 func (e *studioGainEnvelope) bound(frame int64) float64 {
+	if e.invalid {
+		return 0
+	}
 	epoch := frame / studioEnvelopeChunk
 	tree := int(epoch & 1)
 	x := int(frame % studioEnvelopeChunk)

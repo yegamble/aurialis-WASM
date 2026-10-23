@@ -41,7 +41,7 @@ func (p *studioPartitionedPostGuardPath) setParams(l *studioPostGuardLimiter, pa
 		peak := &l.peaks[i]
 		peak.required = l.requiredGain(peak.value, peak.raw)
 	}
-	l.envelope = studioGainEnvelope{}
+	l.envelope.resetHistory()
 	// Delay remains S in sample-peak mode; using A would plan 127 frames late.
 	delay, hold := l.envelopeTiming()
 	for _, peak := range l.peaks {

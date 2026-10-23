@@ -73,6 +73,9 @@ func renderStudioGraph(t *testing.T, g *studioGraph, left, right []float32, bloc
 	if g.drain(a[:1], b[:1]) != 0 {
 		t.Fatal("drain exceeded the declared fixed delay")
 	}
+	if g.gain.envelope.invalid || g.guard.envelope.invalid {
+		t.Fatal("graph entered conservative envelope failure; muted output cannot qualify")
+	}
 	return a, b
 }
 func studioGraphSignal(count int) ([]float32, []float32) {

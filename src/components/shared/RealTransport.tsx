@@ -125,7 +125,7 @@ export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal,
   const duration = state?.duration ?? 0;
   const unavailable = !sourceReady || handover;
   const updating = playing && state !== null && state.appliedVersion < state.parameterVersion;
-  const status = handover ? "Loading next track…" : loading ? "Preparing playback…" : updating ? "Updating audio…" : nextTrackTitle ? `Next: ${nextTrackTitle}` : "";
+  const status = handover ? "Loading next track…" : loading ? "Preparing playback…" : updating ? "Updating audio…" : state?.repeatPending ? "Repeat will prepare a new pass after this one finishes." : nextTrackTitle ? `Next: ${nextTrackTitle}` : "";
   const forwardLabel = nextTrackTitle ? `Next track: ${nextTrackTitle}` : "Skip forward 10 seconds";
   const backActions = useHoldAction(-1, onScrub, onRestart, unavailable || loading);
   const forwardActions = useHoldAction(1, onScrub, onForward, unavailable || loading);

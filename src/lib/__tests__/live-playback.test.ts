@@ -18,7 +18,7 @@ function graphHarness(autoReady = true, autoArm = true, autoAutomation = false) 
   class Port {
     onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
     revision = 0;
-    postMessage = vi.fn((message: { type?: string; generation?: number; token?: number; revision?: number }) => {
+    postMessage = vi.fn((message: { type?: string; generation?: number; token?: number; revision?: number; looping?: boolean }) => {
       if (message.type === "arm" && autoArm) queueMicrotask(() => { this.message({ type: "stream-armed", generation: message.generation }); });
       if (autoAutomation && message.type === "bind-source") queueMicrotask(() => { this.message({ type: "automation-ack", token: message.token, revision: 0 }); });
       if (autoAutomation && message.type === "schedule") { this.revision = message.revision ?? 0; queueMicrotask(() => { this.message({ type: "automation-staged", token: message.token }); }); }
@@ -86,6 +86,53 @@ async function attachedGraph() {
 }
 
 describe("per-track live audio lifecycle", () => {
+  it("keeps a finite native source and publishes its exact audible deadline before playback", async () => {
+    const { contexts, nodes } = graphHarness();
+    const controller = createLivePlayback({ sampleRate: 8001, left: new Float32Array(129), right: new Float32Array(129) }, createDefaultAdvancedParams());
+    await controller.play(); const context = contexts[0], node = nodes[0]; if (!context || !node) throw new Error("Missing graph");
+    expect((context.createBufferSource.mock.results[0]?.value as ReturnType<typeof context.createBufferSource> | undefined)?.loop).toBe(false);
+    expect(node.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "arm", looping: false }));
+    const epoch = new Float64Array(node.options.processorOptions.stream, 8, 2);
+    expect(epoch[1]).toBe((epoch[0] ?? 0) + Math.ceil(129 * 48000 / 8001) + Math.ceil(48000 * .08 / 128) * 128);
+    controller.dispose();
+  });
+  it("rearms a changed Repeat intent before creating its source", async () => {
+    const { contexts, nodes } = graphHarness(true, false); const controller = createLivePlayback(source(), createDefaultAdvancedParams());
+    const playing = controller.play(); await vi.waitFor(() => { expect(nodes[0]?.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "arm" })); });
+    const node = nodes[0], context = contexts[0]; if (!node || !context) throw new Error("Missing graph");
+    const first = node.port.postMessage.mock.calls.find(([message]) => message.type === "arm")?.[0]; controller.setRepeat(true);
+    node.port.message({ type: "stream-armed", generation: first?.generation });
+    await vi.waitFor(() => { expect(node.port.postMessage.mock.calls.filter(([message]) => message.type === "arm")).toHaveLength(2); });
+    expect(context.createBufferSource).not.toHaveBeenCalled();
+    const latest = node.port.postMessage.mock.calls.filter(([message]) => message.type === "arm").at(-1)?.[0]; expect(latest?.looping).toBe(true);
+    node.port.message({ type: "stream-armed", generation: latest?.generation }); await playing;
+    expect((context.createBufferSource.mock.results[0]?.value as ReturnType<typeof context.createBufferSource> | undefined)?.loop).toBe(true); controller.dispose();
+  });
+  it("finishes a finite pass before preparing Repeat and cancels a late automatic arm", async () => {
+    const { contexts, nodes } = graphHarness(true, false); const controller = createLivePlayback({ sampleRate: 8001, left: new Float32Array(129), right: new Float32Array(129) }, createDefaultAdvancedParams());
+    const playing = controller.play(); await vi.waitFor(() => { expect(nodes[0]?.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "arm" })); });
+    const node = nodes[0], context = contexts[0]; if (!node || !context) throw new Error("Missing graph");
+    const first = node.port.postMessage.mock.calls.find(([message]) => message.type === "arm")?.[0]; node.port.message({ type: "stream-armed", generation: first?.generation }); await playing;
+    controller.setRepeat(true); expect(context.createBufferSource).toHaveBeenCalledOnce();
+    const epoch = new Float64Array(node.options.processorOptions.stream, 8, 2); expect(epoch[1]).toBeLessThan(Infinity);
+    context.currentTime = (epoch[1] ?? 0) / context.sampleRate + .01;
+    node.port.message({ type: "meter", generation: first?.generation, time: context.currentTime, peakDbfs: -6, rmsDbfs: -12, crestDb: 6, correlation: 1 });
+    expect(controller.getState()).toMatchObject({ playing: false, loading: true });
+    const latest = node.port.postMessage.mock.calls.filter(([message]) => message.type === "arm").at(-1)?.[0]; expect(latest?.generation).not.toBe(first?.generation);
+    controller.setRepeat(false); node.port.message({ type: "stream-armed", generation: latest?.generation }); await Promise.resolve(); await Promise.resolve();
+    expect(context.createBufferSource).toHaveBeenCalledOnce(); expect(controller.getState()).toMatchObject({ playing: false, loading: false, repeat: false }); controller.dispose();
+  });
+  it("stops periodic playback at the next input cycle and can remove that deadline", async () => {
+    const { contexts, nodes } = graphHarness(); const controller = createLivePlayback({ sampleRate: 8001, left: new Float32Array(129), right: new Float32Array(129) }, createDefaultAdvancedParams());
+    controller.setRepeat(true); await controller.play(); const context = contexts[0], node = nodes[0]; if (!context || !node) throw new Error("Missing graph");
+    const epoch = new Float64Array(node.options.processorOptions.stream, 8, 2), start = epoch[0] ?? 0;
+    context.currentTime = (start + 1024) / context.sampleRate; controller.setRepeat(false);
+    const cycle = Math.floor(1024 * 8001 / (129 * 48000)) + 1;
+    expect(epoch[1]).toBe(start + Math.ceil(cycle * 129 * 48000 / 8001) + Math.ceil(48000 * .08 / 128) * 128);
+    expect((context.createBufferSource.mock.results[0]?.value as ReturnType<typeof context.createBufferSource> | undefined)?.loop).toBe(true);
+    controller.setRepeat(true); expect(epoch[1]).toBe(Infinity); controller.dispose();
+  });
+
   it("rejects a Detach whose settings guard changes during context resume before publishing", async () => {
     const { controller, context, node } = await attachedGraph(); let resume: (() => void) | undefined, current = true;
     context.resume.mockImplementationOnce(() => new Promise<void>((resolve) => { resume = resolve; }));

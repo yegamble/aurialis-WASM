@@ -13,6 +13,7 @@ export type LivePlaybackState = {
   loading: boolean;
   original: boolean;
   repeat: boolean;
+  repeatPending?: boolean;
   volume: number;
   underruns: number;
   parameterVersion: number;
@@ -122,6 +123,12 @@ export function createLivePlayback(
   let sourceOffset = 0;
   let sourceStart = 0;
   let sourceEnd = state.duration;
+  let sourceEndFrame = source.left.length;
+  let sourceFrameOffset = 0;
+  let sourceStartFrame = 0;
+  let sourceGeneration = 0;
+  let epochLooping = false;
+  let automaticRepeat = false;
   let delaySeconds = 0;
   let spectrumFrame = 0;
   let lastSpectrumTime = 0;
@@ -136,16 +143,28 @@ export function createLivePlayback(
     const position = unwrappedPosition(time);
     return position >= sourceEnd ? state.duration : position % state.duration;
   }
-  function setSourceEnd(end: number): void {
-    sourceEnd = end;
-    if (!worklet || !header) return;
-    // End the AUDIBLE cycle rather than the input cycle, which is ahead by the
-    // bounded DSP latency. The worklet silences at the exact sample deadline.
-    worklet.port.postMessage({ type: "end", generation: Atomics.load(header, GENERATION),
-      time: end === Infinity ? Infinity : sourceStart + end - sourceOffset + delaySeconds });
+  function publishSourceEpoch(): void {
+    if (!streamHeader || !streamTime || !audio) return;
+    const sequence = Atomics.load(streamHeader, 0);
+    Atomics.store(streamHeader, 0, sequence + 1);
+    streamTime[0] = sourceStartFrame;
+    streamTime[1] = sourceEnd === Infinity ? Infinity : sourceStartFrame + Math.round(delaySeconds * audio.sampleRate)
+      + Number((BigInt(sourceEndFrame - sourceFrameOffset) * BigInt(audio.sampleRate) + BigInt(source.sampleRate - 1)) / BigInt(source.sampleRate));
+    Atomics.store(streamHeader, 1, sourceGeneration);
+    Atomics.store(streamHeader, 0, sequence + 2);
+  }
+  function setSourceEndFrame(end: number): void {
+    sourceEndFrame = end; sourceEnd = end === Infinity ? Infinity : end / source.sampleRate;
+    publishSourceEpoch();
+  }
+  function nextInputCycle(): number {
+    if (!audio) return source.left.length;
+    const elapsed = Math.max(header ? Atomics.load(header, READ) * QUANTUM : 0, Math.round(audio.currentTime * audio.sampleRate) - sourceStartFrame, 0);
+    const numerator = BigInt(sourceFrameOffset) * BigInt(audio.sampleRate) + BigInt(elapsed) * BigInt(source.sampleRate);
+    return Number(numerator / (BigInt(source.left.length) * BigInt(audio.sampleRate)) + 1n) * source.left.length;
   }
   function snapshot(): LivePlaybackState {
-    return { ...state, position: positionAt(),
+    return { ...state, position: positionAt(), repeatPending: state.playing && state.repeat && !epochLooping,
       underruns: header ? Atomics.load(header, UNDERRUNS) : state.underruns,
       appliedVersion: header ? Atomics.load(header, APPLIED_VERSION) : state.appliedVersion };
   }
@@ -197,7 +216,7 @@ export function createLivePlayback(
     emitSilence();
     callbacks.onError?.(failure);
   }
-  function armStream(sourceFrame: number): Promise<number> {
+  function armStream(sourceFrame: number, looping: boolean): Promise<number> {
     if (!header || !worklet) return Promise.reject(new Error("The source graph is not ready."));
     const generation = Atomics.add(header, GENERATION, 1) + 1;
     Atomics.store(header, WRITE, 0); Atomics.store(header, READ, 0);
@@ -206,7 +225,7 @@ export function createLivePlayback(
       const timeout = setTimeout(() => { finish(new Error("The audio engine did not arm the source. Retry playback.")); }, 5000);
       function finish(error?: Error) { clearTimeout(timeout); arms.delete(generation); if (error) reject(error); else resolve(generation); }
       arms.set(generation, { resolve: () => { finish(); }, reject: finish });
-      worklet?.port.postMessage({ type: "arm", generation, sourceFrame });
+      worklet?.port.postMessage({ type: "arm", generation, sourceFrame, looping });
     });
   }
   function emitSilence(): void {
@@ -214,7 +233,7 @@ export function createLivePlayback(
       correlation: 1, position: state.position, underruns: state.underruns });
   }
   function pause(): void {
-    playTicket++; sourceTicket++; wantsPlayback = false;
+    playTicket++; sourceTicket++; wantsPlayback = false; automaticRepeat = false;
     for (const arm of arms.values()) arm.reject(new DOMException("Playback paused.", "AbortError")); arms.clear();
     const position = positionAt();
     stopSource();
@@ -228,34 +247,35 @@ export function createLivePlayback(
     emit();
     if (!disposed) emitSilence();
   }
-  async function startSource(offset: number): Promise<void> {
+  async function startSource(offset: number, repeating = false): Promise<void> {
     const context = audio, processor = worklet, input = buffer;
     if (!context || !processor || !input || !streamHeader || !streamTime) throw new Error("The live audio graph is not ready.");
     const ticket = ++sourceTicket;
+    automaticRepeat = repeating;
     for (const arm of arms.values()) arm.reject(new DOMException("A newer source request replaced this one.", "AbortError")); arms.clear();
     stopSource();
     const sourceFrame = Math.min(source.left.length - 1, Math.max(0, Math.floor(offset * source.sampleRate)));
-    sourceOffset = sourceFrame / source.sampleRate;
+    sourceOffset = sourceFrame / source.sampleRate; sourceFrameOffset = sourceFrame;
     state = { ...state, position: sourceOffset, playing: false, loading: true };
     emit();
     // No native source exists before the worklet has reset and sought its Go clock.
     let generation: number;
-    try { generation = await armStream(sourceFrame); }
+    const looping = state.repeat;
+    try { generation = await armStream(sourceFrame, looping); }
     catch (error) { if (isDisposed() || ticket !== sourceTicket) return; throw error; }
     if (isDisposed() || ticket !== sourceTicket || audio !== context || worklet !== processor) return;
+    if (looping !== state.repeat) { await startSource(offset, repeating); return; }
+    automaticRepeat = false; epochLooping = looping; sourceGeneration = generation;
     const node = context.createBufferSource(); sourceNode = node;
-    node.buffer = input; node.loop = true; node.connect(processor);
+    node.buffer = input; node.loop = looping; node.connect(processor);
     sourceStart = Math.ceil((context.currentTime + 0.02) * context.sampleRate / QUANTUM) * QUANTUM / context.sampleRate;
     node.start(sourceStart, sourceOffset);
     // A stalled main thread must never publish an epoch after its native deadline.
     if (context.currentTime >= sourceStart) { stopSource(); throw new Error("The source start deadline was missed. Retry playback."); }
-    const sequence = Atomics.load(streamHeader, 0);
-    Atomics.store(streamHeader, 0, sequence + 1);
-    streamTime[0] = Math.round(sourceStart * context.sampleRate);
-    Atomics.store(streamHeader, 1, generation);
-    Atomics.store(streamHeader, 0, sequence + 2);
-    setSourceEnd(state.repeat ? Infinity : state.duration);
+    sourceStartFrame = Math.round(sourceStart * context.sampleRate);
+    setSourceEndFrame(looping ? Infinity : source.left.length);
     state = { ...state, position: sourceOffset, playing: true, loading: false, error: null };
+    cancelAnimationFrame(spectrumFrame); spectrumFrame = requestAnimationFrame(spectrum);
   }
   function spectrum(time: number): void {
     if (disposed || !state.playing || !audio || !leftAnalyser || !rightAnalyser) return;
@@ -302,8 +322,9 @@ export function createLivePlayback(
       }
       state = { ...state, position: positionAt(message.time),
         underruns: Atomics.load(header, UNDERRUNS), appliedVersion: Atomics.load(header, APPLIED_VERSION) };
-      if (!state.repeat && unwrappedPosition(message.time) >= sourceEnd) {
-        pause();
+      if (unwrappedPosition(message.time) >= sourceEnd) {
+        if (state.repeat) void startSource(0, true).then(() => { emit(); }).catch(fail);
+        else pause();
         return;
       }
       callbacks.onMeter?.({ peakDbfs: message.peakDbfs, rmsDbfs: message.rmsDbfs,
@@ -322,8 +343,8 @@ export function createLivePlayback(
     audio = context;
     const resumed = context.resume();
     const sharedHeader = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 8);
-    const sharedStream = new SharedArrayBuffer(16);
-    streamHeader = new Int32Array(sharedStream, 0, 2); streamTime = new Float64Array(sharedStream, 8, 1);
+    const sharedStream = new SharedArrayBuffer(24);
+    streamHeader = new Int32Array(sharedStream, 0, 2); streamTime = new Float64Array(sharedStream, 8, 2);
     const sharedTags = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * SLOTS * 5);
     const sharedSamples = new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * QUANTUM * SLOTS * 4);
     header = new Int32Array(sharedHeader);
@@ -506,7 +527,6 @@ export function createLivePlayback(
         await audio.resume();
         if (isDisposed() || ticket !== playTicket) return;
         await startSource(state.position >= state.duration ? 0 : state.position);
-        spectrumFrame = requestAnimationFrame(spectrum);
         emit();
       } catch (error) {
         if (!isDisposed() && ticket === playTicket) fail(error);
@@ -551,13 +571,14 @@ export function createLivePlayback(
     },
     setRepeat(enabled) {
       if (disposed || enabled === state.repeat) return;
-      const position = unwrappedPosition();
-      const wasEnded = state.playing && position >= sourceEnd;
       state = { ...state, repeat: enabled };
-      if (state.playing) {
-        if (enabled && wasEnded) void startSource(0).then(() => { emit(); }).catch(fail);
-        else setSourceEnd(enabled ? Infinity : (Math.floor(position / state.duration) + 1) * state.duration);
+      if (automaticRepeat && !enabled) { pause(); state = { ...state, position: state.duration }; }
+      else if (state.playing && epochLooping) {
+        if (enabled && unwrappedPosition() >= sourceEnd) void startSource(0, true).then(() => { emit(); }).catch(fail);
+        else setSourceEndFrame(enabled ? Infinity : nextInputCycle());
       }
+      // A finite native source cannot be revived after EOF. Keep its complete
+      // audible pass, then prepare a new epoch if Repeat is still requested.
       emit();
     },
     getState: snapshot,

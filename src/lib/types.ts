@@ -1,4 +1,6 @@
 import type { DeepMasteringState } from "./deep-mastering";
+import type { AlbumReport } from "./album-batch";
+import type { AlbumGainMode } from "./album-consistency";
 import type { ReleaseReport } from "./release-review";
 
 export type SimpleStyle = "precise" | "organic" | "elevated";
@@ -201,6 +203,10 @@ export type Track = {
 };
 
 export type Album = {
+  report?: AlbumReport;
+  gainMode?: AlbumGainMode;
+  offsets?: Record<string, number>;
+  updatedAt?: string;
   id: string;
   title: string;
   artist: string;

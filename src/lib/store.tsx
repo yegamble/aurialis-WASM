@@ -15,6 +15,7 @@ import { normalizeShortcutUndo, pruneShortcutUndo, toggleMasteringShortcut, type
 import { masteringTargets } from "./mastering-targets";
 import { restoredSimpleDirection, type SimpleChange } from "./simple-directions";
 import { hasAppliedDeep } from "./reference-matching";
+import { readAlbumReport } from "./album-batch";
 import { readReleaseReport } from "./release-review";
 import { deepSourceMatches, readDeepMasteringState, type DeepMasteringState, type DeepSettingsSnapshot, type ScriptV2 } from "./deep-mastering";
 import type {
@@ -109,6 +110,8 @@ type StoreAction =
   | { type: "RESET_ADVANCED"; trackId: string }
   | { type: "DELETE_TRACK"; id: string }
   | { type: "ADD_ALBUM"; album: Album }
+  | { type: "SAVE_ALBUM_REPORT"; expected: Album; tracks: readonly Track[]; report: NonNullable<Album["report"]> }
+  | { type: "IMPORT_ALBUM_TRACK"; expected: Album; track: Track }
   | { type: "UPDATE_ALBUM"; id: string; patch: Partial<Album> }
   | { type: "DELETE_ALBUM"; id: string }
   | { type: "SAVE_DEEP_PROPOSAL"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedProposalRevision: number | null; expectedAdvanced?: AdvancedParams; deep: Pick<DeepMasteringState, "sourceRevision" | "proposal" | "targets"> }
@@ -408,12 +411,22 @@ export function reduceStoreState(
       return {
         ...state,
         tracks: state.tracks.filter((track) => track.id !== action.id),
-        albums: state.albums.map((album) => ({
-          ...album,
+        albums: state.albums.map((album) => album.trackIds.includes(action.id) ? ({
+          ...album, mastered: false, updatedAt: new Date().toISOString(),
           trackIds: album.trackIds.filter((id) => id !== action.id),
-        })),
+        }) : album),
         stems: [],
       };
+
+    case "SAVE_ALBUM_REPORT":
+      if (!state.albums.includes(action.expected) || action.tracks.length !== action.expected.trackIds.length
+        || action.tracks.some((track, index) => track.id !== action.expected.trackIds.at(index) || !state.tracks.includes(track))) return state;
+      return { ...state, albums: state.albums.map((album) => album === action.expected ? { ...album, report: action.report } : album) };
+
+    case "IMPORT_ALBUM_TRACK":
+      if (!state.albums.includes(action.expected) || action.expected.trackIds.length >= 64 || state.tracks.some((track) => track.id === action.track.id)) return state;
+      return { ...state, tracks: [action.track, ...state.tracks], albums: state.albums.map((album) => album === action.expected
+        ? { ...album, trackIds: [...album.trackIds, action.track.id], mastered: false, updatedAt: new Date().toISOString() } : album) };
 
     case "ADD_ALBUM":
       return { ...state, albums: [action.album, ...state.albums] };
@@ -422,7 +435,7 @@ export function reduceStoreState(
       return {
         ...state,
         albums: state.albums.map((a) =>
-          a.id === action.id ? { ...a, ...action.patch } : a,
+          a.id === action.id ? { ...a, ...action.patch, mastered: false, updatedAt: new Date().toISOString() } : a,
         ),
       };
 
@@ -532,7 +545,12 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
   });
   return {
     tracks,
-    albums: Array.isArray(candidate.albums) ? candidate.albums.map((album) => ({ ...album, mastered: false, trackIds: album.trackIds.filter((id) => tracks.some((track) => track.id === id)) })) : [],
+    albums: Array.isArray(candidate.albums) ? candidate.albums.map((album) => {
+      const restored = { ...album, mastered: false, trackIds: album.trackIds.filter((id) => tracks.some((track) => track.id === id)) };
+      const report = readAlbumReport(album.report);
+      if (report) restored.report = report; else delete restored.report;
+      return restored;
+    }) : [],
     stems: [],
   };
 }

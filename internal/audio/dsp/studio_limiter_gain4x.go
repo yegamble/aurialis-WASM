@@ -9,11 +9,11 @@ const studioLimiterHighCapacity = 2048
 
 // This private gain planner consumes and returns actual 4x audio samples. It is
 // not a final limiter: decimation and final-output reconstruction can add peaks.
-// Each incoming peak writes a linear 2 ms attack into buffered, unreturned audio;
+// Each incoming peak plans a linear 2 ms attack over buffered, unreturned audio;
 // transient and sustained release states can only lower that planned gain.
 type studioLimiterGain4x struct {
 	audio                                                     [2][studioLimiterHighCapacity]float64
-	plan                                                      [studioLimiterHighCapacity]float64
+	envelope                                                  studioGainEnvelope
 	frame                                                     int64
 	lookahead                                                 int
 	enabled                                                   bool
@@ -48,9 +48,7 @@ func prepareStudioLimiterGain4x(rate float64, params LimiterParams) (studioLimit
 
 func (l *studioLimiterGain4x) resetHistory() {
 	l.audio = [2][studioLimiterHighCapacity]float64{}
-	for i := range l.plan {
-		l.plan[i] = 1
-	}
+	l.envelope = studioGainEnvelope{}
 	l.frame = 0
 	l.fastGain, l.slowGain, l.exposure, l.lastGain = 1, 1, 0, 1
 }
@@ -66,22 +64,15 @@ func (l *studioLimiterGain4x) process(left, right float64) (float64, float64, fl
 		right = 0
 	}
 	slot := int(l.frame) & (studioLimiterHighCapacity - 1)
-	l.audio[0][slot], l.audio[1][slot], l.plan[slot] = left, right, 1
+	l.audio[0][slot], l.audio[1][slot] = left, right
 	peak := math.Max(math.Abs(left), math.Abs(right))
 	if l.enabled && peak > l.ceiling {
 		required := l.ceiling * l.safety / peak
-		increment := (1 - required) / float64(l.lookahead)
-		for distance := 0; distance <= l.lookahead; distance++ {
-			index := (slot - distance) & (studioLimiterHighCapacity - 1)
-			candidate := required + float64(distance)*increment
-			if candidate < l.plan[index] {
-				l.plan[index] = candidate
-			}
-		}
+		l.envelope.add(l.frame, 0, l.lookahead, 0, required)
 	}
 	source := l.frame - int64(l.lookahead)
+	bound := l.envelope.bound(l.frame)
 	l.frame++
-	bound := l.plan[int(source)&(studioLimiterHighCapacity-1)]
 	if l.enabled {
 		if bound < l.fastGain {
 			l.fastGain = bound

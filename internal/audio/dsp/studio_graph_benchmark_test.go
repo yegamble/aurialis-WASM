@@ -9,13 +9,29 @@ import (
 // warmed all-active graph. Timings isolate arithmetic; the complete-graph
 // benchmark remains the callback-budget gate, including layout/delay overhead.
 func BenchmarkStudioGraphStageCosts(b *testing.B) {
+	benchmarkStudioGraphStageCosts(b, false)
+}
+
+// The new audible candidate has different audio coefficients and delays. Its
+// stage costs must be captured from that actual warmed graph, not the old FIR.
+func BenchmarkStudioAudibleGraphStageCosts(b *testing.B) {
+	benchmarkStudioGraphStageCosts(b, true)
+}
+
+func benchmarkStudioGraphStageCosts(b *testing.B, audible bool) {
 	for _, rate := range []float64{48000, 192000} {
 		b.Run(fmt.Sprintf("rate%.0f", rate), func(b *testing.B) {
 			for _, name := range []string{"prefix", "compressor", "saturation", "stereo", "filters4x", "gain4x", "postDetector", "postDetectorRing", "postGuard", "quantize24"} {
 				b.Run(name, func(b *testing.B) {
 					p := studioGraphActiveParams()
 					p.Compressor.MakeupDB, p.DitherBits = 12, 24
-					g := mustStudioGraph(b, rate, p, 128, true)
+					var g *studioGraph
+					if audible {
+						p.Repair.DeClip = false
+						g = mustStudioAudibleGraph(b, rate, p, 128, true)
+					} else {
+						g = mustStudioGraph(b, rate, p, 128, true)
+					}
 					left, right := studioGraphSignal(128)
 					for i := range left {
 						left[i] *= 4
@@ -44,13 +60,22 @@ func BenchmarkStudioGraphStageCosts(b *testing.B) {
 						save("stereo")
 						l, r = g.stereo.process(l, r)
 						save("filters4x")
-						subs := g.up.process(&g.kernel, l, r)
+						var subs [4][2]float64
+						if audible {
+							subs = g.audible.up.process(g.audible.kernel, l, r)
+						} else {
+							subs = g.up.process(&g.kernel, l, r)
+						}
 						high[i] = subs
 						for phase, pair := range subs {
 							a, c, _, _ := g.gain.process(pair[0], pair[1])
 							subs[phase] = [2]float64{a, c}
 						}
-						l, r = g.down.process(&g.kernel, subs)
+						if audible {
+							l, r = g.audible.down.process(g.audible.kernel, subs)
+						} else {
+							l, r = g.down.process(&g.kernel, subs)
+						}
 						save("postDetector")
 						save("postDetectorRing")
 						save("postGuard")
@@ -70,7 +95,11 @@ func BenchmarkStudioGraphStageCosts(b *testing.B) {
 							case "stereo":
 								l, r = g.stereo.process(l, r)
 							case "filters4x":
-								l, r = g.down.process(&g.kernel, g.up.process(&g.kernel, l, r))
+								if audible {
+									l, r = g.audible.down.process(g.audible.kernel, g.audible.up.process(g.audible.kernel, l, r))
+								} else {
+									l, r = g.down.process(&g.kernel, g.up.process(&g.kernel, l, r))
+								}
 							case "gain4x":
 								for _, sub := range high[i] {
 									l, r, _, _ = g.gain.process(sub[0], sub[1])

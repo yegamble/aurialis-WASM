@@ -220,7 +220,9 @@ func jsProcessBlock(_ js.Value, args []js.Value) any {
 	if n == 0 || !readChannels(channels, n) {
 		return 0
 	}
-	globalBridge.ProcessBlock(bridgeBuffers[0][:n], bridgeBuffers[1][:n], bridgeBuffers[2][:n], bridgeBuffers[3][:n])
+	if !globalBridge.ProcessBlock(bridgeBuffers[0][:n], bridgeBuffers[1][:n], bridgeBuffers[2][:n], bridgeBuffers[3][:n]) {
+		return 0
+	}
 	writeChannels(channels, n)
 	return n
 }

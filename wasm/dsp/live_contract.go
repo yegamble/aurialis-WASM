@@ -40,7 +40,9 @@ func (v *liveVersionedControlVector) apply(bridge *Bridge, count uint32) uint32 
 		return 0
 	}
 	params.AlgorithmVersion = dsp.LegacyAlgorithmVersion
-	bridge.SetParams(params)
+	if !bridge.SetParams(params) {
+		return 0
+	}
 	return 1
 }
 

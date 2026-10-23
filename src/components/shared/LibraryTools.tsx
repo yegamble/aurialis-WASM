@@ -5,6 +5,7 @@ import { getAudio, saveAudio, discardStagedAudio, storageSummary, newAudioAssetI
 import { audioKey, replacementProject, sameSource } from "@/lib/library";
 import { prepareProjectFile, readStoredSource } from "@/lib/project-import";
 import { createLivePlayback, type LivePlaybackController, type LivePlaybackState } from "@/lib/live-playback";
+import { useTransportScrub } from "@/lib/use-transport-scrub";
 import { useStore } from "@/lib/store";
 import type { Track } from "@/lib/types";
 import { Button, Modal } from "./Primitives";
@@ -76,6 +77,7 @@ export function LibraryPreview({ track, onClose }: { track: Track; onClose: () =
   const live = useRef<LivePlaybackController | null>(null);
   const [state, setState] = useState<LivePlaybackState | null>(null);
   const [error, setError] = useState("");
+  const { stopScrub, onScrub } = useTransportScrub(live, { available: () => true, resume: () => { void live.current?.play().catch((cause: unknown) => { setError(cause instanceof Error ? cause.message : "Press Play to resume."); }); } });
   useEffect(() => {
     const controller = new AbortController(); let playback: LivePlaybackController | null = null;
     void (async () => {
@@ -85,12 +87,12 @@ export function LibraryPreview({ track, onClose }: { track: Track; onClose: () =
       playback = createLivePlayback(stored.pcm, track.advanced, { onState: (next) => { if (!controller.signal.aborted) setState(next); }, onError: (cause) => { if (!controller.signal.aborted) setError(cause.message); } });
       live.current = playback; setState(playback.getState());
     })().catch((cause: unknown) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Preview failed."); });
-    return () => { controller.abort(); playback?.dispose(); live.current = null; };
+    return () => { controller.abort(); stopScrub(false); playback?.dispose(); live.current = null; };
   }, [track]);
-  const seek = (seconds: number) => { live.current?.seek(seconds); };
+  const seek = (seconds: number) => { stopScrub(false); live.current?.seek(seconds); };
   return <Modal open title={`Preview “${track.title}”`} onClose={onClose}>
     <p className="disclosure">Listen through this project’s current processing settings. A/B compares the original source.</p>
     {error && <p role="alert" className="disclosure text-danger">{error}</p>}
-    <RealTransport inline state={state} sourceReady={live.current !== null} onPlay={async () => { try { await live.current?.play(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Press Play to retry."); } }} onPause={() => { live.current?.pause(); }} onOriginal={(value) => { live.current?.setBypass(value); }} onVolume={(value) => { live.current?.setVolume(value); }} onRestart={() => { seek(0); }} onForward={() => { seek((state?.position ?? 0) + 10); }} onRepeat={(value) => { live.current?.setRepeat(value); }} onScrub={(direction, phase) => { if (phase === "start") seek((state?.position ?? 0) + direction); }} />
+    <RealTransport inline state={state} sourceReady={live.current !== null} onPlay={async () => { try { stopScrub(false); await live.current?.play(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Press Play to retry."); } }} onPause={() => { stopScrub(false); live.current?.pause(); }} onOriginal={(value) => { live.current?.setBypass(value); }} onVolume={(value) => { live.current?.setVolume(value); }} onRestart={() => { seek(0); }} onForward={() => { seek((state?.position ?? 0) + 10); }} onRepeat={(value) => { live.current?.setRepeat(value); }} onScrub={onScrub} />
   </Modal>;
 }

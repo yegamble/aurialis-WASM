@@ -65,6 +65,7 @@ import {
 import { readStoredSource, prepareProjectFile, importedTrack } from "@/lib/project-import";
 import { LibraryView } from "./shared/LibraryView";
 import { SourceRelink } from "./shared/LibraryTools";
+import { useTransportScrub } from "@/lib/use-transport-scrub";
 import { audioKey } from "@/lib/library";
 import { FeatureAnalysisPanel } from "./shared/FeatureAnalysisPanel";
 
@@ -581,7 +582,7 @@ function MasterView({ trackId }: { trackId: string }) {
   const [renderedKey, setRenderedKey] = useState("");
   const live = useRef<LivePlaybackController | null>(null);
   const playbackControls = useRef<ReturnType<typeof bindPlaybackControls> | null>(null);
-  const scrub = useRef<{ controller: LivePlaybackController; direction: -1 | 1; startedAt: number; lastAt: number; position: number; wasPlaying: boolean; frame: number } | null>(null);
+  const { session: scrub, stopScrub, onScrub } = useTransportScrub(live, { available: () => !handoverActive.current, resume: () => { void play(); }, advance: (next) => { playbackControls.current?.update(next, true); } });
   const [playback, setPlayback] = useState<LivePlaybackState | null>(null);
   const [meter, setMeter] = useState<LiveMeter | null>(null);
   const [spectrum, setSpectrum] = useState<LiveSpectrum | null>(null);
@@ -686,38 +687,7 @@ function MasterView({ trackId }: { trackId: string }) {
     playbackControls.current?.update(controller.getState(), true);
   }
   function seek(ratio: number) { seekSeconds(Math.max(0, Math.min(1, ratio)) * (source ? source.left.length / source.sampleRate : 0)); }
-  function stopScrub(resume: boolean) {
-    const session = scrub.current;
-    if (!session) return;
-    cancelAnimationFrame(session.frame);
-    scrub.current = null;
-    const state = session.controller.getState();
-    if (resume && session.wasPlaying && live.current === session.controller && (state.position < state.duration || state.repeat)) void play();
-  }
-  function onScrub(direction: -1 | 1, phase: "start" | "end" | "cancel") {
-    if (phase !== "start") { stopScrub(true); return; }
-    const controller = live.current;
-    if (!controller || handoverActive.current || controller.getState().loading) return;
-    stopScrub(false);
-    const state = controller.getState();
-    controller.pause();
-    const now = performance.now();
-    const session = { controller, direction, startedAt: now, lastAt: now, position: controller.getState().position, wasPlaying: state.playing, frame: 0 };
-    scrub.current = session;
-    function advance(time: number) {
-      if (scrub.current !== session || live.current !== controller) return;
-      if (time - session.lastAt >= 50) {
-        const elapsed = (time - session.startedAt) / 1000;
-        const speed = elapsed >= 3 ? 8 : elapsed >= 1 ? 4 : 2;
-        session.position = Math.max(0, Math.min(state.duration, session.position + direction * speed * Math.min(0.25, (time - session.lastAt) / 1000)));
-        session.lastAt = time;
-        session.controller.seek(session.position);
-        playbackControls.current?.update(session.controller.getState(), true);
-      }
-      session.frame = requestAnimationFrame(advance);
-    }
-    session.frame = requestAnimationFrame(advance);
-  }
+
   function forward() {
     const controller = live.current;
     if (!controller || handover) return;

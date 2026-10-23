@@ -27,6 +27,7 @@ type oracleTensor struct {
 	Bytes  int   `json:"bytes"`
 }
 type oracleMetadata struct {
+	FFTVariant         string                  `json:"fftVariant"`
 	Fixture            string                  `json:"fixture"`
 	ArchitectureCommit string                  `json:"architectureCommit"`
 	OriginalSHA256     string                  `json:"originalSHA256"`
@@ -193,6 +194,9 @@ func oracleShapes(samples int) map[string][]int {
 	return shapes
 }
 func validateOracleLayout(metadata oracleMetadata, binaryBytes int) error {
+	if metadata.FFTVariant != "" && metadata.FFTVariant != "original_f32" {
+		return errors.New("conditioning probes cannot replace original F32 oracle")
+	}
 	if metadata.Dtype != "F32" || metadata.Samples <= fftSize/2 || metadata.Samples > maximumWindowSamples ||
 		metadata.ArchitectureCommit != originalArchitectureCommit || metadata.OriginalSHA256 != originalCheckpointSHA256 {
 		return errors.New("invalid pinned original oracle provenance")
@@ -252,6 +256,7 @@ func TestOracleLayoutRequiresPinnedCompleteDisjointShapes(t *testing.T) {
 	}
 	for _, mutation := range []func(*oracleMetadata){
 		func(m *oracleMetadata) { m.OriginalSHA256 = "wrong" },
+		func(m *oracleMetadata) { m.FFTVariant = "f64_rounded" },
 		func(m *oracleMetadata) { m.ArchitectureCommit = "wrong" },
 		func(m *oracleMetadata) { delete(m.Tensors, "mask.bass") },
 		func(m *oracleMetadata) { m.Tensors["extra"] = oracleTensor{} },

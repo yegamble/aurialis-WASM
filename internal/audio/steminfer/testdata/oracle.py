@@ -1,4 +1,4 @@
-# cspell:words Solovyev gelu randn stft onesided Roformer istft tobytes
+# cspell:words nextafter rfft Solovyev gelu randn stft onesided Roformer istft tobytes
 """Independent development oracle for the original Mega53 PyTorch architecture.
 
 Derived from ZFTurbo/Music-Source-Separation-Training, MIT (Roman Solovyev,
@@ -27,6 +27,7 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--samples", type=int, default=2053)
     parser.add_argument("--broadband", action="store_true")
+    parser.add_argument("--fft-variant", choices=("original_f32", "f64_rounded", "pcm_one_lsb"), default="original_f32")
     args = parser.parse_args()
     if not 1025 <= args.samples <= 882000:
         raise ValueError("bounded inference window required")
@@ -90,12 +91,20 @@ def main():
         right += .005 * noise[1].double()
     left[0], right[-1] = .7, -.4
     source = torch.stack((left, right)).float()
+    if args.fft_variant == "pcm_one_lsb":
+        source = torch.nextafter(source, torch.full_like(source, float("inf")))
     capture("source", source)
     window = torch.hann_window(2048, periodic=True, dtype=torch.float32)
     capture("window", window)
     started = time.perf_counter()
     with torch.inference_mode():
         spectrum = torch.stft(source, 2048, 512, 2048, window, center=True, pad_mode="reflect", normalized=False, onesided=True, return_complex=True)
+        if args.fft_variant == "f64_rounded":
+            # Independent conditioning probe: preserve original F32 multiply,
+            # evaluate its FFT accurately in F64, then round features to F32.
+            framed = F.pad(source, (1024, 1024), mode="reflect").unfold(-1, 2048, 512)
+            windowed = framed * window
+            spectrum = torch.fft.rfft(windowed.double(), n=2048).to(torch.complex64).transpose(1, 2).contiguous()
         # bin then channel then real/imaginary, with time leading.
         features = torch.view_as_real(spectrum).permute(2, 1, 0, 3).contiguous().flatten(1)
         capture("features", features)
@@ -129,7 +138,7 @@ def main():
             output = torch.istft(predicted, 2048, 512, 2048, window, center=True, normalized=False, onesided=True, length=args.samples)
             capture("pcm." + label, output)
     args.out.mkdir(parents=True, exist_ok=True)
-    metadata = {"fixture": "broadband" if args.broadband else "tonal", "architectureCommit": "6fdad13686bb7e84d029ec66f9dbe76e65c93ebf", "originalSHA256": ORIGINAL_SHA, "samples": args.samples, "dtype": "F32", "tensors": {}}
+    metadata = {"fftVariant": args.fft_variant, "fixture": "broadband" if args.broadband else "tonal", "architectureCommit": "6fdad13686bb7e84d029ec66f9dbe76e65c93ebf", "originalSHA256": ORIGINAL_SHA, "samples": args.samples, "dtype": "F32", "tensors": {}}
     offset = 0
     with (args.out / "oracle.bin").open("wb") as target:
         for name, value in captured.items():

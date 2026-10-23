@@ -54,7 +54,7 @@ LIB-1 is verified and merged in PR #7 at `25d5653280585198df510215a58c3c07b92193
 | Item | Current status |
 | --- | --- |
 | LIB-1 Library/source lifecycle | verified and merged, PR #7 / `25d5653` |
-| MUB-3B ScriptV2/common schedule foundation | implemented on `codex/deep-schedule-foundation`; final independent/integrated verification open |
+| MUB-3B ScriptV2/common schedule foundation | locally verified on `codex/deep-schedule-foundation`; open — awaiting exact green remote CI and delegated merge |
 | Deep editor and actual browser schedule transport | open; not delivered by the kernel/API foundation |
 | Whole product and Waves acoustic acceptance | open |
 
@@ -65,6 +65,10 @@ The Chair observed full Go quality/security/race gates passing after first-Apply
 Round E reopened first Apply because static playback did not advance a schedule-independent clock. The correction binds an independent rational source epoch before playback; static/bypassed blocks advance it, same-identity binding preserves it, and first Apply/detach/reapply retains fractional phase. Seek/reset explicitly reconstructs the epoch; hold/pause submits no processing frames. Native and actual compiled-WASI fixtures now include 16 independent static-prefix epochs in addition to the prior 29 fixtures. No ABI signature changed.
 
 The prior pre-correction existing-UI suite passed 70/70 in 5.9 minutes. The post-correction run was 69/70 in 4.3 minutes, failing keyboard focus after transport Space-hold/Escape/resume. Ten unchanged traced repetitions passed but do not replace a complete corrected acceptance run. A deterministic intermediate-render regression reproduced a matching transport focus-ownership race against old source, failing one of 11 unit cases; ownership cleared before asynchronous resume disabled and blurred the origin. Correction `ba4406d` passed all 11 transport units, strict frontend gates, the complete 321-unit suite and fresh build/smoke. It preserves keyboard ownership through the paused render and releases it on a new hold or intentional enabled blur. Fresh complete browser verification remains pending; identical cause for every prior failure is not established. The current UI does not bind the new schedule clock; no clock-causation claim follows. Final browser regression, documentation sign-off and green remote CI remain required before delegated merge. The foundation is not merge-ready and no whole-product acceptance follows.
+
+**Final Round E local acceptance:** the fresh corrected complete browser suite exited 0, 70/70 in 3.5 minutes, without relaxing the original assertions. Independent QA/Devil's Advocate/Technical Writer/Product accepted the bounded foundation contracts, evidence and atomic commits with no remaining in-scope must-fix. Status: **locally verified; open — awaiting merge**, conditional on exact green remote CI before delegated merge. Earlier pending and failed checkpoints above remain historical. This is existing-UI regression evidence, not an enabled Deep editor or actual browser automation continuity claim.
+
+After rebasing onto merged PR #7 `25d5653`, the Chair and independent writer compared the full tracked trees and found no differences. Current rebased commits are `e2e7432` (first-Apply clock), `e581a86` (captured static-prefix oracle) and `de852d3` (transport focus); earlier hashes identify executed pre-rebase checkpoints. Whole-product, Reference, studio DSP, trained stems and Waves acceptance remain open.
 
 ## Whole-product loop — 2026-10-22, current session
 

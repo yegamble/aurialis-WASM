@@ -5,7 +5,7 @@ The blanket “all slices verified” claim at `ade7736` is withdrawn. The earli
 
 ## Delegated continuation — October 23, 2026
 
-### PR #7 merged; ScriptV2 foundation verification open
+### PR #7 merged; ScriptV2 foundation locally verified
 
 LIB-1 is verified and merged in PR #7 at `25d5653280585198df510215a58c3c07b92193ea`. All six jobs in [CI run 39906520601](https://github.com/yegamble/aurialis-WASM/actions/runs/39906520601) passed, including 70 Linux browser cases in 4.9 minutes. The primary checkout was fast-forwarded and the merged feature branch deleted. The local-only statuses below retain their recorded checkpoints.
 
@@ -18,6 +18,16 @@ The first-Apply defect started an attached schedule at phase zero after static p
 The existing-UI suite passed 70/70 in 5.9 minutes before the clock correction. The post-correction full run finished 69/70 in 4.3 minutes: the keyboard-hold transport case lost focus after Space hold/Escape/resume. Ten unchanged traced repetitions passed, but that focused result does not close the full-suite failure. A deterministic intermediate-render regression then reproduced a matching focus-ownership race against the old transport code: one of 11 unit cases failed. It exposed ownership being cleared before asynchronous resume disabled and blurred the origin. Correction `ba4406d` retains the keyboard origin through that paused render while relinquishing it on a new hold or intentional enabled blur. All 11 corrected transport units, strict TypeScript/lint/spelling, the complete 321-unit suite and rebuilt binary/smoke passed. Fresh complete browser acceptance remains under verification. This establishes the reproduced contract defect, not certainty that every prior browser focus failure had the identical cause. The current UI does not bind this schedule clock; no clock-causation claim or waived focus assertion follows.
 
 Retained failures include two strict-Go-lint checkpoints corrected at `15c248b`, interpolation rounding at an authored endpoint and unsupported generated baseline fields corrected before this checkpoint. A clock fixture first ran against the older reactor and failed; rebuilding both WASM modules from corrected source passed without assertion changes. An identifier-tool lookup used an incorrect repository URL and returned 404; the correct configured tool then passed. Loaded Node timing probes retained outliers up to 347 ms; quieter-host observations do not establish browser render deadlines. Compilation reports `sourceVerified: false` until the host binds authoritative source metadata; native rendering independently verifies actual PCM. This finite foundation remains open pending the transport-focus investigation, final evidence, documentation review and green remote CI before delegated merge.
+
+**Final local ruling: locally verified; open — awaiting merge.** The fresh corrected full browser run exited 0: 70/70 in 3.5 minutes after the focus correction, retaining the original assertions. Independent QA/Devil's Advocate/Technical Writer/Product review accepted the finite API/native/numeric-WASI foundation and atomic commits with no surviving in-scope must-fix. Five-document synchronization, focused clock/transport verification and retained failure history match the implementation. Exact green remote CI remains required before delegated merge. Earlier pending and failed checkpoints above remain historical. Deep UI, actual browser schedule continuity, Reference, studio DSP, trained stems and whole-product/Waves acceptance remain open.
+
+The integration branch was rebased onto merged PR #7 at `25d5653`; a direct tracked-tree comparison before/after rebase exited 0 with no differences. Executed evidence therefore applies to the identical rebased tree. Current source identities are:
+
+| Change | Observed before rebase | Current commit |
+| --- | --- | --- |
+| Independent first-Apply source clock | `b3237e3` | `e2e7432` |
+| Captured static-prefix oracle | `8de5063` | `e581a86` |
+| Keyboard resume focus correction | `ba4406d` | `de852d3` |
 
 ### LIB-1 checkpoint — locally verified, open — awaiting merge
 

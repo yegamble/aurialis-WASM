@@ -29,6 +29,8 @@ Both WASM modules export `aurialis_control_count(abi)` (81 for 1, 82 for 2, zero
 
 Script schema `2.0`, schedule ABI `1` and sonic algorithm `1` are independent versions. These interfaces do not enable an editable Deep workflow or certify browser render deadlines.
 
+The bounded foundation passed local native/API/compiled-WASI verification and the complete existing-UI browser regression. Exact remote CI and delegated merge remain required; [tasks](tasks.md#pr-7-merged-scriptv2-foundation-locally-verified) records source checkpoints and retained failures.
+
 `POST /api/analyze/deep` and `/analyze/deep` accept multipart `file`, optional `profile` and `scriptVersion=2.0`. Omitting the version retains the legacy job. Version 2 returns a 202 job with `kind: "analyze_deep_v2"`; a successful snapshot contains `scriptV2`. Existing polling, DELETE, timeout, admission and source-upload limits apply. Failed admission-response delivery cancels the admitted job. The job reserves decoded input plus 32 MiB headroom; retained scripts are charged at 2 MiB and snapshots deep-copy editable arrays.
 
 The measured proposal uses neutral sections and a regularized fit against a smooth spectral trend, with uncertainty findings. It is a conservative heuristic, not musical-role or instrument recognition. Its explicit baseline uses algorithm 1, disabled repair, the sample-peak limiter and the existing generic Optical compressor. It adds no hidden loudness normalization.

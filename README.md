@@ -84,9 +84,9 @@ For a measured handoff, open **Release check** in Tools. Choose a destination an
 
 ## Your audio and your computer
 
-Audio processing runs in the browser and the local Go server; no cloud audio service is required. The server accepts connections only on your own computer's loopback address. It validates and reconstructs uploaded audio in memory, stripping container metadata.
+Aurialis keeps audio processing on your device. The browser build reconstructs, analyzes and renders audio in local Web Workers using the shared Go engine. The local executable offers the same Go processing through its own loopback server. Both paths validate and reconstruct audio in memory, stripping container metadata.
 
-The planned hosted edition keeps all audio on the user’s device, with Cloudflare serving only app, WASM and model files. Its browser-processing adapter and migration are still in progress; the existing public domains do not yet establish that this replacement is deployed.
+Cloudflare serves only application, WASM and qualified model files. The browser build sends no audio uploads and does not automatically connect to a local server. Its bounded local verification is recorded in [browser processing](docs/browser-local.md); final CI, review and public-domain migration remain open. The existing public site has not been replaced yet.
 
 Projects and settings are saved in this browser's local storage, and reconstructed source audio is saved in IndexedDB, the browser's local database. **Keep your original files and downloaded masters separately.** Browser storage can be cleared or evicted, and the reconstructed audio is not a byte-for-byte backup of your upload. Changing the server address, port or browser uses a different browser storage location.
 
@@ -96,7 +96,7 @@ Projects and settings are saved in this browser's local storage, and reconstruct
 | --- | --- |
 | Import | Mono/stereo WAV: 8/16/24/32-bit integer PCM or 32-bit float, 8–192 kHz. Compressed formats such as MP3, AAC and FLAC need conversion first. The API also accepts limited AIFF input; the browser import accepts WAV. |
 | Track size | At most **128 MiB + 44 bytes** and **16,777,216 decoded frames**. The frame cap is about **5 min 50 s at 48 kHz**, or **2 min 55 s at 96 kHz**; file size can limit you sooner. |
-| Processing | One expensive upload/render request at a time. A busy response asks you to retry. These are finite workstation limits. |
+| Processing | One expensive browser job and at most one waiting job. Browser memory preflight may reject smaller files; use the local executable within its own limits. The local server also bounds admission. |
 | Albums | Individual 24-bit WAVs in a **128 MiB temporary output cache**. Download them before leaving the album page or changing settings/order; there is no persistent mastered-output store or ZIP export. |
 | Deep and Smart Split | Deep provides measured source diagnostics, editable automation and separate legacy static profiles. Change points do not identify verses or choruses; AI repair and validated instrument separation remain unavailable. ScriptV2 keeps sonic algorithm 1, generic Optical compression and sample-peak limiting; it uses deterministic heuristics, not a trained mastering model. |
 | Reference | Reference analyzes original reference audio against your source through its starting settings, with explicit proposal review and Apply/Revert. Saved reference knob positions are ignored; broad-band similarity does not establish perceptual matching. Both audio files share one **129 MiB** request ceiling. |
@@ -107,7 +107,7 @@ The [architecture](docs/architecture.md), [API contract](docs/api.md) and [task 
 
 ## Under the hood
 
-**One executable, two places to process audio.** A Go server serves the embedded Next.js 16 / React 19 interface and HTTP API. During listening, shared Go DSP code runs as a WebAssembly reactor inside the browser's AudioWorklet. Export renders through the native Go implementation. Simple and Advanced edit the same canonical settings.
+**Shared Go processing on your device.** The executable embeds the Next.js 16 / React 19 interface and local HTTP API. The browser build runs reconstruction, analysis and export in disposable Go/WASM workers. Both builds use shared Go DSP in the browser’s AudioWorklet for listening. Simple and Advanced edit the same canonical settings.
 
 See [architecture](docs/architecture.md) for the audio paths, shared-memory controls, resource bounds and security model, or [API reference](docs/api.md) to render audio from a script. The [ScriptV2 contract](docs/api.md#scriptv2-foundation) binds editable proposals and acknowledged live/export schedules to verified source audio. Draft edits wait for explicit Apply.
 

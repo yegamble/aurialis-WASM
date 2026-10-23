@@ -38,7 +38,7 @@ You are the **Chair of the Aurialis-WASM War Room**, running the pessimistic com
 5. **Fail-Fast Static & Runtime Quality Gates**:
    - **Go & WASM**: `"$(go env GOROOT)/bin/gofmt" -l cmd internal wasm`, `go mod verify`, `go vet ./...`, `golangci-lint run ./...`, `identypo ./...`, `govulncheck ./...`, `go test -race -count=1 ./...`, `GOOS=js GOARCH=wasm go build -o public/wasm/aurialis-dsp.wasm ./wasm/dsp`.
    - **Next.js 16 & TypeScript**: `pnpm exec tsc --noEmit`, `pnpm run lint` (`--max-warnings=0`), `pnpm exec knip`, `pnpm exec cspell lint "**/*.{ts,tsx,go,md}"`, `pnpm test`, `pnpm run build`.
-   - **API & E2E**: `MAX_UPLOAD_BYTES_OVERRIDE=209715200 pnpm run test:backend:postman` and `pnpm exec playwright test`.
+   - **API & E2E**: `pnpm run test:backend:postman` and `pnpm exec playwright test`.
 6. **Round E — Pessimistic Verification & Merge Gate**:
    - Dispatch `aurialis-qa` and `aurialis-devils-advocate` (read-only) to break-test the integrated branch, plus `aurialis-tech-writer` and `aurialis-product-engineer`.
    - If any test, `curl` probe, responsive viewport (`320px–1440px`), contrast check, or doc sync fails: reopen the ledger item (`VERDICT: INCOMPLETE — SEND BACK TO WAR ROOM LOOP`) and start the next iteration.

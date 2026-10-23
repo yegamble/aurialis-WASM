@@ -51,7 +51,7 @@ Arguments:
 Run all applicable fail-fast gates from `AGENTS.md`:
 1. **Go & WASM**: `"$(go env GOROOT)/bin/gofmt" -l cmd internal wasm`, `go mod verify`, `go vet ./...`, `golangci-lint run ./...`, `identypo ./...`, `govulncheck ./...`, `go test -race -count=1 ./...`, `GOOS=js GOARCH=wasm go build -o public/wasm/aurialis-dsp.wasm ./wasm/dsp`.
 2. **Next.js 16 & TypeScript**: `pnpm exec tsc --noEmit`, `pnpm run lint` (`--max-warnings=0`), `pnpm exec knip`, `pnpm exec cspell lint "**/*.{ts,tsx,go,md}"`, `pnpm test`, `pnpm run build`.
-3. **API & E2E**: `MAX_UPLOAD_BYTES_OVERRIDE=209715200 pnpm run test:backend:postman` + `pnpm exec playwright test`.
+3. **API & E2E**: `pnpm run test:backend:postman` + `pnpm exec playwright test`.
 
 ### Step 6: Round E — Pessimistic Adversarial Verification (`aurialis-qa` + `aurialis-devils-advocate` + `aurialis-tech-writer` + `aurialis-product-engineer`)
 - Dispatch **`aurialis-qa`** and **`aurialis-devils-advocate`** concurrently against the integrated branch:

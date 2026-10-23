@@ -31,7 +31,7 @@ Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS
 
 ### 1. Backend API Torture via Postman/Newman & Raw `curl`
 - **Postman / Newman Suite (`tests/postman/`)**:
-  - Run `MAX_UPLOAD_BYTES_OVERRIDE=209715200 pnpm run test:backend:postman` (covering `TS-001` Health, `TS-002` Smart Split 2–6 enqueue/poll, `TS-003` Deep Analysis round-trip & `MasteringScript` v1 schema validation, `TS-004` `DELETE /jobs/{id}` idempotency, `TS-005` audio edge cases: tiny `<1s`, mono 8 kHz, mono 96 kHz, `TS-006` reject PDF/EXE/spoofed `.wav` with `400`, `TS-007` reject 250 MB oversized upload with `413`, `TS-008` reject corrupted RIFF/WAV header with `400`, `TS-009` reject invalid profile/stem count & CRLF filename injection, `TS-010` reject `../` path traversal on stem download, `TS-011` CORS preflight allow/deny, `TS-012` 10-minute long audio memory stability, `TS-013` stem download happy/404 paths).
+  - Run `pnpm run test:backend:postman`. The harness starts its own loopback server with a 1 MiB upload limit for fast oversized-input rejection, then runs the current collection and raw Host/413 probes. Do not set an upload-limit environment override; current supported behavior and assertions are defined in `tests/postman/`, not the historical case inventory.
 - **Direct `curl` Probes Against the Live Go Binary**:
   - Don't wait for Newman alone — craft raw `curl` commands to break `aurialis-backend`'s handlers:
     - Verify cross-origin isolation & WASM MIME headers:

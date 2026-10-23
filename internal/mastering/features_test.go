@@ -318,3 +318,30 @@ func TestFeatureMultitonePowerIsStableAcrossWindowOffsets(t *testing.T) {
 		}
 	}
 }
+
+func TestPublicSourceIdentityValidatesAndSurvivesCanonicalRoundTrip(t *testing.T) {
+	buf := featureSignal(44100, 0.1, func(i int) (float32, float32) { sample := float32(1.25 * math.Sin(float64(i))); return sample, -sample })
+	identity, err := SourceIdentityContext(context.Background(), buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wav, err := audio.EncodeWAV(buf.Left, buf.Right, buf.SampleRate, 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical, err := audio.DecodeAndDisarm("canonical.wav", wav)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundTrip, err := SourceIdentityContext(context.Background(), canonical)
+	if err != nil || roundTrip != identity {
+		t.Fatalf("canonical identity changed: %+v %+v %v", identity, roundTrip, err)
+	}
+	buf.Left[0] = float32(math.Inf(1))
+	if _, err = SourceIdentityContext(context.Background(), buf); err == nil {
+		t.Fatal("non-finite PCM accepted")
+	}
+	if _, err = SourceIdentityContext(context.Background(), nil); !errors.Is(err, audio.ErrEmptyAudio) {
+		t.Fatal("empty source accepted", err)
+	}
+}

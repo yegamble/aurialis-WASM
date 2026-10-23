@@ -78,8 +78,10 @@ test("serves exact dynamic HTML and RSC assets while rejecting API uploads and u
     const html = await request.get(`/${route}/fresh-source`);
     expect(html.status()).toBe(200);
     expect(html.headers()["content-type"]).toContain("text/html");
+    expect(html.headers()["cache-control"]).toBe("no-store, no-transform");
     const rsc = await request.get(`/${route}/fresh-source.txt`);
     expect(rsc.status()).toBe(200);
+    expect(rsc.headers()["cache-control"]).toBe("no-store, no-transform");
     expect(await rsc.text()).not.toMatch(/<!doctype html/iu);
     expect((await request.get(`/${route}/fresh-source.wav`)).status()).toBe(404);
   }

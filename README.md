@@ -90,7 +90,7 @@ Cloudflare serves only application, WASM and qualified model files. The browser 
 
 Projects and settings are saved in this browser's local storage, and reconstructed source audio is saved in IndexedDB, the browser's local database. **Keep your original files and downloaded masters separately.** Browser storage can be cleared or evicted, and the reconstructed audio is not a byte-for-byte backup of your upload. Changing the server address, port or browser uses a different browser storage location. Replacing the older public app also requires separately verified local recovery of selected supported WAVs through CDR, while preserving its older library and unsupported compressed originals. Clean PCM recovery must be qualified before permanently retiring rollback resources; that prerequisite remains open.
 
-On the recovery branch, **Library → Find old projects** discovers old source keys only after you request it. Selected WAVs become independent projects with default settings; old audio, scripts and settings remain untouched. [The recovery guide](docs/legacy-library.md) explains the separate browser/site storage and compressed-format limits. This workflow still requires actual browser qualification and merge.
+On the recovery branch, **Library → Find old projects** finds saved source files only after you request it. Selected WAVs become independent projects with default settings; old audio, scripts and settings remain untouched. [The recovery guide](docs/legacy-library.md) explains the separate browser/site storage and compressed-format limits. Local native and static browser checks passed; protected CI and merge remain required.
 
 ## Know the current limits
 

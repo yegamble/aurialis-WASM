@@ -197,6 +197,10 @@ func sourceIdentityContext(ctx context.Context, buf *audio.Buffer) (SourceIdenti
 }
 
 func measureSpectrumContext(ctx context.Context, buf *audio.Buffer, fftSize int) ([]spectralSummary, spectralSummary, error) {
+	return measureSpectrumBandsContext(ctx, buf, fftSize, spectrumEdges)
+}
+
+func measureSpectrumBandsContext(ctx context.Context, buf *audio.Buffer, fftSize int, edges [6]float64) ([]spectralSummary, spectralSummary, error) {
 	// Remove only the whole-source DC mean from spectral analysis. Energy and
 	// stereo diagnostics retain original samples; local means would attenuate bass.
 	var meanLeft, meanRight float64
@@ -268,7 +272,7 @@ func measureSpectrumContext(ctx context.Context, buf *audio.Buffer, fftSize int)
 			spectral.frequencyPower += frequency * spectralPower
 			spectral.sibilancePower += power * fraction(6000, 12000)
 			for band := range 5 {
-				spectral.bands[band] += power * fraction(spectrumEdges[band], spectrumEdges[band+1])
+				spectral.bands[band] += power * fraction(edges[band], edges[band+1])
 			}
 		}
 		// Weight by the hop, not the full/edge window length: summed Hann

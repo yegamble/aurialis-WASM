@@ -1,3 +1,5 @@
+// cspell:words automator
+
 package mastering
 
 import (
@@ -230,7 +232,9 @@ func RenderScriptV2Context(ctx context.Context, buf *audio.Buffer, script *Scrip
 			return nil, nil, dsp.Metrics{}, err
 		}
 		end := min(start+4096, len(left))
-		processor.ProcessBlock(buf.Left[start:end], buf.Right[start:end], left[start:end], right[start:end])
+		if !processor.ProcessBlock(buf.Left[start:end], buf.Right[start:end], left[start:end], right[start:end]) {
+			return nil, nil, dsp.Metrics{}, errors.New("compiled automation invariant failed")
+		}
 	}
 	metrics, err := dsp.MeasureStereoContext(ctx, left, right, float64(buf.SampleRate))
 	metrics.GainReductionDB = engine.LastGainReductionDB()

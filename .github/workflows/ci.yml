@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - "**"
+      - main
   pull_request:
     branches:
       - main
@@ -15,6 +15,9 @@ concurrency:
 
 permissions:
   contents: read
+
+env:
+  AURIALIS_CI_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   repo-and-agent-hygiene:
@@ -45,6 +48,7 @@ jobs:
         run: |
           python3 -m py_compile scripts/sync-agents.py .claude/hooks/scrutinise.py
           python3 scripts/sync-agents.py --check
+          python3 scripts/test-ci-artifacts.py
 
       - name: Smoke-test Stop hook (Claude Code & Gemini Argon payloads)
         run: |
@@ -64,68 +68,42 @@ jobs:
           bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.7 /tmp
           /tmp/actionlint -color
 
-  go-wasm:
-    name: Go 1.26 & WASM Quality Gate
+  native-go-quality:
+    name: Native Go Static, Security & Race
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: "1.26.10"
-          check-latest: true
-
+          cache-dependency-path: go.mod
       - name: Check gofmt formatting
         run: |
           UNFORMATTED=$("$(go env GOROOT)/bin/gofmt" -l cmd internal wasm)
           if [ -n "$UNFORMATTED" ]; then
-            echo "::error::The following Go files are not gofmt-formatted:"
-            echo "$UNFORMATTED"
+            echo "::error::Go formatting differs: $UNFORMATTED"
             exit 1
           fi
-
       - name: Verify Go modules and run go vet
         run: |
           go mod verify
           go vet ./...
-
-      - name: Run golangci-lint v2 (staticcheck all, revive, gosec, nakedret)
+      - name: Run golangci-lint v2
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.15.0
           args: --timeout=5m
-
       - name: Run identypo & govulncheck
         run: |
           go run github.com/alexkohler/identypo/cmd/identypo@latest ./...
           go run golang.org/x/vuln/cmd/govulncheck@latest ./...
-
       - name: Run Go unit & concurrency race tests
         run: go test -race -count=1 -timeout 10m ./...
-
-      - name: Compile Go browser bridge and WASI audio reactor
-        run: |
-          mkdir -p public/wasm
-          GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp
-          GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -trimpath -o public/wasm/aurialis-realtime.wasm ./wasm/dsp
-          ls -lh public/wasm/aurialis-dsp.wasm public/wasm/aurialis-realtime.wasm
-
-      - name: Verify actual native and WASM signal parity
-        uses: actions/setup-node@v4
-        with:
-          node-version: "26.12.0"
-
-      - name: Run WASM signal verification
-        run: bash scripts/test-wasm.sh
-
       - name: Install FFmpeg for independent meter verification
         timeout-minutes: 5
         run: |
           if ! command -v ffmpeg >/dev/null 2>&1; then
-            # Slow Azure archive downloads exhausted the failed jobs' budget.
             if [ -f /etc/apt/apt-mirrors.txt ]; then
               sudo sed -i 's|http://azure\.archive\.ubuntu\.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
             fi
@@ -134,125 +112,209 @@ jobs:
             sudo apt-get "${APT_OPTIONS[@]}" install -y --no-install-recommends ffmpeg
           fi
           ffmpeg -version
-
       - name: Compare meters with independent FFmpeg reference
         timeout-minutes: 3
-        run: |
-          python3 wasm/dsp/verify_meters.py
+        run: python3 wasm/dsp/verify_meters.py
 
   frontend-quality:
+    outputs:
+      artifact-name: ${{ steps.build-identity.outputs.name }}
+      build-attempt: ${{ steps.build-identity.outputs.attempt }}
     name: Next.js 16, TypeScript & Bundle Gate
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "26.12.0"
-          cache: "pnpm"
-
-      - name: Install dependencies (pnpm frozen-lockfile)
+          cache: pnpm
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Typecheck (tsc --noEmit)
+      - name: Typecheck
         run: pnpm exec tsc --noEmit
-
-      - name: Lint (ESLint v9, --max-warnings=0)
+      - name: Lint
         run: pnpm run lint
-
-      - name: Dead-code & spellcheck gates (knip & cspell)
+      - name: Dead-code & spellcheck gates
         run: |
           pnpm exec knip
           pnpm exec cspell lint "**/*.{ts,tsx,go,md}"
-
       - name: Run Vitest unit & component suite
         run: pnpm test
-
-      - name: Set up Go for embedded binary
-        uses: actions/setup-go@v5
+      - uses: actions/setup-go@v5
         with:
           go-version: "1.26.10"
-
-      - name: Build and smoke-test embedded production binary
+          cache-dependency-path: go.mod
+      - name: Restore Next build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-node26-next-${{ hashFiles('pnpm-lock.yaml', 'next.config.ts', 'postcss.config.mjs', 'tsconfig.json') }}-${{ hashFiles('src/**', 'public/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-node26-next-${{ hashFiles('pnpm-lock.yaml', 'next.config.ts', 'postcss.config.mjs', 'tsconfig.json') }}-
+      - name: Identify immutable producer artifact
+        id: build-identity
+        run: |
+          echo "name=aurialis-native-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+          echo "attempt=${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+      - name: Build native-target UI, dual WASM and production executable once
         run: |
           pnpm run build:binary
           pnpm run test:binary
+          bash scripts/build-e2e.sh artifacts/ci-runtime/aurialis-e2e
+          python3 scripts/ci-artifacts.py pack artifacts/ci-package
+      - name: Publish same-run native build for quality, API and browser jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build-identity.outputs.name }}
+          path: artifacts/ci-package/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
 
-  backend-newman:
-    name: Backend API & Postman/Newman Gate
+  wasm-parity:
+    env:
+      AURIALIS_CI_BUILD_ATTEMPT: ${{ needs.frontend-quality.outputs.build-attempt }}
+    name: Compiled WASM Signal Verification
     runs-on: ubuntu-latest
-    needs: [go-wasm, frontend-quality]
-    timeout-minutes: 20
+    needs: frontend-quality
+    timeout-minutes: 10
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
         with:
           go-version: "1.26.10"
-          check-latest: true
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.33.0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+          cache-dependency-path: go.mod
+      - uses: actions/setup-node@v4
         with:
           node-version: "26.12.0"
-          cache: "pnpm"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.frontend-quality.outputs.artifact-name }}
+          path: artifacts/ci-download
+      - name: Validate and restore exact compiled build
+        run: python3 scripts/ci-artifacts.py restore artifacts/ci-download
+      - name: Run all native/WASM and automation parity assertions
+        env:
+          AURIALIS_USE_CI_ASSETS: "1"
+        run: bash scripts/test-wasm.sh
 
-      - name: Install dependencies & run Postman/Newman PR Suite
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm run build:binary
-          pnpm run test:backend:postman
+  go-wasm:
+    name: Go 1.26 & WASM Quality Gate
+    if: always()
+    needs: [native-go-quality, wasm-parity]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require both native quality and actual compiled parity
+        env:
+          NATIVE_RESULT: ${{ needs.native-go-quality.result }}
+          WASM_RESULT: ${{ needs.wasm-parity.result }}
+        run: test "$NATIVE_RESULT" = success && test "$WASM_RESULT" = success
+
+  backend-newman:
+    env:
+      AURIALIS_CI_BUILD_ATTEMPT: ${{ needs.frontend-quality.outputs.build-attempt }}
+    name: Backend API & Postman/Newman Gate
+    runs-on: ubuntu-latest
+    needs: frontend-quality
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.12.0"
+          cache: pnpm
+      - name: Install test dependencies
+        run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.frontend-quality.outputs.artifact-name }}
+          path: artifacts/ci-download
+      - name: Validate and restore exact compiled build
+        run: python3 scripts/ci-artifacts.py restore artifacts/ci-download
+      - name: Run complete Postman/Newman and raw security probes
+        env:
+          AURIALIS_TEST_BINARY: ${{ github.workspace }}/aurialis
+        run: pnpm run test:backend:postman
+
+  playwright-shards:
+    env:
+      AURIALIS_CI_BUILD_ATTEMPT: ${{ needs.frontend-quality.outputs.build-attempt }}
+    name: Playwright Chromium Shard ${{ matrix.shard }}/3
+    runs-on: ubuntu-latest
+    needs: frontend-quality
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.10"
+          cache-dependency-path: go.mod
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.12.0"
+          cache: pnpm
+      - name: Install test dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Identify pinned Playwright browser version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Restore Chromium browser cache
+        id: chromium-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install Chromium and OS dependencies on cache miss
+        if: steps.chromium-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Install uncached OS dependencies on browser cache hit
+        if: steps.chromium-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.frontend-quality.outputs.artifact-name }}
+          path: artifacts/ci-download
+      - name: Validate and restore exact compiled build
+        run: python3 scripts/ci-artifacts.py restore artifacts/ci-download
+      - name: Run browser shard with one audio worker and no retries
+        env:
+          AURIALIS_E2E_BINARY: ${{ github.workspace }}/artifacts/ci-runtime/aurialis-e2e
+          PLAYWRIGHT_JSON_OUTPUT_NAME: artifacts/ci-playwright/shard-${{ matrix.shard }}.json
+        run: pnpm exec playwright test --shard=${{ matrix.shard }}/3 --workers=1 --retries=0 --global-timeout=720000 --reporter=list,json
+      - name: Retain actual shard outcomes and PCM evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: |
+            artifacts/ci-playwright/
+            test-results/
+          retention-days: 7
 
   playwright-e2e:
     name: Playwright Responsive (320px-1440px) & WCAG 2.2 AA Gate
+    if: always()
+    needs: playwright-shards
     runs-on: ubuntu-latest
-    needs: [go-wasm, frontend-quality]
-    timeout-minutes: 25
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.26.10"
-          check-latest: true
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 10.33.0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "26.12.0"
-          cache: "pnpm"
-
-      - name: Install dependencies & Playwright Chromium
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm exec playwright install --with-deps chromium
-
-      - name: Run Playwright E2E against fresh embedded assets
-        run: |
-          pnpm run build:binary
-          pnpm exec playwright test
+      - name: Require every browser shard
+        env:
+          SHARDS_RESULT: ${{ needs.playwright-shards.result }}
+        run: test "$SHARDS_RESULT" = success
 
   ci-passed:
     name: CI Passed

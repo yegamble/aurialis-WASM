@@ -205,6 +205,8 @@ The legacy MasteringScript v1 schema uses **string** `version`, `profile`, `summ
 
 ## Independent meter verification in CI
 
+Browser verification installs the pinned Playwright release's complete required Chromium OS package set on each runner, independently of the browser cache. CI bounds OS provisioning to five minutes and a cache-miss browser download to four minutes. A CI-only APT configuration applies two acquisition retries and 30-second HTTP/HTTPS timeouts, and redirects the known Azure Ubuntu archive endpoint to Ubuntu's official HTTPS archive without disabling signature checks. These controls do not change the API, audio processing or browser assertions. The interrupted setup checkpoint remains in [tasks](tasks.md#encoded-release-artifacts--local-checkpoint).
+
 The CI comparison runs `wasm/dsp/verify_meters.py` against FFmpeg independently of the native API measurements. CI reuses an available FFmpeg or installs it without recommended packages in a separate five-minute provisioning step; the comparison has its own three-minute limit. When installation is needed, CI replaces the observed slow Azure archive URL in an existing APT mirror file with Ubuntu’s official HTTPS archive, retaining signature validation. This workflow change does not alter API fields, measurement algorithms or production runtime dependencies. Current execution evidence is in [tasks](tasks.md).
 
 ## Browser transport and request boundary

@@ -183,6 +183,8 @@ Go static/security and race/meter checks run on separate VMs. Compiled signal pa
 
 ## CI reference-tool provisioning
 
+Chromium setup separates required OS packages from the cached browser binary. Every browser runner uses `scripts/ci-ubuntu-apt.sh` to apply global APT acquisition bounds and replace only the known Azure Ubuntu archive endpoint with Ubuntu's official HTTPS archive, preserving package signature checks. Playwright's own pinned package list remains authoritative. OS installation has a five-minute step limit; a browser-cache miss has a separate four-minute download limit. The audio test timeouts and assertions are unchanged. These bounds were added after a real runner spent more than eleven minutes in OS package setup; the interrupted run is retained separately from acceptance.
+
 The race/meter job separates FFmpeg provisioning from independent meter verification. It reuses an installed executable or installs without recommended packages, using two acquisition retries and 30-second HTTP/HTTPS timeouts. If installation is required and `/etc/apt/apt-mirrors.txt` exists, CI replaces the observed slow Azure archive URL with Ubuntu’s official HTTPS archive; APT signature validation remains enabled. Provisioning has a five-minute step limit; `verify_meters.py` has a separate three-minute limit. The existing job timeout and comparison assertions remain. FFmpeg is used only for verification, while the production binary remains self-contained. The failed provisioning checkpoints and pending remote result are recorded in [tasks](tasks.md).
 
 ## UI and remaining product scope

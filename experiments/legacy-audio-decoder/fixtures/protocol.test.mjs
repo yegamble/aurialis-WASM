@@ -180,3 +180,20 @@ test("admits the exact largest frame ceiling with at most 25 atomic probes", asy
   assert.ok(owners[0].updates.some((bytes) => bytes > budget));
   assert.equal(owners[0].disposed, true); assert.equal(validateCalls, 0);
 });
+
+test("discards an accepted PCM prefix on Worker error without constructing a Blob or invoking CDR", async () => {
+  let blobs = 0;
+  globalThis.Blob = class extends originalBlob {
+    constructor(parts, options) { blobs++; super(parts, options); }
+  };
+  const promise = recoverCompressedFixture(file(), { signal: new AbortController().signal, reserve, validate, maxFrames: 2 });
+  const rejected = assert.rejects(promise, /outside this private recovery profile/);
+  const worker = await started();
+  worker.emit(chunk());
+  assert.equal(worker.sent.filter((message) => message.kind === "ack").length, 1);
+  worker.emit({ kind: "error", error: "Synthetic later AVIO failure." });
+  worker.emit({ kind: "end", sequence: 1, frames: 1, rate: 48000, channels: 2 });
+  await rejected;
+  assert.equal(blobs, 0); assert.equal(validateCalls, 0);
+  assert.equal(worker.terminated, true); assert.equal(owners[0].disposed, true);
+});

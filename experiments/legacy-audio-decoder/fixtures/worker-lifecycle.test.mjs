@@ -97,3 +97,24 @@ test("valid synthetic Vorbis and Opus identification reaches the inert decoder b
     assert.deepEqual(calls, { open: 1, next: 1, close: 1 });
   }
 });
+
+// A valid prefix must never turn a later parser/AVIO failure into terminal EOF.
+test("a chunk prefix followed by core failure emits one error and no successful end", async () => {
+  const calls = { next: 0, close: 0 };
+  const fixture = harness({ fetch: async () => asset(), createDecoder: async () => ({
+    HEAPU8: { buffer: { byteLength: 64 * 1024 * 1024 }, slice: () => new Uint8Array(8) },
+    _aurialis_decoder_abi: () => 1, _aurialis_decoder_open: () => 0,
+    _aurialis_decoder_next: () => ++calls.next === 1 ? 1 : -4,
+    _aurialis_decoder_rate: () => 48000, _aurialis_decoder_channels: () => 2,
+    _aurialis_decoder_output: () => 0, _aurialis_decoder_frames: () => 1,
+    _aurialis_decoder_close: () => { calls.close++; },
+  }) });
+  await fixture.start();
+  assert.equal(fixture.sent.filter((value) => value.kind === "chunk").length, 1);
+  assert.equal(calls.next, 1); // Backpressure holds the second decode call.
+  await fixture.fail(); // This is the exact acknowledgment for prefix sequence 1.
+  await fixture.fail(); // Late queued messages cannot recover a terminal failure.
+  assert.equal(calls.next, 2); assert.equal(calls.close, 1);
+  assert.equal(fixture.sent.filter((value) => value.kind === "error").length, 1);
+  assert.equal(fixture.sent.filter((value) => value.kind === "end").length, 0);
+});

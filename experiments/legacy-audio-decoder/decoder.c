@@ -18,8 +18,9 @@
 #include <libavutil/mem.h>
 #include <libavutil/samplefmt.h>
 
-/* The sole input import reads a range from the selected browser File. The
- * generated module has no filesystem, protocol, network, exec or callback API. */
+/* The sole application input import reads a selected browser File range.
+ * FILESYSTEM=0 still emits abort/no-op Emscripten syscall stubs; there is no
+ * usable filesystem, protocol, network, exec or arbitrary-callback API. */
 extern int aurialis_read(uint32_t offset, uint8_t *destination, uint32_t bytes);
 #define MAX_INPUT (200U * 1024U * 1024U)
 #define MAX_FRAMES 16777216U
@@ -44,54 +45,65 @@ typedef struct Decoder {
 } Decoder;
 static Decoder state;
 
-static int fail(int error) { state.failed = error; return error; }
+static int fail(int error) {
+    if (!state.failed) state.failed = error;
+    return state.failed;
+}
+static int io_failure(int domain, int ffmpeg_error) {
+    fail(domain);
+    return ffmpeg_error;
+}
 static int read_packet(void *opaque, uint8_t *buffer, int count) {
     Decoder *decoder = opaque;
-    if (count <= 0) return AVERROR(EINVAL);
-    if (decoder->position >= decoder->bytes) return AVERROR_EOF;
-    if (++decoder->reads > MAX_CALLS) return AVERROR(ENOMEM);
+    if (decoder->failed) return AVERROR(EIO);
+    if (count <= 0 || decoder->position > decoder->bytes) return io_failure(AUR_DECODE, AVERROR(EINVAL));
+    if (decoder->position == decoder->bytes) return AVERROR_EOF;
+    if (++decoder->reads > MAX_CALLS) return io_failure(AUR_LIMIT, AVERROR(ENOMEM));
     uint32_t wanted = (uint32_t)count;
     if (wanted > MAX_READ) wanted = MAX_READ;
     if (wanted > decoder->bytes - decoder->position) wanted = decoder->bytes - decoder->position;
     decoder->read_bytes += wanted;
-    if (decoder->read_bytes > (uint64_t)decoder->bytes * 8 + MAX_METADATA) return AVERROR(ENOMEM);
+    if (decoder->read_bytes > (uint64_t)decoder->bytes * 8 + MAX_METADATA) return io_failure(AUR_LIMIT, AVERROR(ENOMEM));
     int received = aurialis_read(decoder->position, buffer, wanted);
-    if (received <= 0 || (uint32_t)received > wanted) return AVERROR(EIO);
+    if (received < 0 || (uint32_t)received != wanted) return io_failure(AUR_DECODE, AVERROR(EIO));
     decoder->position += (uint32_t)received;
     return received;
 }
 static int64_t seek_packet(void *opaque, int64_t offset, int whence) {
     Decoder *decoder = opaque;
-    if (++decoder->seeks > MAX_SEEKS) return AVERROR(ENOMEM);
-    if (whence == AVSEEK_SIZE) return decoder->bytes;
+    if (decoder->failed) return AVERROR(EIO);
     whence &= ~AVSEEK_FORCE;
+    if (++decoder->seeks > MAX_SEEKS) return io_failure(AUR_LIMIT, AVERROR(ENOMEM));
+    if (whence == AVSEEK_SIZE) return decoder->bytes;
     int64_t base;
     if (whence == SEEK_SET) base = 0;
     else if (whence == SEEK_CUR) base = decoder->position;
     else if (whence == SEEK_END) base = decoder->bytes;
-    else return AVERROR(EINVAL);
-    if (offset < -base || offset > (int64_t)decoder->bytes - base) return AVERROR(EINVAL);
+    else return io_failure(AUR_DECODE, AVERROR(EINVAL));
+    if (offset < -base || offset > (int64_t)decoder->bytes - base) return io_failure(AUR_DECODE, AVERROR(EINVAL));
     decoder->position = (uint32_t)(base + offset);
     return decoder->position;
 }
 static int deny_secondary(AVFormatContext *format, AVIOContext **io,
                           const char *url, int flags, AVDictionary **options) {
     (void)format; (void)io; (void)url; (void)flags; (void)options;
-    return AVERROR(EACCES);
+    return io_failure(AUR_UNSUPPORTED, AVERROR(EACCES));
+}
+static int metadata_bytes(size_t bytes, size_t *total) {
+    if (*total > MAX_METADATA || bytes > MAX_METADATA - *total) return 0;
+    *total += bytes;
+    return 1;
 }
 static int dictionary_bytes(AVDictionary *dictionary, size_t *total) {
     const AVDictionaryEntry *entry = NULL;
     while ((entry = av_dict_get(dictionary, "", entry, AV_DICT_IGNORE_SUFFIX))) {
         size_t key = strnlen(entry->key, MAX_METADATA + 1);
         size_t value = strnlen(entry->value, MAX_METADATA + 1);
-        if (key > MAX_METADATA || value > MAX_METADATA || *total > MAX_METADATA - key) return 0;
-        *total += key;
-        if (*total > MAX_METADATA - value) return 0;
-        *total += value;
+        if (!metadata_bytes(key, total) || !metadata_bytes(value, total)) return 0;
     }
     return 1;
 }
-static int stream_policy(void) {
+static int stream_policy(size_t *metadata_out) {
     /* Deliberately reject attached-picture streams as well as multiple audio
      * streams in this first format profile. No silent stream selection. */
     if (state.format->nb_streams != 1) return 0;
@@ -100,18 +112,20 @@ static int stream_policy(void) {
     if (parameters->codec_type != AVMEDIA_TYPE_AUDIO || parameters->extradata_size < 0 ||
         parameters->extradata_size > (int)MAX_METADATA || parameters->codec_tag == MKTAG('e','n','c','a') ||
         parameters->codec_tag == MKTAG('e','n','c','v')) return 0;
+    size_t metadata = (size_t)parameters->extradata_size;
     for (int index = 0; index < parameters->nb_coded_side_data; index++) {
         enum AVPacketSideDataType kind = parameters->coded_side_data[index].type;
-        if (kind == AV_PKT_DATA_ENCRYPTION_INIT_INFO || kind == AV_PKT_DATA_ENCRYPTION_INFO) return 0;
+        if (!metadata_bytes(parameters->coded_side_data[index].size, &metadata) ||
+            kind == AV_PKT_DATA_ENCRYPTION_INIT_INFO || kind == AV_PKT_DATA_ENCRYPTION_INFO) return 0;
     }
     switch (parameters->codec_id) {
         case AV_CODEC_ID_MP3: case AV_CODEC_ID_FLAC: case AV_CODEC_ID_VORBIS:
         case AV_CODEC_ID_AAC: case AV_CODEC_ID_ALAC: case AV_CODEC_ID_OPUS: break;
         default: return 0;
     }
-    size_t metadata = (size_t)parameters->extradata_size;
-    return dictionary_bytes(state.format->metadata, &metadata) &&
-           dictionary_bytes(stream->metadata, &metadata);
+    if (!dictionary_bytes(state.format->metadata, &metadata) || !dictionary_bytes(stream->metadata, &metadata)) return 0;
+    if (metadata_out) *metadata_out = metadata;
+    return 1;
 }
 void aurialis_decoder_close(void) {
     av_packet_free(&state.packet);
@@ -159,10 +173,11 @@ int aurialis_decoder_open(uint32_t format, uint32_t bytes, uint32_t max_frames) 
     av_dict_set(&options, "format_whitelist", name, 0);
     int result = avformat_open_input(&state.format, NULL, av_find_input_format(name), &options);
     av_dict_free(&options);
+    if (state.failed) return state.failed;
     if (result < 0 || !state.format) return fail(AUR_DECODE);
     /* This intentionally avoids unbounded find_stream_info. Formats whose
      * headers do not identify their one audio codec are unsupported here. */
-    if (!stream_policy()) return fail(AUR_UNSUPPORTED);
+    if (!stream_policy(NULL)) return fail(AUR_UNSUPPORTED);
     const AVCodec *codec = avcodec_find_decoder(state.format->streams[0]->codecpar->codec_id);
     if (!codec) return fail(AUR_UNSUPPORTED);
     state.codec = avcodec_alloc_context3(codec);
@@ -198,12 +213,15 @@ static int frame_policy(void) {
     return 0;
 }
 static int packet_policy(void) {
-    if (!stream_policy() || state.packet->stream_index != 0 ||
+    /* One aggregate budget includes stream extradata/dictionaries/coded side
+     * payloads and the current packet's side payloads, with checked addition. */
+    size_t metadata = 0;
+    if (!stream_policy(&metadata) || state.packet->stream_index != 0 ||
         (state.packet->flags & AV_PKT_FLAG_CORRUPT) || state.packet->size < 0 ||
         state.packet->size > (int)MAX_SINGLE_ALLOC) return 0;
     for (int index = 0; index < state.packet->side_data_elems; index++) {
         enum AVPacketSideDataType kind = state.packet->side_data[index].type;
-        if (state.packet->side_data[index].size > MAX_METADATA ||
+        if (!metadata_bytes(state.packet->side_data[index].size, &metadata) ||
             kind == AV_PKT_DATA_ENCRYPTION_INFO || kind == AV_PKT_DATA_ENCRYPTION_INIT_INFO ||
             kind == AV_PKT_DATA_NEW_EXTRADATA || kind == AV_PKT_DATA_PARAM_CHANGE) return 0;
     }
@@ -213,11 +231,13 @@ static int receive_frame(void) {
     av_frame_unref(state.frame);
     for (;;) {
         int result = avcodec_receive_frame(state.codec, state.frame);
+        if (state.failed) return state.failed;
         if (result == 0) return frame_policy();
         if (result == AVERROR_EOF) { state.eof = 1; return 0; }
         if (result != AVERROR(EAGAIN)) return fail(AUR_DECODE);
         if (state.pending_packet) {
             result = avcodec_send_packet(state.codec, state.packet);
+            if (state.failed) return state.failed;
             if (result == AVERROR(EAGAIN)) return fail(AUR_DECODE);
             av_packet_unref(state.packet); state.pending_packet = 0;
             if (result < 0) return fail(AUR_DECODE);
@@ -226,9 +246,12 @@ static int receive_frame(void) {
         if (state.draining) return fail(AUR_DECODE);
         if (++state.packets > MAX_PACKETS) return fail(AUR_LIMIT);
         result = av_read_frame(state.format, state.packet);
+        if (state.failed) return state.failed;
         if (result == AVERROR_EOF) {
             state.draining = 1;
-            if (avcodec_send_packet(state.codec, NULL) < 0) return fail(AUR_DECODE);
+            result = avcodec_send_packet(state.codec, NULL);
+            if (state.failed) return state.failed;
+            if (result < 0) return fail(AUR_DECODE);
         } else {
             if (result < 0) return fail(AUR_DECODE);
             if (!packet_policy()) return fail(AUR_UNSUPPORTED);

@@ -13,6 +13,7 @@ import {
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP } from "./audio-dsp";
 import { normalizeShortcutUndo, pruneShortcutUndo, toggleMasteringShortcut, type MasteringShortcut } from "./mastering-shortcuts";
 import { masteringTargets } from "./mastering-targets";
+import { hasAppliedDeep } from "./reference-matching";
 import type {
   Album,
   AdvancedParams,
@@ -66,6 +67,7 @@ type StoreState = {
 
 type StoreAction =
   | { type: "ADD_TRACK"; track: Track }
+  | { type: "APPLY_REFERENCE"; expected: Track; reference?: Track; advanced: AdvancedParams; restore?: Pick<Track, "mode" | "simpleCustom" | "shortcutUndo"> }
   | { type: "TOGGLE_MASTERING_SHORTCUT"; trackId: string; shortcut: MasteringShortcut }
   | { type: "UPDATE_TRACK"; id: string; patch: Partial<Track> }
   | { type: "COMMIT_TRACK_SOURCE"; id: string; expectedRevision: number; expectedAudioKey: string; track: Track }
@@ -126,6 +128,12 @@ export function reduceStoreState(
   action: StoreAction,
 ): StoreState {
   switch (action.type) {
+    case "APPLY_REFERENCE":
+      if (action.reference && !state.tracks.includes(action.reference)) return state;
+      return { ...state, tracks: updateTrackInList(state.tracks, action.expected.id, (track) => track === action.expected && !hasAppliedDeep(track) ? {
+        ...track, advanced: action.advanced, mode: "advanced", simpleCustom: true,
+        ...action.restore, updatedAt: new Date().toISOString(),
+      } : track) };
     case "TOGGLE_MASTERING_SHORTCUT":
       return { ...state, tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({ ...track, ...toggleMasteringShortcut(track, action.shortcut), simpleCustom: true, updatedAt: new Date().toISOString() })) };
     case "ADD_TRACK":

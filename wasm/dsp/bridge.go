@@ -4,10 +4,10 @@ package main
 
 import (
 	"errors"
-	"github.com/yegamble/Aurialis-WASM/internal/audio/automation"
-	"github.com/yegamble/Aurialis-WASM/internal/audio/automator"
 	"sync"
 
+	"github.com/yegamble/Aurialis-WASM/internal/audio/automation"
+	"github.com/yegamble/Aurialis-WASM/internal/audio/automator"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
 )
 
@@ -24,6 +24,7 @@ type Bridge struct {
 	activeSlot       int
 	source           sourceBinding
 	sourceBound      bool
+	sourceClock      automation.Cursor
 	acceptedRevision uint64
 	pendingSlot      int
 	pending          bool
@@ -47,14 +48,19 @@ func (b *Bridge) Init(sampleRate float64) {
 	b.engine = dsp.NewEngine(sampleRate)
 	b.activeProcessor = nil
 	b.sourceBound = false
+	b.sourceClock = automation.Cursor{}
 	b.acceptedRevision = 0
 	b.pending = false
 }
 
-// Reset zeroes all internal filter and detector states.
+// Reset zeroes filter/detector history and seeks a bound source clock to zero.
+// Source identity, loop policy, attached schedule and accepted revision are retained.
 func (b *Bridge) Reset() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.sourceBound {
+		_ = b.sourceClock.SeekSourceFrame(0)
+	}
 	if b.activeProcessor != nil {
 		_ = b.activeProcessor.SeekSourceFrame(0)
 	} else {
@@ -112,13 +118,21 @@ func (b *Bridge) Params() dsp.Params {
 }
 
 // ProcessBlock executes one real-time stereo block through the DSP engine.
+// Once bound, every processed device frame advances source phase, including
+// static/bypassed playback. Hosts call no processing before the epoch or while paused.
 func (b *Bridge) ProcessBlock(inL, inR, outL, outR []float32) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.activeProcessor != nil {
-		return b.activeProcessor.ProcessBlock(inL, inR, outL, outR)
+		if !b.activeProcessor.ProcessBlock(inL, inR, outL, outR) {
+			return false
+		}
+		return b.activeProcessor.CopyPositionTo(&b.sourceClock)
 	}
 	b.engine.ProcessBlock(inL, inR, outL, outR)
+	if b.sourceBound {
+		b.sourceClock.AdvanceFrames(min(len(inL), len(inR), len(outL), len(outR)))
+	}
 	return true
 }
 

@@ -55,11 +55,17 @@ func (vector *scheduleMoveVector) stage(bridge *Bridge, index uint32) bool {
 func (b *Bridge) bindSource(source sourceBinding) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.activeProcessor != nil {
+	if b.sourceBound && source == b.source {
+		return true
+	}
+	if b.activeProcessor != nil || !integer(b.engine.SampleRate(), 8000, 192000) {
 		return false
 	}
-	b.source, b.sourceBound, b.acceptedRevision, b.pending = source, true, 0, false
-	b.engine.Reset()
+	clock, valid := automation.NewSourceClock(source.rate, int(b.engine.SampleRate()), source.frames)
+	if !valid {
+		return false
+	}
+	b.source, b.sourceBound, b.sourceClock, b.acceptedRevision, b.pending = source, true, clock, 0, false
 	return true
 }
 func (b *Bridge) beginSchedule(source sourceBinding, revision uint64, count int, baseline dsp.Params) bool {
@@ -91,7 +97,7 @@ func (b *Bridge) commitSchedule() bool {
 		return false
 	}
 	processor := &b.processors[b.pendingSlot]
-	if !processor.ConfigureAt(b.engine, b.pendingBaseline, schedule, b.activeProcessor) {
+	if !processor.ConfigureAtClock(b.engine, b.pendingBaseline, schedule, &b.sourceClock) {
 		return false
 	}
 	b.activeProcessor, b.activeSlot, b.activeBaseline, b.acceptedRevision, b.pending = processor, b.pendingSlot, b.pendingBaseline, schedule.Revision(), false
@@ -105,12 +111,30 @@ func (b *Bridge) scheduleRevision() uint64 {
 func (b *Bridge) seekSchedule(sourceFrame int64) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return b.activeProcessor != nil && b.activeProcessor.SeekSourceFrame(sourceFrame) == nil
+	if !b.sourceBound {
+		return false
+	}
+	clock := b.sourceClock
+	if clock.SeekSourceFrame(sourceFrame) != nil {
+		return false
+	}
+	if b.activeProcessor != nil {
+		if b.activeProcessor.SeekSourceFrame(sourceFrame) != nil {
+			return false
+		}
+	} else {
+		b.engine.Reset()
+	}
+	b.sourceClock = clock
+	return true
 }
 func (b *Bridge) detachSchedule() bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.activeProcessor != nil {
+		if !b.activeProcessor.CopyPositionTo(&b.sourceClock) {
+			return false
+		}
 		b.engine.SetParams(b.activeBaseline)
 	}
 	b.activeProcessor = nil
@@ -121,9 +145,12 @@ func (b *Bridge) detachSchedule() bool {
 func (b *Bridge) setScheduleLooping(enabled bool) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.activeProcessor == nil {
+	if !b.sourceBound {
 		return false
 	}
-	b.activeProcessor.SetLooping(enabled)
+	b.sourceClock.SetLooping(enabled)
+	if b.activeProcessor != nil {
+		b.activeProcessor.SetLooping(enabled)
+	}
 	return true
 }

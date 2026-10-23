@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { reserveBrowserAudioMemory } from "@/lib/browser-jobs";
 import { discardStagedAudio, newAudioAssetId, saveAudio } from "@/lib/db";
 import { readLegacyWav, scanLegacySources, type LegacyPage, type LegacySource } from "@/lib/legacy-library";
 import { importedTrack, prepareProjectFile } from "@/lib/project-import";
@@ -41,9 +42,14 @@ export function LegacyLibraryRecovery() {
   async function recover(source: LegacySource) {
     const controller = start(); if (!controller) return;
     let staged: { id: string; durable: boolean } | null = null;
+    let owner: ReturnType<typeof reserveBrowserAudioMemory> | undefined;
     try {
+      owner = reserveBrowserAudioMemory(source.size);
       const selected = await readLegacyWav(source, controller.signal);
-      const imported = await prepareProjectFile(selected.file, controller.signal, setMessage);
+      const imported = await prepareProjectFile(selected.file, controller.signal, (stage) => { if (!controller.signal.aborted) setMessage(stage); });
+      // Retain original snapshot, canonical Blob and its possible storage copy.
+      // Header validation no longer allocates full-length PCM validation buffers.
+      owner.update(source.size + imported.canonical.size * 2);
       await selected.verify();
       controller.signal.throwIfAborted();
       const id = newAudioAssetId("track");
@@ -61,6 +67,7 @@ export function LegacyLibraryRecovery() {
         try { await discardStagedAudio(staged.id, staged.durable); }
         catch { setError("Recovery stopped, but the new temporary copy could not be removed. The old original is retained. Retry after freeing browser storage."); }
       }
+      owner?.dispose();
       finish(controller);
     }
   }

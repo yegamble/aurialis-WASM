@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdvancedParams, clampAdvancedToSampleRate } from "@/lib/audio-dsp";
+import { reserveBrowserAudioMemory } from "@/lib/browser-jobs";
 import { discardStagedAudio, newAudioAssetId, saveAudio } from "@/lib/db";
 import { readLegacyWav, scanLegacySources, type LegacyPage, type LegacySource } from "@/lib/legacy-library";
 import { prepareProjectFile } from "@/lib/project-import";
@@ -21,6 +22,7 @@ const source: LegacySource = { key: "old-mix.wav|52|1700000000000", name: "old-m
 const page: LegacyPage = { sources: [source], next: null, skipped: 0, stopped: false };
 const metrics = { integratedLufs: -20, shortTermLufs: -20, truePeakDbtp: -6, samplePeakDbfs: -6, dynamicRangeDb: 14, correlation: 0.8, lowBassCorrelation: 1, dcLeftDbfs: -100, dcRightDbfs: -100, clippingSamples: 0, gainReductionDb: 0 };
 const identity = { pcmHash: "a".repeat(64), sampleRate: 8000, frames: 1 };
+const maximumResident = 448 * 1024 * 1024; // Default512 MiB budget minus64 MiB processing headroom.
 let file: File;
 let imported: Imported;
 let verify: ReturnType<typeof vi.fn<() => Promise<void>>>;
@@ -145,9 +147,31 @@ describe("old library recovery controller", () => {
     await findSources(); recover(); await waitFor(() => { expect(saveAudio).toHaveBeenCalledOnce(); });
     fireEvent.click(screen.getByRole("button", { name: "Cancel recovery" }));
     expect(dispatch).not.toHaveBeenCalled(); expect(discardStagedAudio).not.toHaveBeenCalled();
+    expect(() => reserveBrowserAudioMemory(maximumResident)).toThrow("memory budget");
     await act(async () => { held.resolve({ durable: true }); await held.promise; }); await settled();
     expect(discardStagedAudio).toHaveBeenCalledExactlyOnceWith("track-new-recovery", true); expect(dispatch).not.toHaveBeenCalled();
     expect(vi.mocked(readLegacyWav).mock.calls.map(([selected]) => selected.key)).toEqual([source.key]);
+    const available = reserveBrowserAudioMemory(maximumResident); available.dispose();
+  });
+
+  it("admits the selected source before reading its old audio", async () => {
+    const other = reserveBrowserAudioMemory(maximumResident - source.size + 1);
+    try {
+      await findSources(); recover();
+      expect(await screen.findByRole("alert")).toHaveTextContent("memory budget"); await settled();
+      expect(readLegacyWav).not.toHaveBeenCalled(); expect(prepareProjectFile).not.toHaveBeenCalled(); expect(saveAudio).not.toHaveBeenCalled();
+    } finally { other.dispose(); }
+  });
+
+  it("admits canonical and storage-copy bytes before saving and releases ownership after rejection", async () => {
+    const other = reserveBrowserAudioMemory(maximumResident - source.size - imported.canonical.size * 2 + 1);
+    try {
+      await findSources(); recover();
+      expect(await screen.findByRole("alert")).toHaveTextContent("memory budget"); await settled();
+      expect(prepareProjectFile).toHaveBeenCalledOnce(); expect(verify).not.toHaveBeenCalled();
+      expect(saveAudio).not.toHaveBeenCalled(); expect(dispatch).not.toHaveBeenCalled();
+      expect(() => { other.update(maximumResident); }).not.toThrow();
+    } finally { other.dispose(); }
   });
 
   it.each([1, 2])("rejects old-source verification failure %s and rolls back a new copy only if staged", async (failure) => {

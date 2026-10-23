@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { WorkspaceLink as Link } from "./shared/WorkspaceLink";
 import {
   engineParams,
   measureAudio,
@@ -20,7 +20,8 @@ import { DSPModule } from "./shared/DSPModule";
 import { EQBandControls, LimiterReleaseControl } from "./shared/EQBandControls";
 import { RealTransport } from "./shared/RealTransport";
 import { createLivePlayback, type LiveMeter, type LivePlaybackController, type LivePlaybackState, type LiveSpectrum } from "@/lib/live-playback";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { navigateWorkspace, useWorkspacePath, workspaceRoute, type WorkstationRoute } from "@/lib/workspace-navigation";
 import {
   useEffect,
   useMemo,
@@ -69,17 +70,6 @@ import { useTransportScrub } from "@/lib/use-transport-scrub";
 import { audioKey } from "@/lib/library";
 import { FeatureAnalysisPanel } from "./shared/FeatureAnalysisPanel";
 
-type WorkstationRoute =
-  | "home"
-  | "library"
-  | "master"
-  | "split"
-  | "albums"
-  | "album"
-  | "reference"
-  | "release-check"
-  | "tools";
-
 const stemNames = new Map<number, string[]>([
   [2, ["Vocals", "Instrumental"]],
   [3, ["Vocals", "Drums", "Other"]],
@@ -111,7 +101,7 @@ function resolveDynamicId(
 }
 
 export function AurialisWorkstation({
-  route,
+  route: initialRoute,
   paramId,
 }: {
   route: WorkstationRoute;
@@ -121,11 +111,19 @@ export function AurialisWorkstation({
   const { state } = useStore();
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [livePath, setLivePath] = useState<string | null>(pathname);
-
+  const livePath = useWorkspacePath(pathname);
+  const route = livePath ? workspaceRoute(livePath) ?? initialRoute : initialRoute;
+  const main = useRef<HTMLElement>(null);
+  const previousPath = useRef<string | null>(null);
   useEffect(() => {
-    setLivePath(window.location.pathname);
-  }, [pathname]);
+    const heading = main.current?.querySelector("h1");
+    document.title = `${heading?.textContent ?? "Mastering, made human"} — Aurialis`;
+    if (previousPath.current !== null && previousPath.current !== livePath) {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+    }
+    previousPath.current = livePath;
+  }, [livePath, state.tracks.length]);
 
   const inWorkspace = route === "master";
   const defaultTrackId = state.tracks[0]?.id ?? "placeholder";
@@ -233,6 +231,7 @@ export function AurialisWorkstation({
       </header>
 
       <main
+        ref={main}
         className={
           inWorkspace ? "main-content main-content--workspace" : "main-content"
         }
@@ -334,7 +333,6 @@ export function AurialisWorkstation({
 
 function HomeView() {
   const { state, dispatch } = useStore();
-  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("");
@@ -375,7 +373,7 @@ function HomeView() {
     const first = added[0];
     if (first) {
       if (files.length > 1) dispatch({ type: "UPDATE_TRACK", id: first.id, patch: { importNotice: notice } });
-      router.push(`/master/${first.id}`);
+      navigateWorkspace(`/master/${first.id}`);
     }
   };
 
@@ -568,7 +566,6 @@ function masteringSettingsKey(settings: AdvancedParams) {
 
 function MasterView({ trackId }: { trackId: string }) {
   const { state, dispatch } = useStore();
-  const router = useRouter();
   const track = state.tracks.find((item) => item.id === trackId);
   // Match the unfiltered Library order; editing a project does not reorder this queue.
   const queueIndex = state.tracks.findIndex((item) => item.id === trackId);
@@ -699,7 +696,7 @@ function MasterView({ trackId }: { trackId: string }) {
     handoverActive.current = true;
     setHandover(true);
     controller.pause();
-    try { router.push(`/master/${encodeURIComponent(nextTrack.id)}`); }
+    try { navigateWorkspace(`/master/${encodeURIComponent(nextTrack.id)}`); }
     catch (error) {
       clearNextPlaybackHandoff();
       handoverActive.current = false;
@@ -876,7 +873,7 @@ function MasterView({ trackId }: { trackId: string }) {
           type="button"
           className="icon-button"
           onClick={() => {
-            router.push("/library");
+            navigateWorkspace("/library");
           }}
           aria-label="Back to library"
         >
@@ -1976,7 +1973,6 @@ function AlbumView({ albumId }: { albumId: string }) {
 
 function ReferenceView({ trackId }: { trackId: string }) {
   const { state, dispatch } = useStore();
-  const router = useRouter();
   const track =
     state.tracks.find((item) => item.id === trackId);
   const [referenceId, setReferenceId] = useState(
@@ -2000,7 +1996,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
             variant="secondary"
             icon={<Icon name="arrow-left" />}
             onClick={() => {
-              router.push(`/master/${track.id}`);
+              navigateWorkspace(`/master/${track.id}`);
             }}
           >
             Back to master
@@ -2125,7 +2121,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
                   patch: { tone: "Reference-led", intensity: amount },
                 });
               }
-              router.push(`/master/${track.id}`);
+              navigateWorkspace(`/master/${track.id}`);
             }}
           >
             Apply EQ settings

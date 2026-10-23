@@ -66,12 +66,18 @@ test("album gain preserves every accepted chain and Deep script, then hashes and
 });
 
 test("album management, all gain targets, populated charts and explicit reorder controls work at six accessible widths", async ({ page }, info) => {
-  test.setTimeout(90_000); await uploadProject(page, "album-one.wav"); await uploadProject(page, "album-two.wav");
-  await openAlbum(page, ["album one", "album two"]);
+  test.setTimeout(90_000); await page.setViewportSize({ width: 1440, height: 1000 });
+  const longTitle = `album ${"long".repeat(48)}`;
+  await uploadProject(page, "album-one.wav"); await uploadProject(page, `${longTitle.replace(" ", "-")}.wav`);
+  await openAlbum(page, ["album one", longTitle]);
   const target = page.getByRole("combobox", { name: "Album target", exact: true });
   for (const value of [-23, -18, -16, -14, -12, -9]) { await target.selectOption(String(value)); expect((await workspace(page)).albums[0]?.target).toBe(`${String(value).replace("-", "−")} LUFS`); }
   await target.selectOption("-18");
   const down = page.getByRole("button", { name: "Move album one down", exact: true }); await down.focus(); await page.keyboard.press("Enter");
+  expect((await workspace(page)).albums[0]?.trackIds).toEqual((await workspace(page)).tracks.map((track) => track.id));
+  await page.getByRole("button", { name: "Move album one up", exact: true }).click();
+  const order = page.getByRole("list", { name: "Album running order", exact: true });
+  await order.getByRole("listitem").filter({ has: page.getByRole("link", { name: "album one", exact: true }) }).dragTo(order.getByRole("listitem").filter({ has: page.getByRole("link", { name: longTitle, exact: true }) }));
   expect((await workspace(page)).albums[0]?.trackIds).toEqual((await workspace(page)).tracks.map((track) => track.id));
   await page.getByRole("button", { name: "Move album one up", exact: true }).click();
   await run(page, 2);

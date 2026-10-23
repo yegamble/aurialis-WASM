@@ -1,3 +1,4 @@
+// cspell:words ISRC
 import type { MeasuredAudioMetrics } from "./types";
 
 export const releaseProfiles = [

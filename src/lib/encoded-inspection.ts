@@ -1,11 +1,11 @@
-import type { EncodedInspection, OutputBits } from "./release-policy";
+import type { EncodedInspection } from "./release-policy";
 
 function label(view: DataView, offset: number): string {
   return String.fromCharCode(view.getUint8(offset), view.getUint8(offset + 1), view.getUint8(offset + 2), view.getUint8(offset + 3));
 }
 
 /** Inspect the exact canonical encoder artifact, including integer quantization. */
-export async function inspectEncodedWAV(blob: Blob, bits: OutputBits, source: { sampleRate: number; frames: number }, signal: AbortSignal): Promise<{ sha256: string; encoding: EncodedInspection }> {
+export async function inspectEncodedWAV(blob: Blob, bits: unknown, source: { sampleRate: number; frames: number }, signal: AbortSignal): Promise<{ sha256: string; encoding: EncodedInspection }> {
   signal.throwIfAborted();
   if (bits !== 16 && bits !== 24 && bits !== 32) throw new Error("Choose 16-bit, 24-bit or 32-bit output.");
   const bytes = bits / 8, align = bytes * 2, expectedSize = 44 + source.frames * align;

@@ -1,3 +1,4 @@
+// cspell:words ISRC
 import { describe, expect, it } from "vitest";
 import { releaseChecks, releaseProfiles, type EncodedInspection, type ReleasePlatform } from "../release-policy";
 import type { MeasuredAudioMetrics } from "../types";

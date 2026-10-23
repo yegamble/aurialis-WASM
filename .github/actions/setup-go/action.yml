@@ -17,11 +17,13 @@ runs:
     - name: Locate the Go object cache
       id: go-cache
       shell: bash
-      run: echo "path=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+      run: |
+        echo "path=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+        echo "image=${ImageOS:-$RUNNER_OS}" >> "$GITHUB_OUTPUT"
     - name: Restore and save this role's compiled Go objects
       uses: actions/cache@v4
       with:
         path: ${{ steps.go-cache.outputs.path }}
-        key: go-objects-v1-${{ runner.os }}-${{ runner.arch }}-1.26.10-${{ inputs.role }}-${{ hashFiles('go.mod') }}-${{ hashFiles('cmd/**/*.go', 'internal/**/*.go', 'wasm/**/*.go') }}-${{ inputs.embedded-source-key }}
+        key: go-objects-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.go-cache.outputs.image }}-1.26.10-${{ inputs.role }}-${{ hashFiles('go.mod') }}-${{ hashFiles('cmd/**/*.go', 'internal/**/*.go', 'wasm/**/*.go') }}-${{ inputs.embedded-source-key }}
         restore-keys: |
-          go-objects-v1-${{ runner.os }}-${{ runner.arch }}-1.26.10-${{ inputs.role }}-${{ hashFiles('go.mod') }}-
+          go-objects-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.go-cache.outputs.image }}-1.26.10-${{ inputs.role }}-${{ hashFiles('go.mod') }}-

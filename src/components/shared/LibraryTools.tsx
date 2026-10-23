@@ -84,7 +84,7 @@ export function LibraryPreview({ track, onClose }: { track: Track; onClose: () =
       const blob = await getAudio(audioKey(track)); controller.signal.throwIfAborted();
       if (!blob) throw new Error("The source is missing. Close preview and restore the audio file.");
       const stored = await readStoredSource(blob, controller.signal); controller.signal.throwIfAborted();
-      playback = createLivePlayback(stored.pcm, track.advanced, { onState: (next) => { if (!controller.signal.aborted) setState(next); }, onError: (cause) => { if (!controller.signal.aborted) setError(cause.message); } });
+      playback = createLivePlayback(stored.pcm, track.advanced, { onState: (next) => { if (!controller.signal.aborted) setState(next); }, onError: (cause) => { if (!controller.signal.aborted) setError(cause.message); } }, track.sourceIdentity ? { blob: stored.blob, identity: track.sourceIdentity, ...(track.deepMastering?.applied ? { applied: track.deepMastering.applied } : {}) } : undefined);
       live.current = playback; setState(playback.getState());
     })().catch((cause: unknown) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Preview failed."); });
     return () => { controller.abort(); stopScrub(false); playback?.dispose(); live.current = null; };

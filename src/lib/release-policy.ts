@@ -17,7 +17,7 @@ export type EncodedInspection = {
   fullScaleFrames: number; leadingSilenceFrames: number; trailingSilenceFrames: number;
   silenceThresholdDbfs: -60;
 };
-export type ReleaseCheck = { name: string; reading: string; status: "pass" | "review" | "info"; guidance: string };
+type ReleaseCheck = { name: string; reading: string; status: "pass" | "review" | "info"; guidance: string };
 const sourceRates = [44100, 48000, 88200, 96000, 176400, 192000];
 
 export function releaseChecks(platform: ReleasePlatform, metrics: MeasuredAudioMetrics, output: EncodedInspection): ReleaseCheck[] {

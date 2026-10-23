@@ -30,7 +30,7 @@ export async function prepareProjectFile(file: File, signal: AbortSignal, progre
   const capacity = await wavCapacity(file);
   signal.throwIfAborted();
   if (capacity && capacity.frames > MAX_SOURCE_FRAMES) throw new Error("This WAV exceeds the 16,777,216 frame limit. Use a shorter source or lower sample rate.");
-  progress("Validating and reconstructing your WAV on the local Go server…");
+  progress("Validating and reconstructing your WAV on this device…");
   const imported = await importAudio(file, signal);
   signal.throwIfAborted();
   progress("Preparing your waveform…");

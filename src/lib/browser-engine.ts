@@ -1,3 +1,4 @@
+import { deviceAudioRequest, usesBrowserAudio } from "./browser-jobs";
 import type { ScriptV2 } from "./deep-mastering";
 import type { AdvancedParams, MeasuredAudioMetrics, SourceIdentity } from "./types";
 
@@ -133,7 +134,7 @@ async function audioRequest(
 ): Promise<Response> {
   signal?.throwIfAborted();
   try {
-    return await fetch("/api/master/render", {
+    return await deviceAudioRequest("/api/master/render", {
       method: "POST",
       body: data,
       ...(json ? { headers: { Accept: "application/json" } } : {}),
@@ -141,9 +142,10 @@ async function audioRequest(
     });
   } catch (error: unknown) {
     signal?.throwIfAborted();
+    if (usesBrowserAudio()) throw error;
     const address = typeof location === "undefined" ? "this address" : location.origin;
     throw new Error(
-      `Could not reach the local audio server at ${address}. Check that Aurialis is running, then try again. If your browser reports a blocked local connection, check this site's local-network permission.`,
+      `Could not process audio on this device at ${address}. Reload Aurialis and try again. If this browser cannot handle the file, use the local Aurialis app on this device.`,
       { cause: error },
     );
   }
@@ -171,7 +173,7 @@ async function readAudioResponse<T>(read: () => Promise<T>, signal?: AbortSignal
     return result;
   } catch (error: unknown) {
     signal?.throwIfAborted();
-    throw new Error("The local audio response was interrupted or unreadable. Check that Aurialis is still running, then try again.", { cause: error });
+    throw new Error("The local audio result was interrupted or unreadable. Try again or use the local Aurialis app on this device.", { cause: error });
   }
 }
 
@@ -355,10 +357,10 @@ export async function importAudio(file: Blob, signal?: AbortSignal): Promise<{ c
   const header = response.headers.get("X-Aurialis-Source-Metrics");
   let measurement: AudioMeasurement;
   try {
-    if (!header || header.length > 4096) throw new Error("The local server returned incomplete source measurements. Restart Aurialis and try again.");
+    if (!header || header.length > 4096) throw new Error("The local audio engine returned incomplete source measurements. Reload Aurialis and try again.");
     let body: unknown;
     try { body = JSON.parse(header) as unknown; }
-    catch { throw new Error("The local server returned invalid source measurements."); }
+    catch { throw new Error("The local audio engine returned invalid source measurements."); }
     measurement = audioMeasurement(body);
   } catch (error) {
     await response.body?.cancel().catch(() => undefined);

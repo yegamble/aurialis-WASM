@@ -1,3 +1,4 @@
+import { deviceAudioRequest, usesBrowserAudio } from "./browser-jobs";
 function object(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Invalid audio job response.");
   return value as Record<string, unknown>;
@@ -11,6 +12,12 @@ async function responseJSON(response: Response): Promise<unknown> {
 export async function runAudioJob<T>(path: string, body: FormData, signal: AbortSignal, onProgress: (progress: number, stage: string) => void, result: (job: Record<string, unknown>) => T): Promise<T> {
   signal.throwIfAborted();
   onProgress(0, "Validating original audio…");
+  if (usesBrowserAudio()) {
+    const completed = object(await responseJSON(await deviceAudioRequest(path, { method: "POST", body, signal }, onProgress)));
+    signal.throwIfAborted();
+    if (completed.status !== "done") throw new Error("Local audio analysis did not complete.");
+    return result(completed);
+  }
   const submitted = object(await responseJSON(await fetch(path, { method: "POST", body, signal: AbortSignal.timeout(65_000) })));
   if (typeof submitted.jobId !== "string" || !/^[a-zA-Z0-9-]{1,80}$/u.test(submitted.jobId)) throw new Error("Invalid analysis job identity.");
   const id = submitted.jobId;

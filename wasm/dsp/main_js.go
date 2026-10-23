@@ -249,6 +249,7 @@ func main() {
 	global.Set("aurialisDSPSetBand", js.FuncOf(jsSetBand))
 	global.Set("aurialisDSPProcessBlock", js.FuncOf(jsProcessBlock))
 	global.Set("aurialisDSPMeasure", js.FuncOf(jsMeasure))
+	global.Set("aurialisOfflineJob", js.FuncOf(jsOfflineJob))
 	global.Set("aurialisDSPReady", true)
 	select {}
 }

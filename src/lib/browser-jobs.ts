@@ -32,6 +32,31 @@ function memoryBudget(): number {
   return 512 * MIB;
 }
 
+let reservedResidentBytes = 0;
+
+/** Own the exact bytes retained outside a job, such as an album prefix or reviewed WAV. */
+export function reserveBrowserAudioMemory(initialBytes = 0): Readonly<{ update: (bytes: number) => void; dispose: () => void }> {
+  let held = 0;
+  let disposed = false;
+  const update = (bytes: number) => {
+    if (disposed) throw new Error("This audio memory reservation has been released.");
+    if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error("Audio memory reservations require nonnegative safe byte counts.");
+    const total = reservedResidentBytes - held + bytes;
+    if (!Number.isSafeInteger(total) || total < 0) throw new Error("Audio memory reservations exceed the safe byte limit.");
+    if (total + 64 * MIB > memoryBudget()) throw new Error("Retained audio exceeds the browser's conservative memory budget. " + LOCAL_FALLBACK);
+    reservedResidentBytes = total;
+    held = bytes;
+  };
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    reservedResidentBytes -= held;
+    held = 0;
+  };
+  update(initialBytes);
+  return Object.freeze({ update, dispose });
+}
+
 async function decodedBytes(blob: Blob): Promise<number> {
   if (blob.size === 0) return 0;
   const fallback = Math.min(MAX_FRAMES * 8, blob.size * 8);
@@ -63,7 +88,7 @@ async function preflight(request: JobRequest, source: Blob, reference: Blob, sig
   // Conservative coexistence: original/canonical Blobs, live PCM/AudioBuffer,
   // transfer input, Go raw/decoded/render/encode and returned buffer/Blob.
   // Reference streams its output measurements and does not encode song-length WAVs.
-  const estimate = 64 * MIB + input * 4 + decoded * (request.operation === "render" ? 7 : 4);
+  const estimate = 64 * MIB + reservedResidentBytes + input * 4 + decoded * (request.operation === "render" ? 7 : 4);
   if (estimate > memoryBudget()) throw new Error("This job exceeds the browser's conservative audio memory budget. " + LOCAL_FALLBACK);
 }
 

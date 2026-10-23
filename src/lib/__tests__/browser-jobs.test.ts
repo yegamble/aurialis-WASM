@@ -82,6 +82,45 @@ describe("device-local browser audio transport", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("sums owned retained audio before cloning and releases only the updated or disposed owner", async () => {
+    const { deviceAudioRequest, reserveBrowserAudioMemory } = await import("../browser-jobs");
+    const mib = 1024 * 1024;
+    const first = reserveBrowserAudioMemory(200 * mib), second = reserveBrowserAudioMemory(200 * mib);
+    const file = new File([source()], "source.wav");
+    Object.defineProperty(file, "size", { value: 16 * mib });
+    const read = vi.spyOn(file, "arrayBuffer");
+    const form = new FormData(); form.append("file", file);
+    try {
+      await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: form })).rejects.toThrow("memory budget");
+      expect(read).not.toHaveBeenCalled();
+      expect(TestWorker.all).toHaveLength(0);
+      second.update(0);
+      const accepted = deviceAudioRequest("/api/master/render", { method: "POST", body: form });
+      await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
+      TestWorker.all[0]?.reply(); await accepted;
+      first.dispose(); first.dispose();
+      expect(() => { first.update(1); }).toThrow("released");
+      expect(TestWorker.all[0]?.terminated).toBe(true);
+      expect(fetch).not.toHaveBeenCalled();
+    } finally { first.dispose(); second.dispose(); }
+  });
+
+  it("rejects malformed or unsafe retained-byte counts without changing existing reservations", async () => {
+    const { reserveBrowserAudioMemory } = await import("../browser-jobs");
+    const held = reserveBrowserAudioMemory(1024);
+    try {
+      for (const bytes of [-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+        expect(() => { held.update(bytes); }).toThrow("safe byte counts");
+        expect(() => reserveBrowserAudioMemory(bytes)).toThrow("safe byte counts");
+      }
+      expect(() => { held.update(Number.MAX_SAFE_INTEGER); }).toThrow("memory budget");
+      expect(() => { held.update(0); }).not.toThrow();
+      expect(Object.isFrozen(held)).toBe(true);
+    } finally { held.dispose(); }
+    expect(TestWorker.all).toHaveLength(0);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("always selects browser execution for public origins and refuses remote audio URLs", async () => {
     vi.stubEnv("NEXT_PUBLIC_AURIALIS_EXECUTION", "native");
     vi.stubGlobal("location", { hostname: "aurialis.yosefgamble.com", origin: "https://aurialis.yosefgamble.com" });

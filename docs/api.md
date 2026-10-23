@@ -1,9 +1,15 @@
 # Aurialis-WASM API reference
-<!-- cspell:words Hann steganography -->
+<!-- cspell:words Hann steganography yosefgamble -->
 Library relink consumes the existing canonical import source identity; it adds no HTTP endpoint. Exact PCM identity is independent of filenames and does not acknowledge durable browser metadata storage. Source replacement uses a fresh local asset key and retained recovery audio as described in [architecture](architecture.md#library-source-lifecycle).
 
 
 Current routes are implemented by `internal/server`; exact DSP structs are in `internal/audio/dsp/engine.go` and the experimental script schema is in `internal/mastering/mastering.go`. No API presence alone establishes a verified product workflow. See [tasks](tasks.md) for evidence and open requirements.
+
+## Device-local transport boundary
+
+The HTTP routes below describe the user’s local Go server. The hosted application must run all audio reconstruction, analysis, jobs and rendering in browser workers/WASM on that same user’s device, using equivalent validated DTOs and cancellation. Cloudflare serves only static app, WASM and model files; no remote audio POST or hosted audio processor is authorized. The native loopback server remains the local fallback, and the browser worker adapter is still pending verification. The earlier container proposal is superseded.
+
+The intended deployment domains are verified as `aurialis.yosefgamble.com` and `aurialis.yosef.app`; migration and hosted acceptance remain open. Repository protection is independently verified as applied: all six CI checks plus app-bound GitGuardian, strict up-to-date PRs, resolved conversations, administrator enforcement, no force pushes/deletion and zero required human approvals. These controls do not certify an API workflow.
 
 ## Measured source features
 

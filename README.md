@@ -1,5 +1,5 @@
 # Aurialis-WASM
-<!-- cspell:words Embedder buildmode trimpath goroutines scrutinise -->
+<!-- cspell:words Embedder buildmode trimpath goroutines scrutinise yosefgamble -->
 
 **Single-Binary Go 1.26 + Next.js 16 + WebAssembly (WASM) Audio Mastering Workstation**
 
@@ -8,6 +8,8 @@ Based on [Aurialis](https://aurialis.yosefgamble.com/) ([`yegamble/Aurialis`](ht
 ---
 
 ## Current behavior and limits
+
+The deployment decision keeps **all audio on the user’s device**. Cloudflare serves the static app, WASM and model files only. Browser workers must perform reconstruction, analysis, mastering and rendering locally; the native Go server remains a device-local fallback. The worker adapter and hosted migration are pending. The earlier container proposal is superseded. The verified intended domains are [aurialis.yosefgamble.com](https://aurialis.yosefgamble.com/) and [aurialis.yosef.app](https://aurialis.yosef.app/); this does not claim the new hosted workstation is deployed.
 
 Aurialis reconstructs local WAV audio, runs shared Go/WASI DSP directly in AudioWorklet and exports native rendered WAVs from one chain shared by Simple and Advanced. The earlier corrective packaged path passed unit/static/build checks, bounded Chromium/Brave playback and a recorded five-minute actual-song run in Brave. The corrected 39-case browser suite and all six remote CI jobs also passed at the recorded source checkpoint; these bounded observations do not certify physical-device or hard real-time behavior. The earlier corrective PR #2 was merged by the owner at `30f576f9` on 2026-10-22 UTC. The owner merged the expanded controls in PR #3 at `97964fc`; their recorded local checkpoint includes 42 Chromium cases, 62 export-control comparisons and three isolated Brave live checks. The earlier WASM DSP JSON-validation follow-up passed its recorded local gates and two remote CI runs. The owner merged the stage-history, paused-initialization and live-control-packet follow-up in PR #4 at `ef18a7f`, after its recorded local gates and two remote CI runs passed. The owner merged the offline-bridge, EQ-prediction and bounded CI-provisioning follow-up in PR #5 at `f5ec9ad`; PR #6 merged measured source diagnostics, supported EQ/limiter controls and algorithm-1 capability foundations at `3886536`, after all CI gates passed. Its 61-case Linux browser suite and 22-request/27-assertion API suite are bounded acceptance evidence. The Library/source-recovery/navigation wave merged in PR #7 at `25d5653` after all six jobs in CI run `39906520601` passed, including 70 Linux browser cases in 4.9 minutes. Its earlier local checkpoint passed 321 unit/component cases. The ScriptV2 API/schedule foundation merged in PR #8 at `d999f4e`, after all six jobs in CI run `39926912858` passed on exact source `f29bc8c`, including 70 Linux browser cases in 5.3 minutes. Its earlier corrected local browser run passed 70 cases in 3.5 minutes. The owner authorized continued work with delegated merges; broader AI/separation/automation requirements remain outstanding; [tasks](docs/tasks.md) and [the audit](docs/reviews/2026-10-21-war-room-audit.md) retain the evidence and failure history.
 
@@ -131,6 +133,8 @@ python3 scripts/sync-agents.py --check
 ```
 
 ### GitHub Actions CI/CD (`.github/workflows/ci.yml`)
+
+Repository protection is applied and independently confirmed by GitHub GET: all six repository CI checks plus the app-bound GitGuardian check are required, branches must be up to date, and merges require a PR with resolved conversations. The rules apply to administrators, prohibit force pushes/deletion and require zero human approvals. Delegated merges remain subject to those automated gates.
 
 Every commit pushed to any branch (`branches: ['**']`) and every pull request triggers [`.github/workflows/ci.yml`](.github/workflows/ci.yml) with all skip guards removed so all quality gates run unconditionally:
 1. **`repo-and-agent-hygiene`** — Enforces `pnpm`-only lockfiles, bans external icon libraries in `src/`, verifies multi-model agent synchronization (`python3 scripts/sync-agents.py --check`), smoke-tests `.claude/hooks/scrutinise.py`, and validates GitHub Actions YAML with `actionlint`.

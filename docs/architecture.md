@@ -1,7 +1,15 @@
 # Aurialis-WASM architecture
-<!-- cspell:words buildmode Hann steganography automator -->
+<!-- cspell:words buildmode Hann steganography automator yosefgamble -->
 
 This describes current implementation boundaries. [`AGENTS.md`](../AGENTS.md) and [`docs/tasks.md`](tasks.md) retain the full product requirements. Implementation on a branch is not verified delivery or a merge to main.
+
+## Device-local deployment boundary
+
+The explicit deployment decision keeps every audio byte and processing job on the user’s device. Cloudflare serves static application assets, WASM modules and model files; it does not receive audio uploads or execute audio jobs. The browser worker adapter must preserve the validated import/CDR, render, measurement, Deep, Reference and cancellation contracts. The existing native Go server remains a loopback, device-local fallback. The earlier hosted-container proposal is superseded.
+
+The current native implementation described below is not evidence that the browser worker adapter is complete. Hosted deployment and the switch at the verified intended domains `aurialis.yosefgamble.com` and `aurialis.yosef.app` remain pending device-local end-to-end verification.
+
+GitHub branch protection is applied and independently confirmed: six repository CI checks plus app-bound GitGuardian, strict up-to-date branches, required PR/resolved conversations, administrator enforcement, no force push/deletion and zero required human approvals. This governs delegated integration; it does not establish feature or deployment acceptance.
 
 ## Library source lifecycle
 

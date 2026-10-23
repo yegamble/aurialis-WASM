@@ -9,6 +9,12 @@ Current routes are implemented by `internal/server`; exact DSP structs are in `i
 
 API CI runs the complete Newman collection and raw security probes against the verified native build artifact, independently of compiler caches and browser shard scheduling. [The CI guide](development.md#how-ci-reuses-builds-and-runs-checks) describes provenance checks and fresh execution; HTTP contracts below are unchanged.
 
+## Album orchestration — private integration checkpoint
+
+The album-consistency branch adds no endpoint. It sequentially measures each complete accepted chain through the existing render JSON contract, then renders that chain as 32-bit float, calls the same Go renderer with explicit linear input gain and every other module disabled, and encodes 24-bit WAV with the existing TPDF encoder. Applied ScriptV2 is retained; no Detach or mutation of individual tracks occurs.
+
+The final encoded WAV is strictly inspected and SHA-256 hashed, bypass-measured, reconstructed as canonical float PCM and sent through the existing feature-analysis job. Geometry and source receipts are checked before publication. The metadata-only album receipt is version 1, bounded to 256 KiB and 64 ordered rows. Reloading it cannot authorize a WAV download or processing job. Full-cohort compare-and-swap saves reject source/settings/sequence races. Integration/browser acceptance remains [open](tasks.md#album-consistency--private-source-checkpoint).
+
 ## Device-local transport boundary
 
 Browser processing merged in [PR #16](https://github.com/yegamble/aurialis-WASM/pull/16) at `85aa7cd7556a26e540e40212397624dcf30a16d6`. Exact head `98397c6` passed all 14 CI jobs and GitGuardian in [run 40021166540](https://github.com/yegamble/aurialis-WASM/actions/runs/40021166540), including 107 native browser cases and eight static browser cases. The reviewed and merged trees matched. Public deployment remains separate.

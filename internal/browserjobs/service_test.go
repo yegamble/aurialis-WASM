@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio"
@@ -169,15 +168,16 @@ func TestWriteBrowserOracle(t *testing.T) {
 	if directory == "" {
 		t.Skip("set AURIALIS_BROWSER_ORACLE_DIR for native versus actual browser PCM")
 	}
-	raw, err := os.ReadFile(filepath.Join(directory, "request.json"))
+	files := fixtureRoot(t, directory)
+	raw, err := files.ReadFile("request.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	source, err := os.ReadFile(filepath.Join(directory, "source.wav"))
+	source, err := files.ReadFile("source.wav")
 	if err != nil {
 		t.Fatal(err)
 	}
-	reference, err := os.ReadFile(filepath.Join(directory, "reference.wav"))
+	reference, err := files.ReadFile("reference.wav")
 	if err != nil && !os.IsNotExist(err) {
 		t.Fatal(err)
 	}
@@ -185,10 +185,10 @@ func TestWriteBrowserOracle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(directory, "native.wav"), result.Audio, 0600); err != nil {
+	if err := files.WriteFile("native.wav", result.Audio, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(directory, "native.json"), result.Metadata, 0600); err != nil {
+	if err := files.WriteFile("native.json", result.Metadata, 0600); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -199,7 +199,8 @@ func TestGeneratedStaticPolicyMatchesNative(t *testing.T) {
 	if directory == "" {
 		t.Skip("set AURIALIS_BROWSER_STATIC_DIR after preparing the static assets")
 	}
-	data, err := os.ReadFile(filepath.Join(directory, "asset-policy.json"))
+	files := fixtureRoot(t, directory)
+	data, err := files.ReadFile("asset-policy.json")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +208,16 @@ func TestGeneratedStaticPolicyMatchesNative(t *testing.T) {
 	if err := json.Unmarshal(data, &policy); err != nil {
 		t.Fatal(err)
 	}
-	native := server.New(server.Config{Workers: 1, StaticFS: os.DirFS(filepath.Join(directory, "assets"))})
+	assets, err := files.OpenRoot("assets")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := assets.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	native := server.New(server.Config{Workers: 1, StaticFS: assets.FS()})
 	defer native.Close()
 	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
 	request.Host = "127.0.0.1:8080"
@@ -216,4 +226,19 @@ func TestGeneratedStaticPolicyMatchesNative(t *testing.T) {
 	if recorder.Header().Get("Content-Security-Policy") != policy.CSP {
 		t.Fatal("static Worker CSP differs from native exact inline-script policy")
 	}
+}
+
+// fixtureRoot confines opt-in process-owned oracle paths, never audio filenames.
+func fixtureRoot(t *testing.T, directory string) *os.Root {
+	t.Helper()
+	files, err := os.OpenRoot(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := files.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	return files
 }

@@ -39,6 +39,8 @@ The final Release owner is now implemented on the browser branch: pre-IDB admiss
 
 The first full frontend gate passed strict TS/configured lint but stopped at Knip: the old `measureScriptAudio` wrapper had no merged caller after Release switched to final encoded measurement. The dead wrapper was removed without an exemption; the upcoming Album slice may restore it with its real consumer. The common scripted render and final encoded measurement operations remain unchanged. Fresh full qualification of this source follow-up is still required; the `a669729` proof is retained separately.
 
+The pinned 2.15 Go lint gate also found six tainted-path findings in opt-in fixture/oracle tests before the identifier/vulnerability/race phases ran. Fixed basenames now use `os.OpenRoot`-confined access, including the generated static fixture; no suppression or production audio filesystem path was added. The original failed gate remains retained; fresh gates and fixture execution remain required.
+
 These are local finite fixtures, not universal platform, music or deadline certification. Remaining gates include actual browser-target artifact restoration and final Release integration, full exact-head checks, independent QA/Devil’s Advocate/writer/Product review and delegated merge. Public preview/domain migration and old-resource retirement remain pending. Trained browser separation and broader Waves/hardware acceptance remain open. See [browser processing](browser-local.md) for resource limits and evidence boundaries.
 
 

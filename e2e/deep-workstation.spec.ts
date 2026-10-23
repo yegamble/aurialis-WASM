@@ -139,3 +139,35 @@ test("muted and explicitly soloed proposals drive the same live and native expor
   const soloRevision = (await project(page)).deepMastering?.applied?.revision ?? 0; await page.getByRole("button", { name: "Apply Deep proposal", exact: true }).click(); await expect.poll(async () => (await project(page)).deepMastering?.applied?.revision ?? 0).toBeGreaterThan(soloRevision);
   const unmuted = await exportFloat(page); expect(unmuted.equals(muted)).toBe(false); const mono = decode(unmuted); let difference = 0; for (let index = 4800; index < 6 * 48000 - 4800; index++) difference = Math.max(difference, Math.abs((mono.left[index] ?? 0) - (mono.right[index] ?? 0))); expect(difference).toBeLessThan(1e-7);
 });
+
+test("reanalysis requires explicit draft replacement and Cancel or Escape preserves authored work", async ({ page }, info) => {
+  test.setTimeout(90000); let analyses = 0; page.on("request", (request) => { if (request.url().endsWith("/api/analyze/deep") && request.method() === "POST") analyses++; });
+  await uploadProject(page, "deep-discard.wav", 2); await page.getByRole("tab", { name: "deep", exact: true }).click();
+  await page.getByRole("button", { name: "Analyze Deep proposal", exact: true }).click();
+  await expect(page.getByText("Measured proposal ready. Your applied processing has not changed.", { exact: true })).toBeVisible({ timeout: 30000 });
+  await page.getByRole("button", { name: "Apply Deep proposal", exact: true }).click(); await expect.poll(async () => !!(await project(page)).deepMastering?.applied).toBe(true);
+  await page.getByRole("button", { name: "Add baseline move", exact: true }).click();
+  const point = page.getByRole("spinbutton", { name: "Point 1 value", exact: true }); await point.fill("-2"); await point.blur();
+  await page.getByRole("button", { name: "Add baseline point", exact: true }).click(); await page.getByRole("button", { name: "Mute draft move", exact: true }).click();
+  await page.getByRole("button", { name: "Close move editor", exact: true }).click();
+  await page.getByRole("combobox", { name: "New move target", exact: true }).selectOption("stereo.widthPct"); await page.getByRole("button", { name: "Add baseline move", exact: true }).click(); await page.getByRole("button", { name: "Delete draft move", exact: true }).click();
+  const before = await project(page), authored = before.deepMastering?.proposal.moves.find((move) => move.muted); if (!authored) throw new Error("Missing authored muted draft"); expect(authored.points).toHaveLength(3); expect(authored.points[0]?.value).toBe(-2);
+  await page.getByRole("combobox", { name: "Deep engineer profile", exact: true }).selectOption("Vocal Forward");
+  const requestsBefore = analyses, analyze = page.getByRole("button", { name: "Analyze Deep proposal", exact: true }); await analyze.click();
+  const dialog = page.getByRole("dialog", { name: "Replace Deep draft?", exact: true }); await expect(dialog).toBeVisible(); await expect(dialog).toContainText("Vocal Forward");
+  for (const width of [320, 375, 390, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 1000 }); expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    for (const button of await dialog.getByRole("button").all()) { const box = await button.boundingBox(); expect(box?.width).toBeGreaterThanOrEqual(44); expect(box?.height).toBeGreaterThanOrEqual(44); }
+    expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze()).violations, String(width) + "px replacement confirmation").toEqual([]);
+    await dialog.getByRole("button", { name: "Close dialog", exact: true }).focus(); await page.keyboard.press("Shift+Tab"); await expect(dialog.getByRole("button", { name: "Replace draft and analyze", exact: true })).toBeFocused(); await page.keyboard.press("Tab"); await expect(dialog.getByRole("button", { name: "Close dialog", exact: true })).toBeFocused();
+    if (width === 320 || width === 1440) await page.screenshot({ path: info.outputPath("deep-replace-draft-" + String(width) + ".png"), fullPage: true });
+  }
+  await dialog.getByRole("button", { name: "Keep draft", exact: true }).click(); await expect(dialog).toHaveCount(0); await expect(analyze).toBeFocused();
+  expect((await project(page)).deepMastering).toEqual(before.deepMastering); expect((await project(page)).advanced).toEqual(before.advanced); expect(analyses).toBe(requestsBefore);
+  await analyze.click(); await expect(dialog).toBeVisible(); await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0); await expect(analyze).toBeFocused();
+  expect((await project(page)).deepMastering).toEqual(before.deepMastering); expect(analyses).toBe(requestsBefore);
+  await analyze.click(); await dialog.getByRole("button", { name: "Replace draft and analyze", exact: true }).click();
+  await expect.poll(async () => (await project(page)).deepMastering?.proposal.revision ?? 0).toBeGreaterThan(before.deepMastering?.proposal.revision ?? 0);
+  const replaced = await project(page); expect(analyses).toBe(requestsBefore + 1); expect(replaced.deepMastering?.proposal.profile).toBe("Vocal Forward"); expect(replaced.deepMastering?.proposal.moves.some((move) => move.id === authored.id)).toBe(false);
+  expect(replaced.deepMastering?.applied).toEqual(before.deepMastering?.applied); expect(replaced.deepMastering?.before).toEqual(before.deepMastering?.before); expect(replaced.advanced).toEqual(before.advanced);
+});

@@ -130,10 +130,12 @@ Record which checks actually ran, their exit status, the source revision and the
 | Go 1.26 & WASM Quality Gate | Separate static/security and race/meter VMs, plus actual compiled WASM/automation parity; every result must succeed |
 | Next.js 16, TypeScript & Bundle Gate | All frontend checks and units, one native-target Next/dual-WASM/production build, binary smoke and a separate QA executable |
 | Backend API & Postman/Newman Gate | Fresh complete API/security probes against the verified production executable |
-| Playwright Responsive (320px-1440px) & WCAG 2.2 AA Gate | All individual tests distributed across three Chromium VMs, one worker each, zero retries |
+| Playwright Responsive (320px-1440px) & WCAG 2.2 AA Gate | All individual native tests distributed across three Chromium VMs, plus a separate static browser/local-audio run; one worker each, zero retries |
 | CI Passed | All five checks above must succeed; failed, cancelled or skipped dependencies fail this gate |
 
-The build job publishes one immutable same-run artifact: the production executable, separate QA executable, both WASM modules and matching Go JavaScript runtime. The QA variant includes the static test observer; production smoke requires its URL to return 404. `scripts/ci-artifacts.py` checks the complete file list, sizes, hashes and modes before restoring files. It rejects links and binds the artifact to the checkout, source bytes, pull-request head, workflow run, producer attempt, platform and execution target. A failed-job rerun can select its earlier successful producer attempt from the same run. A different checkout or target requires its own build; native UI assets cannot substitute for a browser-execution build.
+The native build job publishes one immutable same-run artifact: the production executable, separate QA executable, both WASM modules and matching Go JavaScript runtime. The QA variant includes the static test observer; production smoke requires its URL to return 404. `scripts/ci-artifacts.py` checks the complete file list, sizes, hashes and modes before restoring files. It rejects links and binds the artifact to the checkout, source bytes, pull-request head, workflow run, producer attempt, platform and execution target. A failed-job rerun can select its earlier successful producer attempt from the same run. A different checkout or target requires its own build; native UI assets cannot substitute for a browser-execution build.
+
+A separate browser producer runs `build:browser` once with the browser execution flag and a distinct Next/Go cache. `ci-browser-artifacts.py` packs a closed browser profile: asset archive, exact per-file manifest and generated static policy. It binds the same source/run/attempt facts as the native artifact, rejects native substitution, unsafe paths, links, duplicate members and altered bytes, and enforces per-file/package limits. The static test VM restores that artifact rather than rebuilding. `serve-browser.sh` verifies its receipt before Wrangler when `AURIALIS_USE_CI_BROWSER_ASSETS=1`; invalid modes or receipts fail before launch. Local development still uses its existing generated assets.
 
 **Test results are never cached.** API, signal and browser assertions execute again after artifact validation. Each browser shard retains its JSON report and PCM evidence. Individual tests are distributed with `fullyParallel: true`; `workers: 1` still permits only one test at a time on each VM. Tests use independent browser contexts and test-specific output paths, with no shared setup or serial groups. Its 12-minute global test limit leaves room within the 20-minute job for setup and report upload; individual test timeouts and zero-retry policy remain unchanged. Local runners keep their normal fresh-build behavior. The prebuilt environment switches are reserved for validated CI artifacts.
 
@@ -145,6 +147,7 @@ For focused script checks:
 
 ```bash
 python3 scripts/test-ci-artifacts.py
+python3 scripts/test-ci-browser-artifacts.py
 python3 scripts/test-e2e-build.py
 ```
 

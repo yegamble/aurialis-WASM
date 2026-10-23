@@ -144,7 +144,8 @@ describe("Aurialis Control Isolation & Parameter Orthogonality", () => {
     };
     const result = normalizeHydratedState(saved);
     expect(result?.tracks).toHaveLength(1);
-    expect(result?.tracks[0]).toMatchObject({ id: source.id, title: source.title, mode: "advanced" });
+    expect(result?.tracks[0]).toMatchObject({ id: source.id, title: source.title, mode: "deep" });
+    expect(result?.tracks[0]).not.toHaveProperty("deepMastering");
     expect(result?.tracks[0]).not.toHaveProperty("script");
     expect(result?.tracks[0]).not.toHaveProperty("releaseScore");
     expect(result?.albums[0]).toMatchObject({ mastered: false, trackIds: [source.id] });

@@ -1,3 +1,4 @@
+import type { ScriptV2 } from "./deep-mastering";
 import type { AdvancedParams, MeasuredAudioMetrics, SourceIdentity } from "./types";
 
 export interface StereoPCM {
@@ -231,6 +232,13 @@ export async function serverRender(
     throw await audioError(response, "Audio processing failed. Please try again.");
   return readAudioResponse(() => response.blob(), signal);
 }
+export async function serverRenderScript(file: Blob, script: ScriptV2, bitDepth: 16 | 24 | 32, signal?: AbortSignal): Promise<Blob> {
+  signal?.throwIfAborted();
+  const data = new FormData(); data.append("file", file, "source.wav"); data.append("script", JSON.stringify(script)); data.append("bitDepth", String(bitDepth));
+  const response = await audioRequest(data, signal);
+  if (!response.ok) throw await audioError(response, "The applied script could not be rendered. Restore its matching source and retry.");
+  return readAudioResponse(() => response.blob(), signal);
+}
 export async function readCanonicalWAV(blob: Blob): Promise<StereoPCM> {
   const data = new DataView(await blob.arrayBuffer());
   const text = (start: number) =>
@@ -401,6 +409,13 @@ export async function measureAudio(
   if (!response.ok) throw await audioError(response, "Audio measurement failed.");
   const body: unknown = await readAudioResponse(() => response.json() as Promise<unknown>, signal);
   return audioMeasurement(body);
+}
+
+export async function measureScriptAudio(file: Blob, script: ScriptV2, signal?: AbortSignal): Promise<AudioMeasurement> {
+  const form = new FormData(); form.append("file", file, "source.wav"); form.append("script", JSON.stringify(script)); form.append("format", "json");
+  const response = await audioRequest(form, signal, true);
+  if (!response.ok) throw await audioError(response, "The applied script could not be measured. Restore its matching source and retry.");
+  return audioMeasurement(await readAudioResponse(() => response.json() as Promise<unknown>, signal));
 }
 
 function audioMeasurement(body: unknown): AudioMeasurement {

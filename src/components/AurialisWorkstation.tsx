@@ -200,7 +200,7 @@ export function AurialisWorkstation({
         </nav>
         <div className="nav-note">
           <span className="eyebrow">Local workspace</span>
-          <p>Audio stays on your device and local server.</p>
+          <p>Audio stays on this device.</p>
         </div>
         <button
           type="button"
@@ -292,9 +292,8 @@ export function AurialisWorkstation({
         }
       >
         <p style={{ color: "var(--ink-soft)", margin: "0 0 12px" }}>
-          Aurialis processes audio with a shared Go engine in your browser and
-          local server. Audio is stored in IndexedDB; project settings are
-          stored in this browser.
+          Aurialis processes audio on this device. Audio and project settings
+          stay in this browser. Keep your original files and project backups.
         </p>
         <div className="metric-mini">
           <span>

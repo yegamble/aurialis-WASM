@@ -374,13 +374,13 @@ export async function importAudio(file: Blob, signal?: AbortSignal): Promise<{ c
 
 function metricObject(value: unknown): MeasuredAudioMetrics {
   if (typeof value !== "object" || value === null)
-    throw new Error("The server returned invalid audio measurements.");
+    throw new Error("The audio engine returned invalid audio measurements.");
   const number = (key: keyof MeasuredAudioMetrics): number => {
     // Keys are the fixed measurement schema below, never user-provided keys.
     // eslint-disable-next-line security/detect-object-injection
     const result: unknown = (value as Record<string, unknown>)[key];
     if (typeof result !== "number" || !Number.isFinite(result))
-      throw new Error("The server returned incomplete audio measurements.");
+      throw new Error("The audio engine returned incomplete audio measurements.");
     return result;
   };
   return {
@@ -429,7 +429,7 @@ function audioMeasurement(body: unknown): AudioMeasurement {
     || typeof body.frames !== "number" || !Number.isSafeInteger(body.frames) || body.frames < 1
     || typeof body.duration !== "number" || !Number.isFinite(body.duration) || body.duration <= 0
     || Math.abs(body.duration - body.frames / body.sampleRate) > 0.001)
-    throw new Error("The server returned invalid audio measurements.");
+    throw new Error("The audio engine returned invalid audio measurements.");
   return {
     sampleRate: body.sampleRate,
     frames: body.frames,
@@ -442,7 +442,7 @@ function audioMeasurement(body: unknown): AudioMeasurement {
 
 function sourceIdentity(value: unknown, rate: number, frames: number): SourceIdentity {
   if (typeof value !== "object" || value === null || !("pcmHash" in value) || !("sampleRate" in value) || !("frames" in value) || typeof value.pcmHash !== "string" || !/^[a-f0-9]{64}$/u.test(value.pcmHash) || value.sampleRate !== rate || value.frames !== frames)
-    throw new Error("The server returned an invalid source identity.");
+    throw new Error("The audio engine returned an invalid source identity.");
   return { pcmHash: value.pcmHash, sampleRate: rate, frames };
 }
 

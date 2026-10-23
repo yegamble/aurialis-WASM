@@ -25,7 +25,7 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 | Item | Current status |
 | --- | --- |
-| MUB-3B browser editor/publication | integrated and locally exercised; draft guard corrected, complete regression/exact CI/merge pending |
+| MUB-3B browser editor/publication | locally verified, corrected full 102/102 and 382 units; exact final-head CI/merge pending |
 | Reference dependency PR #9 | verified and merged at `f9ae077`; all six jobs in CI 39939937259 passed, prior red checkpoints retained |
 | ScriptV2 foundation PR #8 | verified and merged, `d999f4e` |
 | Whole product, studio DSP, trained stems and Waves acceptance | open |
@@ -44,7 +44,18 @@ Latest frontend static/build/smoke checkpoint passed all 372 units. The earlier 
 
 Production binary `dc99844f2f487ccb0a74531cd3c24ef6add257a2c9342d297bccb8a9d27759b2` excluded the QA path (404 smoke). Separate test binary `47fd022322336f7841e353374f903c997b3fb18d861d68516d744f8fa05be8c0` served only the extra bounded observer; source/WASM/CSP remained unchanged and staging/temp binary cleanup was observed.
 
-Rebase onto Simple `adf0032` preserves the exact proof branch `codex/deep-proof-2c196ce`. Separate Deep and eight Simple-specific files retain their exact contents; four shell/store/type/test overlaps preserve both features. This new union has not run tests/build. Its independent Simple base later passed 82/82 locally; that does not verify this new combined source. Complete integration regression, final rebase onto merged main, exact remote CI and merge remain open, along with the device-local worker adapter, studio/stem/Waves and whole-product scope.
+#### Full combined verification and main rebase
+
+The combined Simple/Deep source at `1d21ccc` passed strict TypeScript, lint, Knip, configured spelling, strict browser-fixture typing and **382/382 units in 32 files (13.04 seconds)**. Go formatting/module/vet, lint 2.15, identifier/vulnerability checks and the full race suite passed; mastering race tests took 83.264 seconds. The fresh binary build, empty-directory smoke, independent meter checks, **333 exact static native/JS/direct/WASI fixtures plus 45 schedules**, Newman **34 requests/39 assertions** and raw cURL probes all exited 0.
+
+The first complete combined browser run retained **101/102 in 7.0 minutes**, exit 1: an older control-isolation case still asserted that timeline automation was unavailable. Test-only correction `ecc9eff` checks the actual supported Analyze/automation disclosure while retaining musical-role/AI-repair unavailability and every profile-processing/separation rejection assertion. Its complete targeted case passed 1/1 in 3.0 seconds. The corrected full suite then passed **102/102 in 6.7 minutes**, exit 0, with zero skipped, unexpected or flaky cases (403140.75 ms). No audio threshold or production behavior changed for this correction.
+
+All four delayed-epoch/static-prefix native PCM captures, six finite/tail/Repeat cases, source/storage/publication recovery, all nine Simple cases, both Reference device rates, shared controls, six-width accessibility and the complete export matrix passed. Finite dry maximum error was 7.450580596923828e−9; native wet and actual post-merger speaker maximum error were both 2.9737091011838857e−8. The 4001-frame fixture at zero/nonzero seek retained the final 3528 device samples (80 ms) and verified silence afterward. These remain finite software observations, not physical output, arbitrary-host timing, trained mastering or Waves certification.
+
+Stable ignored evidence is under `artifacts/deep-simple-final/`: `frontend.log`, `go.log`, individual quality logs, `build-verify.log`, `browser.log`/`browser.json`/`browser-results/` for the failed original, `profile-corrected.*` for the targeted correction, and `browser-corrected.log`/`browser-corrected.json`/`browser-corrected-results/` for the complete pass. Production SHA-256: `9649c6f85605432b9485a9c70d0b73f5309bc08108db7bacd17c03c152ab1253`; separate QA SHA-256: `9197f52c5a1b0d6f00a5d78cff7e3321a563b6f5d1d8346a34a22e6164119046`. Production QA-path 404, unchanged production bytes and removed staged observer were observed. Temporary QA binaries are cleaned; no continued availability of their former paths is claimed.
+
+The exact accepted local source is preserved as `codex/deep-proof-ecc9eff`. Deep was then rebased onto protected merged Simple main `4d0c745`; only the README conflicted, and the new reader-focused README and guides were retained. A mechanical comparison found **no differences in application source, browser tests, scripts, DSP, build configuration or dependencies** against the 102-case proof. The documentation sync adds the actual Deep workflow. **Open — awaiting independent final documentation review, exact final-head CI and delegated merge.** Browser-worker integration/deployment, whole-product, studio DSP, trained stems, album consistency and Waves acceptance remain separate open work.
+
 
 
 ### Authorized repository protection and deployment work
@@ -59,11 +70,13 @@ Browser workers/WASM must provide local import/CDR, analysis, mastering, separat
 
 ### Simple styles and measured Elevated checkpoint
 
+**Verified and merged.** [PR #11](https://github.com/yegamble/aurialis-WASM/pull/11) merged at `4d0c745202c2192ebed918907a32704cb2d6c542`, from exact head `bf6b673`. All six checks in [CI run 39990817286](https://github.com/yegamble/aurialis-WASM/actions/runs/39990817286) and app-bound GitGuardian passed. The Chair observed 82 Linux browser cases in 7.7 minutes; an independent PR read confirmed the merge, exact head and successful checks. Earlier Simple failures and pending checkpoints below remain historical.
+
 **Latest: locally verified — open, awaiting exact CI and delegated merge.** Clean `adf0032` passed the full 82/82 Chromium cases in 5.4 minutes, 342/342 units in 29 files (8.34 s), TypeScript/lint/Knip, production build/smoke and corrected 212-file spelling. Chair-observed full Go format/module/vet/lint 2.15/identifier/vulnerability/race gates passed; signal gates passed 333 exact static fixtures across native/JS/direct/WASI plus 45 schedules. Newman passed 34 requests/39 assertions and cURL probes. Independent writer checked `browser.log`/`browser.json`: 82 expected, no unexpected/flaky/skipped cases, exit-0 stdout. Binary SHA-256: `4eccb86c5928bfa782d69d78bd7dea8b2e78649fad60ebb48ca3301d7b2073f4`. Stable ignored evidence is under `artifacts/simple-final/`. Historical 79/81 and the inherited three-word spelling failure remain below; the new Deep union, device-local worker deployment and whole-product/Waves gates are separate and open.
 
 | Item | Current status |
 | --- | --- |
-| Simple styles, Metal/Jazz, Depth/Presence | locally verified, 82/82; open awaiting exact CI and merge |
+| Simple styles, Metal/Jazz, Depth/Presence | verified and merged, PR #11 / `4d0c745`; six CI checks plus GitGuardian passed |
 | Elevated source-bound render review | implemented and locally exercised; upper-bound diagnostics, not normalization/certification |
 | Reference dependency | verified and merged, PR #9 / `f9ae077`; all six exact CI jobs green, 73 Linux browser cases |
 | Whole product, studio DSP, trained stems and Waves acceptance | open |

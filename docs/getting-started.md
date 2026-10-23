@@ -53,7 +53,7 @@ Export always renders the current processing settings from the reconstructed sou
 | In the app | Use it for |
 | --- | --- |
 | **Advanced** | Adjust input gain, five-band EQ, compression, saturation, stereo width, a sample-peak limiter, De-Harsh and three-band compression. These controls change the shared chain used by Simple and export. |
-| **Deep** | Apply one of five static **Engineer profiles**, or measure the original audio's frequency balance and change intervals. Diagnostics do not apply processing. Musical role detection, editable timeline automation and AI repair are unavailable. |
+| **Deep** | Analyze a measured proposal, edit source-frame moves and explicitly Apply its complete baseline/schedule. Separate source diagnostics and legacy static profiles remain available. Neutral sections do not identify musical roles; AI repair remains unavailable. |
 | **Albums** | Create and order a sequence, then select **Render album masters** to measure and render individual 24-bit WAVs. Download them before leaving the page. |
 | **Reference match** in **Tools** | Measure your track against another imported recording, review a bounded EQ and optional width proposal, then explicitly apply it. |
 | **Release check** in **Tools** | Select Streaming, Dynamic or Spoken word, then **Run release check** to measure rendered audio against working targets. **Download JSON report** saves the measurements. This is guidance, not platform certification. |
@@ -80,6 +80,18 @@ To recover missing audio, select **Restore source**, then **Choose source WAV**.
 In **Deep**, select **Analyze original audio** under **Measured source analysis**. It measures the stored source's frequency-band energy and intervals where energy, tone or stereo width changes. Use **Cancel analysis** to stop it.
 
 Results use neutral interval names; a change-strength percentage is a heuristic score, not the probability of a verse or chorus. The analysis does not generate mastering moves or change your settings. The separate **Apply profile** action applies a static preset throughout the track.
+
+## Review and apply a Deep proposal
+
+1. Open **Deep**, choose a **Deep engineer profile**, then select **Analyze Deep proposal**. This measures the original source and leaves the current sound unchanged. If a draft already exists, **Keep draft** or Escape preserves every edit; confirm replacement only when you want a new proposal. **Cancel Deep analysis** stops the request.
+2. Review the neutral sections, findings and proposed moves. They are heuristic suggestions, not detected verses/choruses or a trained mastering engineer. Select a timeline move to edit its labeled source-frame points, values, operation and fade; add, delete or reset moves as needed. These are draft edits.
+3. Select **Apply Deep proposal** to publish the complete baseline and schedule together. Wait for acknowledgment. Until then, playback and export retain the previously accepted settings. **Mute draft move** and **Solo in proposal** stay silent until Apply; **Apply solo proposal** uses that filtered snapshot in both playback and export.
+4. Listen and export. Later Advanced edits prepare a complete replacement revision using the applied moves; draft edits are separate. If preparation fails, use the displayed retry or restore-applied-settings action. Do not assume pending values have been exported.
+5. Use **Revert before first Apply** to restore the complete settings saved before the first Apply, or **Detach automation** to keep the applied static baseline without its moves. Both retain the draft. Detach before choosing a static Simple direction, applying Reference changes, setting target loudness or normalizing an album.
+
+Keep the original audio separately. Draft/applied **Script JSON** downloads provide complete recovery copies when browser storage fails; the app currently has no Script JSON import workflow. A different source cannot reuse an applied schedule. Use Library's exact **Restore source** workflow for missing audio; explicit replacement invalidates source-bound analysis and automation.
+
+Deep currently uses algorithm 1, generic Optical compression and sample-peak limiting. It does not provide AI repair, musical-role recognition, certified true-peak limiting or Waves/hardware equivalence. Finite playback drains its full valid delayed output. Turning Repeat on after finite input ends preserves that pass before a new prepared epoch, so a brief gap is possible.
 
 ## Compare with a reference recording
 

@@ -70,7 +70,7 @@ function proposedAdvanced(value: unknown, baseline: AdvancedParams, options: Ref
   const permitted = { ...expected, bands, stereo: { ...expected.stereo, widthPct: width } };
   if (!equal(candidate, permitted)) throw failure();
   const eqBands = baseline.eqBands.map((band, i) => ({ ...band, gainDb: bands.at(i)?.gainDb ?? band.gainDb })) as AdvancedParams["eqBands"];
-  return { ...baseline, eqBands, width, stereo: { ...baseline.stereo, width } };
+  return { ...baseline, eqBands, width: width === baseline.stereo.width ? baseline.width : width, stereo: { ...baseline.stereo, width } };
 }
 function readProposal(value: unknown, baseline: AdvancedParams, options: ReferenceOptions): ReferenceProposal {
   const data = object(value);

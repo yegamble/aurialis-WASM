@@ -106,7 +106,7 @@ test("re-applying an unchanged Simple direction never compounds EQ or other sett
   expect(snapshots[2]).toEqual(snapshots[0]);
 });
 
-test("reference settings honor unchecked width and protected low bands", async ({ page }) => {
+test("measured reference ignores saved reference knobs and keeps width opt-in", async ({ page }) => {
   const sourceId = await uploadProject(page, "qa-source.wav");
   const referenceId = await uploadProject(page, "qa-reference.wav");
   await page.getByRole("slider", { name: "Stereo width", exact: true }).fill("140");
@@ -117,12 +117,16 @@ test("reference settings honor unchecked width and protected low bands", async (
   await page.goto(`/reference/${sourceId}`);
   await page.getByRole("combobox", { name: "Reference track", exact: true }).selectOption(referenceId);
   await expect(page.getByRole("checkbox", { name: "Include width", exact: true })).not.toBeChecked();
-  await page.getByRole("button", { name: "Apply EQ settings", exact: true }).click();
+  await page.getByRole("button", { name: "Analyze reference audio", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Apply measured proposal", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Apply measured proposal", exact: true }).click();
+  await expect(page.getByText(/Measured proposal applied/u)).toBeVisible();
+  await page.getByRole("link", { name: "Back to master", exact: true }).click();
   await expect(page.getByRole("slider", { name: "Stereo width", exact: true })).toHaveValue("100");
   await page.getByRole("tab", { name: "Sub", exact: true }).click();
   await expect(page.getByRole("slider", { name: "Sub gain", exact: true })).toHaveValue("0");
   await page.getByRole("tab", { name: "Presence", exact: true }).click();
-  await expect(page.getByRole("slider", { name: "Presence gain", exact: true })).toHaveValue("2.5");
+  await expect(page.getByRole("slider", { name: "Presence gain", exact: true })).toHaveValue("0");
 });
 
 test("album processing produces real full-length WAVs and release checks measure rendered audio", async ({ page, request }) => {

@@ -41,6 +41,8 @@ const (
 	KindSeparate Kind = "separate"
 	// KindAnalyzeDeep is a MasteringScript v1 deep analysis job.
 	KindAnalyzeDeep Kind = "analyze_deep"
+	// KindAnalyzeDeepV2 is a source-bound measured ScriptV2 proposal job.
+	KindAnalyzeDeepV2 Kind = "analyze_deep_v2"
 	// KindAnalyzeFeatures measures spectra and neutral change points without proposing processing.
 	KindAnalyzeFeatures Kind = "analyze_features"
 )
@@ -73,6 +75,7 @@ type Job struct {
 	Detail    string                      `json:"detail,omitempty"`
 	CreatedAt time.Time                   `json:"createdAt"`
 	UpdatedAt time.Time                   `json:"updatedAt"`
+	ScriptV2  *mastering.ScriptV2         `json:"scriptV2,omitempty"`
 	Script    *mastering.Script           `json:"script,omitempty"`
 	Features  *mastering.AnalysisFeatures `json:"features,omitempty"`
 	Stems     []StemDescriptor            `json:"stems,omitempty"`
@@ -231,13 +234,16 @@ func (m *Manager) admitLocked(job *Job, buf *audio.Buffer, stemCount int) error 
 	// buffers and encoded 16-bit artifacts. Deep rendering also needs a stereo
 	// float output. Scratch/headroom covers metering history and small objects.
 	bytesPerFrame := int64(16)
-	if job.Kind == KindAnalyzeFeatures {
+	if job.Kind == KindAnalyzeFeatures || job.Kind == KindAnalyzeDeepV2 {
 		bytesPerFrame = 8 // Input only; features and FFT scratch fit the reserved headroom.
 	}
 	if stemCount > 0 {
 		bytesPerFrame = 8 + int64(stemCount)*12
 	}
 	reservation := int64(buf.Frames)*bytesPerFrame + int64(stemCount)*44 + 16*1024*1024
+	if job.Kind == KindAnalyzeDeepV2 {
+		reservation += 16 * 1024 * 1024
+	}
 	if len(m.jobs) >= MaxRetainedJobs || reservation > MaxMemoryBytes-m.usedBytes {
 		return ErrQueueFull
 	}
@@ -499,6 +505,7 @@ func (m *Manager) Cancel(id string) (*Job, bool) {
 		j.stemWAVs = nil
 		j.Stems = nil
 		j.Script = nil
+		j.ScriptV2 = nil
 		j.Features = nil
 		j.UpdatedAt = time.Now().UTC()
 	}
@@ -513,6 +520,9 @@ func (m *Manager) Cancel(id string) (*Job, bool) {
 
 func (m *Manager) cloneJob(j *Job) *Job {
 	cp := *j
+	if j.ScriptV2 != nil {
+		cp.ScriptV2 = j.ScriptV2.Clone()
+	}
 	if j.Stems != nil {
 		cp.Stems = make([]StemDescriptor, len(j.Stems))
 		copy(cp.Stems, j.Stems)
@@ -531,6 +541,9 @@ func retainedBytes(job *Job) int64 {
 	var bytes int64
 	for _, wav := range job.stemWAVs {
 		bytes += int64(len(wav))
+	}
+	if job.ScriptV2 != nil {
+		bytes += mastering.MaxScriptV2Bytes
 	}
 	return bytes + job.Features.StorageBytes()
 }

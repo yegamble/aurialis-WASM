@@ -2,6 +2,7 @@ import { Blob as NativeBlob } from "node:buffer";
 import { createHash, webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { engineParams, measureAudio, previewWAV, serverRender, serverRenderScript } from "../browser-engine";
+import { reserveBrowserAudioMemory } from "../browser-jobs";
 import type { ScriptV2 } from "../deep-mastering";
 import { collectReleaseReview, readReleaseReport, releaseBindingHash, reserveReleaseReviewMemory } from "../release-review";
 import { normalizeHydratedState, reduceStoreState } from "../store";
@@ -70,14 +71,37 @@ describe("encoded release artifacts and saved receipts", () => {
       return originalRead();
     });
     vi.mocked(serverRender).mockImplementation(() => {
-      expect(memory.update).toHaveBeenLastCalledWith(52);
+      expect(memory.update).toHaveBeenLastCalledWith(104);
       return Promise.resolve(previewWAV({ sampleRate: 48000, left: Float32Array.of(0.5), right: Float32Array.of(0.5) }));
     });
+    vi.mocked(measureAudio).mockImplementation(() => {
+      expect(memory.update).toHaveBeenLastCalledWith(104);
+      return Promise.resolve({ sampleRate: 48000, frames: 1, duration: 1 / 48000, beforeMetrics: metrics, afterMetrics: metrics });
+    });
     const retained = await collectReleaseReview(blob, track, 32, "Spotify", signal(), memory);
-    expect(memory.update.mock.calls.map(([bytes]) => bytes)).toEqual([208, 52, 156, 52]);
+    expect(memory.update.mock.calls.map(([bytes]) => bytes)).toEqual([208, 104, 208, 104, 52]);
     expect(memory.dispose).not.toHaveBeenCalled();
     expect(retained.dispose).toBe(memory.dispose);
     retained.dispose(); expect(memory.dispose).toHaveBeenCalledOnce();
+  });
+  it("keeps the original source charged when inspection needs three encoded buffers", async () => {
+    const other = reserveBrowserAudioMemory();
+    const encoded = new ArrayBuffer(48), view = new DataView(encoded);
+    new Uint8Array(encoded).set(new Uint8Array(await source().arrayBuffer()).subarray(0, 44));
+    view.setUint32(4, 40, true); view.setUint16(20, 1, true); view.setUint32(28, 192000, true);
+    view.setUint16(32, 4, true); view.setUint16(34, 16, true); view.setUint32(40, 4, true);
+    view.setInt16(44, 16384, true); view.setInt16(46, 16384, true);
+    const wav = new Blob([encoded]), read = vi.spyOn(wav, "arrayBuffer");
+    vi.mocked(serverRender).mockImplementation(() => {
+      // Three encoded copies alone fit exactly, but the still-live source must
+      // make this inspection reject before reading the final encoded buffer.
+      other.update(448 * 1024 * 1024 - wav.size * 3);
+      return Promise.resolve(wav);
+    });
+    try {
+      await expect(collectReleaseReview(source(), track, 16, "Spotify", signal())).rejects.toThrow("memory budget");
+      expect(read).not.toHaveBeenCalled(); expect(measureAudio).not.toHaveBeenCalled();
+    } finally { other.dispose(); }
   });
   it("releases supplied memory on validation, measurement and late-cancellation failures", async () => {
     const memory = { update: vi.fn<(bytes: number) => void>(), dispose: vi.fn() };

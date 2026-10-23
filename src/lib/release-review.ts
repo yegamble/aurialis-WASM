@@ -62,12 +62,12 @@ export async function collectReleaseReview(source: Blob, track: Track, bits: Out
     const bindingHash = await releaseBindingHash(track, bits, signal);
     await verifyCanonicalSource(source, identity, signal);
     const processingHash = await textHash(JSON.stringify(script ? { script } : { params }), signal);
-    owned.update(outputBytes);
+    owned.update(source.size + outputBytes);
     const wav = script ? await serverRenderScript(source, script, bits, signal) : await serverRender(source, params, bits, signal);
     // Blob + inspection arrayBuffer + possible WebCrypto input copy coexist.
-    owned.update(wav.size * 3);
+    owned.update(source.size + wav.size * 3);
     const inspected = await inspectEncodedWAV(wav, bits, identity, signal);
-    owned.update(wav.size);
+    owned.update(source.size + wav.size);
     // Bypass measurement decodes the FINAL encoded PCM, including quantization.
     const measured = await measureAudio(wav, { bypass: true }, signal);
     if (measured.sampleRate !== identity.sampleRate || measured.frames !== identity.frames
@@ -75,6 +75,7 @@ export async function collectReleaseReview(source: Blob, track: Track, bits: Out
       throw new Error("The measured output layout changed. Run the release check again.");
     await verifyCanonicalSource(source, identity, signal);
     signal.throwIfAborted();
+    owned.update(wav.size);
     return { wav, dispose: owned.dispose, report: { version: 1, createdAt: new Date().toISOString(), title, platform,
       bindingHash, processingHash, scriptRevision: script?.revision ?? null, source: identity, sourceRevision,
       output: { ...inspected.encoding, sha256: inspected.sha256, bytes: wav.size }, metrics: measured.afterMetrics } };

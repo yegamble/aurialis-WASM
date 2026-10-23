@@ -12,12 +12,6 @@ import { Button, PageTitle, buttonClassName } from "./Primitives";
 import { Icon } from "./Icon";
 import { WorkspaceLink as Link } from "./WorkspaceLink";
 
-function download(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob), anchor = document.createElement("a");
-  anchor.href = url; anchor.download = filename; anchor.click();
-  setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
-}
-
 export function ReleaseReview({ trackId }: { trackId: string }) {
   const { state } = useStore();
   const track = state.tracks.find((item) => item.id === trackId);
@@ -90,7 +84,8 @@ function TrackReleaseReview({ track }: { track: Track }) {
     if (!report || !profile) return;
     const payload = { ...report, platform, measurementBasis: "decoded final encoded WAV", policy: { checkedAt: "2026-10-23", source: profile.source, scope: profile.scope }, checks,
       limitations: "Finite reconstructed-peak estimates and working diagnostics; no platform, codec, hardware or mastering certification. No automatic gain, resampling or repair." };
-    download(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), "aurialis-audio-review.json");
+    try { downloadLocalBlob(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), "aurialis-audio-review.json"); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "The report could not be downloaded. Try again."); }
   }
   return <div className="page">
     <PageTitle eyebrow="Release check" title="Ready for the handoff?" copy="Review the exact WAV you will download, with guidance for your destination."

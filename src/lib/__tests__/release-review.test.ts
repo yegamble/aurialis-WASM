@@ -3,7 +3,7 @@ import { createHash, webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { engineParams, measureAudio, previewWAV, serverRender, serverRenderScript } from "../browser-engine";
 import type { ScriptV2 } from "../deep-mastering";
-import { collectReleaseReview, readReleaseReport, releaseBindingHash } from "../release-review";
+import { collectReleaseReview, readReleaseReport, releaseBindingHash, reserveReleaseReviewMemory } from "../release-review";
 import { normalizeHydratedState, reduceStoreState } from "../store";
 import type { MeasuredAudioMetrics, Track } from "../types";
 import { testStore } from "./fixtures";
@@ -34,6 +34,7 @@ describe("encoded release artifacts and saved receipts", () => {
     expect(result.report.output.sha256).toBe(createHash("sha256").update(new Uint8Array(await result.wav.arrayBuffer())).digest("hex"));
     expect(result.report.bindingHash).toBe(await releaseBindingHash(track, 32, abort));
     expect(result.report.metrics).toEqual(metrics); expect(readReleaseReport(result.report)).toEqual(result.report);
+    result.dispose();
   });
   it("uses the accepted script and hashes all its content even when the revision number is unchanged", async () => {
     const applied = script(), deep: Track = { ...track, deepMastering: { sourceRevision: 4, proposal: applied, applied, targets: [] } };
@@ -42,6 +43,7 @@ describe("encoded release artifacts and saved receipts", () => {
     const changed = structuredClone(deep); const point = changed.deepMastering?.applied?.moves[0]?.points[0]; if (!point) throw new Error("Missing point"); point.value = 3;
     expect(await releaseBindingHash(changed, 32, signal())).not.toBe(result.report.bindingHash);
     expect(await releaseBindingHash(deep, 24, signal())).not.toBe(result.report.bindingHash);
+    result.dispose();
   });
   it("rejects changed source bytes and mismatched output measurements without publishing a report", async () => {
     await expect(collectReleaseReview(source(1.2), track, 32, "Spotify", signal())).rejects.toThrow(/PCM differs/u);
@@ -56,11 +58,48 @@ describe("encoded release artifacts and saved receipts", () => {
     expect(saved.tracks[0]?.releaseReview).toEqual(result.report);
     const newer = { ...track, advanced: { ...track.advanced, input: 3 } };
     expect(reduceStoreState({ ...state, tracks: [newer] }, { type: "SAVE_RELEASE_REVIEW", expected: track, report: result.report }).tracks[0]?.releaseReview).toBeUndefined();
+    result.dispose();
     const controller = new AbortController(); vi.mocked(measureAudio).mockImplementation(() => { controller.abort(); return Promise.resolve({ sampleRate: 48000, frames: 1, duration: 1 / 48000, beforeMetrics: metrics, afterMetrics: metrics }); });
     await expect(collectReleaseReview(source(), track, 32, "Spotify", controller.signal)).rejects.toMatchObject({ name: "AbortError" });
   });
+  it("charges first source hashing and encoded inspection, then transfers only retained bytes", async () => {
+    const blob = source(), memory = { update: vi.fn<(bytes: number) => void>(), dispose: vi.fn() };
+    const originalRead = blob.arrayBuffer.bind(blob);
+    vi.spyOn(blob, "arrayBuffer").mockImplementation(() => {
+      expect(memory.update).toHaveBeenLastCalledWith(blob.size * 3 + 52);
+      return originalRead();
+    });
+    vi.mocked(serverRender).mockImplementation(() => {
+      expect(memory.update).toHaveBeenLastCalledWith(52);
+      return Promise.resolve(previewWAV({ sampleRate: 48000, left: Float32Array.of(0.5), right: Float32Array.of(0.5) }));
+    });
+    const retained = await collectReleaseReview(blob, track, 32, "Spotify", signal(), memory);
+    expect(memory.update.mock.calls.map(([bytes]) => bytes)).toEqual([208, 52, 156, 52]);
+    expect(memory.dispose).not.toHaveBeenCalled();
+    expect(retained.dispose).toBe(memory.dispose);
+    retained.dispose(); expect(memory.dispose).toHaveBeenCalledOnce();
+  });
+  it("releases supplied memory on validation, measurement and late-cancellation failures", async () => {
+    const memory = { update: vi.fn<(bytes: number) => void>(), dispose: vi.fn() };
+    await expect(collectReleaseReview(new Blob(["bad"]), track, 32, "Spotify", signal(), memory)).rejects.toThrow("source layout");
+    expect(memory.dispose).toHaveBeenCalledOnce(); memory.dispose.mockClear();
+    vi.mocked(measureAudio).mockRejectedValueOnce(new Error("Controlled final measurement failure"));
+    await expect(collectReleaseReview(source(), track, 32, "Spotify", signal(), memory)).rejects.toThrow("final measurement failure");
+    expect(memory.dispose).toHaveBeenCalledOnce(); memory.dispose.mockClear();
+    const controller = new AbortController();
+    vi.mocked(measureAudio).mockImplementationOnce(() => { controller.abort(); return Promise.resolve({ sampleRate: 48000, frames: 1, duration: 1 / 48000, beforeMetrics: metrics, afterMetrics: metrics }); });
+    await expect(collectReleaseReview(source(), track, 32, "Spotify", controller.signal, memory)).rejects.toMatchObject({ name: "AbortError" });
+    expect(memory.dispose).toHaveBeenCalledOnce();
+  });
+  it("rejects unsafe expected source admission before loading or hashing it", () => {
+    const frames = 16_777_216, large = { ...track, duration: frames / 48000, sourceIdentity: { ...identity, frames } };
+    expect(() => reserveReleaseReviewMemory(large, 32)).toThrow("memory budget");
+    expect(serverRender).not.toHaveBeenCalled(); expect(measureAudio).not.toHaveBeenCalled();
+  });
   it("restores a bounded valid receipt and discards malformed receipts without losing settings", async () => {
-    const { report } = await collectReleaseReview(source(), track, 32, "Spotify", signal());
+    const retained = await collectReleaseReview(source(), track, 32, "Spotify", signal());
+    const { report } = retained;
+    retained.dispose();
     expect(normalizeHydratedState({ ...testStore, tracks: [{ ...track, releaseReview: report }] })?.tracks[0]?.releaseReview).toEqual(report);
     for (const invalid of [{ ...report, output: { ...report.output, channels: 1 } }, { ...report, metrics: { ...report.metrics, integratedLufs: NaN } }, { ...report, bindingHash: "bad" }, { ...report, output: { ...report.output, bytes: 44 } }]) {
       expect(readReleaseReport(invalid)).toBeUndefined();

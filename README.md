@@ -25,7 +25,7 @@ Aurialis is an audio mastering workstation that runs on your computer and opens 
   <a href="docs/development.md">Developer guide</a>
 </p>
 
-> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. AI repair, validated instrument separation and certified hardware/true-peak behavior remain open work. Deep is merged with its bounded live/export workflow verified. Release now reviews the exact encoded WAV with its own output hash; its exact CI and merge gates remain open. See [current limits](#know-the-current-limits).
+> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. AI repair, validated instrument separation and certified hardware/true-peak behavior remain open work. Deep is merged with its bounded live/export workflow verified. Release is merged and reviews the exact encoded WAV with its own output hash. Browser deployment and final resource integration remain open. See [current limits](#know-the-current-limits).
 
 ## A small studio, one clear path
 
@@ -80,7 +80,7 @@ See the [first-master guide](docs/getting-started.md) for control explanations, 
 
 For changes across the track, open **Deep**, choose an engineer profile and select **Analyze Deep proposal**. Analysis and edits leave playback unchanged. Review the neutral sections, select a move to edit its points, then select **Apply Deep proposal**. Mute/solo choices affect both live playback and export only after Apply. **Revert before first Apply** restores the saved starting settings; **Detach automation** retains the applied static baseline. [The Deep guide](docs/getting-started.md#review-and-apply-a-deep-proposal) explains drafts, recovery and the limits.
 
-For a measured handoff, open **Release check** in Tools. Choose a destination and bit depth, run the review, then download the same WAV that was measured and its JSON report. Saving a report retains measurements, not the audio file; after reload, rerun before downloading a measured WAV. [The release guide](docs/getting-started.md#review-the-wav-you-will-hand-off) explains the profile scopes and manual checks.
+For a measured handoff, open **Release check** in Tools. Choose a destination and bit depth, run the review, then download the same WAV that was measured and its JSON report. Memory admission precedes source loading and includes inspection copies and retained downloads. Saving a report retains measurements, not the audio file; after reload, rerun before downloading a measured WAV. [The release guide](docs/getting-started.md#review-the-wav-you-will-hand-off) explains the profile scopes and manual checks.
 
 ## Your audio and your computer
 
@@ -111,7 +111,7 @@ The [architecture](docs/architecture.md), [API contract](docs/api.md) and [task 
 
 See [architecture](docs/architecture.md) for the audio paths, shared-memory controls, resource bounds and security model, or [API reference](docs/api.md) to render audio from a script. The [ScriptV2 contract](docs/api.md#scriptv2-foundation) binds editable proposals and acknowledged live/export schedules to verified source audio. Draft edits wait for explicit Apply.
 
-Simple merged in [PR #11](https://github.com/yegamble/aurialis-WASM/pull/11), followed by Deep in [PR #13](https://github.com/yegamble/aurialis-WASM/pull/13) at `6154f87`. Deep passed the corrected 102-case browser suite locally and both exact-head Linux runs; the original 101/102 result and its stale-message correction remain in [the task record](docs/tasks.md#full-combined-verification-and-main-rebase). The Release slice passed 405 unit tests and the complete 107-case browser suite locally; exact CI and merge are pending. These counts do not certify the whole product or hosted deployment.
+Simple merged in [PR #11](https://github.com/yegamble/aurialis-WASM/pull/11), followed by Deep in [PR #13](https://github.com/yegamble/aurialis-WASM/pull/13) at `6154f87`. Deep passed the corrected 102-case browser suite locally and both exact-head Linux runs; the original 101/102 result and its stale-message correction remain in [the task record](docs/tasks.md#full-combined-verification-and-main-rebase). Release merged in [PR #15](https://github.com/yegamble/aurialis-WASM/pull/15) at `01c2c15` after 406 units and all 107 browser cases passed final-head CI. These counts do not certify the whole product or hosted deployment.
 
 ## Help improve Aurialis
 

@@ -1,4 +1,5 @@
 import { engineParams, measureAudio, serverRender, serverRenderScript } from "./browser-engine";
+import { reserveBrowserAudioMemory } from "./browser-jobs";
 import { inspectEncodedWAV } from "./encoded-inspection";
 import { verifyCanonicalSource } from "./project-import";
 import { releaseProfiles, type EncodedInspection, type OutputBits, type ReleasePlatform } from "./release-policy";
@@ -26,29 +27,58 @@ export async function releaseBindingHash(track: Track, bits: OutputBits, signal:
     params: engineParams(track.advanced), script: track.deepMastering?.applied ?? null }), signal);
 }
 
-/** Retain the measured file itself; a later download must not silently render new bytes. */
-export async function collectReleaseReview(source: Blob, track: Track, bits: OutputBits, platform: ReleasePlatform, signal: AbortSignal): Promise<{ report: ReleaseReport; wav: Blob }> {
-  const identity = track.sourceIdentity ? { ...track.sourceIdentity } : undefined;
-  const params = engineParams(track.advanced);
-  const script = track.deepMastering?.applied ? structuredClone(track.deepMastering.applied) : undefined;
-  const title = track.title, sourceRevision = track.sourceRevision ?? 0;
-  if (!identity || identity.sampleRate !== track.sampleRate || Math.abs(identity.frames / identity.sampleRate - track.duration) > 0.001)
+type ReviewMemory = ReturnType<typeof reserveBrowserAudioMemory>;
+export type ReleaseArtifact = { report: ReleaseReport; wav: Blob; dispose: () => void };
+
+function reviewIdentity(track: Track, bits: OutputBits): SourceIdentity {
+  const identity = track.sourceIdentity;
+  if (!identity || !/^[a-f0-9]{64}$/u.test(identity.pcmHash)
+    || !Number.isSafeInteger(identity.frames) || identity.frames < 1 || identity.frames > 16_777_216
+    || !Number.isSafeInteger(identity.sampleRate) || identity.sampleRate < 8000 || identity.sampleRate > 192000
+    || identity.sampleRate !== track.sampleRate || !Number.isFinite(track.duration)
+    || Math.abs(identity.frames / identity.sampleRate - track.duration) > 0.001)
     throw new Error("Restore the matching source in Library before reviewing a release.");
-  const bindingHash = await releaseBindingHash(track, bits, signal);
-  await verifyCanonicalSource(source, identity, signal);
-  const processingHash = await textHash(JSON.stringify(script ? { script } : { params }), signal);
-  const wav = script ? await serverRenderScript(source, script, bits, signal) : await serverRender(source, params, bits, signal);
-  const inspected = await inspectEncodedWAV(wav, bits, identity, signal);
-  // Bypass measurement decodes the FINAL encoded PCM, including quantization.
-  const measured = await measureAudio(wav, { bypass: true }, signal);
-  if (measured.sampleRate !== identity.sampleRate || measured.frames !== identity.frames
-    || Math.abs(measured.duration - identity.frames / identity.sampleRate) > 0.001)
-    throw new Error("The measured output layout changed. Run the release check again.");
-  await verifyCanonicalSource(source, identity, signal);
-  signal.throwIfAborted();
-  return { wav, report: { version: 1, createdAt: new Date().toISOString(), title, platform,
-    bindingHash, processingHash, scriptRevision: script?.revision ?? null, source: identity, sourceRevision,
-    output: { ...inspected.encoding, sha256: inspected.sha256, bytes: wav.size }, metrics: measured.afterMetrics } };
+  if (![16, 24, 32].includes(bits)) throw new Error("Choose 16-bit, 24-bit or 32-bit output.");
+  return { ...identity };
+}
+
+/** Claim expected IDB source/hash copies and output before loading the source Blob. */
+export function reserveReleaseReviewMemory(track: Track, bits: OutputBits): ReviewMemory {
+  const identity = reviewIdentity(track, bits);
+  return reserveBrowserAudioMemory((44 + identity.frames * 8) * 3 + 44 + identity.frames * bits / 4);
+}
+
+/** Transfer this same owner from loading/inspection to the retained measured file. */
+export async function collectReleaseReview(source: Blob, track: Track, bits: OutputBits, platform: ReleasePlatform, signal: AbortSignal, memory?: ReviewMemory): Promise<ReleaseArtifact> {
+  const owned = memory ?? reserveReleaseReviewMemory(track, bits);
+  try {
+    const identity = reviewIdentity(track, bits);
+    const outputBytes = 44 + identity.frames * bits / 4;
+    if (source.size !== 44 + identity.frames * 8) throw new Error("The stored source layout changed. Restore the matching source in Library.");
+    owned.update(source.size * 3 + outputBytes);
+    const params = engineParams(track.advanced);
+    const script = track.deepMastering?.applied ? structuredClone(track.deepMastering.applied) : undefined;
+    const title = track.title, sourceRevision = track.sourceRevision ?? 0;
+    const bindingHash = await releaseBindingHash(track, bits, signal);
+    await verifyCanonicalSource(source, identity, signal);
+    const processingHash = await textHash(JSON.stringify(script ? { script } : { params }), signal);
+    owned.update(outputBytes);
+    const wav = script ? await serverRenderScript(source, script, bits, signal) : await serverRender(source, params, bits, signal);
+    // Blob + inspection arrayBuffer + possible WebCrypto input copy coexist.
+    owned.update(wav.size * 3);
+    const inspected = await inspectEncodedWAV(wav, bits, identity, signal);
+    owned.update(wav.size);
+    // Bypass measurement decodes the FINAL encoded PCM, including quantization.
+    const measured = await measureAudio(wav, { bypass: true }, signal);
+    if (measured.sampleRate !== identity.sampleRate || measured.frames !== identity.frames
+      || Math.abs(measured.duration - identity.frames / identity.sampleRate) > 0.001)
+      throw new Error("The measured output layout changed. Run the release check again.");
+    await verifyCanonicalSource(source, identity, signal);
+    signal.throwIfAborted();
+    return { wav, dispose: owned.dispose, report: { version: 1, createdAt: new Date().toISOString(), title, platform,
+      bindingHash, processingHash, scriptRevision: script?.revision ?? null, source: identity, sourceRevision,
+      output: { ...inspected.encoding, sha256: inspected.sha256, bytes: wav.size }, metrics: measured.afterMetrics } };
+  } catch (cause) { owned.dispose(); throw cause; }
 }
 
 /** A saved report is data, never an authority to process or download audio. */

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { downloadLocalBlob } from "@/lib/download";
 import { getAudio } from "@/lib/db";
 import { audioKey } from "@/lib/library";
-import { collectReleaseReview, releaseBindingHash, type ReleaseReport } from "@/lib/release-review";
+import { collectReleaseReview, releaseBindingHash, reserveReleaseReviewMemory, type ReleaseArtifact } from "@/lib/release-review";
 import { releaseChecks, releaseProfiles, type OutputBits, type ReleasePlatform } from "@/lib/release-policy";
 import { useStore } from "@/lib/store";
 import type { Track } from "@/lib/types";
@@ -29,19 +30,33 @@ function TrackReleaseReview({ track }: { track: Track }) {
   const [bits, setBits] = useState<OutputBits>(track.releaseReview?.output.bitDepth ?? 24);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [basis, setBasis] = useState<{ owner: Track; bits: OutputBits; hash: string } | null>(null);
-  const [artifact, setArtifact] = useState<{ report: ReleaseReport; wav: Blob } | null>(null);
+  const [artifact, setArtifact] = useState<ReleaseArtifact | null>(null);
   const pending = useRef<{ controller: AbortController; owner: Track; bits: OutputBits } | null>(null);
   const latest = useRef(track); latest.current = track;
+  const retainedArtifact = useRef<ReleaseArtifact | null>(null);
   function owns(controller: AbortController) { return pending.current?.controller === controller; }
   function cancel(message = "") { pending.current?.controller.abort(); pending.current = null; setBusy(false); setError(message); }
-  useEffect(() => () => { pending.current?.controller.abort(); pending.current = null; }, []);
+  useEffect(() => () => {
+    pending.current?.controller.abort(); pending.current = null;
+    retainedArtifact.current?.dispose(); retainedArtifact.current = null;
+  }, []);
+  useEffect(() => () => {
+    artifact?.dispose();
+    if (retainedArtifact.current === artifact) retainedArtifact.current = null;
+  }, [artifact]);
   useEffect(() => {
     if (pending.current && (pending.current.owner !== track || pending.current.bits !== bits)) cancel("The source, settings or encoding changed. Run the release check again.");
     const controller = new AbortController();
     void releaseBindingHash(track, bits, controller.signal).then((hash) => {
-      if (!controller.signal.aborted) setBasis({ owner: track, bits, hash });
+      if (!controller.signal.aborted) {
+        setBasis({ owner: track, bits, hash });
+        setArtifact((current) => current?.report.bindingHash === hash ? current : null);
+      }
     }).catch((cause: unknown) => {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "The current settings could not be identified.");
+      if (!controller.signal.aborted) {
+        setArtifact(null);
+        setError(cause instanceof Error ? cause.message : "The current settings could not be identified.");
+      }
     });
     return () => { controller.abort(); };
   }, [track, bits]);
@@ -56,17 +71,20 @@ function TrackReleaseReview({ track }: { track: Track }) {
   async function run() {
     cancel();
     const controller = new AbortController(); pending.current = { controller, owner: track, bits }; setBusy(true);
+    let memory: ReturnType<typeof reserveReleaseReviewMemory> | undefined;
+    let published = false;
     try {
+      memory = reserveReleaseReviewMemory(track, bits);
       const source = await getAudio(audioKey(track)); controller.signal.throwIfAborted();
       if (!source) throw new Error("The source audio is missing. Restore the matching source in Library.");
-      const result = await collectReleaseReview(source, track, bits, platform, controller.signal);
-      if (controller.signal.aborted || !owns(controller) || latest.current !== track) return;
-      pending.current = null; setBusy(false); setArtifact(result);
+      const result = await collectReleaseReview(source, track, bits, platform, controller.signal, memory);
+      if (controller.signal.aborted || !owns(controller) || latest.current !== track) { result.dispose(); return; }
+      pending.current = null; setBusy(false); retainedArtifact.current = result; setArtifact(result); published = true;
     } catch (cause) {
       if (!controller.signal.aborted && owns(controller)) {
         pending.current = null; setBusy(false); setError(cause instanceof Error ? cause.message : "The release check failed. Try again.");
       }
-    }
+    } finally { if (!published) memory?.dispose(); }
   }
   function downloadReport() {
     if (!report || !profile) return;
@@ -85,7 +103,7 @@ function TrackReleaseReview({ track }: { track: Track }) {
           {releaseProfiles.map((item) => <button type="button" key={item.name} className={`chip min-h-[44px]${platform === item.name ? " is-active" : ""}`} aria-pressed={platform === item.name} onClick={() => { setPlatform(item.name); }}>{item.name}</button>)}
         </div>
         <label className="control-label">Review encoding <select className="min-h-[44px] max-w-full" aria-label="Review encoding" value={bits} onChange={(event) => {
-          const value = Number(event.target.value); if (value === 16 || value === 24 || value === 32) { cancel(); setBits(value); }
+          const value = Number(event.target.value); if (value === 16 || value === 24 || value === 32) { cancel(); setArtifact(null); setBits(value); }
         }}><option value={16}>16-bit PCM WAV</option><option value={24}>24-bit PCM WAV</option><option value={32}>32-bit Float WAV</option></select></label>
       </div>
       <Button onClick={() => void run()} disabled={busy || !track.sourceIdentity} icon={<Icon name={busy ? "refresh-cw" : "gauge"} />}>{busy ? "Measuring encoded audio…" : "Run release check"}</Button>
@@ -103,7 +121,11 @@ function TrackReleaseReview({ track }: { track: Track }) {
       <p className="disclosure">{measured ? "Download uses this retained measured WAV; it does not render another file." : "Saved measurements restored. Run again to restore the measured WAV download."}</p>
       <div className="report-actions flex-wrap">
         <Button variant="secondary" icon={<Icon name="arrow-down-to-line" />} onClick={downloadReport}>Download JSON report</Button>
-        <Button variant="secondary" disabled={!measured} onClick={() => { if (measured) download(measured.wav, "aurialis-reviewed-master.wav"); }}>Download measured WAV</Button>
+        <Button variant="secondary" disabled={!measured} onClick={() => {
+          if (!measured) return;
+          try { downloadLocalBlob(measured.wav, "aurialis-reviewed-master.wav"); }
+          catch (cause) { setError(cause instanceof Error ? cause.message : "The measured WAV could not be downloaded. Try again."); }
+        }}>Download measured WAV</Button>
         <Button variant="secondary" disabled={busy} onClick={() => { dispatch({ type: "SAVE_RELEASE_REVIEW", expected: track, report: { ...report, platform } }); }}>Save report to project</Button>
       </div>
     </section>}

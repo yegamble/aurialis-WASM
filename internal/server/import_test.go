@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"math"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
+	"github.com/yegamble/Aurialis-WASM/internal/mastering"
 	"github.com/yegamble/Aurialis-WASM/internal/server"
 )
 
@@ -45,11 +47,12 @@ func TestCanonicalImportCarriesFiniteMeasurementsAndPreservesHeadroom(t *testing
 		t.Fatalf("source metrics header bytes=%d", len(header))
 	}
 	var metadata struct {
-		SampleRate    int         `json:"sampleRate"`
-		Frames        int         `json:"frames"`
-		Duration      float64     `json:"duration"`
-		BeforeMetrics dsp.Metrics `json:"beforeMetrics"`
-		AfterMetrics  dsp.Metrics `json:"afterMetrics"`
+		SourceIdentity mastering.SourceIdentity `json:"sourceIdentity"`
+		SampleRate     int                      `json:"sampleRate"`
+		Frames         int                      `json:"frames"`
+		Duration       float64                  `json:"duration"`
+		BeforeMetrics  dsp.Metrics              `json:"beforeMetrics"`
+		AfterMetrics   dsp.Metrics              `json:"afterMetrics"`
 	}
 	if err := json.Unmarshal([]byte(header), &metadata); err != nil {
 		t.Fatalf("source metrics JSON was not finite and valid: %v", err)
@@ -67,6 +70,17 @@ func TestCanonicalImportCarriesFiniteMeasurementsAndPreservesHeadroom(t *testing
 	}
 	if !bytes.Equal(w.Body.Bytes(), wantWAV) {
 		t.Fatal("bypass import altered source samples, float headroom or retained metadata")
+	}
+	canonical, err := audio.DecodeAndDisarm("canonical.wav", w.Body.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := mastering.SourceIdentityContext(context.Background(), canonical)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.SourceIdentity != identity || identity.SampleRate != metadata.SampleRate || identity.Frames != int64(metadata.Frames) || len(identity.PCMHash) != 64 {
+		t.Fatalf("canonical import identity mismatch: header%+v decoded%+v", metadata.SourceIdentity, identity)
 	}
 }
 

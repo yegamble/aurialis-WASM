@@ -165,6 +165,15 @@ func AnalyzeFeaturesContext(ctx context.Context, buf *audio.Buffer, onProgress f
 	return result, nil
 }
 
+// SourceIdentityContext validates and hashes canonical stereo PCM without FFT analysis.
+// Its version-1 byte layout matches Features 1.0 and canonical import metadata.
+func SourceIdentityContext(ctx context.Context, buf *audio.Buffer) (SourceIdentity, error) {
+	if err := validateStereoBuffer(ctx, buf); err != nil {
+		return SourceIdentity{}, err
+	}
+	return sourceIdentityContext(ctx, buf)
+}
+
 func sourceIdentityContext(ctx context.Context, buf *audio.Buffer) (SourceIdentity, error) {
 	hash := sha256.New()
 	var header [16]byte

@@ -5,7 +5,8 @@ const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   testDir: "./e2e",
-  fullyParallel: false,
+  // Shard individual independent tests; one worker still serializes audio per VM.
+  fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,
   workers: 1,

@@ -15,7 +15,7 @@ func studioMuReduction(levelDB float64, params CompressorParams) float64 {
 	if params.Ratio == 1 {
 		return 0
 	}
-	distance := math.Max(0, levelDB-(params.ThresholdDB-params.KneeDB))
+	distance := studioExactMax(0, levelDB-(params.ThresholdDB-params.KneeDB))
 	if distance == 0 {
 		return 0
 	}
@@ -27,10 +27,10 @@ func studioMuReduction(levelDB float64, params CompressorParams) float64 {
 }
 
 func (s *studioMuState) process(left, right float64, params CompressorParams, coeffs studioMuCoeffs) float64 {
-	rectified := math.Max(math.Abs(left), math.Abs(right))
+	rectified := studioExactMax(math.Abs(left), math.Abs(right))
 	s.detector = sanitizeSample(coeffs.detector*s.detector + (1-coeffs.detector)*rectified)
 	target := studioMuReduction(linToDB(s.detector), params)
-	s.memory = sanitizeSample(coeffs.memory*s.memory + (1-coeffs.memory)*math.Min(1, target/12))
+	s.memory = sanitizeSample(coeffs.memory*s.memory + (1-coeffs.memory)*studioExactMin(1, target/12))
 	release := coeffs.release
 	if params.AutoRelease {
 		release = coeffs.autoFast + s.memory*(coeffs.autoSlow-coeffs.autoFast)

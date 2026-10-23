@@ -13,7 +13,7 @@ func prepareStudioVCA(rate float64, params CompressorParams) studioVCACoeffs {
 // Crest memory selects fast recovery for sparse peaks and slow recovery for dense
 // material. The 60–600 ms poles are engineering candidates, not hardware data.
 func (s *studioVCAState) process(left, right float64, params CompressorParams, coeffs studioVCACoeffs) float64 {
-	power := math.Max(left*left, right*right)
+	power := studioExactMax(left*left, right*right)
 	s.power = sanitizeSample(coeffs.detector*s.power + (1-coeffs.detector)*power)
 	peak := math.Sqrt(power)
 	if peak >= s.peak {
@@ -21,9 +21,9 @@ func (s *studioVCAState) process(left, right float64, params CompressorParams, c
 	} else {
 		s.peak = sanitizeSample(coeffs.peakRelease*s.peak + (1-coeffs.peakRelease)*peak)
 	}
-	crest := math.Min(1, math.Max(0, 10*math.Log10(math.Max(s.peak*s.peak, 1e-24)/math.Max(s.power, 1e-24))/12))
+	crest := studioExactMin(1, studioExactMax(0, 10*math.Log10(studioExactMax(s.peak*s.peak, 1e-24)/studioExactMax(s.power, 1e-24))/12))
 	s.crest = sanitizeSample(coeffs.crest*s.crest + (1-coeffs.crest)*crest)
-	target := studioSoftKnee(10*math.Log10(math.Max(s.power, 1e-24)), params)
+	target := studioSoftKnee(10*math.Log10(studioExactMax(s.power, 1e-24)), params)
 	release := coeffs.release
 	if params.AutoRelease {
 		release = coeffs.autoSlow + s.crest*(coeffs.autoFast-coeffs.autoSlow)

@@ -19,14 +19,14 @@ func prepareStudioOptical(rate float64, params CompressorParams) studioOpticalCo
 }
 
 func (s *studioOpticalState) process(left, right float64, params CompressorParams, coeffs studioOpticalCoeffs) float64 {
-	peak := math.Max(math.Abs(left), math.Abs(right))
+	peak := studioExactMax(math.Abs(left), math.Abs(right))
 	if peak >= s.peak {
 		s.peak = peak
 	} else {
 		s.peak = sanitizeSample(coeffs.peakRelease*s.peak + (1-coeffs.peakRelease)*peak)
 	}
 	target := studioSoftKnee(linToDB(s.peak), params)
-	exposure := math.Min(1, target/12)
+	exposure := studioExactMin(1, target/12)
 	s.exposure = sanitizeSample(coeffs.exposure*s.exposure + (1-coeffs.exposure)*exposure)
 	fast := coeffs.release
 	if target > s.fastGR {
@@ -40,5 +40,5 @@ func (s *studioOpticalState) process(left, right float64, params CompressorParam
 		slow = coeffs.slowAttack
 	}
 	s.slowGR = sanitizeSample(slow*s.slowGR + (1-slow)*target)
-	return math.Max(s.fastGR, s.exposure*s.slowGR)
+	return studioExactMax(s.fastGR, s.exposure*s.slowGR)
 }

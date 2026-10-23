@@ -1,7 +1,5 @@
 package dsp
 
-import "math"
-
 const studioEnvelopeChunk = 2048
 
 type studioEnvelopeLine struct {
@@ -109,7 +107,7 @@ func (e *studioGainEnvelope) bound(frame int64) float64 {
 		if n.epoch != epoch {
 			break
 		}
-		damage = math.Max(damage, n.slope*float64(x)+n.offset)
+		damage = studioExactMax(damage, n.slope*float64(x)+n.offset)
 		if low == high {
 			break
 		}
@@ -122,5 +120,5 @@ func (e *studioGainEnvelope) bound(frame int64) float64 {
 			index = index*2 + 1
 		}
 	}
-	return math.Max(0, 1-damage)
+	return studioExactMax(0, 1-damage)
 }

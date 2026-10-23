@@ -112,7 +112,7 @@ func studioSoftKnee(levelDB float64, params CompressorParams) float64 {
 		inside := over + params.KneeDB/2
 		return slope * inside * inside / (2 * params.KneeDB)
 	}
-	return math.Max(0, slope*over)
+	return studioExactMax(0, slope*over)
 }
 
 func studioPole(rate, milliseconds float64) float64 {

@@ -67,7 +67,7 @@ func (p *studioPartitionedPostGuardPath) process(l *studioPostGuardLimiter, left
 	raw := 0.0
 	if frame >= 0 {
 		slot := frame & (studioPostGuardLimiterCapacity - 1)
-		raw = math.Max(math.Abs(l.audio[0][slot]), math.Abs(l.audio[1][slot]))
+		raw = studioExactMax(math.Abs(l.audio[0][slot]), math.Abs(l.audio[1][slot]))
 	}
 	l.peaks[frame&(studioPostGuardLimiterCapacity-1)] = studioPostGuardLimiterPeak{frame: frame, value: peak, raw: raw, required: l.requiredGain(peak, raw)}
 	delay, hold := l.envelopeTiming()
@@ -86,13 +86,13 @@ func (p *studioPartitionedPostGuardPath) process(l *studioPostGuardLimiter, left
 		} else {
 			l.slowGain = l.slowRelease*l.slowGain + (1-l.slowRelease)*bound
 		}
-		target := math.Min(1, (1-bound)/.75)
+		target := studioExactMin(1, (1-bound)/.75)
 		pole := l.exposureRelease
 		if target > l.exposure {
 			pole = l.exposureAttack
 		}
 		l.exposure = pole*l.exposure + (1-pole)*target
-		l.lastGain = math.Min(bound, math.Min(l.fastGain, 1-l.exposure*(1-l.slowGain)))
+		l.lastGain = studioExactMin(bound, studioExactMin(l.fastGain, 1-l.exposure*(1-l.slowGain)))
 	} else {
 		l.lastGain = 1
 	}

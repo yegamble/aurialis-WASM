@@ -65,7 +65,7 @@ func (l *studioLimiterGain4x) process(left, right float64) (float64, float64, fl
 	}
 	slot := int(l.frame) & (studioLimiterHighCapacity - 1)
 	l.audio[0][slot], l.audio[1][slot] = left, right
-	peak := math.Max(math.Abs(left), math.Abs(right))
+	peak := studioExactMax(math.Abs(left), math.Abs(right))
 	if l.enabled && peak > l.ceiling {
 		required := l.ceiling * l.safety / peak
 		l.envelope.add(l.frame, 0, l.lookahead, 0, required)
@@ -84,13 +84,13 @@ func (l *studioLimiterGain4x) process(left, right float64) (float64, float64, fl
 		} else {
 			l.slowGain = l.slowRelease*l.slowGain + (1-l.slowRelease)*bound
 		}
-		target := math.Min(1, (1-bound)/.75)
+		target := studioExactMin(1, (1-bound)/.75)
 		pole := l.exposureRelease
 		if target > l.exposure {
 			pole = l.exposureAttack
 		}
 		l.exposure = pole*l.exposure + (1-pole)*target
-		l.lastGain = math.Min(bound, math.Min(l.fastGain, 1-l.exposure*(1-l.slowGain)))
+		l.lastGain = studioExactMin(bound, studioExactMin(l.fastGain, 1-l.exposure*(1-l.slowGain)))
 	} else {
 		l.lastGain = 1
 	}

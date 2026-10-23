@@ -4,7 +4,6 @@ import { WorkspaceLink as Link } from "./shared/WorkspaceLink";
 import {
   engineParams,
   measureAudio,
-  measureScriptAudio,
   trackMetrics,
   normalizeSimpleAudio,
   processPreview,
@@ -21,6 +20,7 @@ import { ExtendedCompressorControls, ExtendedStereoControls, FrequencyDynamicsCo
 import { DSPModule } from "./shared/DSPModule";
 import { EQBandControls, LimiterReleaseControl } from "./shared/EQBandControls";
 import { RealTransport } from "./shared/RealTransport";
+import { ReleaseReview } from "./shared/ReleaseReview";
 import { createLivePlayback, type LiveMeter, type LivePlaybackController, type LivePlaybackState, type LiveSpectrum } from "@/lib/live-playback";
 import { usePathname } from "next/navigation";
 import { navigateWorkspace, useWorkspacePath, workspaceRoute, type WorkstationRoute } from "@/lib/workspace-navigation";
@@ -253,7 +253,7 @@ export function AurialisWorkstation({
         {route === "albums" && <AlbumsView />}
         {route === "album" && <AlbumView key={resolvedId} albumId={resolvedId} />}
         {route === "reference" && <ReferenceMatchingPanel key={resolvedId} trackId={resolvedId} />}
-        {route === "release-check" && <ReleaseView key={resolvedId} trackId={resolvedId} />}
+        {route === "release-check" && <ReleaseReview key={resolvedId} trackId={resolvedId} />}
         {route === "tools" && <ToolsView />}
       </main>
 
@@ -1890,73 +1890,6 @@ function AlbumView({ albumId }: { albumId: string }) {
   );
 }
 
-function ReleaseView({ trackId }: { trackId: string }) {
-  const { state } = useStore();
-  const track = state.tracks.find((item) => item.id === trackId);
-  const [platform, setPlatform] = useState("Streaming");
-  const [scanning, setScanning] = useState(false);
-  const [error, setError] = useState("");
-  const [scan, setScan] = useState<{ key: string; metrics: Awaited<ReturnType<typeof measureAudio>>["afterMetrics"] } | null>(null);
-  const pending = useRef<AbortController | null>(null);
-  useEffect(() => () => { pending.current?.abort(); }, []);
-  if (!track) return <div className="page"><PageTitle eyebrow="Release check" title="Choose your audio first" copy="Import a track to measure its rendered audio." /><Link className={buttonClassName("primary")} href="/">Import audio</Link></div>;
-  const key = JSON.stringify([track.id, track.sourceRevision, appliedRevisionKey(track) ?? engineParams(track.advanced)]);
-  const metrics = scan?.key === key ? scan.metrics : null;
-  const targetLufs = platform === "Dynamic" || platform === "Spoken word" ? -16 : -14;
-  const maxPeak = -1;
-  const loudnessDelta = metrics ? Math.abs(metrics.integratedLufs - targetLufs) : 0;
-  const checks: [string, string, "pass" | "warn", string][] = metrics ? [
-    ["Integrated loudness", `${metrics.integratedLufs.toFixed(1)} LUFS`, loudnessDelta <= 1 ? "pass" : "warn", `Working target ${String(targetLufs)} LUFS; measured difference ${loudnessDelta.toFixed(1)} LU.`],
-    ["Reconstructed peak estimate", `${metrics.truePeakDbtp.toFixed(1)} dBTP`, metrics.truePeakDbtp <= maxPeak ? "pass" : "warn", "4× FIR estimate. Leave headroom for delivery codecs; this is not a delivery certification."],
-    ["Sample peak", `${metrics.samplePeakDbfs.toFixed(1)} dBFS`, metrics.clippingSamples === 0 ? "pass" : "warn", `${String(metrics.clippingSamples)} samples at or above the clipping threshold.`],
-    ["Crest factor", `${metrics.dynamicRangeDb.toFixed(1)} dB`, metrics.dynamicRangeDb >= 6 ? "pass" : "warn", "Peak-to-RMS diagnostic; this is not loudness range (LRA) or a DR certification."],
-    ["Stereo correlation", metrics.correlation.toFixed(2), metrics.correlation >= 0 ? "pass" : "warn", "Negative correlation can indicate mono cancellation. Listen to the rendered master in mono."],
-  ] : [];
-  const score = metrics ? Math.round(100 * checks.filter((check) => check[2] === "pass").length / checks.length) : undefined;
-  const run = async () => {
-    pending.current?.abort();
-    const controller = new AbortController();
-    pending.current = controller;
-    setScanning(true); setError("");
-    try {
-      const file = await getAudio(audioKey(track));
-      if (!file) throw new Error("The source audio is missing. Import the track again.");
-      const result = track.deepMastering?.applied ? await measureScriptAudio(file, track.deepMastering.applied, controller.signal) : await measureAudio(file, engineParams(track.advanced), controller.signal);
-      if (!controller.signal.aborted) setScan({ key, metrics: result.afterMetrics });
-    } catch (cause) {
-      if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Measurement failed. Please retry.");
-    } finally { if (!controller.signal.aborted) setScanning(false); }
-  };
-  return (
-    <div className="page">
-      <PageTitle eyebrow="Release check" title="Ready for the handoff?" copy="Measure your current master against working delivery targets."
-        action={<Link className={buttonClassName("secondary")} href={`/master/${track.id}`}>Back to master</Link>} />
-      <div className="release-top paper-panel">
-        <div className="score-ring" aria-label="Checks within working targets"><strong>{score ?? "—"}</strong><span>checks passed</span></div>
-        <div><span className="eyebrow">Selected release</span><h2>{track.title}</h2>
-          <p>{metrics ? "Measurements reflect the current rendered settings." : "Run a check to measure actual rendered audio. Settings changes invalidate the previous check."}</p>
-          <div className="platforms" role="group" aria-label="Working delivery target">
-            {["Streaming", "Dynamic", "Spoken word"].map((item) => <button type="button" key={item} className={platform === item ? "chip is-active" : "chip"} aria-pressed={platform === item} onClick={() => { setPlatform(item); }}>{item}</button>)}
-          </div>
-        </div>
-        <Button onClick={() => void run()} disabled={scanning} icon={<Icon name={scanning ? "refresh-cw" : "gauge"} />}>{scanning ? "Measuring audio…" : "Run release check"}</Button>
-      </div>
-      <p className="disclosure" role={error ? "alert" : "status"}>{error || "Targets are working preferences, not platform requirements or delivery certification."}</p>
-      {metrics && <section className="check-list">
-        <div className="check-list-head"><span>Check</span><span>Reading</span><span>Guidance</span></div>
-        {checks.map(([name, value, status, note]) => <div className="check-item" key={name}>
-          <span className={`check-icon check-icon--${status}`}><Icon name={status === "pass" ? "check" : "circle-alert"} /></span>
-          <strong>{name} ({status === "pass" ? "Pass" : "Review"})</strong><span>{value}</span><p>{note}</p>
-        </div>)}
-        <div className="report-actions"><Button variant="secondary" icon={<Icon name="arrow-down-to-line" />} onClick={() => {
-          const url = URL.createObjectURL(new Blob([JSON.stringify({ track: track.title, target: platform, targetLufs, score, metrics, checks, settings: track.deepMastering?.applied ?? engineParams(track.advanced) }, null, 2)], { type: "application/json" }));
-          const anchor = document.createElement("a"); anchor.href = url; anchor.download = "aurialis-audio-review.json"; anchor.click();
-          setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
-        }}>Download JSON report</Button></div>
-      </section>}
-    </div>
-  );
-}
 
 function ToolsView() {
   const { state } = useStore();

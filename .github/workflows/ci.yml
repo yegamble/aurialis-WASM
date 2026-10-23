@@ -266,6 +266,7 @@ jobs:
         run: bash scripts/test-wasm.sh
       - name: Verify actual local-job WASM against native CDR and mastering
         run: |
+          set -euo pipefail
           mkdir -p artifacts/browser-local
           node scripts/verify-browser-jobs.mjs | tee artifacts/browser-local/wasm-oracle.log
       - name: Retain local-job native and WASM oracle evidence

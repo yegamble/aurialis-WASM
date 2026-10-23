@@ -42,7 +42,7 @@ func prepareStudioPostGuardKernel() studioPostGuardKernel {
 }
 
 type studioPostGuardDetector struct {
-	history     [2][1024]float64
+	history     [2][2048]float64
 	subs        [2][8]float64
 	subCursor   int
 	cursor      int
@@ -52,12 +52,17 @@ type studioPostGuardDetector struct {
 
 func (s *studioPostGuardDetector) process(kernel *studioPostGuardKernel, left, right float64) (int64, float64) {
 	s.history[0][s.cursor], s.history[1][s.cursor] = left, right
+	s.history[0][s.cursor+1024], s.history[1][s.cursor+1024] = left, right
 	var samples [4][2]float64
 	for ch := range s.history {
-		samples[0][ch] = s.history[ch][(s.cursor-studioPostGuardHalf)&1023]
+		samples[0][ch] = s.history[ch][s.cursor+1024-studioPostGuardHalf]
+		// Fixed-length views establish the bounds once per channel. The original
+		// ring's arithmetic/summation order remains unchanged.
+		frontHistory := (*[512]float64)(s.history[ch][s.cursor+513 : s.cursor+1025])
+		backHistory := (*[512]float64)(s.history[ch][s.cursor+1 : s.cursor+513])
 		quarter, half, threeQuarter := 0.0, 0.0, 0.0
 		for tap, coefficient := range kernel.half {
-			front, back := s.history[ch][(s.cursor-tap)&1023], s.history[ch][(s.cursor-1023+tap)&1023]
+			front, back := frontHistory[511-tap], backHistory[tap]
 			a, b := kernel.quarter[tap], kernel.quarter[1023-tap]
 			quarter += a*front + b*back
 			threeQuarter += b*front + a*back

@@ -35,7 +35,9 @@ func (b *liveBlockBridge) process() uint32 {
 			b.inputs[channel][frame] = sample
 		}
 	}
-	b.bridge.ProcessBlock(b.inputs[0][:], b.inputs[1][:], b.channels[2][:], b.channels[3][:])
+	if !b.bridge.ProcessBlock(b.inputs[0][:], b.inputs[1][:], b.channels[2][:], b.channels[3][:]) {
+		return 0
+	}
 	for channel := 2; channel < 4; channel++ {
 		for frame, sample := range b.channels[channel] {
 			if sample == 0 {

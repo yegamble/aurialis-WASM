@@ -107,6 +107,22 @@ describe("device-local browser audio transport", () => {
     } finally { first.dispose(); second.dispose(); }
   });
 
+  it("rejects a cache increase between preflight and clone and releases the failed job charge", async () => {
+    const { deviceAudioRequest, reserveBrowserAudioMemory } = await import("../browser-jobs");
+    const owner = reserveBrowserAudioMemory();
+    const file = new File([source()], "source.wav");
+    Object.defineProperty(file, "size", { value: 16 * 1024 * 1024 });
+    const read = vi.spyOn(file, "arrayBuffer");
+    const form = new FormData(); form.append("file", file);
+    try {
+      await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: form }, () => { owner.update(400 * 1024 * 1024); })).rejects.toThrow("memory budget");
+      expect(read).not.toHaveBeenCalled();
+      expect(TestWorker.all).toHaveLength(0);
+      expect(() => { owner.update(400 * 1024 * 1024); }).not.toThrow();
+    } finally { owner.dispose(); }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed or unsafe retained-byte counts without changing existing reservations", async () => {
     const { reserveBrowserAudioMemory } = await import("../browser-jobs");
     const held = reserveBrowserAudioMemory(1024);

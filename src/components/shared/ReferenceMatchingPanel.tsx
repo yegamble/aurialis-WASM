@@ -30,19 +30,23 @@ export function ReferenceMatchingPanel({ trackId }: { trackId: string }) {
   function cancel(note = "Reference analysis canceled.") { const current = operation.current; operation.current = null; current?.abort(); setBusy(false); setReview(null); setError(""); setMessage(note); }
   useEffect(() => () => { const current = operation.current; operation.current = null; current?.abort(); }, []);
   useEffect(() => {
+    // Acknowledge the reducer before validating session ownership. A prior
+    // render's passive effect may still run after Apply has been requested.
+    let rejected = false;
+    if (pending && track) {
+      if (track.advanced === pending.next && sameLoadedSource(pending.expected, track) && !hasAppliedDeep(track)) {
+        owner.current = pending.next;
+        setMessage(pending.restoring ? "The complete settings from before this Reference session were restored." : "Measured proposal applied. Return to master to audition or export the current settings.");
+        setPending(null);
+        if (pending.restoring) { setReview(null); before.current = null; owner.current = null; }
+        else setReview((current) => current ? { ...current, owner: pending.next } : null);
+      } else if (track !== pending.expected) { setPending(null); setReview(null); rejected = true; }
+    }
     if (before.current && (!sameLoadedSource(before.current, track) || track?.advanced !== owner.current || hasAppliedDeep(track))) {
       before.current = null; owner.current = null; cancel("Source or processing changed. Analyze a fresh proposal before applying.");
     } else if (review && (!sameLoadedSource(review.reference, reference) || !sameLoadedSource(review.source, track))) cancel("Source or reference changed. Analyze again.");
-  }, [track, reference, review]);
-  useEffect(() => {
-    if (!pending || !track) return;
-    if (track.advanced === pending.next) {
-      setMessage(pending.restoring ? "The complete settings from before this Reference session were restored." : "Measured proposal applied. Return to master to audition or export the current settings.");
-      setPending(null);
-      if (pending.restoring) { setReview(null); before.current = null; owner.current = null; }
-      else setReview((current) => current ? { ...current, owner: pending.next } : null);
-    } else if (track !== pending.expected) { setPending(null); setError("The project changed before Apply. Your newer settings were preserved; analyze again."); }
-  }, [track, pending]);
+    if (rejected) setError("The project changed before Apply. Your newer settings were preserved; analyze again.");
+  }, [track, reference, review, pending]);
 
   async function analyze() {
     if (!track || !reference || !track.sourceIdentity || !reference.sourceIdentity || hasAppliedDeep(track)) return;
@@ -67,12 +71,12 @@ export function ReferenceMatchingPanel({ trackId }: { trackId: string }) {
   function apply() {
     if (!track || !reference || !review || pending || hasAppliedDeep(track) || !sameLoadedSource(review.source, track) || !sameLoadedSource(review.reference, reference) || track.advanced !== review.owner) { setError("This proposal is stale. Analyze again before applying."); return; }
     const next = review.proposal.advanced;
-    owner.current = next; setPending({ expected: track, next, restoring: false });
+    setPending({ expected: track, next, restoring: false });
     dispatch({ type: "APPLY_REFERENCE", expected: track, reference, advanced: next });
   }
   function revert() {
     if (!track || !before.current || track.advanced !== owner.current || hasAppliedDeep(track) || !sameLoadedSource(before.current, track)) return;
-    const original = before.current; owner.current = original.advanced;
+    const original = before.current;
     setPending({ expected: track, next: original.advanced, restoring: true });
     dispatch({ type: "APPLY_REFERENCE", expected: track, advanced: original.advanced, restore: { mode: original.mode, ...(original.simpleCustom !== undefined ? { simpleCustom: original.simpleCustom } : {}), ...(original.shortcutUndo ? { shortcutUndo: original.shortcutUndo } : {}) } });
   }

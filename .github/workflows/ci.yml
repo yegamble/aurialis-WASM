@@ -75,10 +75,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: ./.github/actions/setup-go
         with:
-          go-version: "1.26.10"
-          cache-dependency-path: go.mod
+          role: static-security
       - name: Check gofmt formatting
         run: |
           UNFORMATTED=$("$(go env GOROOT)/bin/gofmt" -l cmd internal wasm)
@@ -106,10 +105,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: ./.github/actions/setup-go
         with:
-          go-version: "1.26.10"
-          cache-dependency-path: go.mod
+          role: race-meters
       - name: Run Go unit & concurrency race tests
         run: go test -race -count=1 -timeout 10m ./...
       - name: Install FFmpeg for independent meter verification
@@ -156,10 +154,10 @@ jobs:
           pnpm exec cspell lint "**/*.{ts,tsx,go,md}"
       - name: Run Vitest unit & component suite
         run: pnpm test
-      - uses: actions/setup-go@v5
+      - uses: ./.github/actions/setup-go
         with:
-          go-version: "1.26.10"
-          cache-dependency-path: go.mod
+          role: native-build
+          embedded-source-key: ${{ hashFiles('src/**', 'public/**', 'scripts/**', 'package.json', 'pnpm-lock.yaml', 'next.config.ts', 'postcss.config.mjs', 'tsconfig.json') }}
       - name: Restore Next build cache
         uses: actions/cache@v4
         with:
@@ -196,10 +194,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: ./.github/actions/setup-go
         with:
-          go-version: "1.26.10"
-          cache-dependency-path: go.mod
+          role: wasm-parity
       - uses: actions/setup-node@v4
         with:
           node-version: "26.12.0"
@@ -269,10 +266,9 @@ jobs:
         shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: ./.github/actions/setup-go
         with:
-          go-version: "1.26.10"
-          cache-dependency-path: go.mod
+          role: browser-oracles-${{ matrix.shard }}
       - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
@@ -287,13 +283,19 @@ jobs:
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
       - name: Restore Chromium browser cache
         id: chromium-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install Chromium and OS dependencies on cache miss
         if: steps.chromium-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium
+      - name: Save Chromium from one designated shard
+        if: matrix.shard == 1 && steps.chromium-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.chromium-cache.outputs.cache-primary-key }}
       - name: Install uncached OS dependencies on browser cache hit
         if: steps.chromium-cache.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium

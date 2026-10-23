@@ -1,0 +1,27 @@
+name: Set up Go with an isolated object cache
+description: Keep each CI role's compiled objects independently writable.
+inputs:
+  role:
+    description: Stable job role; matrix jobs must use distinct values.
+    required: true
+  embedded-source-key:
+    description: Additional source hash for jobs that embed generated frontend assets.
+    default: core
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: "1.26.10"
+        cache: false
+    - name: Locate the Go object cache
+      id: go-cache
+      shell: bash
+      run: echo "path=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+    - name: Restore and save this role's compiled Go objects
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.go-cache.outputs.path }}
+        key: go-objects-v1-${{ runner.os }}-${{ runner.arch }}-1.26.10-${{ inputs.role }}-${{ hashFiles('go.mod') }}-${{ hashFiles('cmd/**/*.go', 'internal/**/*.go', 'wasm/**/*.go') }}-${{ inputs.embedded-source-key }}
+        restore-keys: |
+          go-objects-v1-${{ runner.os }}-${{ runner.arch }}-1.26.10-${{ inputs.role }}-${{ hashFiles('go.mod') }}-

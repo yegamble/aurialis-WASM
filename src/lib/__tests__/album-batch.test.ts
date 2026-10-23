@@ -88,7 +88,7 @@ beforeEach(() => {
   vi.mocked(measureScriptAudio).mockImplementation((blob) => measureAudio(blob));
   vi.mocked(analyzeSourceFeatures).mockImplementation(async (blob) => ({ source: await sourceIdentity(blob), bands, sections: [{ id: "all", name: "All", startFrame: 0, endFrame: frames, confidence: 0 }], warnings: [] }));
 });
-afterEach(() => { paths.clear(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { paths.clear(); vi.restoreAllMocks(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
 
 describe("album batch ownership and final encoded measurement", () => {
   it("plans the complete cohort before rendering, applies a separate pure-gain stage, and measures the exact retained 24-bit WAV", async () => {
@@ -139,6 +139,21 @@ describe("album batch ownership and final encoded measurement", () => {
     const huge = tracks.map((track) => ({ ...track, duration: 16_777_216 / rate, sourceIdentity: { pcmHash: "a".repeat(64), frames: 16_777_216, sampleRate: rate } }));
     expect(() => new AlbumBatch(album, huge, memory().reserve)).toThrow(/128 MiB/u);
     expect(() => new AlbumBatch({ ...album, trackIds: Array.from({ length: 65 }, (_, i) => `x${String(i)}`) }, Array.from({ length: 65 }, (_, i) => ({ ...tracks[0] as Track, id: `x${String(i)}` })), memory().reserve)).toThrow(/64/u);
+  });
+  it("reserves first-use source hash copies before reading and counts a retained prefix alongside another active owner", async () => {
+    const { album, tracks } = await fixture(), canonicalBytes = 44 + frames * 8, encodedBytes = 44 + frames * 6;
+    const blob = paths.get(tracks[0]?.id ?? ""); if (!blob) throw new Error("Missing source");
+    const read = vi.spyOn(blob, "arrayBuffer");
+    const tooSmall = memory(canonicalBytes * 3 - 1), denied = new AlbumBatch(album, tracks, tooSmall.reserve);
+    await expect(denied.run(() => true, () => undefined)).rejects.toThrow(/memory/u);
+    expect(getAudio).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled(); denied.dispose();
+    const renderBytes = canonicalBytes * 5 + encodedBytes * 3;
+    const owners = memory(renderBytes + encodedBytes), batch = new AlbumBatch(album, tracks, owners.reserve);
+    let external: ReturnType<AlbumMemoryFactory> | undefined;
+    await expect(batch.run(() => true, (progress) => { if (progress.completed === 1) external = owners.reserve(1); })).rejects.toThrow(/memory/u);
+    expect(batch.getFiles()).toHaveLength(1); expect(getAudio).toHaveBeenCalledTimes(3);
+    expect(owners.total()).toBe(encodedBytes + 1); expect(owners.owners.filter((owner) => !owner.disposed)).toHaveLength(2);
+    external?.dispose(); batch.dispose(); expect(owners.total()).toBe(0);
   });
   it("preserves the full accepted Deep script and binds every authored point, title, source and album setting", async () => {
     const { album, tracks } = await fixture(), first = tracks[0]; if (!first?.sourceIdentity) throw new Error("Missing source");

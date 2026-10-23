@@ -67,8 +67,8 @@ export function albumLinearParams(gainDb: number) {
 /** Own one unchanged cohort and its verified completed prefix. Audio never enters a saved report. */
 export class AlbumBatch {
   readonly key: string;
-  readonly album: Album;
-  readonly tracks: Track[];
+  private readonly album: Album;
+  private readonly tracks: Track[];
   private readonly reserve: AlbumMemoryFactory;
   private readonly prefixMemory: AlbumMemoryOwner;
   private prefixBytes = 0;
@@ -116,8 +116,8 @@ export class AlbumBatch {
         const readings: AlbumReading[] = [];
         for (const track of this.tracks) {
           const source = identity(track), canonicalBytes = 44 + source.frames * 8;
-          // Source Blob plus a temporary verification buffer; workers reserve their own job/clone bytes.
-          work.update(canonicalBytes * 2); progress(`Measuring accepted chain ${String(readings.length + 1)} of ${String(this.tracks.length)}: ${track.title}`);
+          // Source Blob, verification arrayBuffer and WebCrypto input snapshot; workers reserve their own job/clone bytes.
+          work.update(canonicalBytes * 3); progress(`Measuring accepted chain ${String(readings.length + 1)} of ${String(this.tracks.length)}: ${track.title}`);
           const blob = await getAudio(audioKey(track)); check();
           if (!blob) throw new Error(`The source for “${track.title}” is missing. Restore it in Library.`);
           await verifyCanonicalSource(blob, source, signal); check();
@@ -132,7 +132,7 @@ export class AlbumBatch {
       else {
         // Resume only after re-verifying every source, including the retained completed prefix.
         for (const track of this.tracks) {
-          const expected = identity(track); work.update((44 + expected.frames * 8) * 2);
+          const expected = identity(track); work.update((44 + expected.frames * 8) * 3);
           const blob = await getAudio(audioKey(track)); check();
           if (!blob) { this.dispose(); throw new Error(`The source for “${track.title}” is missing. Restore it in Library.`); }
           try { await verifyCanonicalSource(blob, expected, signal); }
@@ -149,9 +149,10 @@ export class AlbumBatch {
         const track = this.tracks.at(index), gain = this.plan.tracks.at(index), before = this.readings.at(index);
         if (!track || !gain || !before) throw new Error("The planned sequence is incomplete.");
         const source = identity(track), canonicalBytes = 44 + source.frames * 8, encodedBytes = 44 + source.frames * 6;
-        // Covers original source, 32-bit chain master, final WAV + inspection buffer, and final canonical feature input.
-        // The conservative overlap remains charged until every async operation for this track has returned.
-        work.update(canonicalBytes * 3 + encodedBytes * 2);
+        // Conservatively covers original source, full-chain and final canonical Blobs (3*C),
+        // source verification arrayBuffer + WebCrypto snapshot (2*C), and encoded Blob/scan/hash copies (3*E).
+        // Prefix and worker job/clone owners overlap this reservation until every async operation returns.
+        work.update(canonicalBytes * 5 + encodedBytes * 3);
         progress(`Rendering and verifying ${String(index + 1)} of ${String(this.tracks.length)}: ${track.title}`);
         const result = await this.renderTrack(track, gain, before, source, signal, check);
         check();

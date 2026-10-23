@@ -49,6 +49,7 @@ jobs:
           python3 -m py_compile scripts/sync-agents.py .claude/hooks/scrutinise.py
           python3 scripts/sync-agents.py --check
           python3 scripts/test-ci-artifacts.py
+          python3 scripts/test-ci-browser-artifacts.py
           python3 scripts/test-e2e-build.py
 
       - name: Smoke-test Stop hook (Claude Code & Gemini Argon payloads)
@@ -185,6 +186,59 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
+  browser-build:
+    name: Browser-local Static Build
+    env:
+      NEXT_PUBLIC_AURIALIS_EXECUTION: browser
+    outputs:
+      artifact-name: ${{ steps.build-identity.outputs.name }}
+      build-attempt: ${{ steps.build-identity.outputs.attempt }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.12.0"
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/setup-go
+        with:
+          role: browser-build
+          embedded-source-key: ${{ hashFiles('src/**', 'public/**', 'scripts/**', 'package.json', 'pnpm-lock.yaml', 'next.config.ts', 'postcss.config.mjs', 'tsconfig.json') }}
+      - name: Restore only browser-target Next build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: ${{ runner.os }}-${{ runner.arch }}-node26-next-browser-${{ hashFiles('pnpm-lock.yaml', 'next.config.ts', 'postcss.config.mjs', 'tsconfig.json') }}-${{ hashFiles('src/**', 'public/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-node26-next-browser-${{ hashFiles('pnpm-lock.yaml', 'next.config.ts', 'postcss.config.mjs', 'tsconfig.json') }}-
+      - name: Identify immutable browser-target artifact
+        id: build-identity
+        run: |
+          echo "name=aurialis-browser-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+          echo "attempt=${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
+      - name: Build browser-target UI and dual WASM once
+        run: |
+          pnpm run build:browser
+          pnpm run typecheck:worker
+          pnpm run typecheck:browser-tests
+          pnpm exec wrangler types deploy/cloudflare/worker-configuration.d.ts --include-runtime false --check -c deploy/cloudflare/wrangler.jsonc
+          pnpm exec eslint deploy/cloudflare/worker.ts e2e-browser --max-warnings=0
+          python3 scripts/ci-browser-artifacts.py pack artifacts/ci-browser-package
+      - name: Publish exact browser build without native UI substitution
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build-identity.outputs.name }}
+          path: artifacts/ci-browser-package/
+          compression-level: 0
+          retention-days: 7
+          if-no-files-found: error
+
   wasm-parity:
     env:
       AURIALIS_CI_BUILD_ATTEMPT: ${{ needs.frontend-quality.outputs.build-attempt }}
@@ -210,6 +264,17 @@ jobs:
         env:
           AURIALIS_USE_CI_ASSETS: "1"
         run: bash scripts/test-wasm.sh
+      - name: Verify actual local-job WASM against native CDR and mastering
+        run: |
+          mkdir -p artifacts/browser-local
+          node scripts/verify-browser-jobs.mjs | tee artifacts/browser-local/wasm-oracle.log
+      - name: Retain local-job native and WASM oracle evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-job-wasm-oracle-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/browser-local/
+          retention-days: 7
 
   go-wasm:
     name: Go 1.26 & WASM Quality Gate
@@ -324,16 +389,74 @@ jobs:
             test-results/
           retention-days: 7
 
+  static-browser:
+    name: Static Browser Local-audio Verification
+    env:
+      NEXT_PUBLIC_AURIALIS_EXECUTION: browser
+      AURIALIS_CI_BUILD_ATTEMPT: ${{ needs.browser-build.outputs.build-attempt }}
+      AURIALIS_USE_CI_BROWSER_ASSETS: "1"
+      CLOUDFLARE_SEND_METRICS: "false"
+    needs: browser-build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-go
+        with:
+          role: browser-static-oracles
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.12.0"
+          cache: pnpm
+      - name: Install test dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Identify pinned Playwright browser version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Restore Chromium without adding another cache writer
+        id: chromium-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install Chromium and OS dependencies on cache miss
+        if: steps.chromium-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Install uncached OS dependencies on browser cache hit
+        if: steps.chromium-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.browser-build.outputs.artifact-name }}
+          path: artifacts/ci-browser-download
+      - name: Restore exact browser assets and verify native-equivalent static headers
+        run: |
+          python3 scripts/ci-browser-artifacts.py restore artifacts/ci-browser-download
+          AURIALIS_BROWSER_STATIC_DIR="$PWD/deploy/cloudflare" go test ./internal/browserjobs -run '^TestGeneratedStaticPolicyMatchesNative$' -count=1
+      - name: Run real browser audio workflows with no audio network transfers
+        run: pnpm run test:browser
+      - name: Retain static browser outcomes, exact WAV and request inventories
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-browser-local-audio-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/browser-local/
+          retention-days: 7
+
   playwright-e2e:
     name: Playwright Responsive (320px-1440px) & WCAG 2.2 AA Gate
     if: always()
-    needs: playwright-shards
+    needs: [playwright-shards, static-browser]
     runs-on: ubuntu-latest
     steps:
       - name: Require every browser shard
         env:
           SHARDS_RESULT: ${{ needs.playwright-shards.result }}
-        run: test "$SHARDS_RESULT" = success
+          STATIC_RESULT: ${{ needs.static-browser.result }}
+        run: test "$SHARDS_RESULT" = success && test "$STATIC_RESULT" = success
 
   ci-passed:
     name: CI Passed

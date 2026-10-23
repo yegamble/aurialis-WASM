@@ -22,6 +22,35 @@ beforeEach(() => { vi.stubGlobal("indexedDB", new IDBFactory()); vi.stubGlobal("
 afterEach(async () => { for (const session of sessions.splice(0)) await session.close().catch(() => undefined); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("bounded durable album spool", () => {
+  it("claims album ownership before plan or storage IO and binds whole demand only after planning", async () => {
+    const opening = vi.spyOn(indexedDB, "open"), spool = await AlbumSpool.claim("early"); sessions.push(spool);
+    expect(opening).not.toHaveBeenCalled(); expect(spool.prefix()).toEqual([]);
+    await expect(AlbumSpool.claim("early")).rejects.toThrow(/another tab/u);
+    await expect(AlbumSpool.clearStored("early")).rejects.toThrow(/another tab/u);
+    await expect(spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal())).rejects.toThrow(/sequence/u);
+    await spool.bind(recipe("early")); expect(opening).toHaveBeenCalled();
+    const pending = await spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal()); await spool.promote(pending.assetId, signal());
+    expect(spool.prefix()).toEqual([pending]); await expect(spool.bind(recipe("early"))).rejects.toThrow(/bound/u);
+  });
+  it("keeps an early claim through pending admission settlement and removes its empty reservation on close", async () => {
+    const spool = await AlbumSpool.claim("pending-plan"); sessions.push(spool);
+    const held = deferred<() => void>(), transaction = Reflect.get(IDBDatabase.prototype, "transaction");
+    vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementation(function (this: IDBDatabase, ...args) {
+      const value = transaction.apply(this, args);
+      if (args[1] === "readwrite") Object.defineProperty(value, "oncomplete", { set(handler: (event: Event) => void) { value.addEventListener("complete", (event) => { held.resolve(() => { handler.call(value, event); }); }, { once: true }); } });
+      return value;
+    });
+    const binding = spool.bind(recipe("pending-plan")), release = await held.promise; vi.restoreAllMocks();
+    const closing = spool.close(); await expect(AlbumSpool.claim("pending-plan")).rejects.toThrow(/another tab/u);
+    release(); await binding; await closing;
+    const next = await open("pending-plan", maximumAlbumSpoolBytes); expect(next.prefix()).toEqual([]);
+  });
+  it("rejects a different album binding before DB IO while retaining explicit ownership until close", async () => {
+    const spool = await AlbumSpool.claim("owner"); sessions.push(spool); const opening = vi.spyOn(indexedDB, "open");
+    await expect(spool.bind(recipe("different"))).rejects.toThrow(/another album/u); expect(opening).not.toHaveBeenCalled();
+    await expect(AlbumSpool.claim("owner")).rejects.toThrow(/another tab/u);
+    await spool.close(); const next = await AlbumSpool.claim("owner"); sessions.push(next);
+  });
   it("stores immutable staged bytes separately from the metadata-only verified prefix", async () => {
     const spool = await open(), wav = new Blob([new Uint8Array(expectedBytes)]);
     const pending = await spool.stage(wav, layout(0), signal());

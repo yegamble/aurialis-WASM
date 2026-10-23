@@ -11,6 +11,8 @@ API CI runs the complete Newman collection and raw security probes against the v
 
 ## Album orchestration — private integration checkpoint
 
+The private spool now separates `claim(albumId)` from `bind(recipe)`: album ownership can begin before qualification and first-pass IO, while complete encoded disk demand is admitted after the full plan is known. No database opens merely to claim a lock. Closing waits for pending admission/cleanup before releasing that lock. These remain internal device-local operations, disconnected from the current Album controller.
+
 Storage-only foundation `2434a80` introduces a dedicated device-local encoded-output spool without adding an endpoint. It stages output bytes, pending metadata and disk accounting atomically under album ownership; a separate promotion marks a prefix row. Stored metadata alone cannot authorize measured output. The foundation is not connected to rendering or downloads, and the existing 128 MiB cache remains active. Browser storage commitment does not guarantee protection from eviction.
 
 Private qualified builds add `processingBuildFingerprint` to the existing native health JSON; a plain `go build` leaves it empty. The continuation helper compares that linked identity only on the explicit native loopback path, with a bounded, canceled-or-closed response reader. Public browser execution never requests health. Its disposable worker checks the actual fetched offline WASM bytes against the injected expected hash before instantiation and must echo the checked identity. The request envelope changes no Go audio JSON or endpoint. Stored metadata still cannot authenticate rendered DSP output, and the durable Album consumer is not connected.

@@ -82,26 +82,44 @@ export class AlbumSpool {
   private closing = false;
   private closePromise: Promise<void> | null = null;
   private constructor(private readonly albumId: string, private readonly releaseLock: () => Promise<void>) {}
+  /** Acquire before any cohort audio work; no DB or recipe is needed to own planning. */
+  static async claim(albumId: string): Promise<AlbumSpool> {
+    if (typeof albumId !== "string" || !albumId || albumId.length > 1024) throw new Error("The album identifier is invalid.");
+    const release = await albumLock(albumId);
+    try { return new AlbumSpool(albumId, release); } catch (cause) { await release(); throw cause; }
+  }
   static async open(recipe: AlbumSpoolRecipe): Promise<AlbumSpool> {
     recipeValid(recipe);
-    const release = await albumLock(recipe.albumId), spool = new AlbumSpool(recipe.albumId, release);
-    try {
-      await spool.change((previous, budget, outputs) => {
-        if (previous && ["bindingHash", "processingBuild", "planHash", "expectedBytes", "totalTracks"].some((key) => previous[key as keyof AlbumSpoolRecipe] !== recipe[key as keyof AlbumSpoolRecipe])) throw new Error("Stored masters belong to a different sequence, plan or processing build. Clear that stored run before rendering again.");
+    const spool = await AlbumSpool.claim(recipe.albumId);
+    try { await spool.bind(recipe); return spool; }
+    catch (cause) {
+      try { await spool.close(); } catch (cleanup) { throw new AggregateError([cause, cleanup], "Album setup failed and storage ownership could not be cleaned up."); }
+      throw cause;
+    }
+  }
+  /** Reserve the complete encoded demand only after the whole-cohort plan is known. */
+  bind(recipe: AlbumSpoolRecipe): Promise<void> {
+    return this.schedule(async () => {
+      recipeValid(recipe);
+      if (recipe.albumId !== this.albumId) throw new Error("The storage claim belongs to another album.");
+      if (this.manifest) throw new Error("This album storage owner is already bound to a plan.");
+      const expected: AlbumSpoolRecipe = { albumId: recipe.albumId, bindingHash: recipe.bindingHash, processingBuild: recipe.processingBuild,
+        planHash: recipe.planHash, expectedBytes: recipe.expectedBytes, totalTracks: recipe.totalTracks };
+      await this.change((previous, budget, outputs) => {
+        if (previous && ["bindingHash", "processingBuild", "planHash", "expectedBytes", "totalTracks"].some((key) => previous[key as keyof AlbumSpoolRecipe] !== expected[key as keyof AlbumSpoolRecipe])) throw new Error("Stored masters belong to a different sequence, plan or processing build. Clear that stored run before rendering again.");
         let manifest = previous;
         if (!manifest) {
           if (budget.runs >= 64) throw new Error("The 64 stored album run limit is reached. Clear an older run first.");
-          manifest = { ...recipe, version: 1, runId: crypto.randomUUID(), owner: crypto.randomUUID(), revision: 0, reserved: 0, prefix: [], pending: null };
+          manifest = { ...expected, version: 1, runId: crypto.randomUUID(), owner: crypto.randomUUID(), revision: 0, reserved: 0, prefix: [], pending: null };
           budget.runs++;
         }
         if (manifest.pending) { outputs.delete([manifest.albumId, manifest.pending.assetId]); budget.bytes -= manifest.pending.bytes; manifest = { ...manifest, pending: null }; }
-        const reserved = recipe.expectedBytes - committedBytes(manifest), extra = reserved - manifest.reserved;
+        const reserved = expected.expectedBytes - committedBytes(manifest), extra = reserved - manifest.reserved;
         if (budget.bytes + budget.reserved + extra > maximumAlbumSpoolBytes) throw new Error("Stored album demand exceeds the encoded disk limit. Clear an older run first.");
         budget.reserved += extra;
         return { manifest: { ...manifest, owner: crypto.randomUUID(), revision: manifest.revision + 1, reserved }, budget };
       }, false);
-      return spool;
-    } catch (cause) { await release(); throw cause; }
+    });
   }
   /** Explicit cleanup can own an obsolete recipe, but only within this album's namespace. */
   static async clearStored(albumId: string): Promise<void> {

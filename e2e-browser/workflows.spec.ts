@@ -70,8 +70,11 @@ async function reviewEncoded(page: Page, info: TestInfo, expected: Buffer, label
   expect(Object.keys(report.metrics).sort()).toEqual(Object.keys(native.afterMetrics).sort());
   expect(Object.keys(report.metrics)).toHaveLength(11);
   let maximumDiagnosticError = 0;
-  for (const key of Object.keys(native.afterMetrics) as (keyof MeasuredAudioMetrics)[]) {
-    const actual = report.metrics[key], target = native.afterMetrics[key];
+  const nativeValues = new Map<string, unknown>(Object.entries(native.afterMetrics));
+  const metricEntries: [string, unknown][] = Object.entries(report.metrics);
+  for (const [key, actual] of metricEntries) {
+    const target = nativeValues.get(key);
+    if (typeof actual !== "number" || typeof target !== "number") throw new Error("Final diagnostic metric must be numeric");
     expect(Number.isFinite(actual) && Number.isFinite(target)).toBe(true);
     if (key === "clippingSamples") expect(actual).toBe(target);
     else { maximumDiagnosticError = Math.max(maximumDiagnosticError, Math.abs(actual - target)); expect(Math.abs(actual - target)).toBeLessThanOrEqual(1e-10); }

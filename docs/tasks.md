@@ -3,6 +3,14 @@
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
+## README and reader guides — 2026-10-23
+
+Documentation branch: `docs/readme-and-reader-guides`; [PR #10](https://github.com/yegamble/aurialis-WASM/pull/10) records the live merge state, merge commit and CI results. Reworked the README around the local mastering workflow and added [first-use guidance](getting-started.md), a [task-based documentation index](README.md) and [developer instructions](development.md). Technical writer and independent source-review agents checked claims against the integrated source through main `f9ae077`, including measured Deep diagnostics, Library source recovery and measured Reference proposals. A separate QA agent checked the source-build quickstart with the pinned tools. [Research, claim sources and current-session verification](reviews/2026-10-23-readme-review.md) distinguish this docs-only review from historical product evidence. No application behavior or prior feature acceptance status changed.
+
+## Measured Reference merge record
+
+[PR #9](https://github.com/yegamble/aurialis-WASM/pull/9) merged at `f9ae07753ccd76b3f45121f6782498d5854874e8`. This supersedes the awaiting-merge statements in the historical Reference checkpoints below. Their failures and scoped verification evidence remain part of the record; this merge note adds no new product certification or test result.
+
 ## Delegated continuation — October 23, 2026
 
 ### Authorized repository protection and deployment work
@@ -551,3 +559,7 @@ The Technical Writer synchronized current contracts and this evidence across the
 Run 39711192709 passed every gate except the Add Air live test (52/53 browser cases). Its fixed theoretical RMS assertion expected -9.49 dBFS but the Linux speaker feed measured -10.098 dBFS. The test now measures B Original on the same device, verifies neutral A Processed matches within 0.1 dB, then retains independent activation changes and restoration within 0.1 dB. A bounded original level check still rejects silence or excessive gain. Application processing is unchanged.
 
 Verification: full local Chromium suite **53/53 passed (2.3 minutes)**; TypeScript, repository lint and changed-test spelling passed. Direct ESLint invocation on the E2E file reported that E2E files are excluded; the configured repository lint passed afterward. Remote CI rerun pending. Status: **open — awaiting merge**.
+
+### Concurrent reader-guide integration
+
+Main advanced through reader-guide PR #10 at `bbc254a` while Simple PR #11 was being published. The Simple branch merges that documentation-only update and preserves the readable README, first-use and developer guides, with current Simple styles and the device-local hosting decision added. Runtime source remains identical to the 82-case passing `adf0032` checkpoint; exact merged-head CI remains required. The earlier README claim review is historical and does not verify the newer Simple controls.

@@ -11,6 +11,14 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Documentation review — 2026-10-23
+
+**Scope:** README clarity, first-master guide, task-based documentation index and developer reference. **Merge and CI record:** [PR #10](https://github.com/yegamble/aurialis-WASM/pull/10), from `docs/readme-and-reader-guides`, records the live merge state and exact merge/check commits. Technical writer and independent claims-review agents checked workflows, formats, resource limits and feature boundaries against integrated main `f9ae077`, including measured diagnostics, Library recovery and measured Reference. QA checked the embedded build with the pinned tools. The [review record](../../docs/reviews/2026-10-23-readme-review.md) contains GitHub inspirations, claim sources and executed checks. This docs-only change does not close product backlog items or add browser/hardware certification evidence.
+
+## Measured Reference merge record
+
+[PR #9](https://github.com/yegamble/aurialis-WASM/pull/9) merged at `f9ae07753ccd76b3f45121f6782498d5854874e8`. This supersedes the awaiting-merge statements in the Reference checkpoint table and narrative below. Retained failures and scoped verification evidence remain historical; the merge alone adds no certification claim.
+
 ## Delegated continuation — 2026-10-23
 
 ### Authorized repository protection and deployment work
@@ -697,3 +705,7 @@ The user authorized repairing the failed PR #5 CI gate. Both [run 39790348108](h
 Workflow correction `72839a1` reuses an installed FFmpeg or provisions it with `--no-install-recommends`, two acquisition retries and 30-second HTTP/HTTPS timeouts. Logs also showed slow core-package downloads from the Azure archive; only when installation is needed and `/etc/apt/apt-mirrors.txt` exists, the workflow replaces that URL with Ubuntu’s official HTTPS archive. Package signature validation remains enabled. Separate five-minute provisioning and three-minute comparison step limits retain the independent meter assertions and existing job timeout. No production code or API contract changes.
 
 Local actionlint 1.7.7 passed. All 15 actual FFmpeg comparisons passed, with maximum reported differences of 0.0542 LU and 0.0312 dB; the whitespace check was clean. New remote evidence remains pending. Status: **open — awaiting merge**, with CI verification still required. Preserve the failed provisioning checkpoints; successful local application gates do not replace the missing remote meter comparison.
+
+### Concurrent reader-guide integration
+
+Main advanced through reader-guide PR #10 at `bbc254a` while Simple PR #11 was being published. The Simple branch merges that documentation-only update and preserves the readable README, first-use and developer guides, with current Simple styles and the device-local hosting decision added. Runtime source remains identical to the 82-case passing `adf0032` checkpoint; exact merged-head CI remains required. The earlier README claim review is historical and does not verify the newer Simple controls.

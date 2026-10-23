@@ -1,6 +1,8 @@
 # Aurialis-WASM architecture
 <!-- cspell:words buildmode Hann steganography automator yosefgamble -->
 
+[Documentation](README.md) · [First-master guide](getting-started.md) · [Build and configuration](development.md) · [API reference](api.md)
+
 This describes current implementation boundaries. [`AGENTS.md`](../AGENTS.md) and [`docs/tasks.md`](tasks.md) retain the full product requirements. Implementation on a branch is not verified delivery or a merge to main.
 
 ## Device-local deployment boundary

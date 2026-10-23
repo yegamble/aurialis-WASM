@@ -279,6 +279,16 @@ describe("actual audio measurement and explicit Simple normalization", () => {
     expect(request.body.get("bitDepth")).toBe("32");
     expect(request.body.get("format")).toBeNull();
   });
+  it("binds import identities to the measured sample layout and rejects malformed hashes", async () => {
+    const base = measurementResponse();
+    const sourceIdentity = { pcmHash: "a".repeat(64), sampleRate: base.sampleRate, frames: base.frames };
+    const response = (identity: unknown) => ({ ok: true, headers: new Headers({ "X-Aurialis-Source-Metrics": JSON.stringify({ ...base, sourceIdentity: identity }) }), blob: () => Promise.resolve(new NodeBlob([new Uint8Array(44 + base.frames * 8)])) });
+    const fetch = vi.fn().mockResolvedValue(response(sourceIdentity)); vi.stubGlobal("fetch", fetch);
+    expect((await importAudio(new Blob(["source"]))).measurement.sourceIdentity).toEqual(sourceIdentity);
+    for (const invalid of [{ ...sourceIdentity, frames: sourceIdentity.frames + 1 }, { ...sourceIdentity, pcmHash: "wrong" }]) {
+      fetch.mockResolvedValue(response(invalid)); await expect(importAudio(new Blob(["source"]))).rejects.toThrow("source identity");
+    }
+  });
   it("rejects absent, malformed and incomplete source responses without another upload", async () => {
     const fetch = vi.fn(); vi.stubGlobal("fetch", fetch);
     const cancel = vi.fn(() => Promise.resolve());

@@ -15,6 +15,7 @@ import {
   type StereoPCM,
 } from "@/lib/browser-engine";
 import { reserveBrowserAudioMemory } from "@/lib/browser-jobs";
+import { downloadLocalBlob } from "@/lib/download";
 import { clearNextPlaybackHandoff, reconcileNextPlaybackHandoff, stageNextPlaybackHandoff, takeNextPlaybackHandoff } from "@/lib/playback-handoff";
 import { bindPlaybackControls } from "@/lib/media-session";
 import { ExtendedCompressorControls, ExtendedStereoControls, FrequencyDynamicsControls, MasteringShortcuts } from "./shared/AdvancedDynamics";
@@ -1754,9 +1755,8 @@ function AlbumView({ albumId }: { albumId: string }) {
       {artifacts.length > 0 && <section className="paper-panel" aria-label="Rendered album downloads">
         <h2>Your album masters</h2>
         {artifacts.map((file) => <Button key={file.id} variant="secondary" icon={<Icon name="arrow-down-to-line" />} onClick={() => {
-          const url = URL.createObjectURL(file.blob);
-          const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${file.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-album-master.wav`; anchor.click();
-          setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
+          try { downloadLocalBlob(file.blob, `${file.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-album-master.wav`); }
+          catch (error) { setMessage(error instanceof Error ? error.message : "The album master could not be downloaded. Try again."); }
         }}>Download {file.title}</Button>)}
       </section>}
       <div className="album-layout">

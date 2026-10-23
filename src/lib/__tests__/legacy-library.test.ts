@@ -1,5 +1,5 @@
 import { File as NativeFile } from "node:buffer";
-import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
+import { IDBDatabase, IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readLegacyWav, scanLegacySources } from "../legacy-library";
 
@@ -138,5 +138,24 @@ describe("read-only legacy library recovery", () => {
     expect(getDirectory).toHaveBeenCalledTimes(1);
     release?.(); await pending; await Promise.resolve();
     vi.useRealTimers(); expect((await scanLegacySources(signal())).sources).toHaveLength(1);
+  });
+  it("settles the transaction deadline even when abort throws and completion arrives late", async () => {
+    await seed(["track.wav|19|123"]);
+    let started: (() => void) | undefined;
+    const observed = new Promise<void>((resolve) => { started = resolve; });
+    const abort = vi.fn(() => { throw new DOMException("Already complete", "InvalidStateError"); });
+    const transaction = { abort, objectStore: () => ({ openKeyCursor: () => { started?.(); return {}; } }) } as unknown as IDBTransaction;
+    vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementationOnce(() => transaction);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const scanning = scanLegacySources(signal()), rejected = expect(scanning).rejects.toThrow("did not respond");
+    await observed; await vi.advanceTimersByTimeAsync(5000); await rejected;
+    expect(abort).toHaveBeenCalledOnce();
+    expect(() => { transaction.oncomplete?.call(transaction, new Event("complete")); }).not.toThrow();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it("reports an incomplete scan when an oversized key prevents bounded continuation", async () => {
+    const keys = Array.from({ length: 64 }, (_, index) => `${String(index).padStart(2, "0")}-${"x".repeat(1025)}`);
+    await seed([...keys, "z.wav|19|123"]);
+    expect(await scanLegacySources(signal())).toEqual({ sources: [], skipped: 64, next: null, stopped: true });
   });
 });

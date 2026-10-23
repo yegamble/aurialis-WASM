@@ -94,14 +94,23 @@ export async function scanLegacySources(signal: AbortSignal, after: string | nul
       const transaction = database.transaction(LEGACY_STORE, "readonly");
       const request = transaction.objectStore(LEGACY_STORE).openKeyCursor(IDBKeyRange.lowerBound(after ?? "", after !== null));
       const sources: LegacySource[] = [];
-      let scanned = 0, skipped = 0, stopped = false, next: string | null = null;
-      const abort = () => { transaction.abort(); };
-      const timeout = setTimeout(abort, 5000);
+      let scanned = 0, skipped = 0, stopped = false, settled = false, next: string | null = null;
+      const finish = (cause?: Error) => {
+        if (settled) return;
+        settled = true; clearTimeout(timeout); signal.removeEventListener("abort", abort);
+        if (cause) reject(cause); else resolve({ sources, next, skipped, stopped });
+      };
+      const stop = (cause: Error) => {
+        finish(cause);
+        try { transaction.abort(); } catch { /* A completed transaction has no remaining read to abort. */ }
+      };
+      const abort = () => { stop(new DOMException("Recovery canceled.", "AbortError")); };
+      const timeout = setTimeout(() => { stop(new Error("Old library keys did not respond. Close other tabs and retry.")); }, 5000);
       signal.addEventListener("abort", abort, { once: true });
-      const cleanup = () => { clearTimeout(timeout); signal.removeEventListener("abort", abort); };
-      transaction.oncomplete = () => { cleanup(); resolve({ sources, next, skipped, stopped }); };
-      transaction.onerror = transaction.onabort = () => { cleanup(); reject(signal.aborted ? new DOMException("Recovery canceled.", "AbortError") : transaction.error ?? new Error("Old library keys could not be read. Close other tabs and retry.")); };
+      transaction.oncomplete = () => { finish(); };
+      transaction.onerror = transaction.onabort = () => { finish(transaction.error ?? new Error("Old library keys could not be read. Close other tabs and retry.")); };
       request.onsuccess = () => {
+        if (settled) return;
         const cursor = request.result;
         if (!cursor || typeof cursor.key !== "string") return;
         const source = sourceFromKey(cursor.key);
@@ -126,14 +135,22 @@ async function hasSource(key: string, signal: AbortSignal): Promise<boolean> {
     return await new Promise<boolean>((resolve, reject) => {
       const transaction = database.transaction(LEGACY_STORE, "readonly");
       const request = transaction.objectStore(LEGACY_STORE).getKey(key);
-      let present = false;
-      const abort = () => { transaction.abort(); };
-      const timeout = setTimeout(abort, 5000);
+      let present = false, settled = false;
+      const finish = (cause?: Error) => {
+        if (settled) return;
+        settled = true; clearTimeout(timeout); signal.removeEventListener("abort", abort);
+        if (cause) reject(cause); else resolve(present);
+      };
+      const stop = (cause: Error) => {
+        finish(cause);
+        try { transaction.abort(); } catch { /* A completed transaction has no remaining read to abort. */ }
+      };
+      const abort = () => { stop(new DOMException("Recovery canceled.", "AbortError")); };
+      const timeout = setTimeout(() => { stop(new Error("The old library entry did not respond. Close other tabs and retry.")); }, 5000);
       signal.addEventListener("abort", abort, { once: true });
-      const cleanup = () => { clearTimeout(timeout); signal.removeEventListener("abort", abort); };
       request.onsuccess = () => { present = request.result === key; };
-      transaction.oncomplete = () => { cleanup(); resolve(present); };
-      transaction.onerror = transaction.onabort = () => { cleanup(); reject(signal.aborted ? new DOMException("Recovery canceled.", "AbortError") : transaction.error ?? new Error("The old library entry could not be checked.")); };
+      transaction.oncomplete = () => { finish(); };
+      transaction.onerror = transaction.onabort = () => { finish(transaction.error ?? new Error("The old library entry could not be checked.")); };
     });
   } finally { database.close(); }
 }

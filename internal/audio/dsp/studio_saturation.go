@@ -7,8 +7,8 @@ import (
 
 const studioSaturationLatency = studioOversamplingLatency + 1
 
-// This prepared candidate never runs from Engine algorithm 1. Its only supported
-// nonlinear characters have independent prepared state and original responses.
+// This prepared candidate never runs from Engine algorithm 1. Each nonlinear
+// character has independent prepared state and an original response.
 type studioSaturation struct {
 	rate                         float64
 	params                       SaturationParams
@@ -19,6 +19,8 @@ type studioSaturation struct {
 	dryCursor                    int
 	tube                         [2]studioADAAState
 	tape                         [2]studioTapeState
+	transformer                  [2]studioTransformerState
+	transformerCoeffs            studioTransformerCoeffs
 	tapeCoeffs                   studioTapeCoeffs
 	curve                        studioTubeCurve
 	dcInput, dcOutput            [2]float64
@@ -36,11 +38,12 @@ func prepareStudioSaturation(rate float64, params SaturationParams) (studioSatur
 	if err := ValidateParams(base); err != nil {
 		return studioSaturation{}, err
 	}
-	if params.Character != SatTube && params.Character != SatTape && params.Character != SatClean {
+	if params.Character != SatTube && params.Character != SatTape && params.Character != SatTransformer && params.Character != SatClean {
 		return studioSaturation{}, errors.New("studio saturation character is not implemented")
 	}
 	s := studioSaturation{rate: rate, params: params, filter: prepareStudioHalfBand(), curve: prepareStudioTube(params.Amount), dcPole: math.Exp(-2 * math.Pi * 5 / rate)}
 	s.tapeCoeffs = prepareStudioTape(rate, params.Amount)
+	s.transformerCoeffs = prepareStudioTransformer(rate, params.Amount)
 	s.mix, s.dcMix = s.targets()
 	return s, nil
 }
@@ -65,12 +68,14 @@ func (s *studioSaturation) setParams(params SaturationParams) error {
 	if err != nil {
 		return err
 	}
-	s.params, s.curve, s.tapeCoeffs = params, next.curve, next.tapeCoeffs
+	s.params, s.curve, s.tapeCoeffs, s.transformerCoeffs = params, next.curve, next.tapeCoeffs, next.transformerCoeffs
 	for ch := range s.tube {
 		s.tube[ch].integral = s.curve.integral(s.tube[ch].input)
 		s.tube[ch].integralValid = true
 		s.tape[ch].adaa.integral = s.tapeCoeffs.curve.integral(s.tape[ch].adaa.input)
 		s.tape[ch].adaa.integralValid = true
+		s.transformer[ch].saturated.integral = s.transformerCoeffs.curve.integral(s.transformer[ch].saturated.input)
+		s.transformer[ch].saturated.integralValid = true
 	}
 	s.fromMix, s.fromDC = s.mix, s.dcMix
 	s.transition, s.transitionLength = 0, int(math.Ceil(.005*s.rate))
@@ -84,6 +89,7 @@ func (s *studioSaturation) resetHistory() {
 	s.dryCursor = 0
 	s.tube = [2]studioADAAState{}
 	s.tape = [2]studioTapeState{}
+	s.transformer = [2]studioTransformerState{}
 	s.dcInput, s.dcOutput = [2]float64{}, [2]float64{}
 	s.mix, s.dcMix = s.targets()
 	s.transition, s.transitionLength = 0, 0
@@ -108,10 +114,16 @@ func (s *studioSaturation) process(left, right float64) (float64, float64) {
 		subs := s.oversampler[ch].interpolate(&s.filter, sample)
 		for index, value := range subs {
 			shaped := 0.0
-			if s.params.Character == SatTape {
+			switch s.params.Character {
+			case SatTape:
 				shaped = s.tape[ch].process(value, s.tapeCoeffs)
-			} else {
+			case SatTransformer:
+				shaped = s.transformer[ch].process(value, s.transformerCoeffs)
+			case SatTube, SatClean:
 				shaped = s.tube[ch].process(value, s.curve)
+			case SatWarm, SatThick, SatCrisp:
+				// Preparation rejects these legacy-only labels.
+				shaped = value
 			}
 			subs[index] = s.pad[ch].process(shaped)
 		}

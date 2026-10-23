@@ -7,7 +7,7 @@ Library relink consumes the existing canonical import source identity; it adds n
 
 Current routes are implemented by `internal/server`; exact DSP structs are in `internal/audio/dsp/engine.go` and the experimental script schema is in `internal/mastering/mastering.go`. No API presence alone establishes a verified product workflow. See [tasks](tasks.md) for evidence and open requirements.
 
-API CI runs the complete Newman collection and raw security probes against the verified native build artifact. [The CI guide](development.md#how-ci-reuses-builds-and-runs-checks) describes provenance checks and fresh execution; HTTP contracts below are unchanged.
+API CI runs the complete Newman collection and raw security probes against the verified native build artifact, independently of compiler caches and browser shard scheduling. [The CI guide](development.md#how-ci-reuses-builds-and-runs-checks) describes provenance checks and fresh execution; HTTP contracts below are unchanged.
 
 ## Device-local transport boundary
 

@@ -81,7 +81,7 @@ export async function meanOutputLevel(page: Page, frames?: number): Promise<numb
     if (!probe) throw new Error("Missing live output probe");
     probe.energy = { remaining: count ?? probe.sampleRate, frames: 0, squares: 0 };
   }, frames);
-  await expect.poll(() => page.evaluate(() => (window as ProbeWindow).qaOutput?.energy?.remaining)).toBe(0);
+  await expect.poll(() => page.evaluate(() => (window as ProbeWindow).qaOutput?.energy?.remaining), { intervals: [50] }).toBe(0);
   return page.evaluate(() => {
     const energy = (window as ProbeWindow).qaOutput?.energy;
     if (!energy || !energy.frames) throw new Error("Missing live output energy");

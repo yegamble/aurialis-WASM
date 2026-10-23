@@ -148,11 +148,11 @@ test("album processing produces real full-length WAVs and release checks measure
   expect(pcm.left).toHaveLength(48000);
   expect(pcm.left.some((value) => Math.abs(value) > 0.01)).toBe(true);
   await page.goto(`/release-check/${id}`);
-  const pendingMeasurement = page.waitForResponse((response) => response.url().endsWith("/api/master/render") && response.request().method() === "POST");
+  const pendingMeasurement = page.waitForResponse((response) => response.url().endsWith("/api/master/render") && response.request().method() === "POST" && response.headers()["content-type"]?.startsWith("application/json") === true);
   await page.getByRole("button", { name: "Run release check", exact: true }).click();
   const measurement = await (await pendingMeasurement).json() as { afterMetrics: { integratedLufs: number; samplePeakDbfs: number } };
   await expect(page.getByText(`${measurement.afterMetrics.integratedLufs.toFixed(1)} LUFS`, { exact: true })).toBeVisible();
-  await expect(page.getByText(`${measurement.afterMetrics.samplePeakDbfs.toFixed(1)} dBFS`, { exact: true })).toBeVisible();
+  await expect(page.getByText(`Sample peak ${measurement.afterMetrics.samplePeakDbfs.toFixed(2)} dBFS.`, { exact: false })).toBeVisible();
   await expect(page.getByText("Unmeasured", { exact: false })).toHaveCount(0);
   expect((await request.get("/health")).ok()).toBe(true);
 });

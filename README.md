@@ -25,7 +25,7 @@ Aurialis is an audio mastering workstation that runs on your computer and opens 
   <a href="docs/development.md">Developer guide</a>
 </p>
 
-> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. AI repair, validated instrument separation and certified hardware/true-peak behavior remain open work. See [current limits](#know-the-current-limits).
+> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. AI repair, validated instrument separation and certified hardware/true-peak behavior remain open work. Deep is merged with its bounded live/export workflow verified. Release now reviews the exact encoded WAV with its own output hash; its exact CI and merge gates remain open. See [current limits](#know-the-current-limits).
 
 ## A small studio, one clear path
 
@@ -40,7 +40,7 @@ Your WAV  →  Choose a direction  →  Listen and refine  →  Download a WAV
 | Shape the details | **Advanced** five-band EQ, compression, saturation, stereo controls, sample-peak limiting, De-Harsh and multiband dynamics. EQ changes tonal balance; compression controls changes in level. |
 | Hear your decisions | **A Processed / B Original** listening, a measured live spectrum and waveform, and shared settings across Simple and Advanced. A/B does not automatically match loudness. |
 | Understand and compare | **Deep** proposes bounded, editable changes over source-frame intervals; review them before Apply. **Reference** compares your current starting chain with another track's original audio and proposes bounded EQ and optional width changes. |
-| Make a handoff | **Export** as 16/24-bit PCM or 32-bit float WAV, preserving source sample rate and duration. Album rendering creates individual 24-bit WAV downloads. |
+| Make a handoff | **Export** as 16/24-bit PCM or 32-bit float WAV, preserving source sample rate and duration. **Release check** measures and retains the exact encoded WAV for download. Album rendering creates individual 24-bit WAV downloads. |
 
 The interface follows a warm paper-and-ink design, with a focused listening area and detailed controls when you need them. Aurialis-WASM builds on [Aurialis](https://github.com/yegamble/Aurialis); this repository contains the Go, Next.js and WebAssembly implementation.
 
@@ -80,6 +80,8 @@ See the [first-master guide](docs/getting-started.md) for control explanations, 
 
 For changes across the track, open **Deep**, choose an engineer profile and select **Analyze Deep proposal**. Analysis and edits leave playback unchanged. Review the neutral sections, select a move to edit its points, then select **Apply Deep proposal**. Mute/solo choices affect both live playback and export only after Apply. **Revert before first Apply** restores the saved starting settings; **Detach automation** retains the applied static baseline. [The Deep guide](docs/getting-started.md#review-and-apply-a-deep-proposal) explains drafts, recovery and the limits.
 
+For a measured handoff, open **Release check** in Tools. Choose a destination and bit depth, run the review, then download the same WAV that was measured and its JSON report. Saving a report retains measurements, not the audio file; after reload, rerun before downloading a measured WAV. [The release guide](docs/getting-started.md#review-the-wav-you-will-hand-off) explains the profile scopes and manual checks.
+
 ## Your audio and your computer
 
 Audio processing runs in the browser and the local Go server; no cloud audio service is required. The server accepts connections only on your own computer's loopback address. It validates and reconstructs uploaded audio in memory, stripping container metadata.
@@ -97,7 +99,8 @@ Projects and settings are saved in this browser's local storage, and reconstruct
 | Processing | One expensive upload/render request at a time. A busy response asks you to retry. These are finite workstation limits. |
 | Albums | Individual 24-bit WAVs in a **128 MiB temporary output cache**. Download them before leaving the album page or changing settings/order; there is no persistent mastered-output store or ZIP export. |
 | Deep and Smart Split | Deep provides measured source diagnostics, editable automation and separate legacy static profiles. Change points do not identify verses or choruses; AI repair and validated instrument separation remain unavailable. ScriptV2 keeps sonic algorithm 1, generic Optical compression and sample-peak limiting; it uses deterministic heuristics, not a trained mastering model. |
-| Reference and release checks | Reference analyzes original reference audio against your source through its starting settings, with explicit proposal review and Apply/Revert. Saved reference knob positions are ignored; broad-band similarity does not establish perceptual matching. Both audio files share one **129 MiB** request ceiling. Release checks measure working targets without certifying platform delivery. |
+| Reference | Reference analyzes original reference audio against your source through its starting settings, with explicit proposal review and Apply/Revert. Saved reference knob positions are ignored; broad-band similarity does not establish perceptual matching. Both audio files share one **129 MiB** request ceiling. |
+| Release | Reviews the exact 16/24/32-bit WAV against six scoped destination profiles. It never changes gain, trims or resamples. Guidance and diagnostic measurements do not certify platform delivery, codec peaks, metadata, Digital Masters status or a manufactured CD. |
 | Audio guarantees | Hardware emulation and certified true-peak limiting remain open work. Live playback may be resampled to the audio device's rate; live and exported samples are not promised to be identical across rates. |
 
 The [architecture](docs/architecture.md), [API contract](docs/api.md) and [task tracker](docs/tasks.md) document the exact boundaries and recorded verification evidence.
@@ -108,12 +111,12 @@ The [architecture](docs/architecture.md), [API contract](docs/api.md) and [task 
 
 See [architecture](docs/architecture.md) for the audio paths, shared-memory controls, resource bounds and security model, or [API reference](docs/api.md) to render audio from a script. The [ScriptV2 contract](docs/api.md#scriptv2-foundation) binds editable proposals and acknowledged live/export schedules to verified source audio. Draft edits wait for explicit Apply.
 
-Simple merged in [PR #11](https://github.com/yegamble/aurialis-WASM/pull/11) after its exact CI checks passed. The combined Deep branch passed 382 unit tests and the corrected complete 102-case browser suite locally; the first 101/102 result and its stale-message correction remain in [the task record](docs/tasks.md#full-combined-verification-and-main-rebase). Deep merged in [PR #13](https://github.com/yegamble/aurialis-WASM/pull/13) at `6154f87` after the required checks passed. These counts do not certify the whole product or hosted deployment.
+Simple merged in [PR #11](https://github.com/yegamble/aurialis-WASM/pull/11), followed by Deep in [PR #13](https://github.com/yegamble/aurialis-WASM/pull/13) at `6154f87`. Deep passed the corrected 102-case browser suite locally and both exact-head Linux runs; the original 101/102 result and its stale-message correction remain in [the task record](docs/tasks.md#full-combined-verification-and-main-rebase). The Release slice passed 405 unit tests and the complete 107-case browser suite locally; exact CI and merge are pending. These counts do not certify the whole product or hosted deployment.
 
 ## Help improve Aurialis
 
 [Report a problem](https://github.com/yegamble/aurialis-WASM/issues) with what you expected, what happened, your browser, tool versions and steps to reproduce it. A short description of the audio format and duration helps with import or playback issues.
 
-For code changes, start with the [developer guide](docs/development.md) and [`AGENTS.md`](AGENTS.md). Pull requests run fresh checks against a verified build, with individual browser tests split across three isolated runners and one audio worker per runner. [The CI guide](docs/development.md#how-ci-reuses-builds-and-runs-checks) explains build artifacts, caches and the six required gates. The repository's [War Room guide](.claude/agents/README.md) describes its specialist agents and review workflow. Test requirements and historical results live in the docs rather than serving as a claim that every check passes on every checkout.
+For code changes, start with the [developer guide](docs/development.md) and [`AGENTS.md`](AGENTS.md). Pull requests run fresh checks against a verified build, with individual browser tests split across three isolated runners and one audio worker per runner. Browser package setup has separate bounded steps. Playback comparisons use full measured windows and a known gain change to check measurement sensitivity. [The CI guide](docs/development.md#how-ci-reuses-builds-and-runs-checks) explains build artifacts, caches and the six required gates. The repository's [War Room guide](.claude/agents/README.md) describes its specialist agents and review workflow. Test requirements and historical results live in the docs rather than serving as a claim that every check passes on every checkout.
 
 **License:** this checkout does not include a license file. Confirm permission with the maintainer before redistributing or reusing the code.

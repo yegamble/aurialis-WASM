@@ -15,6 +15,7 @@ import { normalizeShortcutUndo, pruneShortcutUndo, toggleMasteringShortcut, type
 import { masteringTargets } from "./mastering-targets";
 import { restoredSimpleDirection, type SimpleChange } from "./simple-directions";
 import { hasAppliedDeep } from "./reference-matching";
+import { readReleaseReport } from "./release-review";
 import { deepSourceMatches, readDeepMasteringState, type DeepMasteringState, type DeepSettingsSnapshot, type ScriptV2 } from "./deep-mastering";
 import type {
   Album,
@@ -69,6 +70,7 @@ type StoreState = {
 
 type StoreAction =
   | { type: "ADD_TRACK"; track: Track }
+  | { type: "SAVE_RELEASE_REVIEW"; expected: Track; report: NonNullable<Track["releaseReview"]> }
   | { type: "APPLY_SIMPLE_DIRECTION"; expected: Track; change: SimpleChange }
   | { type: "APPLY_REFERENCE"; expected: Track; reference?: Track; advanced: AdvancedParams; restore?: Pick<Track, "mode" | "simpleCustom" | "shortcutUndo"> }
   | { type: "TOGGLE_MASTERING_SHORTCUT"; trackId: string; shortcut: MasteringShortcut }
@@ -134,6 +136,10 @@ export function reduceStoreState(
   action: StoreAction,
 ): StoreState {
   switch (action.type) {
+    case "SAVE_RELEASE_REVIEW":
+      return { ...state, tracks: updateTrackInList(state.tracks, action.expected.id, (track) => track === action.expected ? {
+        ...track, releaseReview: action.report, updatedAt: new Date().toISOString(),
+      } : track) };
     case "APPLY_SIMPLE_DIRECTION":
       return { ...state, tracks: updateTrackInList(state.tracks, action.expected.id, (track) => {
         if (track !== action.expected || hasAppliedDeep(track)) return track;
@@ -475,6 +481,9 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
     const restored: Track & { script?: unknown } = { ...normalizeSourceMetadata(track), advanced: createDefaultAdvancedParams() };
     delete restored.script;
     delete restored.releaseScore;
+    const review = readReleaseReport(track.releaseReview);
+    if (review) restored.releaseReview = review;
+    else delete restored.releaseReview;
     const simple = restoredSimpleDirection(track.simpleDirection);
     if (simple && simple.genre === track.genre && simple.tone === track.tone && simple.intensity === track.intensity) restored.simpleDirection = simple;
     else if (track.simpleDirection !== undefined) { delete restored.simpleDirection; restored.simpleCustom = true; }

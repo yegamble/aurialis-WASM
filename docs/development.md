@@ -73,6 +73,10 @@ The browser file limit remains 134,217,772 bytes (128 MiB + 44), with 16,777,216
 
 Run the gates applicable to the change with the pinned tools on `PATH`. [`AGENTS.md`](../AGENTS.md) defines the mandatory verification policy; [CI](../.github/workflows/ci.yml) defines its automated execution. Some checks require additional developer tools: `golangci-lint`, `identypo`, `govulncheck`, Python 3, FFmpeg and Playwright's browser installation. FFmpeg is an independent meter-verification tool, not an application runtime dependency.
 
+Linux CI installs the pinned Playwright release's full Chromium OS package list on every browser runner, with a five-minute provisioning limit. Browser binaries are restored separately; a cache miss downloads Chromium within a four-minute step. [`ci-ubuntu-apt.sh`](../scripts/ci-ubuntu-apt.sh) is a CI-only privileged helper: it sets two APT acquisition retries and 30-second HTTP/HTTPS timeouts globally so Playwright's privileged child inherits them, and switches only the known Azure Ubuntu archive URL to Ubuntu's official HTTPS archive. Signature checks remain enabled. The helper is not a macOS development command. A provisioning failure fails the gate; it never skips browser tests or relaxes assertions.
+
+The shared-settings browser test drains two newly observed audio buffers after acknowledgment, then compares one-second destination energy directly at the original 0.12 dB bound. Its real 0.95-volume control must detect the known gain change and restoration. Energy-completion polling runs every 50 ms without changing the frame count or timeout. Raw windows, failed before/after pairs and JSON-safe diagnostics are retained; the earlier remote failure's exact cause is not inferred from subsequent passing runs.
+
 ### Go and compiled WASM
 
 ```bash

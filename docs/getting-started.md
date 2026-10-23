@@ -1,4 +1,5 @@
 # Your first master
+<!-- cspell:words ISRC -->
 
 Bring in a WAV, find a direction you like, and download a new version. Your first session can stay entirely in **Simple** mode.
 
@@ -46,7 +47,7 @@ Select **Export**, choose a bit depth, then select **Render & download WAV**.
 
 Exports keep the source sample rate and frame count. Integer exports clip samples outside ±1; enable the sample-peak limiter or reduce gain before exporting a signal that exceeds that range. The limiter is not a certified true-peak limiter.
 
-Export always renders the current processing settings from the reconstructed source. Listening to **B Original**, changing monitor volume, or leaving an older offline preview on screen does not change those export settings. The download is a separate file; keep it and your original source in your own backup.
+Export renders the current processing settings from the reconstructed source. With Deep attached, the acknowledged applied script is authoritative; draft edits and pending revisions are excluded. Listening to **B Original**, changing monitor volume, or leaving an older offline preview on screen does not change those export settings. The download is a separate file; keep it and your original source in your own backup.
 
 ## Go further when you are ready
 
@@ -56,7 +57,7 @@ Export always renders the current processing settings from the reconstructed sou
 | **Deep** | Analyze a measured proposal, edit source-frame moves and explicitly Apply its complete baseline/schedule. Separate source diagnostics and legacy static profiles remain available. Neutral sections do not identify musical roles; AI repair remains unavailable. |
 | **Albums** | Create and order a sequence, then select **Render album masters** to measure and render individual 24-bit WAVs. Download them before leaving the page. |
 | **Reference match** in **Tools** | Measure your track against another imported recording, review a bounded EQ and optional width proposal, then explicitly apply it. |
-| **Release check** in **Tools** | Select Streaming, Dynamic or Spoken word, then **Run release check** to measure rendered audio against working targets. **Download JSON report** saves the measurements. This is guidance, not platform certification. |
+| **Release check** in **Tools** | Choose one of six destination profiles and an encoding, then review the exact rendered WAV. Download that measured file and its JSON report; saved reports retain measurements only. This is guidance, not platform certification. |
 | **Smart stem splitter** | Inspect the intended layout. Instrument separation, stem playback and stem downloads are unavailable. |
 
 Album downloads use a **128 MiB total cache**. Changing the sequence or processing settings invalidates them; leaving the album page discards them. Render a smaller sequence or export tracks individually if it exceeds the cache. Album rendering does not establish full album-consistency mastering.
@@ -92,6 +93,20 @@ Results use neutral interval names; a change-strength percentage is a heuristic 
 Keep the original audio separately. Draft/applied **Script JSON** downloads provide complete recovery copies when browser storage fails; the app currently has no Script JSON import workflow. A different source cannot reuse an applied schedule. Use Library's exact **Restore source** workflow for missing audio; explicit replacement invalidates source-bound analysis and automation.
 
 Deep currently uses algorithm 1, generic Optical compression and sample-peak limiting. It does not provide AI repair, musical-role recognition, certified true-peak limiting or Waves/hardware equivalence. Finite playback drains its full valid delayed output. Turning Repeat on after finite input ends preserves that pass before a new prepared epoch, so a brief gap is possible.
+
+## Review the WAV you will hand off
+
+Open **Release check** from **Tools** for your project.
+
+1. Choose **Spotify**, **Apple Music**, **YouTube**, **SoundCloud**, **CD** or **Podcast**, then choose 16-bit PCM, 24-bit PCM or 32-bit float. Profiles describe different delivery scopes; read the linked source and the explanation beside each check.
+2. Select **Run release check**. Aurialis verifies the stored source, renders one WAV, then measures that encoded file, including quantization and dither. With Deep attached, it uses the acknowledged applied script; draft edits are excluded. **Cancel release check** stops the review without accepting a late result.
+3. Review loudness, reconstructed peak estimate, exact encoded full-scale frames, format, correlation, leading/trailing quiet and DC. The “within guidance” count excludes informational items and is not a readiness percentage. The check applies no gain, trimming, resampling or repair.
+4. Select **Download measured WAV** to save the exact file that was reviewed. Repeated downloads reuse that file. **Download JSON report** includes measurements, the output SHA-256, the selected policy source and its limits.
+5. Use **Save report to project** to retain its measurements. After reloading, the saved report can supply JSON only; run the review again to obtain a measured WAV. Keep downloaded audio and reports in your own backup.
+
+Source, settings or encoding changes invalidate the current review. Choosing another destination reuses its measurements and updates the guidance without rendering again. Missing or unverifiable audio requires **Restore source** in Library before review. A different source cannot inherit the old report.
+
+Spotify and SoundCloud profiles use published mastering guidance, not upload loudness requirements; their ±1 LU review band is an Aurialis preference. Apple Music checks source PCM format rather than Digital Masters approval. YouTube covers the cited music-video Content ID partner guidance, and a WAV alone is not a video delivery. CD checks 44.1 kHz / 16-bit stereo PCM, not disc-image or manufacturing approval. Podcast covers Apple subscriber WAV and pre-encoding guidance; RSS delivery still needs AAC or MP3. Profiles do not certify codec/converter peaks, source provenance or metadata. The clean WAV contains no artist, album, artwork or ISRC tags.
 
 ## Compare with a reference recording
 
@@ -142,6 +157,8 @@ If Aurialis warns that audio is available only in this tab, export before closin
 | An album exceeds its download cache | Render a smaller sequence or export its tracks individually. |
 | Reference analysis needs verified source identity | Restore the source WAV through Library. Older or different audio requires explicit **Replace source** and invalidates source-derived results. |
 | A Reference proposal is stale | Analyze again after source, reference, options or processing changes; your newer settings are preserved. |
+| A saved Release report has no WAV download | Run the release check again. Saved reports contain measurements, not a persistent audio artifact. |
+| A Release review disappears after an edit | Source, processing or encoding changed. Run it again for the new output; canceled or stale results cannot replace that output. |
 
 For a bug report, include your browser and operating system, the action that failed, the exact message, and the file's format, size, sample rate and channel count. Avoid sharing private audio unless you intend to.
 

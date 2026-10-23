@@ -11,6 +11,14 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Documentation review — 2026-10-23
+
+**Scope:** README clarity, first-master guide, task-based documentation index and developer reference. **Merge and CI record:** [PR #10](https://github.com/yegamble/aurialis-WASM/pull/10), from `docs/readme-and-reader-guides`, records the live merge state and exact merge/check commits. Technical writer and independent claims-review agents checked workflows, formats, resource limits and feature boundaries against integrated main `f9ae077`, including measured diagnostics, Library recovery and measured Reference. QA checked the embedded build with the pinned tools. The [review record](../../docs/reviews/2026-10-23-readme-review.md) contains GitHub inspirations, claim sources and executed checks. This docs-only change does not close product backlog items or add browser/hardware certification evidence.
+
+## Measured Reference merge record
+
+[PR #9](https://github.com/yegamble/aurialis-WASM/pull/9) merged at `f9ae07753ccd76b3f45121f6782498d5854874e8`. This supersedes the awaiting-merge statements in the Reference checkpoint table and narrative below. Retained failures and scoped verification evidence remain historical; the merge alone adds no certification claim.
+
 ## Delegated continuation — 2026-10-23
 
 ### Measured Reference implementation and review checkpoint

@@ -32,18 +32,20 @@ type ReferenceBand struct {
 // ReferenceProposal is an EQ-only estimate, not a perceptual match or headroom guarantee.
 // Callers must apply from Baseline, never repeatedly compound Params onto the last proposal.
 type ReferenceProposal struct {
-	Version             string           `json:"version"`
-	Source              SourceIdentity   `json:"source"`
-	Reference           SourceIdentity   `json:"reference"`
-	Baseline            dsp.Params       `json:"baseline"`
-	Params              dsp.Params       `json:"params"`
-	Options             ReferenceOptions `json:"options"`
-	Bands               [5]ReferenceBand `json:"bands"`
-	BeforeResidualDB    float64          `json:"beforeResidualDb"`
-	FitResidualDB       float64          `json:"fitResidualDb"`
-	MaxPredictedBoostDB float64          `json:"maxPredictedBoostDb"`
-	MaxProtectedDeltaDB float64          `json:"maxProtectedDeltaDb"`
-	Warnings            []string         `json:"warnings"`
+	Version                    string           `json:"version"`
+	Source                     SourceIdentity   `json:"source"`
+	Reference                  SourceIdentity   `json:"reference"`
+	Baseline                   dsp.Params       `json:"baseline"`
+	Params                     dsp.Params       `json:"params"`
+	Options                    ReferenceOptions `json:"options"`
+	Bands                      [5]ReferenceBand `json:"bands"`
+	BeforeResidualDB           float64          `json:"beforeResidualDb"`
+	FitResidualDB              float64          `json:"fitResidualDb"`
+	MaxPredictedBoostDB        float64          `json:"maxPredictedBoostDb"`
+	MaxProtectedDeltaDB        float64          `json:"maxProtectedDeltaDb"`
+	RemeasuredProtectedDeltaDB float64          `json:"remeasuredProtectedDeltaDb"`
+	ProtectionVerified         bool             `json:"protectionVerified"`
+	Warnings                   []string         `json:"warnings"`
 }
 
 // MatchReferenceContext measures common-band spectra and fits the actual summed TPT response.
@@ -124,6 +126,13 @@ func MatchReferenceContext(ctx context.Context, source, reference *audio.Buffer,
 	fitted, err := fitReferenceContext(ctx, result, float64(source.SampleRate))
 	if err != nil {
 		return nil, err
+	}
+	if options.ProtectBelowHz > 0 && fitted != baseline {
+		fitted, result.RemeasuredProtectedDeltaDB, err = protectRenderedReferenceBass(ctx, source, result, fitted, edges)
+		if err != nil {
+			return nil, err
+		}
+		result.ProtectionVerified = true
 	}
 	result.Params = fitted
 	result.FitResidualDB = referenceResidual(result, fitted, float64(source.SampleRate))
@@ -300,4 +309,51 @@ func fitReferenceContext(ctx context.Context, result *ReferenceProposal, rate fl
 		}
 	}
 	return result.Baseline, nil
+}
+
+// Protect rendered bass as well as the linear EQ prediction: broadband nonlinear
+// stages can change bass level when only a high-frequency contour was requested.
+func protectRenderedReferenceBass(ctx context.Context, source *audio.Buffer, result *ReferenceProposal, candidate dsp.Params, edges [6]float64) (dsp.Params, float64, error) {
+	baselinePower, err := renderedReferenceBassPower(ctx, source, result.Baseline, edges)
+	if err != nil {
+		return result.Baseline, 0, err
+	}
+	if baselinePower < 1e-12 {
+		result.Warnings = append(result.Warnings, "Rendered bass is below the measurement floor; protected matching retains the original chain.")
+		return result.Baseline, 0, nil
+	}
+	for range 8 {
+		proposedPower, measureErr := renderedReferenceBassPower(ctx, source, candidate, edges)
+		if measureErr != nil {
+			return result.Baseline, 0, measureErr
+		}
+		delta := 10 * math.Log10(math.Max(proposedPower, 1e-30)/baselinePower)
+		if math.Abs(delta) <= .25 {
+			return candidate, delta, nil
+		}
+		for i := range candidate.Bands {
+			candidate.Bands[i].GainDB = result.Baseline.Bands[i].GainDB + .5*(candidate.Bands[i].GainDB-result.Baseline.Bands[i].GainDB)
+		}
+	}
+	result.Warnings = append(result.Warnings, "The nonlinear chain prevented verified bass protection; the original chain was retained.")
+	return result.Baseline, 0, nil
+}
+
+func renderedReferenceBassPower(ctx context.Context, source *audio.Buffer, params dsp.Params, edges [6]float64) (float64, error) {
+	rendered := *source
+	rendered.Left, rendered.Right = make([]float32, len(source.Left)), make([]float32, len(source.Right))
+	engine := dsp.NewEngine(float64(source.SampleRate))
+	engine.SetParams(params)
+	for start := 0; start < len(source.Left); start += 4096 {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		end := min(start+4096, len(source.Left))
+		engine.ProcessBlock(source.Left[start:end], source.Right[start:end], rendered.Left[start:end], rendered.Right[start:end])
+	}
+	if err := validateStereoBuffer(ctx, &rendered); err != nil {
+		return 0, err
+	}
+	powers, err := referenceSpectrum(ctx, &rendered, edges)
+	return powers[0], err
 }

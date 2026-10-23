@@ -177,3 +177,44 @@ func TestReferenceValidationCancellationAndDisabledEQ(t *testing.T) {
 		t.Fatal("disabled EQ mutated", err)
 	}
 }
+
+func TestReferenceProtectsBassThroughNonlinearCompressor(t *testing.T) {
+	source := featureSignal(48000, 1, func(i int) (float32, float32) {
+		value := float32(.01*math.Sin(2*math.Pi*60*float64(i)/48000) + .2*math.Sin(2*math.Pi*9000*float64(i)/48000))
+		return value, value
+	})
+	baseline := dsp.DefaultParams()
+	baseline.Bands[4].FreqHz = 4000
+	baseline.Compressor.Enabled = true
+	baseline.Compressor.ThresholdDB = -30
+	baseline.Compressor.Ratio = 10
+	baseline.Compressor.AttackMS = 1
+	baseline.Compressor.ReleaseMS = 80
+	candidate := baseline
+	candidate.Bands[4].GainDB = 3
+	result := &ReferenceProposal{Baseline: baseline, Options: ReferenceOptions{ProtectBelowHz: 120}}
+	_, linearBass := referenceResponseBounds(result, candidate, 48000, 401)
+	if linearBass > .25 {
+		t.Fatal("fixture does not pass the linear EQ guard")
+	}
+	oldPower, err := renderedReferenceBassPower(context.Background(), source, baseline, spectrumEdges)
+	if err != nil {
+		t.Fatal(err)
+	}
+	newPower, err := renderedReferenceBassPower(context.Background(), source, candidate, spectrumEdges)
+	if err != nil {
+		t.Fatal(err)
+	}
+	delta := 10 * math.Log10(newPower/oldPower)
+	protected, renderedDelta, err := protectRenderedReferenceBass(context.Background(), source, result, candidate, spectrumEdges)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("linear guard %.5f dB; unguarded rendered bass %.5f dB; protected rendered bass %.5f dB", linearBass, delta, renderedDelta)
+	if math.Abs(delta) <= .25 {
+		t.Fatal("fixture does not challenge the nonlinear rendered guard")
+	}
+	if math.Abs(renderedDelta) > .25 || protected == candidate {
+		t.Fatal("nonlinear rendered guard did not constrain the proposed chain")
+	}
+}

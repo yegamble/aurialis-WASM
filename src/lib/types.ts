@@ -1,3 +1,5 @@
+import type { DeepMasteringState } from "./deep-mastering";
+
 export type SimpleStyle = "precise" | "organic" | "elevated";
 export type SimpleDirection = {
   version: 2;
@@ -160,6 +162,7 @@ export type ShortcutUndo = {
 export type SourceIdentity = { pcmHash: string; sampleRate: number; frames: number };
 
 export type Track = {
+  deepMastering?: DeepMasteringState;
   sourceAudioId?: string;
   retiredSourceAudioIds?: string[];
   importNotice?: string;

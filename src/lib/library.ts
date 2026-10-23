@@ -41,6 +41,6 @@ export function replacementProject(track: Track, file: File, imported: Awaited<R
   };
   delete next.sourceIdentity;
   if (source.sourceIdentity) next.sourceIdentity = source.sourceIdentity;
-  delete next.script; delete next.masteringScript; delete next.analysisRevision; delete next.releaseScore;
+  delete next.script; delete next.masteringScript; delete next.analysisRevision; delete next.releaseScore; delete next.deepMastering;
   return next;
 }

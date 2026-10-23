@@ -10,5 +10,6 @@ trap 'rm -f "$runtime_copy"' EXIT
 cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" "$runtime_copy"
 chmod 0644 "$runtime_copy"
 mv -f "$runtime_copy" public/wasm/wasm_exec.js
-NEXT_PUBLIC_AURIALIS_EXECUTION=browser pnpm run build
+processing_identity="$(node scripts/processing-build.mjs prepare browser)"
+NEXT_PUBLIC_AURIALIS_EXECUTION=browser NEXT_PUBLIC_AURIALIS_PROCESSING_BUILD="$processing_identity" pnpm run build
 node scripts/prepare-browser-assets.mjs

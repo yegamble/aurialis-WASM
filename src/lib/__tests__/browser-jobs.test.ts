@@ -229,4 +229,27 @@ describe("device-local browser audio transport", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("binds qualified worker requests and rejects a missing processing-build echo", async () => {
+    const fingerprint = "a".repeat(64), offlineSha256 = "b".repeat(64);
+    vi.stubEnv("NEXT_PUBLIC_AURIALIS_PROCESSING_BUILD", JSON.stringify({ version: 1, target: "browser", fingerprint, offlineSha256, offlineBytes: 8, realtimeSha256: "c".repeat(64), runtimeSha256: "d".repeat(64) }));
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    const pending = deviceAudioRequest("/api/analyze/features", { method: "POST", body: body() });
+    const result = pending.then(() => undefined, (cause: unknown) => cause);
+    await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
+    const worker = TestWorker.all[0]; if (!worker) throw new Error("Missing worker");
+    expect(worker.url).toBe(`/offline-job-worker.js?processing=${fingerprint}`);
+    expect(worker.message).toMatchObject({ processing: { fingerprint, offlineSha256, offlineBytes: 8 } });
+    worker.reply(); const rejected = await result; expect(rejected).toBeInstanceOf(Error); expect((rejected as Error).message).toContain("different processing build"); expect(worker.terminated).toBe(true); expect(fetch).not.toHaveBeenCalled();
+  });
+  it("accepts a qualified result only with the exact checked processing identity", async () => {
+    const fingerprint = "a".repeat(64);
+    vi.stubEnv("NEXT_PUBLIC_AURIALIS_PROCESSING_BUILD", JSON.stringify({ version: 1, target: "browser", fingerprint, offlineSha256: "b".repeat(64), offlineBytes: 8, realtimeSha256: "c".repeat(64), runtimeSha256: "d".repeat(64) }));
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    const pending = deviceAudioRequest("/api/analyze/features", { method: "POST", body: body() });
+    await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
+    const worker = TestWorker.all[0]; if (!worker) throw new Error("Missing worker");
+    worker.onmessage?.({ data: { abi: "1.0", kind: "result", id: worker.message?.id, json: "{}", audio: new ArrayBuffer(0), processingBuild: fingerprint } } as MessageEvent<unknown>);
+    expect(await (await pending).json()).toEqual({}); expect(worker.terminated).toBe(true); expect(fetch).not.toHaveBeenCalled();
+  });
+
 });

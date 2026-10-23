@@ -19,6 +19,9 @@ class E2EBuildCleanupTests(unittest.TestCase):
                 (root / "aurialis").write_bytes(b"unchanged production fixture")
                 (root / "internal/webui/embedded/wasm/aurialis-realtime.wasm").write_bytes(b"bounded fixture")
                 (root / "e2e/support/actual-output-tap.js").write_bytes(b"test-only observer fixture")
+                fake_node = root / "fake-bin/node"
+                fake_node.write_text("#!/bin/sh\ntest \"$1\" = scripts/processing-build.mjs || exit 42\ntest \"$2\" = verify-native || exit 42\nprintf '%064d' 0\n")
+                fake_node.chmod(0o755)
                 fake_go = root / "fake-bin/go"
                 fake_go.write_text("#!/bin/sh\n" + code + "\n")
                 fake_go.chmod(0o755)

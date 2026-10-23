@@ -7,6 +7,8 @@ node_modules/
 .next/
 out/
 build/
+# Native processing identity source is not generated build output.
+!/internal/build/
 dist/
 
 # Go / WASM build outputs
@@ -57,3 +59,6 @@ next-env.d.ts
 .wrangler/
 .dev.vars
 .dev.vars.*
+
+# Qualified identity is generated from actual modules before each release build.
+/public/processing-build.json

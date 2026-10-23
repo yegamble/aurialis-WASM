@@ -23,8 +23,9 @@ if [ "$output_directory/$(basename "$binary")" = "$(pwd -P)/aurialis" ]; then
 fi
 if [ -e "$asset" ]; then printf 'A QA observer asset is already staged; refusing to replace it.\n' >&2; exit 1; fi
 test -s internal/webui/embedded/wasm/aurialis-realtime.wasm
+processing_fingerprint="$(node scripts/processing-build.mjs verify-native native)"
 mkdir -p "$(dirname "$binary")" internal/webui/embedded/__qa
 staged_asset=true
 cp e2e/support/actual-output-tap.js "$asset"
-go build -trimpath -o "$binary" ./cmd/aurialis
+go build -trimpath -ldflags "-X github.com/yegamble/Aurialis-WASM/internal/build.Fingerprint=$processing_fingerprint" -o "$binary" ./cmd/aurialis
 printf 'Built separate test-instrumented binary: %s\n' "$binary"

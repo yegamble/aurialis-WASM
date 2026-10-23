@@ -1,3 +1,5 @@
+import { injectedProcessingIdentity } from "./processing-identity";
+
 const OFFLINE_ABI = "1.0";
 const MIB = 1024 * 1024;
 const MAX_INPUT_BYTES = 129 * MIB;
@@ -100,7 +102,9 @@ let pending = 0;
 function startWorker(request: JobRequest, source: ArrayBuffer, reference: ArrayBuffer, signal: AbortSignal, onProgress?: (progress: number, stage: string) => void): Promise<JobResult> {
   return new Promise<JobResult>((resolve, reject) => {
     signal.throwIfAborted();
-    const worker = new Worker("/offline-job-worker.js");
+    const identity = injectedProcessingIdentity();
+    const processing = identity?.target === "browser" ? { fingerprint: identity.fingerprint, offlineSha256: identity.offlineSha256, offlineBytes: identity.offlineBytes } : null;
+    const worker = new Worker("/offline-job-worker.js" + (processing ? `?processing=${processing.fingerprint}` : ""));
     const id = crypto.randomUUID();
     let settled = false;
     const finish = (result?: JobResult, error?: Error) => {
@@ -124,6 +128,7 @@ function startWorker(request: JobRequest, source: ArrayBuffer, reference: ArrayB
       const data = event.data;
       if (typeof data !== "object" || data === null || !("id" in data) || data.id !== id || !("kind" in data)) { finish(undefined, new Error("Invalid local audio worker identity.")); return; }
       if (!("abi" in data) || data.abi !== OFFLINE_ABI) { finish(undefined, new Error("The local audio engine version is incompatible. Reload Aurialis to retry.")); return; }
+      if (processing && (!("processingBuild" in data) || data.processingBuild !== processing.fingerprint)) { finish(undefined, new Error("The local worker uses a different processing build. Reload to retry.")); return; }
       if (data.kind === "progress") {
         if (!("progress" in data) || typeof data.progress !== "number" || !Number.isFinite(data.progress) || !("stage" in data) || typeof data.stage !== "string" || data.stage.length > 1024) { finish(undefined, new Error("Invalid local audio progress.")); return; }
         try { onProgress?.(Math.max(0, Math.min(100, data.progress)), data.stage); }
@@ -136,7 +141,7 @@ function startWorker(request: JobRequest, source: ArrayBuffer, reference: ArrayB
     };
     const metadata = JSON.stringify(request);
     if (new TextEncoder().encode(metadata).byteLength > MAX_METADATA_BYTES) { finish(undefined, new Error("Local audio metadata exceeds its limit.")); return; }
-    try { worker.postMessage({ abi: OFFLINE_ABI, id, metadata, source, reference }, [source, reference]); }
+    try { worker.postMessage({ abi: OFFLINE_ABI, id, metadata, source, reference, processing }, [source, reference]); }
     catch { finish(undefined, new Error("The local audio buffers could not be transferred.")); }
   });
 }

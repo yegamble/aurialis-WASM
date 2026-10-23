@@ -14,8 +14,10 @@ trap 'rm -f "$runtime_copy"' EXIT
 cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" "$runtime_copy"
 chmod 0644 "$runtime_copy"
 mv -f "$runtime_copy" public/wasm/wasm_exec.js
-pnpm run build
+processing_identity="$(node scripts/processing-build.mjs prepare native)"
+NEXT_PUBLIC_AURIALIS_EXECUTION=native NEXT_PUBLIC_AURIALIS_PROCESSING_BUILD="$processing_identity" pnpm run build
 test -s internal/webui/embedded/wasm/aurialis-dsp.wasm
 test -s internal/webui/embedded/wasm/aurialis-realtime.wasm
-go build -trimpath -o aurialis ./cmd/aurialis
+processing_fingerprint="$(node scripts/processing-build.mjs verify-native native)"
+go build -trimpath -ldflags "-X github.com/yegamble/Aurialis-WASM/internal/build.Fingerprint=$processing_fingerprint" -o aurialis ./cmd/aurialis
 printf 'Built %s/aurialis with embedded frontend and WASM.\n' "$PWD"

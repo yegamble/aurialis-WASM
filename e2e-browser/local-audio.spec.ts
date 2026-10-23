@@ -53,19 +53,19 @@ test("rejects hostile audio in actual Go WASM without sending a network body", a
   expect(new URL(page.url()).pathname).toBe("/");
 });
 
-test("rejects a stale real Go module before processing and retries with a fresh worker", async ({ page, context }) => {
+test("rejects mismatched real Go module bytes before processing and retries with a fresh worker", async ({ page, context }) => {
   const forbidden: string[] = [];
   context.on("request", (request) => { if (!["GET", "HEAD"].includes(request.method()) || request.postDataBuffer()?.length) forbidden.push(request.method() + " " + request.url()); });
   const stale = await readFile("artifacts/browser-local/stale-fixture.wasm");
   let served = 0;
-  await context.route("**/wasm/aurialis-dsp.wasm", async (route) => {
+  await context.route("**/wasm/aurialis-dsp.wasm?processing=*", async (route) => {
     served++;
     if (served === 1) await route.fulfill({ status: 200, contentType: "application/wasm", body: stale });
     else await route.continue();
   });
   await page.goto("/");
   await page.getByLabel("Upload audio file").setInputFiles({ name: "stale-engine.wav", mimeType: "audio/wav", buffer: fixture(997, .1) });
-  await expect(page.getByText(/engine version is incompatible/iu)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/processing module does not match/iu)).toBeVisible({ timeout: 30_000 });
   expect(new URL(page.url()).pathname).toBe("/");
   await page.getByLabel("Upload audio file").setInputFiles({ name: "fresh-engine.wav", mimeType: "audio/wav", buffer: fixture(997, .1) });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });

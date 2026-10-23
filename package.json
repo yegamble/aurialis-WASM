@@ -12,7 +12,7 @@
     "build": "next build && node scripts/sync-webui.mjs",
     "start": "./aurialis",
     "lint": "eslint --max-warnings=0 src",
-    "test": "vitest run",
+    "test": "vitest run && node --test scripts/test-processing-build.mjs scripts/test-offline-processing.mjs",
     "test:backend:postman": "bash tests/postman/run-newman.sh",
     "build:binary": "bash scripts/build.sh",
     "test:binary": "node scripts/smoke-binary.mjs",

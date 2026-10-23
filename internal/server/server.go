@@ -22,6 +22,7 @@ import (
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
+	"github.com/yegamble/Aurialis-WASM/internal/build"
 	"github.com/yegamble/Aurialis-WASM/internal/jobs"
 	"github.com/yegamble/Aurialis-WASM/internal/mastering"
 )
@@ -243,6 +244,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"status":                     "ok",
 		"service":                    "aurialis-wasm",
 		"version":                    "0.1.0",
+		"processingBuildFingerprint": build.QualifiedFingerprint(),
 		"wasmDsp":                    true,
 		"wasmDspReady":               ready,
 		"gpu":                        false,

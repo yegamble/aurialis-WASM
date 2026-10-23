@@ -48,6 +48,7 @@ function useHoldAction(direction: -1 | 1, onScrub: RealTransportProps["onScrub"]
   function begin(origin: "pointer" | "key", element: HTMLButtonElement) {
     if (disabled || session.current !== null) return;
     suppressClick.current = false;
+    resumeFocus.current = null;
     session.current = { origin, held: false, element };
     timer.current = setTimeout(() => {
       timer.current = null;
@@ -72,8 +73,11 @@ function useHoldAction(direction: -1 | 1, onScrub: RealTransportProps["onScrub"]
   useEffect(() => {
     if (disabled || resumeFocus.current === null) return;
     const element = resumeFocus.current;
+    // Resume can report loading after an intervening paused-state render. Keep
+    // the origin while it still has focus so that later disabling cannot lose it.
+    if (element.isConnected && document.activeElement === element) return;
     resumeFocus.current = null;
-    if (element.isConnected && document.hasFocus() && (document.activeElement === document.body || document.activeElement === element)) element.focus({ preventScroll: true });
+    if (element.isConnected && document.hasFocus() && document.activeElement === document.body) element.focus({ preventScroll: true });
   });
   return {
     onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -84,7 +88,12 @@ function useHoldAction(direction: -1 | 1, onScrub: RealTransportProps["onScrub"]
     onPointerUp: () => { finish("end"); },
     onPointerCancel: () => { finish("cancel"); },
     onLostPointerCapture: () => { finish("cancel"); },
-    onBlur: () => { finish("cancel"); },
+    onBlur: (event: React.FocusEvent<HTMLButtonElement>) => {
+      finish("cancel");
+      // Native disabling blurs the origin during resume. An intentional move to
+      // another control or the page instead relinquishes its pending ownership.
+      if (!event.currentTarget.disabled) resumeFocus.current = null;
+    },
     onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => { event.preventDefault(); },
     onClick: () => {
       if (suppressClick.current) { suppressClick.current = false; return; }

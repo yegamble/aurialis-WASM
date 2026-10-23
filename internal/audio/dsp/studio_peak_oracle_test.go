@@ -12,13 +12,24 @@ import (
 // It is an independent final-output probe, not proof of all-frequency accuracy
 // or a substitute for the official EBU/ITU conformance material.
 func studioIndependentPeak64(samples []float64) float64 {
-	const padding = 512
+	return studioIndependentPeak64Padding(samples, 512)
+}
+
+func studioIndependentPeak64Padding(samples []float64, padding int) float64 {
+	peak, _ := studioIndependentReconstruction64(samples, padding)
+	return peak
+}
+
+func studioIndependentReconstruction64(samples []float64, padding int) (float64, float64) {
 	count := 1
 	for count < len(samples)+2*padding {
 		count *= 2
 	}
 	base := make([]complex128, count)
 	for i, value := range samples {
+		if !finite(value) {
+			return math.Inf(1), 0
+		}
 		base[padding+i] = complex(value, 0)
 	}
 	studioTestFFT(base, false)
@@ -30,11 +41,17 @@ func studioIndependentPeak64(samples []float64) float64 {
 	}
 	oversampled[count/2], oversampled[len(oversampled)-count/2] = base[count/2]*32, base[count/2]*32
 	studioTestFFT(oversampled, true)
-	maximum := 0.0
-	for _, value := range oversampled {
-		maximum = math.Max(maximum, math.Abs(real(value)))
+	maximum, position := 0.0, 0.0
+	for i, value := range oversampled {
+		if !finite(real(value)) {
+			return math.Inf(1), 0
+		}
+		if math.Abs(real(value)) > maximum {
+			maximum = math.Abs(real(value))
+			position = float64(i)/64 - float64(padding)
+		}
 	}
-	return maximum
+	return maximum, position
 }
 
 func studioTestFFT(values []complex128, inverse bool) {
@@ -97,5 +114,13 @@ func TestStudioIndependentPeakOracleAnalyticCases(t *testing.T) {
 	}
 	if got := studioIndependentPeak64(shifted); math.Abs(got-peak) > 1e-9 {
 		t.Fatal("oracle broke integer time-shift invariance")
+	}
+}
+
+func TestStudioIndependentPeakOracleRejectsInvalidPCM(t *testing.T) {
+	for _, value := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		if peak := studioIndependentPeak64([]float64{.1, value, .2}); !math.IsInf(peak, 1) {
+			t.Fatal("invalid PCM was silently accepted by final-output oracle")
+		}
 	}
 }

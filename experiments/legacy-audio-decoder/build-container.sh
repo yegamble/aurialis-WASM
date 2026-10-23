@@ -2,6 +2,7 @@
 set -euo pipefail
 # The official entrypoint sources emsdk_env.sh before this script and resets
 # EM_CACHE. Override it here, keeping every compiler cache inside bounded output.
+python3 /recipe/seed-cache.py /emsdk/upstream/emscripten/cache /output/emcache
 export EM_CACHE=/output/emcache
 printf '%s\n' "$EM_CACHE" > /output/cache-path.txt
 # Build-only configure probes execute inside the bounded temporary filesystem.
@@ -43,10 +44,24 @@ emcc -O3 -flto /output/relink/decoder.o -L/output/install/lib \
   -o /output/assets/decoder-core.mjs
 cp /output/install/lib/libavformat.a /output/install/lib/libavcodec.a \
    /output/install/lib/libswresample.a /output/install/lib/libavutil.a /output/relink/
-cp /ffmpeg/COPYING.LGPLv2.1 /output/relink/
+cp /ffmpeg/COPYING.LGPLv2.1 /ffmpeg/LICENSE.md /output/relink/
+cp /recipe/decoder.c /recipe/decoder.h /recipe/decoder-imports.js /recipe/sources.lock.json \
+   /recipe/build-container.sh /output/relink/
 cp /output/ffbuild/config.h /output/ffbuild/config_components.h /output/relink/
 # Preserve the actual archive symbol inventory, including internal Ogg video
 # header helpers. Decoder/parser component allowlists are a separate receipt.
 emnm -g --defined-only /output/relink/libavformat.a /output/relink/libavcodec.a \
   /output/relink/libswresample.a /output/relink/libavutil.a > /output/static-symbols.txt
+# Separate synthetic wrapper test module; never copied into runtime assets.
+mkdir /output/unit
+emcc -O3 -flto -fno-fast-math -ffp-contract=off -D_POSIX_C_SOURCE=200809L \
+  -I/output/install/include -I/recipe /recipe/fixtures/decoder-cases.c -L/output/install/lib \
+  -lavformat -lavcodec -lswresample -lavutil -lm --no-entry \
+  -Wl,--wrap=avformat_open_input -Wl,--wrap=avcodec_open2 -Wl,--wrap=av_read_frame \
+  -Wl,--wrap=avcodec_receive_frame -Wl,--wrap=avcodec_send_packet \
+  -sENVIRONMENT=node -sMODULARIZE=1 -sEXPORT_ES6=1 -sDYNAMIC_EXECUTION=0 -sFILESYSTEM=0 \
+  -sIMPORTED_MEMORY=1 -sALLOW_MEMORY_GROWTH=0 -sINITIAL_MEMORY=67108864 -sMAXIMUM_MEMORY=67108864 \
+  -sSTACK_SIZE=2097152 -sABORTING_MALLOC=0 -sASSERTIONS=1 \
+  -sEXPORTED_FUNCTIONS='["_aurialis_test_count","_aurialis_test_case"]' \
+  -o /output/unit/decoder-cases.mjs
 python3 /recipe/package-assets.py /output

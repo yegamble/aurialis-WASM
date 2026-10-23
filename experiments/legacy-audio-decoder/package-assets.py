@@ -11,15 +11,20 @@ assets = root / "assets"
 lock = json.loads((recipe / "sources.lock.json").read_text())
 configuration = (root / "ffbuild" / "config.h").read_text()
 components = (root / "ffbuild" / "config_components.h").read_text()
-for forbidden in ["GPL", "NONFREE", "VERSION3", "NETWORK", "PTHREADS", "W32THREADS", "OS2THREADS"]:
-    if not re.search(r"^#define CONFIG_" + forbidden + r" 0$", configuration, re.MULTILINE):
-        raise SystemExit("Forbidden or unreviewed feature: " + forbidden)
+for prefix, forbidden in [
+    ("CONFIG_", ["GPL", "NONFREE", "VERSION3", "NETWORK"]),
+    ("HAVE_", ["PTHREADS", "W32THREADS", "OS2THREADS"]),
+]:
+    for feature in forbidden:
+        if not re.search(r"^#define " + prefix + feature + r" 0$", configuration, re.MULTILINE):
+            raise SystemExit("Forbidden or unreviewed feature: " + prefix + feature)
+
 expected = {
     "DECODER": {"MP3FLOAT", "FLAC", "VORBIS", "AAC", "ALAC", "OPUS"},
     "DEMUXER": {"MP3", "FLAC", "OGG", "AAC", "MOV"},
     "PARSER": {"MPEGAUDIO", "FLAC", "VORBIS", "AAC", "OPUS"},
     "ENCODER": set(), "MUXER": set(), "FILTER": set(), "PROTOCOL": set(),
-    "INDEV": set(), "OUTDEV": set(), "HWACCEL": set(),
+    "INDEV": set(), "OUTDEV": set(), "HWACCEL": set(), "BSF": set(),
 }
 for category, allowed in expected.items():
     actual = set(re.findall(r"^#define CONFIG_([A-Z0-9_]+)_" + category + r" 1$", components, re.MULTILINE))
@@ -78,5 +83,6 @@ manifest = {
 }
 (assets / "assets.json").write_text(json.dumps(manifest, indent=2) + "\n")
 (root / "recipe-sha256.json").write_text(json.dumps({
-    path.name: digest(path.read_bytes()) for path in sorted(recipe.iterdir()) if path.is_file()
+    str(path.relative_to(recipe)): digest(path.read_bytes())
+    for path in sorted(recipe.rglob("*")) if path.is_file() and "__pycache__" not in path.parts
 }, indent=2) + "\n")

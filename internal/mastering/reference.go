@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
@@ -179,18 +180,73 @@ func referenceResidual(result *ReferenceProposal, params dsp.Params, rate float6
 	return math.Sqrt(total / weights)
 }
 
+// Numerical response protection includes both chains' pole neighborhoods and local
+// extrema. Fixed log grids alone can miss a high-Q resonance by several dB.
 func referenceResponseBounds(result *ReferenceProposal, params dsp.Params, rate float64, probes int) (float64, float64) {
-	boost, protected := 0.0, 0.0
 	high := math.Min(20000, rate*.499)
+	frequencies := make([]float64, 0, probes+200)
 	for i := range probes {
-		frequency := 20 * math.Pow(high/20, float64(i)/float64(probes-1))
-		boost = math.Max(boost, referenceResponseDelta(result, params, rate, frequency))
-		if result.Options.ProtectBelowHz > 0 {
-			frequency = 20 + (result.Options.ProtectBelowHz-20)*float64(i)/float64(probes-1)
-			protected = math.Max(protected, math.Abs(referenceResponseDelta(result, params, rate, frequency)))
+		frequencies = append(frequencies, 20*math.Pow(high/20, float64(i)/float64(probes-1)))
+	}
+	frequencies = append(frequencies, dsp.EQResponseAnchors(rate, result.Baseline.Bands)...)
+	frequencies = append(frequencies, dsp.EQResponseAnchors(rate, params.Bands)...)
+	response := func(frequency float64) float64 { return referenceResponseDelta(result, params, rate, frequency) }
+	boost := responseExtremum(frequencies, 20, high, response, false)
+	protected := 0.0
+	if result.Options.ProtectBelowHz > 0 {
+		for i := range probes {
+			frequencies = append(frequencies, 20+(result.Options.ProtectBelowHz-20)*float64(i)/float64(probes-1))
 		}
+		protected = responseExtremum(frequencies, 20, result.Options.ProtectBelowHz, response, true)
 	}
 	return boost, protected
+}
+
+func responseExtremum(frequencies []float64, low, high float64, response func(float64) float64, absolute bool) float64 {
+	points := make([]float64, 0, len(frequencies)+2)
+	points = append(points, low, high)
+	for _, frequency := range frequencies {
+		if isFinite(frequency) && frequency > low && frequency < high {
+			points = append(points, frequency)
+		}
+	}
+	sort.Float64s(points)
+	value := func(frequency float64) float64 {
+		measured := response(frequency)
+		if absolute {
+			return math.Abs(measured)
+		}
+		return measured
+	}
+	peak := 0.0
+	levels := make([]float64, len(points))
+	for i, frequency := range points {
+		levels[i] = value(frequency)
+		if !isFinite(levels[i]) {
+			return math.Inf(1)
+		}
+		peak = math.Max(peak, levels[i])
+	}
+	for i := 1; i+1 < len(points); i++ {
+		if levels[i] <= levels[i-1] || levels[i] < levels[i+1] {
+			continue
+		}
+		left, right := points[i-1], points[i+1]
+		for range 28 {
+			a, b := left+(right-left)/3, right-(right-left)/3
+			first, second := value(a), value(b)
+			if !isFinite(first) || !isFinite(second) {
+				return math.Inf(1)
+			}
+			peak = math.Max(peak, math.Max(first, second))
+			if first < second {
+				left = a
+			} else {
+				right = b
+			}
+		}
+	}
+	return peak
 }
 
 func fitReferenceContext(ctx context.Context, result *ReferenceProposal, rate float64) (dsp.Params, error) {

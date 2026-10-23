@@ -3,13 +3,14 @@ import type { MeasuredAudioMetrics } from "./types";
 
 export const albumTargets = [-23, -18, -16, -14, -12, -9] as const;
 export type AlbumGainMode = "relationships" | "normalize";
+type GainLimit = "peak" | "gain-range" | null;
 export interface AlbumReading {
   id: string; title: string; duration: number; metrics: MeasuredAudioMetrics;
   bands: FeatureMeasurements["bands"];
 }
 export interface AlbumGainPlan {
   medianTrackLufs: number; commonGainDb: number | null;
-  tracks: { id: string; gainDb: number; requestedLufs: number | null; headroomLimited: boolean; measurable: boolean }[];
+  tracks: { id: string; gainDb: number; requestedLufs: number | null; limitedBy: GainLimit; measurable: boolean }[];
 }
 const peakCeiling = -1;
 // Reserve a disclosed 0.01 dB for final encoding; this is not an ideal-sinc guarantee.
@@ -44,21 +45,25 @@ export function planAlbumGain(readings: readonly AlbumReading[], target: number,
   const center = median(readings.filter(measurable).map((item) => item.metrics.integratedLufs));
   const headroom = readings.map((item) => peakCeiling - encodingMargin - item.metrics.truePeakDbtp);
   let common: number | null = null;
+  let commonLimit: GainLimit = null;
   if (mode === "relationships") {
-    common = Math.min(target - center, ...headroom.map((available, index) => available - (offsets.at(index) ?? 0)),
-      ...offsets.map((offset) => 36 - offset));
+    const peakCap = Math.min(...headroom.map((available, index) => available - (offsets.at(index) ?? 0)));
+    const rangeCap = Math.min(...offsets.map((offset) => 36 - offset));
+    common = Math.min(target - center, peakCap, rangeCap);
+    if (common < target - center - 1e-8) commonLimit = peakCap <= rangeCap ? "peak" : "gain-range";
     if (offsets.some((offset) => (common ?? 0) + offset < -36))
       throw new Error("This sequence requires more attenuation than the gain stage supports.");
   }
   const tracks = readings.map((item, index) => {
     const offset = offsets.at(index) ?? 0, available = headroom.at(index) ?? 0;
     const valid = measurable(item), wanted = valid ? target + offset : null;
-    const requestedGain = wanted === null ? 0 : wanted - item.metrics.integratedLufs;
+    const requestedGain = wanted === null ? offset : wanted - item.metrics.integratedLufs;
     const gain = common === null ? Math.min(36, requestedGain, available) : common + offset;
     if (gain < -36) throw new Error("A track requires more attenuation than the gain stage supports.");
+    const limitedBy: GainLimit = mode === "relationships" ? commonLimit
+      : gain < requestedGain - 1e-8 ? available <= 36 ? "peak" : "gain-range" : null;
     return { id: item.id, gainDb: gain, requestedLufs: mode === "relationships" ? null : wanted,
-      headroomLimited: mode === "relationships" ? common !== target - center : gain < requestedGain - 1e-8,
-      measurable: valid };
+      limitedBy, measurable: valid };
   });
   return { medianTrackLufs: center, commonGainDb: common, tracks };
 }

@@ -18,13 +18,19 @@ describe("album post-chain gain and measured consistency", () => {
     for (const item of plan.tracks) expect(item.requestedLufs).toBeNull();
     expect(tracks[0]?.metrics.integratedLufs).toBe(-24);
   });
-  it("uses optional individual loudness gain without inventing gain for silent or short tracks", () => {
+  it("preserves manual gain when individual loudness normalization is unavailable", () => {
     const tracks = [reading("a", -20, -12), reading("b", -24, -2), reading("silent", -70, -120), { ...reading("short"), duration: 0.1 }];
     const plan = planAlbumGain(tracks, -14, "normalize", [1, 0, 6, 6]);
     expect(plan.tracks[0]?.gainDb).toBe(7); expect(plan.tracks[1]?.gainDb).toBeCloseTo(0.99, 10);
-    expect(plan.tracks[1]?.headroomLimited).toBe(true);
-    expect(plan.tracks.slice(2).map((item) => item.gainDb)).toEqual([0, 0]);
+    expect(plan.tracks[1]?.limitedBy).toBe("peak");
+    expect(plan.tracks.slice(2).map((item) => item.gainDb)).toEqual([6, 4.99]);
     expect(plan.tracks[2]?.requestedLufs).toBeNull();
+  });
+  it("distinguishes the bounded gain range from a peak-headroom constraint", () => {
+    const tracks = [reading("quiet", -68, -58)];
+    expect(planAlbumGain(tracks, -9, "normalize", [0]).tracks[0]).toMatchObject({ gainDb: 36, limitedBy: "gain-range" });
+    expect(planAlbumGain(tracks, -9, "relationships", [0]).tracks[0]).toMatchObject({ gainDb: 36, limitedBy: "gain-range" });
+    expect(planAlbumGain([reading("normal")], -23, "normalize", [0]).tracks[0]).toMatchObject({ gainDb: -3, limitedBy: null });
   });
   it("declines invalid, all-unmeasurable or unsupported gain jobs", () => {
     expect(() => planAlbumGain([reading("silent", -70)], -14, "relationships", [0])).toThrow(/No measurable/u);

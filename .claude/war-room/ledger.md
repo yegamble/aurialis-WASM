@@ -69,6 +69,12 @@ Deep PR #13 merged at `6154f87` after its required checks and both 102-case Linu
 
 ## Delegated continuation — 2026-10-23
 
+### Album cohort review — source foundation only
+
+**Round D: accept bounded implementation direction; open.** Preserve every individual setting/accepted Deep script and add explicit linear gain only after its rendered chain. Default to shared gain based on median track LUFS, label it separately from album-integrated loudness, include manual offsets in all headroom constraints and remeasure final encoded outputs. Common-band tone/crest/loudness outliers are descriptive. The 64-track/128 MiB encoded cache limits must additionally charge all resident prefixes, intermediate float masters and feature-input buffers to browser admission. Bind the full ordered cohort, source identity/revision, complete applied script/static settings, target, mode, offsets and encoding; retain a retry prefix only while this binding remains current. Cancellation cannot publish late output; saved metadata never restores audio-download authority.
+
+Private planner source on `codex/album-consistency` passed seven focused cases in 497 ms, strict TypeScript and targeted lint. Audio review corrected ignored manual offsets on unmeasurable clips and separated peak/range constraint labels; the original six-case checkpoint alone did not catch those semantics. No new album workflow is enabled. UI/render/controller/storage/resource integration, independent adversarial review, full regression, documentation sync and protected merge remain required.
+
 ### Encoded Release artifacts — local checkpoint
 
 **Retained remote setup checkpoint:** run [40005567671](https://github.com/yegamble/aurialis-WASM/actions/runs/40005567671), head `e0a0765`, passed build/static/Go/API/WASM and two complete browser shards (36/36 and 35/35). The third runner spent more than eleven minutes installing Azure Ubuntu OS packages; after it eventually started, 30 passing browser cases were observed before the requested cancellation took effect. No complete 107-case remote pass or browser assertion failure is inferred. Logs remain in `artifacts/release-final/remote-e0a0765/`. Round D accepts bounded complete OS provisioning: a CI-only root-owned APT acquisition configuration, official HTTPS archive replacement for the known Azure endpoint, five-minute OS and separate four-minute browser-download limits. Playwright's required package set, all assertions and audio-test timeouts stay unchanged. Local syntax/actionlint and independent review precede a fresh protected run.

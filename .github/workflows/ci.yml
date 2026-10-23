@@ -417,18 +417,22 @@ jobs:
       - name: Identify pinned Playwright browser version
         id: playwright-version
         run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Prepare bounded Ubuntu package downloads
+        timeout-minutes: 1
+        run: bash scripts/ci-ubuntu-apt.sh
+      - name: Install required Chromium OS dependencies
+        timeout-minutes: 5
+        run: pnpm exec playwright install-deps chromium
       - name: Restore Chromium without adding another cache writer
         id: chromium-cache
         uses: actions/cache/restore@v4
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('pnpm-lock.yaml') }}
-      - name: Install Chromium and OS dependencies on cache miss
+      - name: Install Chromium on cache miss
+        timeout-minutes: 4
         if: steps.chromium-cache.outputs.cache-hit != 'true'
-        run: pnpm exec playwright install --with-deps chromium
-      - name: Install uncached OS dependencies on browser cache hit
-        if: steps.chromium-cache.outputs.cache-hit == 'true'
-        run: pnpm exec playwright install-deps chromium
+        run: pnpm exec playwright install chromium
       - uses: actions/download-artifact@v4
         with:
           name: ${{ needs.browser-build.outputs.artifact-name }}

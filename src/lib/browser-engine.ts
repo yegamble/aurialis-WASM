@@ -414,13 +414,6 @@ export async function measureAudio(
   return audioMeasurement(body);
 }
 
-export async function measureScriptAudio(file: Blob, script: ScriptV2, signal?: AbortSignal): Promise<AudioMeasurement> {
-  const form = new FormData(); form.append("file", file, "source.wav"); form.append("script", JSON.stringify(script)); form.append("format", "json");
-  const response = await audioRequest(form, signal, true);
-  if (!response.ok) throw await audioError(response, "The applied script could not be measured. Restore its matching source and retry.");
-  return audioMeasurement(await readAudioResponse(() => response.json() as Promise<unknown>, signal));
-}
-
 function audioMeasurement(body: unknown): AudioMeasurement {
   if (typeof body !== "object" || body === null || !("sampleRate" in body)
     || !("frames" in body) || !("duration" in body)

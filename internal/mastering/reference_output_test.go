@@ -211,3 +211,13 @@ func TestReferenceAcceptedHighQSumThroughActualDSP(t *testing.T) {
 		}
 	}
 }
+
+func TestReferenceOutputResidualCannotRewardErasedEnergy(t *testing.T) {
+	var bands [5]ReferenceBand
+	for i := range bands {
+		bands[i] = ReferenceBand{LowHz: spectrumEdges[i], HighHz: spectrumEdges[i+1], Included: true}
+	}
+	if mismatch := referenceOutputResidual(bands, [5]float64{}, [5]float64{1, 1, 1, 1, 1}); !math.IsInf(mismatch, 1) {
+		t.Fatal("erasing all audible output received a finite improvement score", mismatch)
+	}
+}

@@ -1,0 +1,82 @@
+{
+  "schema": 1,
+  "status": "private-source-only-unqualified",
+  "distributionApproved": false,
+  "ffmpeg": {
+    "repository": "https://github.com/FFmpeg/FFmpeg.git",
+    "tag": "n9.0.1",
+    "tagObject": "501bb49457b9dfb25d6a208832e0a6e6cd53108d",
+    "commit": "bf1b838f2ab88b4f8fd83443325c782ea0e0f7fa",
+    "tree": "68fad6870d0f112fcf4e385d798bf268b2b938b0",
+    "archiveSHA256": null,
+    "metadata": "https://api.github.com/repos/FFmpeg/FFmpeg/git/tags/501bb49457b9dfb25d6a208832e0a6e6cd53108d",
+    "signatureVerifiedByGitHub": true
+  },
+  "emscripten": {
+    "tag": "6.0.13",
+    "platform": "linux/amd64",
+    "image": "emscripten/emsdk@sha256:badbe38bedc8f4ff88a5a24672a2d59606015ba9a3bbe69801ad2fbdf75ab500",
+    "indexDigest": "sha256:fb7864e398acfda863dfcea78b8bc8adad359fa60c6a0bbeb845931de64aa68a",
+    "metadata": "https://hub.docker.com/v2/repositories/emscripten/emsdk/tags/6.0.13",
+    "metadataUpdated": "2026-10-19T19:53:26.829897Z"
+  },
+  "policy": {
+    "heapBytes": 67108864,
+    "maxModuleBytes": 16777216,
+    "maxInputBytes": 209715200,
+    "maxFrames": 16777216,
+    "chunkFrames": 4096,
+    "maxReadBytes": 65536,
+    "maxReadCalls": 1048576,
+    "maxSeekCalls": 65536,
+    "maxPackets": 1048576,
+    "maxMetadataBytes": 1048576,
+    "deadlineMs": 130000
+  },
+  "scope": {
+    "demuxers": [
+      "mp3",
+      "flac",
+      "ogg",
+      "aac",
+      "mov"
+    ],
+    "decoders": [
+      "mp3float",
+      "flac",
+      "vorbis",
+      "aac",
+      "alac",
+      "opus"
+    ],
+    "parsers": [
+      "mpegaudio",
+      "flac",
+      "vorbis",
+      "aac",
+      "opus"
+    ],
+    "aacProfiles": [
+      "LC",
+      "HE",
+      "HE_V2"
+    ],
+    "opus": "native FFmpeg decoder with libswresample solely for intrinsic SILK/hybrid reconstruction to the decoder's fixed 48 kHz output",
+    "excluded": [
+      "encrypted inputs",
+      "multiple streams, including attached pictures",
+      "chained or multiplexed Ogg",
+      "fragmented MP4",
+      "changing decoded geometry",
+      "unknown containers",
+      "AAC profiles outside LC/HE/HE_V2",
+      "application resampling or downmix"
+    ],
+    "libraries": [
+      "avformat",
+      "avcodec",
+      "swresample",
+      "avutil"
+    ]
+  }
+}

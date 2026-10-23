@@ -154,6 +154,12 @@ function awaitCancellation<T>(promise: Promise<T>, signal: AbortSignal): Promise
 async function execute(request: JobRequest, source = new Blob(), reference = new Blob(), signal = new AbortController().signal, onProgress?: (progress: number, stage: string) => void): Promise<JobResult> {
   signal.throwIfAborted();
   if (pending >= 2) throw new Error("Local audio processing is busy. Cancel the current job or try again shortly.");
+  const inputBytes = source.size + reference.size;
+  if (inputBytes > MAX_INPUT_BYTES) throw new Error("The combined audio exceeds the 129 MiB local job limit. " + LOCAL_FALLBACK);
+  // A waiting request already retains these Blobs, before its full preflight.
+  // Keep the raw input charged through actual settlement, even if its caller
+  // cancels early. This conservatively overlaps the active job's estimate.
+  const inputMemory = reserveBrowserAudioMemory(inputBytes);
   pending++;
   const run = async () => {
     signal.throwIfAborted();
@@ -165,7 +171,7 @@ async function execute(request: JobRequest, source = new Blob(), reference = new
       return await startWorker(request, input, comparison, signal, onProgress);
     } finally { activeJobBytes = 0; }
   };
-  const result = queue.then(run, run).finally(() => { pending--; });
+  const result = queue.then(run, run).finally(() => { pending--; inputMemory.dispose(); });
   queue = result.then(() => undefined, () => undefined);
   return awaitCancellation(result, signal);
 }

@@ -18,7 +18,7 @@ A public website always chooses browser processing. It never switches to a remot
 
 ## Job and memory limits
 
-One expensive browser job runs at a time, with at most one waiting job. Cancel terminates the active worker. Completion, failure and cancellation release its private Go heap. Existing source and project ownership checks still prevent late results from replacing a newer selection.
+One expensive browser job runs at a time, with at most one waiting job. Both requests charge their raw source/reference Blobs before joining the queue. The temporary input owner lasts until the underlying queue turn settles, even if its caller cancels while waiting; the active estimate conservatively overlaps this raw-input charge. Cancel terminates the active worker. Completion, failure and cancellation release its private Go heap. Existing source and project ownership checks still prevent late results from replacing a newer selection.
 
 Binary input and output use transferable buffers, never audio encoded as JSON or base64. The shared binary-input limit is 129 MiB, including both Reference sources. The existing decoded-frame and format limits remain in effect.
 

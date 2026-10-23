@@ -123,6 +123,50 @@ describe("device-local browser audio transport", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("charges waiting raw input before enqueueing and rejects excess memory without cloning", async () => {
+    vi.stubGlobal("navigator", { deviceMemory: 2 });
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    const activeFile = new File([source()], "active.wav");
+    Object.defineProperty(activeFile, "size", { value: 16 * 1024 * 1024 });
+    const activeBody = new FormData(); activeBody.append("file", activeFile);
+    const first = deviceAudioRequest("/api/master/render", { method: "POST", body: activeBody });
+    await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
+    const waiting = new File([source()], "waiting.wav");
+    Object.defineProperty(waiting, "size", { value: 129 * 1024 * 1024 });
+    const read = vi.spyOn(waiting, "arrayBuffer");
+    const waitingBody = new FormData(); waitingBody.append("file", waiting);
+    await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: waitingBody })).rejects.toThrow("memory budget");
+    expect(read).not.toHaveBeenCalled(); expect(TestWorker.all).toHaveLength(1);
+    TestWorker.all[0]?.reply(); await first;
+    const next = deviceAudioRequest("/api/analyze/features", { method: "POST", body: body() });
+    await waitFor(() => { expect(TestWorker.all[1]?.message).toBeDefined(); });
+    TestWorker.all[1]?.reply(); await next;
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("retains canceled waiting input until the underlying queue turn actually settles", async () => {
+    const { deviceAudioRequest, reserveBrowserAudioMemory } = await import("../browser-jobs");
+    const first = deviceAudioRequest("/api/analyze/features", { method: "POST", body: body() });
+    await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
+    const waiting = new File([source()], "waiting.wav");
+    Object.defineProperty(waiting, "size", { value: 100 * 1024 * 1024 });
+    const read = vi.spyOn(waiting, "arrayBuffer");
+    const form = new FormData(); form.append("file", waiting);
+    const controller = new AbortController(), owner = reserveBrowserAudioMemory();
+    const second = deviceAudioRequest("/api/analyze/features", { method: "POST", body: form, signal: controller.signal });
+    const canceled = second.then(() => undefined, (error: unknown) => error);
+    try {
+      expect(() => { owner.update(350 * 1024 * 1024); }).toThrow("memory budget");
+      controller.abort(); expect(await canceled).toMatchObject({ name: "AbortError" });
+      expect(() => { owner.update(350 * 1024 * 1024); }).toThrow("memory budget");
+      expect(read).not.toHaveBeenCalled(); expect(TestWorker.all).toHaveLength(1);
+      TestWorker.all[0]?.reply(); await first;
+      await waitFor(() => { expect(() => { owner.update(350 * 1024 * 1024); }).not.toThrow(); });
+      expect(read).not.toHaveBeenCalled(); expect(TestWorker.all).toHaveLength(1);
+    } finally { owner.dispose(); controller.abort(); }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("rejects malformed or unsafe retained-byte counts without changing existing reservations", async () => {
     const { reserveBrowserAudioMemory } = await import("../browser-jobs");
     const held = reserveBrowserAudioMemory(1024);

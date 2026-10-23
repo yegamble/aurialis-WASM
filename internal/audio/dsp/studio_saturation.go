@@ -8,7 +8,7 @@ import (
 const studioSaturationLatency = studioOversamplingLatency + 1
 
 // This prepared candidate never runs from Engine algorithm 1. Its only supported
-// nonlinear character initially is Tube; other models require separate state.
+// nonlinear characters have independent prepared state and original responses.
 type studioSaturation struct {
 	rate                         float64
 	params                       SaturationParams
@@ -18,6 +18,8 @@ type studioSaturation struct {
 	dry                          [2][studioSaturationLatency]float64
 	dryCursor                    int
 	tube                         [2]studioADAAState
+	tape                         [2]studioTapeState
+	tapeCoeffs                   studioTapeCoeffs
 	curve                        studioTubeCurve
 	dcInput, dcOutput            [2]float64
 	dcPole                       float64
@@ -34,10 +36,11 @@ func prepareStudioSaturation(rate float64, params SaturationParams) (studioSatur
 	if err := ValidateParams(base); err != nil {
 		return studioSaturation{}, err
 	}
-	if params.Character != SatTube && params.Character != SatClean {
+	if params.Character != SatTube && params.Character != SatTape && params.Character != SatClean {
 		return studioSaturation{}, errors.New("studio saturation character is not implemented")
 	}
 	s := studioSaturation{rate: rate, params: params, filter: prepareStudioHalfBand(), curve: prepareStudioTube(params.Amount), dcPole: math.Exp(-2 * math.Pi * 5 / rate)}
+	s.tapeCoeffs = prepareStudioTape(rate, params.Amount)
 	s.mix, s.dcMix = s.targets()
 	return s, nil
 }
@@ -62,10 +65,12 @@ func (s *studioSaturation) setParams(params SaturationParams) error {
 	if err != nil {
 		return err
 	}
-	s.params, s.curve = params, next.curve
+	s.params, s.curve, s.tapeCoeffs = params, next.curve, next.tapeCoeffs
 	for ch := range s.tube {
 		s.tube[ch].integral = s.curve.integral(s.tube[ch].input)
 		s.tube[ch].integralValid = true
+		s.tape[ch].adaa.integral = s.tapeCoeffs.curve.integral(s.tape[ch].adaa.input)
+		s.tape[ch].adaa.integralValid = true
 	}
 	s.fromMix, s.fromDC = s.mix, s.dcMix
 	s.transition, s.transitionLength = 0, int(math.Ceil(.005*s.rate))
@@ -78,6 +83,7 @@ func (s *studioSaturation) resetHistory() {
 	s.dry = [2][studioSaturationLatency]float64{}
 	s.dryCursor = 0
 	s.tube = [2]studioADAAState{}
+	s.tape = [2]studioTapeState{}
 	s.dcInput, s.dcOutput = [2]float64{}, [2]float64{}
 	s.mix, s.dcMix = s.targets()
 	s.transition, s.transitionLength = 0, 0
@@ -101,7 +107,12 @@ func (s *studioSaturation) process(left, right float64) (float64, float64) {
 		s.dry[ch][s.dryCursor] = sample
 		subs := s.oversampler[ch].interpolate(&s.filter, sample)
 		for index, value := range subs {
-			shaped := s.tube[ch].process(value, s.curve)
+			shaped := 0.0
+			if s.params.Character == SatTape {
+				shaped = s.tape[ch].process(value, s.tapeCoeffs)
+			} else {
+				shaped = s.tube[ch].process(value, s.curve)
+			}
 			subs[index] = s.pad[ch].process(shaped)
 		}
 		wet := s.oversampler[ch].decimate(&s.filter, subs)

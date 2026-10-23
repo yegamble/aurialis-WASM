@@ -4,6 +4,16 @@ import { newAudioAssetId } from "./db";
 import type { SourceIdentity, Track } from "./types";
 const MAX_SOURCE_FRAMES = 16 * 1024 * 1024;
 const MAX_SOURCE_BYTES = MAX_SOURCE_FRAMES * 8 + 44;
+function canonicalGeometry(header: DataView, bytes: number): { sampleRate: number; frames: number } | null {
+  const id = (offset: number) => String.fromCharCode(...Array.from({ length: 4 }, (_, index) => header.getUint8(offset + index)));
+  const canonical = header.byteLength === 44 && bytes >= 52 && bytes <= MAX_SOURCE_BYTES &&
+    id(0) === "RIFF" && header.getUint32(4, true) + 8 === bytes && id(8) === "WAVE" &&
+    id(12) === "fmt " && header.getUint32(16, true) === 16 && header.getUint16(20, true) === 3 &&
+    header.getUint16(22, true) === 2 && header.getUint32(24, true) >= 8000 && header.getUint32(24, true) <= 192000 &&
+    header.getUint32(28, true) === header.getUint32(24, true) * 8 && header.getUint16(32, true) === 8 &&
+    header.getUint16(34, true) === 32 && id(36) === "data" && header.getUint32(40, true) === bytes - 44 && (bytes - 44) % 8 === 0;
+  return canonical ? { sampleRate: header.getUint32(24, true), frames: (bytes - 44) / 8 } : null;
+}
 // Capacity preflight only. The Go server remains the authoritative container validator.
 async function wavCapacity(file: File): Promise<{ frames: number; sampleRate: number } | null> {
   const view = new DataView(await file.slice(0, 65536).arrayBuffer());
@@ -33,10 +43,12 @@ export async function prepareProjectFile(file: File, signal: AbortSignal, progre
   progress("Validating and reconstructing your WAV on this device…");
   const imported = await importAudio(file, signal);
   signal.throwIfAborted();
-  progress("Preparing your waveform…");
-  const pcm = await readCanonicalWAV(imported.canonical);
+  progress("Checking reconstructed audio…");
+  // Go CDR is the sample authority. Check its canonical transfer without
+  // allocating and immediately discarding three source-length PCM buffers.
+  const geometry = canonicalGeometry(new DataView(await imported.canonical.slice(0, 44).arrayBuffer()), imported.canonical.size);
   signal.throwIfAborted();
-  if (pcm.sampleRate !== imported.measurement.sampleRate || pcm.left.length !== imported.measurement.frames) throw new Error("The reconstructed source does not match its measurements.");
+  if (!geometry || geometry.sampleRate !== imported.measurement.sampleRate || geometry.frames !== imported.measurement.frames) throw new Error("The reconstructed source does not match its measurements.");
   return imported;
 }
 
@@ -56,13 +68,7 @@ export function importedTrack(file: File, imported: Awaited<ReturnType<typeof pr
 export async function readStoredSource(blob: Blob, signal: AbortSignal): Promise<{ blob: Blob; pcm: StereoPCM }> {
   signal.throwIfAborted();
   const header = new DataView(await blob.slice(0, 44).arrayBuffer());
-  const id = (offset: number) => String.fromCharCode(...Array.from({ length: 4 }, (_, index) => header.getUint8(offset + index)));
-  const canonical = header.byteLength === 44 && blob.size >= 52 && blob.size <= 44 + MAX_SOURCE_FRAMES * 8 &&
-    id(0) === "RIFF" && header.getUint32(4, true) + 8 === blob.size && id(8) === "WAVE" &&
-    id(12) === "fmt " && header.getUint32(16, true) === 16 && header.getUint16(20, true) === 3 &&
-    header.getUint16(22, true) === 2 && header.getUint32(24, true) >= 8000 && header.getUint32(24, true) <= 192000 &&
-    header.getUint32(28, true) === header.getUint32(24, true) * 8 && header.getUint16(32, true) === 8 &&
-    header.getUint16(34, true) === 32 && id(36) === "data" && header.getUint32(40, true) === blob.size - 44 && (blob.size - 44) % 8 === 0;
+  const canonical = canonicalGeometry(header, blob.size);
   // Imported sources already passed Go reconstruction. Other stored WAV layouts still go through it.
   const clean = canonical ? blob : await serverRender(blob, { bypass: true }, 32, signal);
   const pcm = await readCanonicalWAV(clean);

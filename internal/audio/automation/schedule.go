@@ -376,3 +376,21 @@ func (schedule *Schedule) Baseline() Values { return schedule.baseline }
 
 // Quantum returns the absolute held-control cell size in device frames.
 func (schedule *Schedule) Quantum() int { return schedule.quantum }
+
+// AdvanceFrames advances the rational source clock without evaluating inactive controls.
+func (cursor *Cursor) AdvanceFrames(count int) {
+	if cursor == nil || cursor.schedule == nil || count <= 0 {
+		return
+	}
+	cursor.numerator += int64(count) * int64(cursor.schedule.SourceRate())
+	cursor.deviceFrame += int64(count)
+}
+
+// CopyPosition transfers exact fractional source phase between compatible revisions.
+func (cursor *Cursor) CopyPosition(previous *Cursor) bool {
+	if cursor == nil || previous == nil || cursor.schedule == nil || previous.schedule == nil || cursor.schedule.SourceRate() != previous.schedule.SourceRate() || cursor.schedule.DeviceRate() != previous.schedule.DeviceRate() || cursor.schedule.Frames() != previous.schedule.Frames() {
+		return false
+	}
+	cursor.numerator, cursor.deviceFrame = previous.numerator, previous.deviceFrame
+	return true
+}

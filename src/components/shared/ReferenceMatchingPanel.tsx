@@ -14,7 +14,7 @@ function sameLoadedSource(left: Track, right: Track | undefined): boolean {
   return !!right && audioKey(left) === audioKey(right) && (left.sourceRevision ?? 0) === (right.sourceRevision ?? 0) && sameSource(left.sourceIdentity, right.sourceIdentity);
 }
 interface Review { proposal: ReferenceProposal; source: Track; reference: Track; owner: AdvancedParams }
-interface Pending { expected: Track; next: AdvancedParams; restoring: boolean }
+interface Pending { expected: Track; reference?: Track; next: AdvancedParams; restoring: boolean }
 
 export function ReferenceMatchingPanel({ trackId }: { trackId: string }) {
   const { state, dispatch } = useStore();
@@ -34,13 +34,13 @@ export function ReferenceMatchingPanel({ trackId }: { trackId: string }) {
     // render's passive effect may still run after Apply has been requested.
     let rejected = false;
     if (pending && track) {
-      if (track.advanced === pending.next && sameLoadedSource(pending.expected, track) && !hasAppliedDeep(track)) {
+      if (track !== pending.expected && track.advanced === pending.next && sameLoadedSource(pending.expected, track) && !hasAppliedDeep(track)) {
         owner.current = pending.next;
         setMessage(pending.restoring ? "The complete settings from before this Reference session were restored." : "Measured proposal applied. Return to master to audition or export the current settings.");
         setPending(null);
         if (pending.restoring) { setReview(null); before.current = null; owner.current = null; }
         else setReview((current) => current ? { ...current, owner: pending.next } : null);
-      } else if (track !== pending.expected) { setPending(null); setReview(null); rejected = true; }
+      } else if (track !== pending.expected || (pending.reference && reference !== pending.reference)) { setPending(null); setReview(null); rejected = true; }
     }
     if (before.current && (!sameLoadedSource(before.current, track) || track?.advanced !== owner.current || hasAppliedDeep(track))) {
       before.current = null; owner.current = null; cancel("Source or processing changed. Analyze a fresh proposal before applying.");
@@ -71,7 +71,7 @@ export function ReferenceMatchingPanel({ trackId }: { trackId: string }) {
   function apply() {
     if (!track || !reference || !review || pending || hasAppliedDeep(track) || !sameLoadedSource(review.source, track) || !sameLoadedSource(review.reference, reference) || track.advanced !== review.owner) { setError("This proposal is stale. Analyze again before applying."); return; }
     const next = review.proposal.advanced;
-    setPending({ expected: track, next, restoring: false });
+    setPending({ expected: track, reference, next, restoring: false });
     dispatch({ type: "APPLY_REFERENCE", expected: track, reference, advanced: next });
   }
   function revert() {

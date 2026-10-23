@@ -4,7 +4,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { decode } from "./audio-fixture";
 import { meanOutputLevel, observeOutput, outputLevel } from "./live-output";
-import type { AdvancedParams } from "../src/lib/types";
+import type { AdvancedParams, Track } from "../src/lib/types";
 
 /** Independent physical-band tones; no application EQ is used to make the reference. */
 function multitone(reference = false, seconds = 4): Buffer {
@@ -95,4 +95,32 @@ test("populated Reference review supports keyboard, 44px controls and WCAG2.2AA 
   }
   const before = await settings(page, sourceId); await page.getByRole("slider", { name: "Match amount", exact: true }).focus(); await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("button", { name: "Apply measured proposal", exact: true })).toBeDisabled(); expect(await settings(page, sourceId)).toEqual(before);
+});
+
+test("Reference requires explicit Detach before changing an applied Deep snapshot", async ({ page }) => {
+  test.setTimeout(60000); const { sourceId } = await setup(page, 1);
+  const referenceId = await page.getByRole("combobox", { name: "Reference track", exact: true }).inputValue();
+  async function sourceTrack() { const track = await page.evaluate((id) => (JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as { tracks: Track[] }).tracks.find((item) => item.id === id), sourceId); if (!track) throw new Error("Missing shared source"); return track; }
+  await page.goto(`/master/${sourceId}`); await page.getByRole("tab", { name: "deep", exact: true }).click();
+  await page.getByRole("button", { name: "Analyze Deep proposal", exact: true }).click();
+  await expect(page.getByText("Measured proposal ready. Your applied processing has not changed.", { exact: true })).toBeVisible({ timeout: 30000 });
+  await page.getByRole("button", { name: "Apply Deep proposal", exact: true }).click();
+  await expect.poll(async () => !!(await sourceTrack()).deepMastering?.applied).toBe(true);
+  const applied = await sourceTrack();
+  await page.goto(`/reference/${sourceId}`); await page.getByRole("combobox", { name: "Reference track", exact: true }).selectOption(referenceId);
+  await expect(page.getByText("Deep automation is attached. Detach it in Master before applying a static Reference proposal.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Analyze reference audio", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Apply measured proposal", exact: true })).toBeDisabled();
+  expect((await sourceTrack()).deepMastering?.applied).toEqual(applied.deepMastering?.applied); expect((await sourceTrack()).advanced).toEqual(applied.advanced);
+  await page.getByRole("link", { name: "Back to master", exact: true }).click();
+  await page.getByRole("button", { name: "Detach automation", exact: true }).click();
+  await expect.poll(async () => (await sourceTrack()).deepMastering?.applied).toBeUndefined();
+  const detached = await sourceTrack();
+  await page.goto(`/reference/${sourceId}`); await page.getByRole("combobox", { name: "Reference track", exact: true }).selectOption(referenceId);
+  await page.getByRole("button", { name: "Analyze reference audio", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Apply measured proposal", exact: true })).toBeEnabled({ timeout: 30000 });
+  await page.getByRole("button", { name: "Apply measured proposal", exact: true }).click();
+  await expect(page.getByText(/Measured proposal applied/u)).toBeVisible();
+  const reference = await sourceTrack(); expect(reference.deepMastering?.applied).toBeUndefined();
+  expect(reference.advanced.eqBands.some((band, index) => band.gainDb !== detached.advanced.eqBands.at(index)?.gainDb)).toBe(true);
 });

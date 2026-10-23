@@ -3,6 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StoreProvider, useStore, reduceStoreState } from "@/lib/store";
 import { testStore } from "@/lib/__tests__/fixtures";
+import { engineParams } from "@/lib/browser-engine";
+import { automationTargets, deepSettingsSnapshot, readDeepMasteringState, type ScriptV2 } from "@/lib/deep-mastering";
 import { matchReference, type ReferenceProposal } from "@/lib/reference-matching";
 import { ReferenceMatchingPanel } from "../ReferenceMatchingPanel";
 vi.mock("@/lib/db", () => ({ getAudio: vi.fn(() => Promise.resolve(new Blob(["canonical"]))) }));
@@ -67,7 +69,9 @@ describe("measured Reference review", () => {
     expect(reduceStoreState(changed, { type: "APPLY_REFERENCE", expected: source, reference, advanced: source.advanced }).tracks[0]?.advanced.input).toBe(5);
     const removed = { ...state, tracks: [source] };
     expect(reduceStoreState(removed, { type: "APPLY_REFERENCE", expected: source, reference, advanced: source.advanced })).toBe(removed);
-    const attached = { ...source, deepMastering: { applied: {} } };
+    const script: ScriptV2 = { version: "2.0", revision: 1, source: source.sourceIdentity, profile: "Warm Analog", summary: "Manually approved source-bound baseline", chainParams: engineParams(source.advanced), sections: [{ id: "all", name: "Section 1", roleHint: "unknown", startFrame: 0, endFrame: source.sourceIdentity.frames, confidence: 0 }], moves: [], findings: [], beforeMetrics: { integratedLufs: -18, shortTermLufs: -18, truePeakDbtp: -6, samplePeakDbfs: -6, dynamicRangeDb: 12, correlation: 1, lowBassCorrelation: 1, dcLeftDbfs: -100, dcRightDbfs: -100, clippingSamples: 0, gainReductionDb: 0 } };
+    const deepMastering = readDeepMasteringState({ sourceRevision: 0, proposal: script, targets: automationTargets.map((name) => ({ name, minimum: -80, maximum: 200, cellTolerance: .1, sampleAccurate: false })), applied: script, before: deepSettingsSnapshot(source) }, source.sourceIdentity, 0);
+    const attached = { ...source, deepMastering };
     expect(reduceStoreState({ ...state, tracks: [attached, reference] }, { type: "APPLY_REFERENCE", expected: attached, reference, advanced: { ...attached.advanced, input: 6 } }).tracks[0]).toBe(attached);
   });
 });

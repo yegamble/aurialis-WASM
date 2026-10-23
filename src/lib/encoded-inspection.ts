@@ -44,5 +44,5 @@ export async function inspectEncodedWAV(blob: Blob, bits: unknown, source: { sam
   const digest = await crypto.subtle.digest("SHA-256", buffer);
   signal.throwIfAborted();
   const sha256 = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
-  return { sha256, encoding: { ...source, channels: 2, bitDepth: bits, fullScaleFrames, leadingSilenceFrames, trailingSilenceFrames, silenceThresholdDbfs: -60 } };
+  return { sha256, encoding: { sampleRate: source.sampleRate, frames: source.frames, channels: 2, bitDepth: bits, fullScaleFrames, leadingSilenceFrames, trailingSilenceFrames, silenceThresholdDbfs: -60 } };
 }

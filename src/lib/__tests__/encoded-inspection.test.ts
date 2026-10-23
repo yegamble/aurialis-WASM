@@ -29,6 +29,12 @@ describe("exact encoded output inspection", () => {
       expect(result.encoding).toMatchObject({ bitDepth: bits, frames: 7, fullScaleFrames: 2, leadingSilenceFrames: 2, trailingSilenceFrames: 2 });
     }
   });
+  it("copies only verified layout fields instead of propagating an original source identity into encoded metadata", async () => {
+    const original = { sampleRate: 48000, frames: 2, pcmHash: "a".repeat(64) };
+    const result = await inspectEncodedWAV(new Blob([fixture(24, [0.25, -0.25])]), 24, original, new AbortController().signal);
+    expect(result.encoding).not.toHaveProperty("pcmHash");
+    expect(Object.keys(result.encoding).sort()).toEqual(["bitDepth", "channels", "frames", "fullScaleFrames", "leadingSilenceFrames", "sampleRate", "silenceThresholdDbfs", "trailingSilenceFrames"]);
+  });
   it("preserves finite float headroom and distinguishes an entirely quiet file", async () => {
     const result = await inspectEncodedWAV(new Blob([fixture(32, [0, -1.5, 1.25, 0])]), 32, { sampleRate: 48000, frames: 4 }, new AbortController().signal);
     expect(result.encoding.fullScaleFrames).toBe(2);

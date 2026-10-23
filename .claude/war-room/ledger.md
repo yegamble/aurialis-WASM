@@ -29,11 +29,30 @@ Deep PR #13 merged at `6154f87` after its required checks and both 102-case Linu
 
 ## Delegated continuation — 2026-10-23
 
+### Encoded Release artifacts — local checkpoint
+
+**Locally verified — open, awaiting exact CI and merge.** The Release slice renders one 16/24/32-bit WAV from verified source/current settings or the acknowledged applied Deep script, inspects its encoded samples and bypass-measures that same file. SHA-256 identifies the output; repeated downloads retain its exact Blob. Six sourced profiles expose bounded delivery guidance rather than platform/hardware certification. Review applies no gain, trimming, resampling or repair.
+
+The report binds source key/revision, encoding, processing and the full applied script. Cancel, source/settings/encoding changes and disposal reject late results. Explicit save uses full-record compare-and-swap; reload restores report JSON only and requires a new run for measured audio. Source replacement invalidates it. Exact output inspection and eleven finite diagnostic metrics are bounded, with source/counter/layout validation during hydration. All audio remains on the user's device; the separate browser-worker integration and CI-efficiency work do not close Release acceptance.
+
+| Evidence tier | Observed checkpoint |
+| --- | --- |
+| `unit` | Fourteen core policy/inspection/binding cases and nine async controller cases cover final-file identity, malformed reports, cancel/retry, stale source/settings/encoding, missing-source recovery, retained same-Blob downloads, reload and complete-record save rejection. Fresh stable complete suite: **405/405 in 36 files, 9.54 seconds**, after a private-type export correction. Strict TypeScript, lint and Knip passed; the type-only correction changes no runtime behavior. |
+| `playwright-a11y-responsive` | Focused production run **6/6 in 11.3 seconds**: exact 16/24/32-bit downloads and independent bypass metrics, six profiles/six widths with axe/44 px/keyboard, saved-report reload and source recovery, exact accepted-Deep native render, held real-response cancellation/encoding races and album regression. Both 320/1440 px screenshots were visually reviewed without an in-scope must-fix. Complete rebased production suite at `79299a0`: **107/107 in 9.7 minutes**, exit 0, with zero skipped/unexpected/flaky cases (581413.784 ms); stdout and JSON were checked independently. |
+| `compiled-binary-smoke` | Focused runtime binary SHA-256 `1eeebd62620325dd5c296e45367d9df01d4c2f736c400e4cdd33013a20411c2b`; the rebase onto Deep main and private-type fix change no runtime behavior. The final rebased production build passed before the complete 107-case run; its binary SHA-256 remained identical. Fresh empty-directory smoke passed, including the production QA-path 404. |
+| `newman-e2e` / `api-curl` | Fresh post-documentation run passed **34 requests / 39 assertions** and raw Host/oversize/security probes, exit 0 on unique loopback port 3931. Native embedded assets were rebuilt in a temporary binary without another Next build; no Go/DSP source changed. |
+
+Stable ignored evidence is under `artifacts/release-final/` and `artifacts/release-controller/`; complete browser stdout/JSON and portable artifacts are `browser-full.log`, `browser-full.json` and `browser-full-results/` under the former. Retain the initial focused **3/5 failure**: a global alert observer matched Next's route announcer and an older response observer tried to parse the new first binary WAV as JSON. Scoped selectors and the response Content-Type corrected those observers without audio threshold changes; the corrected six-case run passed. Initial strict test-fixture typing/lint failures were corrected before the final controller commit. A full unit run overlapping the unfinished controller file was not used as final evidence; the stable 405-case run supersedes it. Knip's unused exported check type was made private before that fresh pass. Doc verification passed 81 local file/heading targets, the whitespace check and configured spelling with `--gitignore` (238 files, zero issues). The raw spelling glob first encountered an unknown word in a retained ignored Playwright error-context file; that evidence was preserved, not edited or deleted. The guide’s new acronym spelling annotation was corrected. Ordinary sandbox smoke/API attempts could not bind/connect loopback (permission denied); authorized reruns passed, and both setup-failure logs remain. Exact remote checks, independent final gate and merge remain required. Whole-product, studio DSP, trained stems, album consistency, AI repair and Waves acceptance remain open.
+
+### Deep protected merge record
+
+[PR #13](https://github.com/yegamble/aurialis-WASM/pull/13) merged at `6154f871e30b52fd9b6742ae2a87cf9d9cf2ef2b`, from exact reviewed head `c2250ac`. All six repository CI checks plus app-bound GitGuardian passed under the enforced strict PR protection. The PR browser run passed **102/102 in 7.4 minutes** ([39994806155](https://github.com/yegamble/aurialis-WASM/actions/runs/39994806155)); the push browser run passed **102/102 in 9.3 minutes** ([39994801796](https://github.com/yegamble/aurialis-WASM/actions/runs/39994801796)). Reviewed and merged tracked trees were identical. This supersedes earlier Deep awaiting-merge checkpoints without erasing their failures or extending acceptance to the whole product.
+
 ### Integrated Deep editor and live schedule checkpoint
 
 | Item | Current status |
 | --- | --- |
-| MUB-3B browser editor/publication | locally verified, corrected full 102/102 and 382 units; exact final-head CI/merge pending |
+| MUB-3B browser editor/publication | verified and merged, PR #13 / `6154f87`; local corrected 102/102 and 382 units, both exact-head Linux 102-case runs and seven required app checks passed |
 | Reference dependency PR #9 | verified and merged at `f9ae077`; all six jobs in CI 39939937259 passed, prior red checkpoints retained |
 | ScriptV2 foundation PR #8 | verified and merged, `d999f4e` |
 | Whole product, studio DSP, trained stems and Waves acceptance | open |
@@ -62,7 +81,7 @@ All four delayed-epoch/static-prefix native PCM captures, six finite/tail/Repeat
 
 Stable ignored evidence is under `artifacts/deep-simple-final/`: `frontend.log`, `go.log`, individual quality logs, `build-verify.log`, `browser.log`/`browser.json`/`browser-results/` for the failed original, `profile-corrected.*` for the targeted correction, and `browser-corrected.log`/`browser-corrected.json`/`browser-corrected-results/` for the complete pass. Production SHA-256: `9649c6f85605432b9485a9c70d0b73f5309bc08108db7bacd17c03c152ab1253`; separate QA SHA-256: `9197f52c5a1b0d6f00a5d78cff7e3321a563b6f5d1d8346a34a22e6164119046`. Production QA-path 404, unchanged production bytes and removed staged observer were observed. Temporary QA binaries are cleaned; no continued availability of their former paths is claimed.
 
-The exact accepted local source is preserved as `codex/deep-proof-ecc9eff`. Deep was then rebased onto protected merged Simple main `4d0c745`; only the README conflicted, and the new reader-focused README and guides were retained. A mechanical comparison found **no differences in application source, browser tests, scripts, DSP, build configuration or dependencies** against the 102-case proof. The documentation sync adds the actual Deep workflow. **Open — awaiting independent final documentation review, exact final-head CI and delegated merge.** Browser-worker integration/deployment, whole-product, studio DSP, trained stems, album consistency and Waves acceptance remain separate open work.
+The exact accepted local source is preserved as `codex/deep-proof-ecc9eff`. Deep was then rebased onto protected merged Simple main `4d0c745`; only the README conflicted, and the new reader-focused README and guides were retained. A mechanical comparison found **no differences in application source, browser tests, scripts, DSP, build configuration or dependencies** against the 102-case proof. The documentation sync adds the actual Deep workflow. This local pending checkpoint was superseded by the verified PR #13 merge record above; its full source, failures and finite evidence remain historical. Browser-worker integration/deployment, whole-product, studio DSP, trained stems, album consistency and Waves acceptance remain separate open work.
 
 
 
@@ -337,6 +356,7 @@ The corrective subset passed current-session QA and Devil’s Advocate review an
 | MUB-2A | P1 | wasm-dsp | Algorithm-1 compatibility, capability and latency foundation | `3886536` / PR #6 | 333 exact compiled fixtures; zero-buffered-latency/drain contracts; corrected six-job CI `39838476152` |
 | MUB-3A | P1 | go-backend / nextjs-ui | Source-bound measured features and cancellable diagnostics | `3886536` / PR #6 | 22 Newman requests/27 assertions plus raw probes; 61 browser cases; independent coverage/cancellation review |
 | MUB-4A | P1 | nextjs-ui / audio-verify | Supported EQ type/enable and limiter release controls | `3886536` / PR #6 | Native/live/export checks, mobile target geometry and six-width accessibility within the 61-case suite |
+| MUB-3B / MUB-4C editor | P1 | deep-mastering / nextjs-ui | Source-bound proposal editor, acknowledged live/native schedule, recoverable Apply/Revert/Detach and finite/repeat epochs | `6154f87` / PR #13 | 382 local units, corrected 102 local browser cases, both exact-head Linux 102-case runs, seven required app checks and identical reviewed/merged trees; finite/cross-rate oracles remain scoped |
 
 ---
 

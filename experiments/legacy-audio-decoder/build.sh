@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Private build recipe only. This script never fetches sources or image layers.
 set -euo pipefail
-if [[ "$#" != 2 ]]; then
-  echo "Usage: build.sh VERIFIED_FFMPEG_GIT_CHECKOUT NEW_OUTPUT_DIRECTORY" >&2
+if [[ "$#" != 2 && "$#" != 3 ]]; then
+  echo "Usage: build.sh VERIFIED_FFMPEG_GIT_CHECKOUT NEW_OUTPUT_DIRECTORY [VERIFIED_PREVIOUS_OUTPUT]" >&2
   exit 2
 fi
 TASK_ROOT="$(cd "$(dirname "$0")" && pwd -P)"
@@ -19,4 +19,8 @@ TREE="68fad6870d0f112fcf4e385d798bf268b2b938b0"
 mkdir -m 700 "$TASK_OUTPUT"
 # The controller records actual container state, including OOM, before cleanup.
 # It never fetches an image and refuses to exceed its fixed resource policy.
-python3 "$TASK_ROOT/run-build.py" "$FFMPEG_SOURCE" "$TASK_ROOT" "$TASK_OUTPUT"
+if [[ "$#" = 3 ]]; then
+  python3 "$TASK_ROOT/run-build.py" "$FFMPEG_SOURCE" "$TASK_ROOT" "$TASK_OUTPUT" "$3"
+else
+  python3 "$TASK_ROOT/run-build.py" "$FFMPEG_SOURCE" "$TASK_ROOT" "$TASK_OUTPUT"
+fi

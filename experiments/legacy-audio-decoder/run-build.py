@@ -30,11 +30,14 @@ def result_code(state, timed_out, resource_failure, attach_code):
 
 
 def main():
-    if len(sys.argv) != 4:
-        raise SystemExit("Usage: run-build.py SOURCE RECIPE NEW_PRIVATE_OUTPUT")
-    source, recipe, output = (Path(value).resolve() for value in sys.argv[1:])
+    if len(sys.argv) not in (4, 5):
+        raise SystemExit("Usage: run-build.py SOURCE RECIPE NEW_PRIVATE_OUTPUT [VERIFIED_PREVIOUS_OUTPUT]")
+    source, recipe, output = (Path(value).resolve() for value in sys.argv[1:4])
+    previous = Path(sys.argv[4]).resolve() if len(sys.argv) == 5 else None
+    if previous is not None and not previous.is_dir():
+        raise SystemExit("Previous private output must exist.")
     name = "aurialis-decoder-build-" + secrets.token_hex(8)
-    receipt = {"image": IMAGE, "container": name, "limits": LIMITS, "events": []}
+    receipt = {"image": IMAGE, "container": name, "limits": LIMITS, "events": [], "previous": str(previous) if previous else None}
     state = {}
     created = False
     attached = None
@@ -73,7 +76,9 @@ def main():
             "-e", "SOURCE_DATE_EPOCH=1786505071", "-e", "TZ=UTC", "-e", "LC_ALL=C",
             "-e", "EM_CACHE=/output/emcache",
             "-v", str(source) + ":/ffmpeg:ro", "-v", str(recipe) + ":/recipe:ro",
-            "-v", str(output) + ":/output:rw", IMAGE, "bash", "/recipe/build-container.sh",
+            "-v", str(output) + ":/output:rw",
+            *(["-v", str(previous) + ":/previous:ro"] if previous else []),
+            IMAGE, "bash", "/recipe/relink-container.sh" if previous else "/recipe/build-container.sh",
         ], checked=True)
         created = True
         print("Private build resource limits active; output: " + str(output), flush=True)

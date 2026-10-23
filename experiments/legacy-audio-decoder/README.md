@@ -1,6 +1,6 @@
 # Private compressed-source recovery experiment
 
-Status: private source with synthetic JavaScript unit evidence and a linked baseline WASM artifact. The first three bounded builds all failed; the latest failure was packaging after linking. No compressed parser, audio decoder, actual browser or licensing qualification has run. Nothing here is imported by the application, copied into public assets or deployed.
+Status: private source with synthetic JavaScript unit evidence and a linked baseline WASM artifact. The first three bounded builds all failed. Build04 compiled and packaged successfully, then its synthetic loader launch failed before any C case ran. No compressed parser, audio decoder, actual browser or licensing qualification has run. Nothing here is imported by the application, copied into public assets or deployed.
 
 This experiment prepares one on-device decoder step before existing Go CDR. It does not deliver compressed recovery, establish every codec the old Web Audio implementation accepted, or permit permanent retirement of rollback resources.
 
@@ -29,6 +29,20 @@ The next recipe seeds only the cache measured in the exact pinned read-only imag
 `package-assets.py` rejects components outside the closed profile and GPL/nonfree/version3/network/thread settings. Its result stays `private-unqualified` with `distributionApproved: false`; packaging cannot grant qualification. Its source receipt hashes the recipe and fixture files recursively. No corrected package has passed yet.
 
 The failed Build03 nevertheless produced a 990,414-byte WASM artifact (SHA-256 cca5479864d08e680ec9b6b09462107746754e31653b8c42e2984a14b9576359) and 35,781-byte ES module glue. Actual module compilation/inspection, without instantiation, found one imported memory with equal minimum and maximum of 1,024 pages (64 MiB), no defined memory and the eight intended C ABI exports. This baseline inspection does not qualify the later corrected source. Emscripten still emits file-named syscall imports: open/read/close abort, seek returns an unsupported error, ioctl/fcntl are no-ops, and writes use the disabled print sink. FS APIs abort and heap resize returns false. The glue inspection found no eval or Function constructor. These stubs require independent boundary review; FILESYSTEM=0 does not mean zero file-named imports.
+
+## Build04 and loader initialization RED
+
+Build04 exited0 in1,030.137 seconds under the inspected2CPU/4GiB/no-extra-swap/256PID/512MiB temporary-filesystem limits. It reported no OOM, timeout, resource failure or cleanup error. Its output totaled657,601,282 bytes at inspection. The actual closed component lists passed packaging. Runtime WASM is991,492 bytes (SHA256261c4b4b5cb9ad36e7ac5eebc3dccfc9a0f319b15d2cff53acac263ec4530878), glue35,781 bytes and all private assets1,053,293 bytes. Module inspection found22 imports,20 exports, one fixed imported64MiB memory and the eight expected decoder ABI exports, without test exports. Fourteen relink materials and disclosed internal Ogg helpers were inventoried. This is compile/package evidence, not initialization or codec qualification.
+
+The first synthetic launch failed because the exact SDK's default INCOMING_MODULE_JS_API omits wasmBinary and wasmMemory. Both are optional supported incoming values. Full stderr and the before-any-C-case RED are preserved. The source now explicitly enables only wasmBinary, wasmMemory, print and printErr on both links; readInput remains the directly referenced custom shim property. No successful corrected launch is claimed yet.
+
+For this correction, the optional third build.sh argument selects bounded relinking from inspected Build04 material:
+
+```bash
+bash experiments/legacy-audio-decoder/build.sh /absolute/pristine/FFmpeg /absolute/new/private-output /absolute/inspected-build04
+```
+
+The previous output is mounted read-only. `copy-relink-inputs.py` verifies its successful bounded build/image, exact runtime hash, current C/header/import/lock/harness source hashes and all14 prior relink records. It checks and copies633,412,843 SDK-cache bytes (2,109 files/104 directories) with a content/layout hash, and1,207,103 header bytes (134 files/four directories), rejecting links, special files or changed content. The cache still must fit768MiB and all copied data stays inside the original2GiB output and6GiB disk-reserve controls. It does not rebuild FFmpeg, mutate the prior cache or fetch dependencies. Current link recipes are retained alongside original object provenance. Corrected relink/runtime initialization and actual browser Worker init-without-open remain pending.
 
 ## First private format profile
 
@@ -68,9 +82,9 @@ The Wasm asset is limited to 16 MiB, below the 25 MiB static-file ceiling; JS gl
 
 With Node 26.12.0 on PATH, `node --test experiments/legacy-audio-decoder/fixtures/*.test.mjs` passed 31/31 synthetic units in 114.079 ms during this source review. These exercise only envelope parsing, inert Worker/client protocol adapters, fixed-buffer stream reads and admission logic. No FFmpeg WASM instance, real compressed decoder, browser or actual Go CDR ran in those units.
 
-Three additional inert Python units verify OOM/watchdog/disk failure status handling; these passed without contacting Docker. They do not verify kernel enforcement. The retained prior source failed the new one-frame chunk-retention, empty-manifest-read, exact-capacity and both late-initialization regressions before correction. The current tests cover 1,024 one-frame messages, bounded tiny/zero fetch chunks, exact frame admission, cancellation and late module settlement. Worker and client prefix-then-error tests also require zero successful end messages, no candidate Blob, no CDR call, terminated Worker and disposed ownership. This evidence does not establish real browser memory use or codec support.
+Six inert Python units passed in0.004 seconds: three verify OOM/watchdog/disk status handling and three check relink content hashes, link/extra-file rejection and fresh destinations. These units do not contact Docker. They do not verify kernel enforcement. The retained prior source failed the new one-frame chunk-retention, empty-manifest-read, exact-capacity and both late-initialization regressions before correction. The current tests cover 1,024 one-frame messages, bounded tiny/zero fetch chunks, exact frame admission, cancellation and late module settlement. Worker and client prefix-then-error tests also require zero successful end messages, no candidate Blob, no CDR call, terminated Worker and disposed ownership. This evidence does not establish real browser memory use or codec support.
 
-`fixtures/decoder-cases.c` includes the actual C wrapper in a separate test-only module. Linker wrappers replace open/read/send/receive and codec-open entrypoints with inert fixtures; no encoded input, demuxer or codec may execute. The 22 authored cases cover sticky open/read/receive failures, prefix/EOF distinctions, forced size queries, seek quotas, denied secondary opens and aggregate metadata/overflow limits. They have not compiled or run yet. `fixtures/run-cases.mjs PRIVATE_OUTPUT` will record results separately as synthetic WASM-wrapper evidence. These exports never enter the runtime core. No actual codec gate is released by these tests.
+`fixtures/decoder-cases.c` includes the actual C wrapper in a separate test-only module. Linker wrappers replace open/read/send/receive and codec-open entrypoints with inert fixtures; no encoded input, demuxer or codec may execute. The 22 authored cases cover sticky open/read/receive failures, prefix/EOF distinctions, forced size queries, seek quotas, denied secondary opens and aggregate metadata/overflow limits. They compiled inBuild04, but the loader aborted before any C case ran. `fixtures/run-cases.mjs PRIVATE_OUTPUT` will record results separately as synthetic WASM-wrapper evidence. These exports never enter the runtime core. No actual codec gate is released by these tests.
 
 ## Qualification and license gates
 

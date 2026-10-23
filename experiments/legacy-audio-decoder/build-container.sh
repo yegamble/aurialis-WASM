@@ -37,6 +37,7 @@ emcc -O3 -flto /output/relink/decoder.o -L/output/install/lib \
   --js-library /recipe/decoder-imports.js \
   -sENVIRONMENT=worker -sMODULARIZE=1 -sEXPORT_ES6=1 \
   -sDYNAMIC_EXECUTION=0 -sFILESYSTEM=0 -sIMPORTED_MEMORY=1 \
+  -sINCOMING_MODULE_JS_API='["wasmBinary","wasmMemory","print","printErr"]' \
   -sALLOW_MEMORY_GROWTH=0 -sINITIAL_MEMORY=67108864 -sMAXIMUM_MEMORY=67108864 \
   -sSTACK_SIZE=2097152 -sABORTING_MALLOC=0 -sASSERTIONS=1 \
   -sEXPORTED_FUNCTIONS='["_aurialis_decoder_abi","_aurialis_decoder_open","_aurialis_decoder_next","_aurialis_decoder_output","_aurialis_decoder_rate","_aurialis_decoder_channels","_aurialis_decoder_frames","_aurialis_decoder_close"]' \
@@ -60,6 +61,7 @@ emcc -O3 -flto -fno-fast-math -ffp-contract=off -D_POSIX_C_SOURCE=200809L \
   -Wl,--wrap=avformat_open_input -Wl,--wrap=avcodec_open2 -Wl,--wrap=av_read_frame \
   -Wl,--wrap=avcodec_receive_frame -Wl,--wrap=avcodec_send_packet \
   -sENVIRONMENT=node -sMODULARIZE=1 -sEXPORT_ES6=1 -sDYNAMIC_EXECUTION=0 -sFILESYSTEM=0 \
+  -sINCOMING_MODULE_JS_API='["wasmBinary","wasmMemory","print","printErr"]' \
   -sIMPORTED_MEMORY=1 -sALLOW_MEMORY_GROWTH=0 -sINITIAL_MEMORY=67108864 -sMAXIMUM_MEMORY=67108864 \
   -sSTACK_SIZE=2097152 -sABORTING_MALLOC=0 -sASSERTIONS=1 \
   -sEXPORTED_FUNCTIONS='["_aurialis_test_count","_aurialis_test_case"]' \

@@ -10,7 +10,7 @@ Run `node --test experiments/legacy-audio-decoder/fixtures/*.test.mjs` with Node
 
 The failed baseline Build03 linked a 990,414-byte runtime WASM core; its actual imported memory and Emscripten abort/no-op syscall stubs were inspected without instantiating it. Packaging failed, so that is not a successful build or codec gate.
 
-`decoder-cases.c` includes the real wrapper with linker-wrapped parse/decode entrypoints. Its 22 cases use only FFmpeg allocation, layout and dictionary helpers. They cover synthetic sticky I/O, same-call EOF/error, first-failure preservation and aggregate metadata boundaries. The separate test module has not compiled or run yet. After a successful private build, use Node 26:
+`decoder-cases.c` includes the real wrapper with linker-wrapped parse/decode entrypoints. Its 22 cases use only FFmpeg allocation, layout and dictionary helpers. They cover synthetic sticky I/O, same-call EOF/error, first-failure preservation and aggregate metadata boundaries. Build04 compiled the separate test module, but actual launch failed because required incoming loader options were omitted; no C case ran. The corrected relink is pending. After a successful private build, use Node 26:
 
 ```bash
 node experiments/legacy-audio-decoder/fixtures/run-cases.mjs /absolute/private-output
@@ -18,4 +18,4 @@ node experiments/legacy-audio-decoder/fixtures/run-cases.mjs /absolute/private-o
 
 The launcher writes `unit/cases-result.json`; the test exports are never packaged as runtime assets. This test does not parse compressed input or decode audio.
 
-Corrected package sizes, actual CSP/browser behavior, runtime memory use, audio speed, busy-C cancellation and all codec/profile coverage remain unqualified.
+Build04 packaged a991,492-byte runtime core and1,053,293-byte asset set. Its synthetic launch RED remains separate from that compile/package pass. Corrected initialization, actual CSP/browser behavior, runtime memory use, audio speed, busy-C cancellation and all codec/profile coverage remain unqualified.

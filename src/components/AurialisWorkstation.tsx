@@ -1837,7 +1837,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                 } });
               }
               dispatch({ type: "UPDATE_ALBUM", id: album.id, patch: { mastered: true } });
-              setRendered({ key: JSON.stringify(prepared.map((item) => [item.track.id, engineParams(item.advanced)])), files });
+              setRendered({ key: JSON.stringify(prepared.map((item) => [item.track.id, item.track.sourceRevision, engineParams(item.advanced)])), files });
               setMessage("Rendered 24-bit WAV masters are ready below. Original source files are preserved. Downloads remain available until settings change or you leave this page.");
             } catch (error) {
               if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "The sequence could not be prepared.");

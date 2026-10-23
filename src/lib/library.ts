@@ -1,5 +1,5 @@
 import { clampAdvancedToSampleRate } from "./audio-dsp";
-import { getAudio, saveAudio, discardStagedAudio } from "./db";
+import { getAudio, saveAudio, discardStagedAudio, newAudioAssetId } from "./db";
 import { importedTrack, type prepareProjectFile } from "./project-import";
 import type { SourceIdentity, Track } from "./types";
 
@@ -19,7 +19,7 @@ export async function duplicateProject(track: Track, signal: AbortSignal): Promi
   signal.throwIfAborted();
   if (!blob) throw new Error("The source is missing. Restore it before duplicating this project.");
   const copy = structuredClone(track);
-  copy.id = `track-${crypto.randomUUID()}`;
+  copy.id = newAudioAssetId("track");
   copy.title = `${track.title} copy`;
   copy.createdAt = copy.updatedAt = new Date().toISOString();
   copy.status = "ready";
@@ -33,7 +33,7 @@ export async function duplicateProject(track: Track, signal: AbortSignal): Promi
   return copy;
 }
 export function replacementProject(track: Track, file: File, imported: Awaited<ReturnType<typeof prepareProjectFile>>): Track {
-  const source = importedTrack(file, imported);
+  const source = importedTrack(file, imported, track.id);
   const next: Track & { script?: unknown; masteringScript?: unknown; analysisRevision?: unknown } = {
     ...track, filename: source.filename, size: source.size, duration: source.duration, format: source.format, sampleRate: source.sampleRate,
     advanced: clampAdvancedToSampleRate(track.advanced, source.sampleRate), metrics: source.metrics, measurements: imported.measurement.afterMetrics,

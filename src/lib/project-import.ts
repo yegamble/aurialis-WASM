@@ -1,5 +1,6 @@
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "./audio-dsp";
 import { importAudio, readCanonicalWAV, serverRender, trackMetrics, type StereoPCM } from "./browser-engine";
+import { newAudioAssetId } from "./db";
 import type { Track } from "./types";
 const MAX_SOURCE_FRAMES = 16 * 1024 * 1024;
 const MAX_SOURCE_BYTES = MAX_SOURCE_FRAMES * 8 + 44;
@@ -39,11 +40,11 @@ export async function prepareProjectFile(file: File, signal: AbortSignal, progre
   return imported;
 }
 
-export function importedTrack(file: File, imported: Awaited<ReturnType<typeof prepareProjectFile>>): Track {
+export function importedTrack(file: File, imported: Awaited<ReturnType<typeof prepareProjectFile>>, id?: string): Track {
   const now = new Date().toISOString();
   const measurement = imported.measurement;
   return {
-    id: `track-${crypto.randomUUID()}`, title: file.name.replace(/\.[^.]+$/u, "").replace(/[-_]/gu, " "), filename: file.name,
+    id: id ?? newAudioAssetId("track"), title: file.name.replace(/\.[^.]+$/u, "").replace(/[-_]/gu, " "), filename: file.name,
     duration: measurement.duration, size: file.size, format: "WAV", sampleRate: measurement.sampleRate,
     status: "ready", createdAt: now, updatedAt: now, seed: 0, source: "upload", mode: "advanced", genre: "Pop", tone: "Warm", intensity: 50, target: "Streaming",
     metrics: trackMetrics(measurement.afterMetrics), measurements: measurement.afterMetrics, measurementKind: "source",

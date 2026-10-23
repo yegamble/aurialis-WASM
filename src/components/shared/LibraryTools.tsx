@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { getAudio, saveAudio, discardStagedAudio, storageSummary } from "@/lib/db";
+import { getAudio, saveAudio, discardStagedAudio, storageSummary, newAudioAssetId } from "@/lib/db";
 import { audioKey, replacementProject, sameSource } from "@/lib/library";
 import { prepareProjectFile, readStoredSource } from "@/lib/project-import";
 import { createLivePlayback, type LivePlaybackController, type LivePlaybackState } from "@/lib/live-playback";
@@ -29,7 +29,8 @@ export function StorageGuidance({ revision }: { revision: number }) {
 }
 
 export function SourceRelink({ track, open, onClose }: { track: Track; open: boolean; onClose: () => void }) {
-  const { dispatch } = useStore();
+  const { state: projects, dispatch } = useStore();
+  const latest = useRef(projects); latest.current = projects;
   const operation = useRef<AbortController | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -40,11 +41,14 @@ export function SourceRelink({ track, open, onClose }: { track: Track; open: boo
   const close = () => { const current = operation.current; operation.current = null; current?.abort(); onClose(); };
   async function commit(file: File, imported: Awaited<ReturnType<typeof prepareProjectFile>>, controller: AbortController) {
     const matched = sameSource(track.sourceIdentity, imported.measurement.sourceIdentity);
-    const id = `source-${crypto.randomUUID()}`;
+    if ((track.retiredSourceAudioIds?.length ?? 0) >= 64) throw new Error("This project has reached its recovery-copy limit. Duplicate its current settings or delete old projects before replacing more sources.");
+    const id = newAudioAssetId("source");
     const saved = await saveAudio(id, imported.canonical);
     if (controller.signal.aborted || operation.current !== controller) { await discardStagedAudio(id, saved.durable); return; }
-    const next = matched ? track : replacementProject(track, file, imported);
-    dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { ...next, sourceAudioId: id, sourceRevision: (track.sourceRevision ?? 0) + 1, retiredSourceAudioIds: [...new Set([...(track.retiredSourceAudioIds ?? []), audioKey(track)])], persistenceWarning: saved.durable ? "" : saved.warning } });
+    const current = latest.current.tracks.find((item) => item.id === track.id);
+    if (!current || (current.sourceRevision ?? 0) !== (track.sourceRevision ?? 0) || audioKey(current) !== audioKey(track)) { await discardStagedAudio(id, saved.durable); throw new Error("The project source changed. Close and retry source recovery."); }
+    const next = matched ? current : replacementProject(current, file, imported);
+    dispatch({ type: "COMMIT_TRACK_SOURCE", id: track.id, expectedRevision: track.sourceRevision ?? 0, expectedAudioKey: audioKey(track), track: { ...next, sourceAudioId: id, sourceRevision: (track.sourceRevision ?? 0) + 1, retiredSourceAudioIds: [...new Set([...(track.retiredSourceAudioIds ?? []), audioKey(track)])], persistenceWarning: saved.durable ? "" : saved.warning } });
     onClose();
   }
   async function select(file: File) {

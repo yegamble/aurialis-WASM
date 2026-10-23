@@ -1,6 +1,6 @@
 # Private compressed-source recovery experiment
 
-Status: source authored only. No build, decoder, browser, resource or licensing qualification has run. Nothing here is imported by the application, copied into public assets or deployed.
+Status: private source with synthetic unit evidence only. No compiled decoder, browser, measured resource or licensing qualification has run. Nothing here is imported by the application, copied into public assets or deployed.
 
 This experiment prepares one on-device decoder step before existing Go CDR. It does not deliver compressed recovery, establish every codec the old Web Audio implementation accepted, or permit permanent retirement of rollback resources.
 
@@ -40,19 +40,25 @@ Decoded frame counts, sample rates and channels come from AVFrames, never declar
 
 `decoder.worker.mjs` uses a fixed-asset ES module and one fixed 64 MiB imported WebAssembly.Memory with equal initial/maximum limits. Emscripten FILESYSTEM=0, DYNAMIC_EXECUTION=0 and ALLOW_MEMORY_GROWTH=0 are required. No generic unsafe-eval allowance, remote URL, arbitrary import or secondary input is exposed. The exact built Wasm is hash-checked before initialization.
 
-One chunk is transferred, then the Worker waits for its exact sequence acknowledgment. The parent validates frame/rate/channel/byte geometry and finite samples again. It assembles only canonical PCM WAV bytes and terminates the decoder Worker before Go CDR admission. No raw original or unvalidated candidate is downloaded or persisted.
+One chunk is transferred, then the Worker waits for its exact sequence acknowledgment. The parent validates frame/rate/channel/byte geometry and finite samples again, then copies each chunk into one pre-admitted output buffer. It retains no array of chunk objects. At EOF it creates a two-part Blob containing the canonical header and only the actual PCM bytes, drops its output-buffer reference, and terminates the decoder Worker before lowering ownership for Go CDR admission. No raw original or unvalidated candidate is downloaded or persisted.
 
 `client.mjs` requires the real shared memory owner and an adapter that calls the existing Go CDR import. It returns only that adapter's canonical result with a retained owner. The caller must preserve old-source checks, durable fresh-ID save, compare-and-swap ownership and staged rollback, and dispose only after settlement.
 
 ## Resource policy
 
-The source File is charged before fetching module metadata. The parent reserves a conservative peak covering File snapshot, fixed maximum module/compilation allowance (independent of fetched size claims), fixed decoder heap, bounded I/O, output chunks/assembled WAV copies and the later current Go CDR preflight plus queue input owner. If the full frame quota does not fit, admission chooses a lower output ceiling before decoding. Actual output exceeding that ceiling rejects the entire recovery; it never shortens the source.
+The source File and the existing 1 MiB bookkeeping allowance are charged before fetching module metadata. The parent reserves a conservative peak covering File snapshot, fixed maximum module/compilation allowance (independent of fetched size claims), fixed decoder heap, bounded I/O, output chunks/assembled WAV copies and the later current Go CDR preflight plus queue input owner. Admission uses at most 25 synchronous integer binary-search probes to select the largest output ceiling that fits before decoding. The shared resident owner must reject failed updates before changing its prior reservation, as the current helper does. Actual output exceeding that ceiling rejects the entire recovery; it never shortens the source.
 
-Constants in the source lock include 200 MiB selected input, 16,777,216 maximum output frames, 64 KiB reads, 1,048,576 read/packet calls, 65,536 seeks, 1 MiB metadata/extradata and at most 4,096 frames in flight. Aggregate rereads are bounded. Input preflight and the decoder share bounded file access. The decoder's 8 MiB single-allocation guard is separate from its fixed 64 MiB aggregate linear memory.
+Constants in the source lock include 200 MiB selected input, 16,777,216 maximum output frames, 64 KiB reads, 1,048,576 read/packet calls, 65,536 seeks, 1 MiB metadata/extradata and at most 4,096 frames in flight. Aggregate rereads are bounded. Input preflight and the decoder share bounded file access. Manifest and Wasm loading use fixed 16 KiB and 16 MiB buffers rather than retained chunk arrays. Empty chunks reject immediately; nonempty stream reads are limited to 1,024 and 4,096 respectively, plus the terminal EOF read. Terminal checks after awaited reads, hashing and module initialization prevent an errored late start from opening or pumping a decoder. The decoder's 8 MiB single-allocation guard is separate from its fixed 64 MiB aggregate linear memory.
 
 A parent timer hard-terminates its DedicatedWorker after 130 seconds across asset loading, decoding and CDR, or on cancel/error/unmount. Go CDR must honor the same signal. Worker termination does not certify immediate operating-system memory reclamation or an arbitrary-browser wall-clock guarantee. A caller must bound its earlier storage reads and later durable-save/recheck phase too.
 
 The Wasm asset is limited to 16 MiB, below the 25 MiB static-file ceiling; JS glue is capped at 4 MiB and all assets at 32 MiB. These are enforced packaging limits, not measured sizes. No sharding is introduced without an actual demonstrated need.
+
+## Synthetic unit evidence
+
+With Node 26.12.0 on PATH, `node --test experiments/legacy-audio-decoder/fixtures/*.test.mjs` passed 24/24 synthetic units in 139 ms during this source review. These exercise only envelope parsing, inert Worker/client protocol adapters, fixed-buffer stream reads and admission logic. No FFmpeg Wasm, real compressed decoder, browser or actual Go CDR ran.
+
+The retained prior source failed the new one-frame chunk-retention, empty-manifest-read, exact-capacity and both late-initialization regressions before correction. The current tests cover 1,024 one-frame messages, bounded tiny/zero fetch chunks, exact frame admission, cancellation and late module settlement. This evidence does not establish real browser memory use or codec support.
 
 ## Qualification and license gates
 

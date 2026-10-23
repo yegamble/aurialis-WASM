@@ -8,6 +8,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio"
@@ -159,4 +161,59 @@ func mustJSON(t *testing.T, value any) []byte {
 		t.Fatal(err)
 	}
 	return raw
+}
+
+// TestWriteBrowserOracle is an opt-in binary oracle for actual browser worker E2E.
+func TestWriteBrowserOracle(t *testing.T) {
+	directory := os.Getenv("AURIALIS_BROWSER_ORACLE_DIR")
+	if directory == "" {
+		t.Skip("set AURIALIS_BROWSER_ORACLE_DIR for native versus actual browser PCM")
+	}
+	raw, err := os.ReadFile(filepath.Join(directory, "request.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := os.ReadFile(filepath.Join(directory, "source.wav"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference, err := os.ReadFile(filepath.Join(directory, "reference.wav"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	result, err := browserjobs.Execute(context.Background(), raw, source, reference, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "native.wav"), result.Audio, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "native.json"), result.Metadata, 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestGeneratedStaticPolicyMatchesNative checks the exact emitted inline CSP bytes.
+func TestGeneratedStaticPolicyMatchesNative(t *testing.T) {
+	directory := os.Getenv("AURIALIS_BROWSER_STATIC_DIR")
+	if directory == "" {
+		t.Skip("set AURIALIS_BROWSER_STATIC_DIR after preparing the static assets")
+	}
+	data, err := os.ReadFile(filepath.Join(directory, "asset-policy.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var policy struct{ CSP string }
+	if err := json.Unmarshal(data, &policy); err != nil {
+		t.Fatal(err)
+	}
+	native := server.New(server.Config{Workers: 1, StaticFS: os.DirFS(filepath.Join(directory, "assets"))})
+	defer native.Close()
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
+	request.Host = "127.0.0.1:8080"
+	recorder := httptest.NewRecorder()
+	native.Handler().ServeHTTP(recorder, request)
+	if recorder.Header().Get("Content-Security-Policy") != policy.CSP {
+		t.Fatal("static Worker CSP differs from native exact inline-script policy")
+	}
 }

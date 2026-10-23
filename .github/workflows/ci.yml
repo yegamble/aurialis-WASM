@@ -121,6 +121,19 @@ jobs:
       - name: Run WASM signal verification
         run: bash scripts/test-wasm.sh
 
+      - name: Verify actual local-job WASM against native CDR and mastering
+        run: |
+          mkdir -p artifacts/browser-local
+          node scripts/verify-browser-jobs.mjs | tee artifacts/browser-local/wasm-oracle.log
+
+      - name: Preserve browser-job oracle evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-job-wasm-oracle
+          path: artifacts/browser-local
+          if-no-files-found: ignore
+
       - name: Install FFmpeg for independent meter verification
         timeout-minutes: 5
         run: |
@@ -253,6 +266,26 @@ jobs:
         run: |
           pnpm run build:binary
           pnpm exec playwright test
+
+      - name: Build the local-only browser app and check static Worker contracts
+        run: |
+          pnpm run build:browser
+          pnpm run typecheck:worker
+          pnpm run typecheck:browser-tests
+          pnpm exec wrangler types deploy/cloudflare/worker-configuration.d.ts --include-runtime false --check -c deploy/cloudflare/wrangler.jsonc
+          pnpm exec eslint deploy/cloudflare/worker.ts --max-warnings=0
+          AURIALIS_BROWSER_STATIC_DIR="$PWD/deploy/cloudflare" go test ./internal/browserjobs -run '^TestGeneratedStaticPolicyMatchesNative$' -count=1
+
+      - name: Verify static Worker UI with no audio network transfers
+        run: pnpm run test:browser
+
+      - name: Preserve static browser acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-browser-local-audio
+          path: artifacts/browser-local
+          if-no-files-found: ignore
 
   ci-passed:
     name: CI Passed

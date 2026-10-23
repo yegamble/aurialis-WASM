@@ -23,7 +23,8 @@
     "types:worker": "wrangler types deploy/cloudflare/worker-configuration.d.ts --include-runtime false -c deploy/cloudflare/wrangler.jsonc",
     "dev:browser": "wrangler dev -c deploy/cloudflare/wrangler.jsonc --ip 127.0.0.1 --port 3927 --local",
     "test:browser": "playwright test --config playwright.browser.config.ts",
-    "test:browser:oracle": "node scripts/verify-browser-jobs.mjs"
+    "test:browser:oracle": "node scripts/verify-browser-jobs.mjs",
+    "typecheck:browser-tests": "tsc --noEmit -p e2e-browser/tsconfig.json"
   },
   "dependencies": {
     "@fontsource/instrument-sans": "^5.3.0",

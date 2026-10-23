@@ -40,6 +40,16 @@ describe("Deep proposal review interactions", () => {
     expect(await screen.findByRole("spinbutton", { name: "Point 1 value" })).toBeTruthy();
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Apply Deep proposal" }).disabled).toBe(true);
   });
+  it("adds and deletes bounded authored points and removes a draft move without applying processing", async () => {
+    mount(); fireEvent.change(await screen.findByRole("combobox", { name: "Automation move" }), { target: { value: "gain" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Add baseline point" }));
+    await waitFor(() => { expect(saved().tracks[0]?.deepMastering?.proposal.moves[0]?.points).toEqual([{ frame: 12000, value: -1 }, { frame: 24000, value: 0 }, { frame: 36000, value: -1 }]); });
+    fireEvent.click(screen.getByRole("button", { name: "Delete point 2" }));
+    await waitFor(() => { expect(saved().tracks[0]?.deepMastering?.proposal.moves[0]?.points.length).toBe(2); });
+    fireEvent.click(screen.getByRole("button", { name: "Delete draft move" }));
+    await waitFor(() => { expect(saved().tracks[0]?.deepMastering?.proposal.moves).toEqual([]); });
+    expect(saved().tracks[0]?.deepMastering?.applied).toBeUndefined(); expect(saved().tracks[0]?.advanced.input).toBe(0);
+  });
   it("cancels immediately and ignores a late admitted analysis result", async () => {
     let finish: ((script: ScriptV2) => void) | undefined;
     mocks.analyze.mockImplementation(() => new Promise<ScriptV2>((resolve) => { finish = resolve; }));

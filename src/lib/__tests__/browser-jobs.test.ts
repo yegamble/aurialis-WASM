@@ -97,7 +97,9 @@ describe("device-local browser audio transport", () => {
       second.update(0);
       const accepted = deviceAudioRequest("/api/master/render", { method: "POST", body: form });
       await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
+      expect(() => { second.update(200 * mib); }).toThrow("memory budget");
       TestWorker.all[0]?.reply(); await accepted;
+      expect(() => { second.update(200 * mib); }).not.toThrow();
       first.dispose(); first.dispose();
       expect(() => { first.update(1); }).toThrow("released");
       expect(TestWorker.all[0]?.terminated).toBe(true);

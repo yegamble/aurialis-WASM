@@ -33,6 +33,7 @@ function memoryBudget(): number {
 }
 
 let reservedResidentBytes = 0;
+let activeJobBytes = 0;
 
 /** Own the exact bytes retained outside a job, such as an album prefix or reviewed WAV. */
 export function reserveBrowserAudioMemory(initialBytes = 0): Readonly<{ update: (bytes: number) => void; dispose: () => void }> {
@@ -43,7 +44,7 @@ export function reserveBrowserAudioMemory(initialBytes = 0): Readonly<{ update: 
     if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error("Audio memory reservations require nonnegative safe byte counts.");
     const total = reservedResidentBytes - held + bytes;
     if (!Number.isSafeInteger(total) || total < 0) throw new Error("Audio memory reservations exceed the safe byte limit.");
-    if (total + 64 * MIB > memoryBudget()) throw new Error("Retained audio exceeds the browser's conservative memory budget. " + LOCAL_FALLBACK);
+    if (total + Math.max(64 * MIB, activeJobBytes) > memoryBudget()) throw new Error("Retained audio exceeds the browser's conservative memory budget. " + LOCAL_FALLBACK);
     reservedResidentBytes = total;
     held = bytes;
   };
@@ -88,8 +89,9 @@ async function preflight(request: JobRequest, source: Blob, reference: Blob, sig
   // Conservative coexistence: original/canonical Blobs, live PCM/AudioBuffer,
   // transfer input, Go raw/decoded/render/encode and returned buffer/Blob.
   // Reference streams its output measurements and does not encode song-length WAVs.
-  const estimate = 64 * MIB + reservedResidentBytes + input * 4 + decoded * (request.operation === "render" ? 7 : 4);
-  if (estimate > memoryBudget()) throw new Error("This job exceeds the browser's conservative audio memory budget. " + LOCAL_FALLBACK);
+  const estimate = 64 * MIB + input * 4 + decoded * (request.operation === "render" ? 7 : 4);
+  if (estimate + reservedResidentBytes > memoryBudget()) throw new Error("This job exceeds the browser's conservative audio memory budget. " + LOCAL_FALLBACK);
+  activeJobBytes = estimate;
 }
 
 let queue: Promise<void> = Promise.resolve();
@@ -155,11 +157,13 @@ async function execute(request: JobRequest, source = new Blob(), reference = new
   pending++;
   const run = async () => {
     signal.throwIfAborted();
-    await preflight(request, source, reference, signal);
-    onProgress?.(0, "Preparing local audio processing…");
-    const input = await source.arrayBuffer(), comparison = await reference.arrayBuffer();
-    signal.throwIfAborted();
-    return startWorker(request, input, comparison, signal, onProgress);
+    try {
+      await preflight(request, source, reference, signal);
+      onProgress?.(0, "Preparing local audio processing…");
+      const input = await source.arrayBuffer(), comparison = await reference.arrayBuffer();
+      signal.throwIfAborted();
+      return await startWorker(request, input, comparison, signal, onProgress);
+    } finally { activeJobBytes = 0; }
   };
   const result = queue.then(run, run).finally(() => { pending--; });
   queue = result.then(() => undefined, () => undefined);

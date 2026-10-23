@@ -2,11 +2,13 @@
 /* eslint-disable security/detect-non-literal-fs-filename */
 // cspell:words spinbutton
 import { expect, test, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fixture, decode } from "../e2e/audio-fixture";
 import { engineParams } from "../src/lib/browser-engine";
-import type { AdvancedParams, Track } from "../src/lib/types";
+import type { AdvancedParams, MeasuredAudioMetrics, Track } from "../src/lib/types";
+import type { ReleaseReport } from "../src/lib/release-review";
 import type { ScriptV2 } from "../src/lib/deep-mastering";
 import { captureDeepDevice, capturedDevice, capturedProgress } from "../e2e/deep-capture";
 
@@ -33,12 +35,51 @@ async function settings(page: Page, id: string) {
   }, id);
 }
 async function nativeRender(info: TestInfo, source: Buffer, advanced: AdvancedParams, bitDepth: number, script?: ScriptV2) {
-  const directory = info.outputPath("native-oracle");
+  const directory = info.outputPath(`native-oracle-${String(bitDepth)}`);
   await mkdir(directory, { recursive: true });
   await writeFile(directory + "/source.wav", source);
   await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", ...(script ? { script: JSON.stringify(script) } : { params: JSON.stringify(engineParams(advanced)) }), bitDepth }));
   execFileSync("go", ["test", "./internal/browserjobs", "-run", "^TestWriteBrowserOracle$", "-count=1"], { env: { ...process.env, AURIALIS_BROWSER_ORACLE_DIR: directory }, stdio: "pipe" });
   return { audio: await readFile(directory + "/native.wav"), metadata: JSON.parse(await readFile(directory + "/native.json", "utf8")) as { afterMetrics: { integratedLufs: number; samplePeakDbfs: number } } };
+}
+async function downloadBytes(page: Page, name: string): Promise<Buffer> {
+  const event = page.waitForEvent("download");
+  await page.getByRole("button", { name, exact: true }).click();
+  const downloaded = await event, path = await downloaded.path();
+  expect(await downloaded.failure()).toBeNull();
+  if (!path) throw new Error("Missing retained local download");
+  return readFile(path);
+}
+async function reviewEncoded(page: Page, info: TestInfo, expected: Buffer, label: string, scriptRevision: number | null = null) {
+  await page.getByRole("button", { name: "Run release check", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Download measured WAV", exact: true })).toBeEnabled({ timeout: 30_000 });
+  const report = JSON.parse((await downloadBytes(page, "Download JSON report")).toString("utf8")) as ReleaseReport;
+  expect(await downloadBytes(page, "Download measured WAV")).toEqual(expected);
+  expect(await downloadBytes(page, "Download measured WAV")).toEqual(expected);
+  const pcm = decode(expected);
+  expect(report.output.sha256).toBe(createHash("sha256").update(expected).digest("hex"));
+  expect(report.output).toMatchObject({ bytes: expected.length, bitDepth: pcm.bits, channels: 2, frames: pcm.left.length, sampleRate: pcm.rate });
+  expect(report.scriptRevision).toBe(scriptRevision);
+  expect(expected.length).toBe(44 + pcm.left.length * pcm.bits / 4);
+  const directory = info.outputPath(`native-final-encoded-${label}`);
+  await mkdir(directory, { recursive: true }); await writeFile(directory + "/source.wav", expected);
+  await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", params: '{"bypass":true}', format: "json" }));
+  execFileSync("go", ["test", "./internal/browserjobs", "-run", "^TestWriteBrowserOracle$", "-count=1"], { env: { ...process.env, AURIALIS_BROWSER_ORACLE_DIR: directory }, stdio: "pipe" });
+  const native = JSON.parse(await readFile(directory + "/native.json", "utf8")) as { sampleRate: number; frames: number; afterMetrics: MeasuredAudioMetrics };
+  expect(native.sampleRate).toBe(pcm.rate); expect(native.frames).toBe(pcm.left.length);
+  expect(Object.keys(report.metrics).sort()).toEqual(Object.keys(native.afterMetrics).sort());
+  expect(Object.keys(report.metrics)).toHaveLength(11);
+  let maximumDiagnosticError = 0;
+  for (const key of Object.keys(native.afterMetrics) as (keyof MeasuredAudioMetrics)[]) {
+    const actual = report.metrics[key], target = native.afterMetrics[key];
+    expect(Number.isFinite(actual) && Number.isFinite(target)).toBe(true);
+    if (key === "clippingSamples") expect(actual).toBe(target);
+    else { maximumDiagnosticError = Math.max(maximumDiagnosticError, Math.abs(actual - target)); expect(Math.abs(actual - target)).toBeLessThanOrEqual(1e-10); }
+  }
+  const evidence = info.outputPath(`encoded-review-${label}.json`);
+  await writeFile(evidence, JSON.stringify({ report, exactRetainedWavBytes: expected.length, maximumDiagnosticError, nativeFinalMetrics: native.afterMetrics }, null, 2));
+  await info.attach(`encoded-review-${label}`, { path: evidence, contentType: "application/json" });
+  return report;
 }
 async function assertPrivate(info: TestInfo, requests: ReturnType<typeof observeNetwork>) {
   expect(requests.length).toBeGreaterThan(0);
@@ -97,13 +138,25 @@ test("album WAVs and release measurements run on the device without an audio ser
   const native = await nativeRender(info, source, await settings(page, id), 24);
   expect(rendered).toEqual(native.audio);
   await page.goto(`/release-check/${id}`);
-  await page.getByRole("button", { name: "Run release check", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Download JSON report", exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(`${native.metadata.afterMetrics.integratedLufs.toFixed(1)} LUFS`, { exact: true })).toBeVisible();
-  await expect(page.getByText(`${native.metadata.afterMetrics.samplePeakDbfs.toFixed(1)} dBFS`, { exact: true })).toBeVisible();
+  await reviewEncoded(page, info, rendered, "album-24");
   await assertPrivate(info, requests);
 });
 
+
+test("Release retains native-equivalent final 16/24/32-bit WAVs and exact encoded metrics with no upload", async ({ page, context }, info) => {
+  const requests = observeNetwork(context);
+  const source = fixture(997, 1), id = await upload(page, source, "private-encoded-source.wav");
+  await page.getByRole("slider", { name: "Input gain", exact: true }).fill("3");
+  await expect.poll(async () => (await settings(page, id)).input).toBe(3);
+  const advanced = await settings(page, id);
+  await page.goto(`/release-check/${id}`);
+  for (const bitDepth of [16, 24, 32]) {
+    await page.getByRole("combobox", { name: "Review encoding", exact: true }).selectOption(String(bitDepth));
+    const native = await nativeRender(info, source, advanced, bitDepth);
+    await reviewEncoded(page, info, native.audio, String(bitDepth));
+  }
+  await assertPrivate(info, requests);
+});
 
 test("Deep analysis compilation live apply and source-bound export keep every audio byte local", async ({ page, context }, info) => {
   const requests = observeNetwork(context);
@@ -164,5 +217,9 @@ test("Deep analysis compilation live apply and source-bound export keep every au
   const evidence = info.outputPath("actual-local-Deep-evidence.json");
   await writeFile(evidence, JSON.stringify({ source: applied.source, revision: applied.revision, compiledMoves: capture.compiledMoves, capturedFrames: 16384, maximumLiveError, exactNativeWavBytes: native.audio.length }, null, 2));
   await info.attach("actual-local-Deep-evidence", { path: evidence, contentType: "application/json" });
+  await page.goto(`/release-check/${id}`);
+  const encoded = await nativeRender(info, source, accepted.advanced, 24, applied);
+  const reviewed = await reviewEncoded(page, info, encoded.audio, "Deep-24", applied.revision);
+  expect(reviewed.source).toEqual(applied.source);
   await assertPrivate(info, requests);
 });

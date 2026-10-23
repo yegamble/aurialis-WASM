@@ -18,4 +18,4 @@ node experiments/legacy-audio-decoder/fixtures/run-cases.mjs /absolute/private-o
 
 The launcher writes `unit/cases-result.json`; the test exports are never packaged as runtime assets. This test does not parse compressed input or decode audio.
 
-Build04 packaged a991,492-byte runtime core and1,053,293-byte asset set. Its synthetic launch RED remains separate from that compile/package pass. Corrected initialization, actual CSP/browser behavior, runtime memory use, audio speed, busy-C cancellation and all codec/profile coverage remain unqualified.
+Build04 packaged a 991,492-byte runtime core and 1,053,293-byte asset set. Its synthetic launch RED remains separate from that compile/package pass. Corrected initialization, actual CSP/browser behavior, runtime memory use, audio speed, busy-C cancellation and all codec/profile coverage remain unqualified.

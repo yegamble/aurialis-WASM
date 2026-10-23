@@ -13,6 +13,28 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ## Delegated continuation — 2026-10-23
 
+### Integrated Deep editor and live schedule checkpoint
+
+| Item | Current status |
+| --- | --- |
+| MUB-3B browser editor/publication | integrated and locally exercised; draft guard corrected, complete regression/exact CI/merge pending |
+| Reference dependency PR #9 | open; corrected CI 39939937259 pending, prior red checkpoints retained |
+| ScriptV2 foundation PR #8 | verified and merged, `d999f4e` |
+| Whole product, studio DSP, trained stems and Waves acceptance | open |
+
+Runtime `f766dfb`, tests `341a426`/`dc3f7aa`, adds measured proposals, ten closed targets, exact source-frame editing, mute/explicit solo Apply, fixed-slot live publication and acknowledged native export/preview/release. Drafts stay inaudible. Pending baseline changes retain the accepted audio until complete acknowledgment and source/key/baseline/revision compare-and-swap. Postcommit uncertainty stops/rebuilds playback. Detach restores the accepted static baseline and Revert restores the complete first-Apply settings snapshot; both retain drafts. Full JSON persistence reports quota/corruption honestly; exact relink preserves source-bound state and replacement invalidates it. Static loudness/album normalization require Detach.
+
+Chair-observed evidence: 360/360 units in 29 files, frontend static/build/binary smoke and focused 18/18 actual Chromium cases in 1.1 minutes on binary `7f7c160570af4a8c0eeb253f9969ed7842ff44b86a9e61c3b20513f556b706e5`. Four actual source/device-rate captured-input/native comparisons plus nonzero seeks passed, including all 128×256 compiled points at 192 kHz; maximum observed wet error ≈7.451e−9, zero observed missed quanta. Independent writer reran 61 focused units and inspected the four JSON/seek evidence pairs and 320/1440 px states. Captured-input `sourceVerified: false` remains distinct from separately verified actual canonical-Blob identity. These finite observations do not certify every browser deadline or acoustic equivalence.
+
+Retain the server unsupported-flag, 41.25 px target, first-Apply clock, delayed arm/source-prefix, seek/pause, disabled-zero-module, Detach and uncertain-commit failures. Earlier 11/14 and 13/15 browser checkpoints and the loaded main-thread collector’s ten missed quanta remain evidence; bounded Worker capture and the corrected solo label passed unchanged audio thresholds before the final 18/18 focused integration. Product review required confirmation before reanalysis discards manually edited moves. Correction `5a76b79` now confirms every existing-draft replacement and rejects stale track/proposal/profile ownership; Keep/Escape performs no POST. Body portal `b18ad55` corrects the six sticky audio controls that had received pointer input behind the modal, with actual six-width focus/axe/touch/pointer checks. [Reference CI 39928617362](https://github.com/yegamble/aurialis-WASM/actions/runs/39928617362) is red after 70/72 browser cases (late Library callback and Reference RMS 0.2503 dB versus 0.05 dB); its prior local pass is not remote acceptance. Status: **open**, pending complete regression, exact green CI and delegated merge. No whole-product/Waves acceptance follows.
+
+Finite-source correction `56853d9` binds native/Go loop policy per epoch and publishes a 24-byte integer start/end device-frame seqlock. Finite conversion uses zero exterior and drains every valid aligned output sample before silence; finite→Repeat prepares a fresh epoch after the full pass, with a possible Preparing gap. Periodic→finite preserves that epoch’s conversion/history until the next input-cycle deadline; off→on removes the stop. This does not invent an IIR tail or seamless-loop guarantee.
+
+The old 129-frame 8001→44100 finite source reproduced error 1.593142867. Actual corrected `9647a15` finite proof passed 6/6 in 22.0 seconds across four finite fixtures with zero/nonzero seeks plus two Repeat/latest-intent cases; observed dry/native-wet/speaker error was below about 2.974e−8, including delayed tail and post-end silence. A temporary isolated QA binary embeds a bounded static audio-thread speaker tap under normal handlers/CSP, while production binary/modules remain unchanged and the QA URL returns 404. Staged asset removal and trap cleanup, including build failure exit 23, were exercised. Retain rejected 404/Blob-CSP observers, polluted offline interception and 512 skipped ScriptProcessor frames after 13,184 matching samples; no raw wet substitute or threshold relaxation closes speaker acceptance.
+
+Latest frontend static/build/smoke checkpoint passed all 372 units. The earlier loaded 371/372 timeout at 20.257 seconds remains; the quiet complete run passed 372/372 in 27.58 seconds (first case 6.845 seconds). Fresh combined 26 cases are pending, as is the complete standalone regression after Simple integration and exact remote CI/merge. Reference/Simple and the full studio/stem/Waves roadmap remain open.
+
+
 ### Authorized repository protection and deployment work
 
 | Item | Decision/current status |

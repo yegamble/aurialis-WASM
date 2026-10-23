@@ -25,6 +25,7 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
   if (abiVersion === 2) values[81] = 1;
   const memory = new WebAssembly.Memory({ initial: 1, maximum: 4 });
   let gain = 1;
+  let revision = 0, pendingRevision = 0, pendingGain = 1;
   const processGo = () => {
     const left = new Float32Array(memory.buffer, 512, 128), right = new Float32Array(memory.buffer, 1024, 128);
     const outLeft = new Float32Array(memory.buffer, 1536, 128), outRight = new Float32Array(memory.buffer, 2048, 128);
@@ -36,6 +37,14 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
   };
   const applyGo = () => { gain = new Float64Array(memory.buffer, 2560, 81).at(3) ?? 0; return 1; };
   const kernel = {
+    aurialis_schedule_abi: vi.fn(() => 1),
+    aurialis_schedule_source_buffer: vi.fn(() => 4096), aurialis_schedule_move_buffer: vi.fn(() => 8192),
+    aurialis_schedule_bind_source: vi.fn(() => 1),
+    aurialis_schedule_begin: vi.fn((next: number) => { pendingRevision = next; pendingGain = new Float64Array(memory.buffer, 2560, 82).at(3) ?? 1; return 1; }),
+    aurialis_schedule_stage_move: vi.fn(() => 1),
+    aurialis_schedule_commit: vi.fn(() => { revision = pendingRevision; gain = pendingGain; return 1; }),
+    aurialis_schedule_revision: vi.fn(() => revision), aurialis_schedule_seek: vi.fn(() => 1),
+    aurialis_schedule_detach: vi.fn(() => 1), aurialis_schedule_set_looping: vi.fn(() => 1),
     memory, _initialize: vi.fn(), aurialis_init: vi.fn(() => 1),
     aurialis_live_buffer: vi.fn((channel: number) => [512, 1024, 1536, 2048].at(channel) ?? 0),
     aurialis_control_buffer: vi.fn(() => 2560), aurialis_set_controls: vi.fn(applyGo),
@@ -78,6 +87,45 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
 const silent = (output: Float32Array[]) => output.every(channel => channel.every(sample => sample === 0));
 
 describe("direct Go worklet lifecycle", () => {
+  it("paces one move per quantum and preserves the old chain until main-thread commit approval", () => {
+    const f = workletFixture(false, 2);
+    f.message({ type: "bind-source", token: 1, source: new Float64Array([1, 48000, 48000, 1, 2, 3, 4, 5, 6, 7, 8]) });
+    f.message({ type: "reset", generation: 1, startTime: 0, sourceFrame: 0 });
+    const controls = new Float64Array(82); controls[3] = 3; controls[81] = 1;
+    const gate = new SharedArrayBuffer(4); new Int32Array(gate)[0] = 1;
+    const moves = new Float64Array(3 * 516);
+    for (let index = 0; index < 3; index++) moves.set([0, 2, 0, 0, index * 1000, 3, index * 1000 + 500, 3], index * 516);
+    f.message({ type: "schedule", token: 2, revision: 7, moveCount: 3, moves, controls, gate, deviceRate: 48000, version: 2 });
+    expect(f.kernel.aurialis_schedule_stage_move).not.toHaveBeenCalled();
+    f.render(); expect(f.kernel.aurialis_schedule_stage_move).toHaveBeenCalledTimes(1);
+    expect(f.render()[0]?.every(value => value === .5)).toBe(true);
+    expect(f.kernel.aurialis_schedule_stage_move).toHaveBeenCalledTimes(2);
+    f.render(); expect(f.kernel.aurialis_schedule_stage_move).toHaveBeenCalledTimes(3);
+    expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "automation-staged", token: 2 });
+    expect(f.kernel.aurialis_schedule_commit).not.toHaveBeenCalled();
+    f.render(); expect(f.kernel.aurialis_schedule_stage_move).toHaveBeenCalledTimes(3);
+    f.message({ type: "schedule-commit", token: 2 }); f.render();
+    expect(f.kernel.aurialis_schedule_commit).toHaveBeenCalledOnce();
+    expect(f.kernel.aurialis_schedule_set_looping).toHaveBeenCalledWith(1);
+    expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "automation-ack", token: 2, revision: 7 });
+    expect(f.render()[0]?.every(value => value === .75)).toBe(true);
+    f.values[3] = 9; f.controlHeader[1] = 99; f.controlHeader[0] = 4; f.render();
+    expect(f.kernel.aurialis_set_controls_v2).toHaveBeenCalledTimes(1);
+    f.message({ type: "schedule", token: 3, revision: 8, moveCount: 3, moves, controls, gate, deviceRate: 48000, version: 3 });
+    f.render(); f.message({ type: "schedule-cancel", token: 3 });
+    for (let index = 0; index < 5; index++) f.render();
+    expect(f.kernel.aurialis_schedule_commit).toHaveBeenCalledOnce();
+  });
+  it("holds the kernel and ring clock until the quantum-aligned source epoch, and during pause", () => {
+    const f = workletFixture(); const warmed = f.kernel.aurialis_live_process.mock.calls.length;
+    f.message({ type: "reset", generation: 1, startTime: 256 / 48000, sourceFrame: 123 });
+    expect(silent(f.render())).toBe(true); expect(silent(f.render())).toBe(true);
+    expect(f.kernel.aurialis_live_process).toHaveBeenCalledTimes(warmed);
+    expect(f.header[0]).toBe(0);
+    f.render(); expect(f.kernel.aurialis_live_process).toHaveBeenCalledTimes(warmed + 1);
+    f.message({ type: "hold" }); expect(silent(f.render())).toBe(true);
+    expect(f.kernel.aurialis_live_process).toHaveBeenCalledTimes(warmed + 1);
+  });
   it.each([0, 3, 1.5, null])("rejects explicit unsupported packet ABI %s", (abi) => {
     const f = workletFixture(false, abi);
     expect(f.processor.failed).toBe(true);

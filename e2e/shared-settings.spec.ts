@@ -1,12 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 import type { Track } from "../src/lib/types";
-import { observeOutput, outputLevel } from "./live-output";
+import { meanOutputLevel, observeOutput, outputLevel } from "./live-output";
 import { uploadProject } from "./workflow-fixture";
 
 type SavedTrack = Track & { simpleCustom?: boolean };
 type StateWrite = { tracks: SavedTrack[] };
-type SharedDiagnostics = { events: unknown[]; headers: unknown[] };
-type ObservedWindow = Window & { qaCanonicalWrites?: StateWrite[]; qaSharedDiagnostics?: SharedDiagnostics };
+type SharedDiagnostics = { events: unknown[]; headers: unknown[]; levels: unknown[] };
+type ObservedWindow = Window & { qaCanonicalWrites?: StateWrite[]; qaSharedDiagnostics?: SharedDiagnostics;
+  qaOutput?: { frames: number; time: number; left: number[]; right: number[] } };
 
 async function savedTrack(page: Page, id: string): Promise<SavedTrack> {
   return page.evaluate((trackId) => {
@@ -24,14 +25,24 @@ async function snapshot(page: Page, id: string) {
     return Number(await transport.getAttribute("data-parameter-version"))
       - Number(await transport.getAttribute("data-applied-version"));
   }).toBe(0);
+  const meanRmsDbfs = await observedMean(page);
   const output = await outputLevel(page);
   if (!output) throw new Error("Missing actual destination signal");
   return {
-    track: await savedTrack(page, id), output,
+    track: await savedTrack(page, id), output, meanRmsDbfs,
     version: Number(await page.locator(".transport").getAttribute("data-parameter-version")),
     applied: Number(await page.locator(".transport").getAttribute("data-applied-version")),
     fresh: await page.getByRole("button", { name: "Download offline preview", exact: true }).count() === 1,
   };
+}
+
+async function observedMean(page: Page): Promise<number> {
+  const first = await outputLevel(page);
+  if (!first) throw new Error("Missing actual destination signal");
+  // Drain two newly observed buffers before arming energy collection. A packet
+  // acknowledgment alone does not drain an already captured transition window.
+  await expect.poll(async () => (await outputLevel(page))?.frames ?? 0, { intervals: [50] }).toBeGreaterThanOrEqual(first.frames + 2048);
+  return meanOutputLevel(page);
 }
 
 async function mode(page: Page, id: string, value: "simple" | "advanced") {
@@ -49,12 +60,13 @@ async function customSelections(page: Page) {
 test("Simple and Advanced share one audible settings snapshot without changing sound on a view switch", async ({ page }, info) => {
   test.setTimeout(120_000);
   await page.addInitScript(() => {
-    const diagnostics: SharedDiagnostics = { events: [], headers: [] };
+    const diagnostics: SharedDiagnostics = { events: [], headers: [], levels: [] };
     (window as ObservedWindow).qaSharedDiagnostics = diagnostics;
     let header: Int32Array | undefined;
     let tags: Int32Array | undefined;
     let controls: Int32Array | undefined;
     let lastControlVersion = -1;
+    let lastOutputFrames = -1;
     const NativeNode = AudioWorkletNode;
     window.AudioWorkletNode = class extends NativeNode {
       constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
@@ -84,6 +96,16 @@ test("Simple and Advanced share one audible settings snapshot without changing s
       }
     };
     setInterval(() => {
+      const output = (window as ObservedWindow).qaOutput;
+      if (output && output.frames !== lastOutputFrames && output.left.length) {
+        lastOutputFrames = output.frames;
+        const squares = output.left.reduce((sum, value) => sum + value * value, 0) + output.right.reduce((sum, value) => sum + value * value, 0);
+        const transport = document.querySelector(".transport");
+        diagnostics.levels.push({ at: performance.now(), frames: output.frames, time: output.time,
+          rmsDbfs: squares > 0 ? 10 * Math.log10(squares / (output.left.length + output.right.length)) : -120,
+          version: transport?.getAttribute("data-parameter-version"), applied: transport?.getAttribute("data-applied-version") });
+        if (diagnostics.levels.length > 512) diagnostics.levels.shift();
+      }
       if (!header || !tags) return;
       if (controls && Atomics.load(controls, 1) !== lastControlVersion) {
         lastControlVersion = Atomics.load(controls, 1);
@@ -98,6 +120,7 @@ test("Simple and Advanced share one audible settings snapshot without changing s
     }, 20);
   });
   const evidence: { mode: "simple" | "advanced"; before: Awaited<ReturnType<typeof snapshot>>; after: Awaited<ReturnType<typeof snapshot>> }[] = [];
+  let gainControl: { beforeDbfs: number; attenuatedDbfs: number; restoredDbfs: number; expectedDeltaDb: number } | undefined;
   try {
     await observeOutput(page);
     const id = await uploadProject(page, "qa-shared-settings.wav", 16);
@@ -114,6 +137,7 @@ test("Simple and Advanced share one audible settings snapshot without changing s
       for (const value of values) {
         await mode(page, id, value);
         const after = await snapshot(page, id);
+        evidence.push({ mode: value, before, after });
         expect(after.track.advanced).toEqual(before.track.advanced);
         expect(after.version).toBe(before.version);
         expect(after.applied).toBe(before.applied);
@@ -121,9 +145,8 @@ test("Simple and Advanced share one audible settings snapshot without changing s
         expect(after.output.instanceId).toBe(before.output.instanceId);
         expect(after.fresh).toBe(before.fresh);
         await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
-        await expect.poll(async () => Math.abs(((await outputLevel(page))?.rmsDbfs ?? -Infinity) - before.output.rmsDbfs)).toBeLessThan(0.12);
+        expect(Math.abs(after.meanRmsDbfs - before.meanRmsDbfs)).toBeLessThan(0.12);
         await expect(page.getByRole("button", { name: "Export", exact: true })).toBeEnabled();
-        evidence.push({ mode: value, before, after });
       }
     };
     const neutral = await snapshot(page, id);
@@ -140,6 +163,18 @@ test("Simple and Advanced share one audible settings snapshot without changing s
     expect(manual.fresh).toBe(false);
     await views(manual, ["simple", "advanced", "simple"]);
     await customSelections(page);
+
+    // A real destination gain change must fail the unchanged view tolerance.
+    // This control prevents period averaging from masking a sustained difference.
+    const beforeDbfs = await observedMean(page);
+    await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("0.95");
+    const attenuatedDbfs = await observedMean(page);
+    await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");
+    const restoredDbfs = await observedMean(page), expectedDeltaDb = 20 * Math.log10(0.95);
+    gainControl = { beforeDbfs, attenuatedDbfs, restoredDbfs, expectedDeltaDb };
+    expect(Math.abs(attenuatedDbfs - beforeDbfs)).toBeGreaterThan(0.12);
+    expect(Math.abs(attenuatedDbfs - beforeDbfs - expectedDeltaDb)).toBeLessThan(0.05);
+    expect(Math.abs(restoredDbfs - beforeDbfs)).toBeLessThan(0.12);
 
     await page.evaluate(() => {
       const original = Storage.prototype.setItem;
@@ -188,12 +223,12 @@ test("Simple and Advanced share one audible settings snapshot without changing s
     await customSelections(page);
     expect(requests).toEqual([]);
   } finally {
-    const current = await page.evaluate(() => ({
+    const current = await page.evaluate(() => JSON.stringify({
       diagnostics: (window as ObservedWindow).qaSharedDiagnostics,
       transport: Object.fromEntries(Array.from(document.querySelector(".transport")?.attributes ?? []).map((attribute) => [attribute.name, attribute.value])),
       alerts: Array.from(document.querySelectorAll('[role="alert"]')).map((element) => element.textContent),
-    })).catch((error: unknown) => ({ captureError: String(error) }));
+    })).then((value) => JSON.parse(value) as unknown).catch((error: unknown) => ({ captureError: String(error) }));
     const output = await outputLevel(page).catch((error: unknown) => ({ captureError: String(error) }));
-    await info.attach("canonical settings and actual mode output", { body: JSON.stringify({ evidence, current, output }, null, 2), contentType: "application/json" });
+    await info.attach("canonical settings and actual mode output", { body: JSON.stringify({ evidence, current, output, gainControl }, null, 2), contentType: "application/json" });
   }
 });

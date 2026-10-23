@@ -146,12 +146,12 @@ type studioHalfSamplePad struct {
 }
 
 func (s *studioHalfSamplePad) process(input float64) float64 {
-	coeffs := [8]float64{-.00244140625, .02392578125, -.11962890625, .59814453125, .59814453125, -.11962890625, .02392578125, -.00244140625}
-	s.history[s.cursor] = input
-	output := 0.0
-	for tap, coefficient := range coeffs {
-		output += coefficient * s.history[(s.cursor-tap)&7]
-	}
-	s.cursor = (s.cursor + 1) & 7
+	cursor := s.cursor
+	s.history[cursor] = input
+	output := -.00244140625*(input+s.history[(cursor-7)&7]) +
+		.02392578125*(s.history[(cursor-1)&7]+s.history[(cursor-6)&7]) -
+		.11962890625*(s.history[(cursor-2)&7]+s.history[(cursor-5)&7]) +
+		.59814453125*(s.history[(cursor-3)&7]+s.history[(cursor-4)&7])
+	s.cursor = (cursor + 1) & 7
 	return sanitizeSample(output)
 }

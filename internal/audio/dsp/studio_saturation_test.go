@@ -69,7 +69,7 @@ func TestStudioADAAPadMeasuresWetDryPhaseAlignment(t *testing.T) {
 			realPart += value * math.Cos(angle)
 			imaginaryPart += value * math.Sin(angle)
 		}
-		if realPart <= 0 || math.Abs(imaginaryPart) > 1e-9 {
+		if math.Abs(realPart-math.Cos(math.Pi*frequency/studioOversampling)) > .001 || math.Abs(imaginaryPart) > 1e-9 {
 			t.Fatalf("ADAA+pad wet phase differs from delayed dry at %g", frequency)
 		}
 		t.Logf("small-signal wet %g cycles/base-sample: %g dB, compensated phase %g degrees", frequency, 20*math.Log10(realPart), math.Atan2(imaginaryPart, realPart)*180/math.Pi)

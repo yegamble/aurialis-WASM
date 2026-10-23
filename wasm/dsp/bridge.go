@@ -3,6 +3,9 @@
 package main
 
 import (
+	"errors"
+	"github.com/yegamble/Aurialis-WASM/internal/audio/automation"
+	"github.com/yegamble/Aurialis-WASM/internal/audio/automator"
 	"sync"
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
@@ -11,10 +14,21 @@ import (
 // Bridge wraps a dsp.Engine instance with thread-safe JSON/parameter updates
 // and reusable scratch buffers for WebAssembly AudioWorklet block processing.
 type Bridge struct {
-	mu       sync.Mutex
-	engine   *dsp.Engine
-	scratchL []float32
-	scratchR []float32
+	mu               sync.Mutex
+	engine           *dsp.Engine
+	scratchL         []float32
+	scratchR         []float32
+	scheduleSlots    [2]automation.Builder
+	processors       [2]automator.Processor
+	activeProcessor  *automator.Processor
+	activeSlot       int
+	source           sourceBinding
+	sourceBound      bool
+	acceptedRevision uint64
+	pendingSlot      int
+	pending          bool
+	pendingBaseline  dsp.Params
+	activeBaseline   dsp.Params
 }
 
 // NewBridge creates a new WASM DSP bridge at the specified sample rate.
@@ -31,19 +45,30 @@ func (b *Bridge) Init(sampleRate float64) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.engine = dsp.NewEngine(sampleRate)
+	b.activeProcessor = nil
+	b.sourceBound = false
+	b.acceptedRevision = 0
+	b.pending = false
 }
 
 // Reset zeroes all internal filter and detector states.
 func (b *Bridge) Reset() {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.engine.Reset()
+	if b.activeProcessor != nil {
+		_ = b.activeProcessor.SeekSourceFrame(0)
+	} else {
+		b.engine.Reset()
+	}
 }
 
 // SetParamsJSON parses a JSON-encoded dsp.Params payload and updates the engine.
 func (b *Bridge) SetParamsJSON(rawJSON string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.activeProcessor != nil {
+		return errors.New("detach automation or publish a complete baseline/schedule revision")
+	}
 	current, err := dsp.DecodeParamsJSON([]byte(rawJSON), b.engine.Params())
 	if err != nil {
 		return err
@@ -53,17 +78,30 @@ func (b *Bridge) SetParamsJSON(rawJSON string) error {
 }
 
 // SetParams updates the DSP parameter vector directly.
-func (b *Bridge) SetParams(params dsp.Params) {
+func (b *Bridge) SetParams(params dsp.Params) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.activeProcessor != nil || dsp.ValidateParams(params) != nil {
+		return false
+	}
 	b.engine.SetParams(params)
+	return true
 }
 
 // SetBand updates a single parametric EQ band [0..4] without altering any other parameter.
-func (b *Bridge) SetBand(index int, band dsp.BandParams) {
+func (b *Bridge) SetBand(index int, band dsp.BandParams) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.activeProcessor != nil || index < 0 || index >= dsp.NumEQBands {
+		return false
+	}
+	next := b.engine.Params()
+	next.Bands[index] = band
+	if dsp.ValidateParams(next) != nil {
+		return false
+	}
 	b.engine.SetBand(index, band)
+	return true
 }
 
 // Params returns a copy of the active DSP parameter struct.
@@ -74,10 +112,14 @@ func (b *Bridge) Params() dsp.Params {
 }
 
 // ProcessBlock executes one real-time stereo block through the DSP engine.
-func (b *Bridge) ProcessBlock(inL, inR, outL, outR []float32) {
+func (b *Bridge) ProcessBlock(inL, inR, outL, outR []float32) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.activeProcessor != nil {
+		return b.activeProcessor.ProcessBlock(inL, inR, outL, outR)
+	}
 	b.engine.ProcessBlock(inL, inR, outL, outR)
+	return true
 }
 
 // Measure computes gated K-weighted loudness, FIR inter-sample peak,
@@ -105,3 +147,6 @@ func (b *Bridge) Drain(outL, outR []float32) int {
 	defer b.mu.Unlock()
 	return b.engine.Drain(outL, outR)
 }
+
+// SampleRate returns the current processing rate for compiled schedule binding.
+func (b *Bridge) SampleRate() float64 { b.mu.Lock(); defer b.mu.Unlock(); return b.engine.SampleRate() }

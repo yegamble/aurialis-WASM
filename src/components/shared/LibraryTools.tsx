@@ -49,7 +49,7 @@ export function SourceRelink({ track, open, onClose }: { track: Track; open: boo
     const current = latest.current.tracks.find((item) => item.id === track.id);
     if (!current || (current.sourceRevision ?? 0) !== (track.sourceRevision ?? 0) || audioKey(current) !== audioKey(track)) { await discardStagedAudio(id, saved.durable); throw new Error("The project source changed. Close and retry source recovery."); }
     const next = matched ? current : replacementProject(current, file, imported);
-    dispatch({ type: "COMMIT_TRACK_SOURCE", id: track.id, expectedRevision: track.sourceRevision ?? 0, expectedAudioKey: audioKey(track), track: { ...next, sourceAudioId: id, sourceRevision: (track.sourceRevision ?? 0) + 1, retiredSourceAudioIds: [...new Set([...(track.retiredSourceAudioIds ?? []), audioKey(track)])], persistenceWarning: saved.durable ? "" : saved.warning } });
+    dispatch({ type: "COMMIT_TRACK_SOURCE", id: track.id, expectedRevision: track.sourceRevision ?? 0, expectedAudioKey: audioKey(track), track: { ...next, ...(matched && next.deepMastering ? { deepMastering: { ...next.deepMastering, sourceRevision: (track.sourceRevision ?? 0) + 1 } } : {}), sourceAudioId: id, sourceRevision: (track.sourceRevision ?? 0) + 1, retiredSourceAudioIds: [...new Set([...(track.retiredSourceAudioIds ?? []), audioKey(track)])], persistenceWarning: saved.durable ? "" : saved.warning } });
     onClose();
   }
   async function select(file: File) {

@@ -13,6 +13,7 @@ import {
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP } from "./audio-dsp";
 import { normalizeShortcutUndo, pruneShortcutUndo, toggleMasteringShortcut, type MasteringShortcut } from "./mastering-shortcuts";
 import { masteringTargets } from "./mastering-targets";
+import { restoredSimpleDirection, type SimpleChange } from "./simple-directions";
 import { hasAppliedDeep } from "./reference-matching";
 import type {
   Album,
@@ -67,6 +68,7 @@ type StoreState = {
 
 type StoreAction =
   | { type: "ADD_TRACK"; track: Track }
+  | { type: "APPLY_SIMPLE_DIRECTION"; expected: Track; change: SimpleChange }
   | { type: "APPLY_REFERENCE"; expected: Track; reference?: Track; advanced: AdvancedParams; restore?: Pick<Track, "mode" | "simpleCustom" | "shortcutUndo"> }
   | { type: "TOGGLE_MASTERING_SHORTCUT"; trackId: string; shortcut: MasteringShortcut }
   | { type: "UPDATE_TRACK"; id: string; patch: Partial<Track> }
@@ -128,6 +130,11 @@ export function reduceStoreState(
   action: StoreAction,
 ): StoreState {
   switch (action.type) {
+    case "APPLY_SIMPLE_DIRECTION":
+      return { ...state, tracks: updateTrackInList(state.tracks, action.expected.id, (track) => {
+        if (track !== action.expected || hasAppliedDeep(track)) return track;
+        return { ...track, ...action.change, shortcutUndo: action.change.simpleCustom ? track.shortcutUndo ?? {} : {}, updatedAt: new Date().toISOString() };
+      }) };
     case "APPLY_REFERENCE":
       if (action.reference && !state.tracks.includes(action.reference)) return state;
       return { ...state, tracks: updateTrackInList(state.tracks, action.expected.id, (track) => {
@@ -435,10 +442,13 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
     const restored: Track & { script?: unknown } = { ...normalizeSourceMetadata(track), advanced: createDefaultAdvancedParams() };
     delete restored.script;
     delete restored.releaseScore;
+    const simple = restoredSimpleDirection(track.simpleDirection);
+    if (simple && simple.genre === track.genre && simple.tone === track.tone && simple.intensity === track.intensity) restored.simpleDirection = simple;
+    else if (track.simpleDirection !== undefined) { delete restored.simpleDirection; restored.simpleCustom = true; }
     return pruneShortcutUndo({
       ...restored,
       shortcutUndo: normalizeShortcutUndo(track.shortcutUndo),
-      simpleCustom: track.simpleCustom !== false,
+      simpleCustom: restored.simpleCustom !== false,
       mode: track.mode === "deep" ? "advanced" : track.mode,
       advanced: clampAdvancedToSampleRate({
         ...baseAdv,

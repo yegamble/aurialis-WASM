@@ -134,3 +134,7 @@ python3 scripts/sync-agents.py --check
 ```
 
 Treat planned capabilities in design documents as requirements, not implemented behavior. Report work as **open — awaiting merge** until the repository's required review, verification and merge conditions are met.
+
+## Protected main branch
+
+Main requires a pull request, an up-to-date branch, all six repository CI checks and GitGuardian, and resolved conversations. The rules apply to administrators and prohibit force pushes and deletion. Required human approvals are zero so the authorized delegated review and merge workflow can proceed after its specialist gates.

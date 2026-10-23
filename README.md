@@ -19,7 +19,7 @@ Your WAV  →  Choose a direction  →  Listen and refine  →  Download a WAV
 
 | What you want to do | What Aurialis provides |
 | --- | --- |
-| Find a starting point | **Simple** genre, tone and intensity controls, plus an explicit **Set target loudness** action. |
+| Find a starting point | **Simple** genre, tone and intensity, Precise/Organic/Elevated styles, Depth/Presence, and an explicit **Set target loudness** action. |
 | Shape the details | **Advanced** five-band EQ, compression, saturation, stereo controls, sample-peak limiting, De-Harsh and multiband dynamics. EQ changes tonal balance; compression controls changes in level. |
 | Hear your decisions | **A Processed / B Original** listening, a measured live spectrum and waveform, and shared settings across Simple and Advanced. A/B does not automatically match loudness. |
 | Understand and compare | **Deep** measures the original audio's frequency balance and change points. **Reference** compares your current starting chain with another track's original audio and proposes bounded EQ and optional width changes. |
@@ -54,7 +54,7 @@ The build embeds the interface, fonts, audio modules and worklets in one `aurial
 ## Your first master
 
 1. **Import a WAV.** Start with a short mono or stereo file. The first imported track opens in Advanced; select **Simple** for guided controls. You can import multiple files in one queue and find the others in Library.
-2. **Choose a direction.** Adjust genre, tone and intensity. These choices update the shared processing settings; you can refine them in Advanced.
+2. **Choose a direction.** Adjust genre, tone, style, modifiers and intensity. These update the shared settings while retaining explicit input gain and output targets. Elevated checks the rendered candidate before accepting it.
 3. **Listen.** Press Play and switch between **A Processed** and **B Original**. Volume controls listening level, not export gain. A louder result can sound more impressive, so judge tone and dynamics as well as loudness.
 4. **Set loudness when needed.** Choose a target and press **Set target loudness** to measure the current settings and adjust input gain. Selecting a target alone does not normalize the track.
 5. **Export.** Open Export, choose a bit depth, then press **Render & download WAV**. The default is 24-bit PCM. Export uses your current processing settings, including when you are listening to B Original.
@@ -64,6 +64,8 @@ See the [first-master guide](docs/getting-started.md) for control explanations, 
 ## Your audio and your computer
 
 Audio processing runs in the browser and the local Go server; no cloud audio service is required. The server accepts connections only on your own computer's loopback address. It validates and reconstructs uploaded audio in memory, stripping container metadata.
+
+The planned hosted edition keeps all audio on the user’s device, with Cloudflare serving only app, WASM and model files. Its browser-processing adapter and migration are still in progress; the existing public domains do not yet establish that this replacement is deployed.
 
 Projects and settings are saved in this browser's local storage, and reconstructed source audio is saved in IndexedDB, the browser's local database. **Keep your original files and downloaded masters separately.** Browser storage can be cleared or evicted, and the reconstructed audio is not a byte-for-byte backup of your upload. Changing the server address, port or browser uses a different browser storage location.
 

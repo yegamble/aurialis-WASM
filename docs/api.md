@@ -1,11 +1,17 @@
 # Aurialis-WASM API reference
-<!-- cspell:words Hann steganography -->
+<!-- cspell:words Hann steganography yosefgamble -->
 Library relink consumes the existing canonical import source identity; it adds no HTTP endpoint. Exact PCM identity is independent of filenames and does not acknowledge durable browser metadata storage. Source replacement uses a fresh local asset key and retained recovery audio as described in [architecture](architecture.md#library-source-lifecycle).
 
 
 [Documentation](README.md) · [First-master guide](getting-started.md) · [Build and configuration](development.md) · [Architecture](architecture.md)
 
 Current routes are implemented by `internal/server`; exact DSP structs are in `internal/audio/dsp/engine.go` and the experimental script schema is in `internal/mastering/mastering.go`. No API presence alone establishes a verified product workflow. See [tasks](tasks.md) for evidence and open requirements.
+
+## Device-local transport boundary
+
+The HTTP routes below describe the user’s local Go server. The hosted application must run all audio reconstruction, analysis, jobs and rendering in browser workers/WASM on that same user’s device, using equivalent validated DTOs and cancellation. Cloudflare serves only static app, WASM and model files; no remote audio POST or hosted audio processor is authorized. The native loopback server remains the local fallback, and the browser worker adapter is still pending verification. The earlier container proposal is superseded.
+
+The intended deployment domains are verified as `aurialis.yosefgamble.com` and `aurialis.yosef.app`; migration and hosted acceptance remain open. Repository protection is independently verified as applied: all six CI checks plus app-bound GitGuardian, strict up-to-date PRs, resolved conversations, administrator enforcement, no force pushes/deletion and zero required human approvals. These controls do not certify an API workflow.
 
 ## Measured source features
 
@@ -75,6 +81,8 @@ Optional width is limited to ±20 percentage points times amount, within 0…200
 Every final candidate is rendered through the complete chain. Up to eight bounded attempts halve only the permitted EQ/width deltas; accepted output must not worsen the level-normalized common-band mismatch beyond a 1e-9 dB arithmetic allowance, and must meet enabled bass protection. Exact baseline is the fallback. Erased audible output cannot earn a better score; its internal invalid-candidate sentinel is never retained in JSON. `beforeOutputResidualDb`/`afterOutputResidualDb` measure actual full-rendered mismatch. The separate `beforeResidualDb`/`fitResidualDb` describe the linear EQ-contour fitting objective and must not be presented as final output quality. Predicted boost/protection and `remeasuredProtectedDeltaDb` are diagnostics; `protectionVerified: false` can identify an unchanged baseline. Final LUFS, reconstructed peak and perceptual similarity remain separate checks.
 
 The browser verifies both loaded canonical Blobs against SHA-256 source receipts before and after analysis, validates exact baseline/options and permits only bounded EQ/opt-in-width deltas. Apply uses a complete-record compare-and-swap for the reviewed source/reference and current settings. Amount changes and repeated Apply use the same original session baseline. Session Revert restores the original settings and starting mode/shortcut metadata only while the applied settings remain current. Changed sources/settings invalidate the review; attached Deep automation requires explicit Detach before a static proposal. Both successful and canceled jobs are released through the shared bounded job helper. Older sources without verified identity require Library restore/reimport.
+
+The bounded measured-Reference workflow merged in [PR #9](https://github.com/yegamble/aurialis-WASM/pull/9) at `f9ae077`, from exact reviewed head `557442a`, after all six jobs in [CI run 39939937259](https://github.com/yegamble/aurialis-WASM/actions/runs/39939937259) passed, including 73 Linux browser cases. This does not certify perceptual or Waves equivalence. Simple’s expanded 82-case integration and exact CI remain separate pending gates.
 
 ## Security and resource contract
 
@@ -181,6 +189,16 @@ Strictly validated canonical cached PCM may load without another processing POST
 The one-response import has current real-file Brave coverage: five approximately 35–47 MB user WAVs each returned one 200 response with 798–805-byte source headers and exact canonical bodies of approximately 76–95 MB. Checks retained matching first/last 256 source-conversion frames and playable cached reload without another audio API request. Processing and response-transfer cancellation, admission release and retry were also observed. These are bounded fixture results, not a controlled benchmark or a diagnosis of the original fetch report.
 
 Simple and Advanced now share one canonical chain without an API-route change. View changes preserve that chain; target-only changes preserve unrelated parameters, and **Set target loudness** measures the current chain and commits its adjusted input gain only. Export consumes that same chain independently of view. Target selection derives from the chain’s actual requested LUFS and ceiling, showing Custom when no named recommendation matches. The `targetLufs` value remains metadata until the explicit measured normalization workflow runs. Final whole-suite outcomes are tracked separately from implemented behavior.
+
+### Simple direction metadata and Elevated review
+
+The new styles/modifiers add no HTTP route or DSP algorithm. Browser metadata `simpleDirection` uses `version: 2`, one of eight genres (including Metal and Jazz), six tones, `style: precise|organic|elevated`, boolean `depth`/`presence` and intensity 0…100. It records creative intent independently of canonical `advanced` parameters. Hydration validates that metadata without rebuilding the saved chain; malformed/inconsistent metadata clears the active association while retaining saved processing. The legacy `mapSimpleToDSP` and API profile mappings remain unchanged.
+
+Explicit direction changes build one bounded recipe from a fresh baseline, preserve current Input gain and selected limiter LUFS/ceiling, then atomically publish the canonical chain. Target-only changes preserve unrelated manual parameters. Depth/Presence combine once regardless of selection order; zero intensity removes direction shaping while retaining explicit Input trim and limiter processing. Per-band gains stay within ±1.5 dB, compressor ratio within 1…2.2 and no makeup/input gain is added by the recipe. These are Aurialis creative starting points, not source-adaptive or proprietary Waves coefficients.
+
+Elevated calls the existing native `measureAudio` path for the exact candidate. The JSON measurement response has no source identity: the client therefore verifies the immutable loaded canonical Blob against its known SHA-256 identity before and after measurement, and checks returned rate/frame count/duration. It requires a known identity and rejects sample peak above selected ceiling +0.02 dB, reconstructed peak above ceiling +0.05 dB or integrated loudness above selected target +0.5 LU. These are upper bounds, not automatic normalization, a lower loudness bound or true-peak certification. The current finite reconstructed-peak estimator limits this result.
+
+Current settings stay active while measurement runs. Cancel, error, source change or stale complete-track ownership rejects publication; a complete-record compare-and-swap commits only the reviewed current candidate. Reduce Input gain explicitly in Advanced and retry when rejected. Further changes to an active Elevated direction are rechecked. Attached Deep automation blocks static Simple choices. The separate **Set target loudness** workflow retains its existing behavior and tolerances. The final local Simple checkpoint at `adf0032` passed 82/82 browser cases, 342/342 units and the native/WASM/API gates, including Newman 34 requests/39 assertions plus raw probes. Exact CI and merge remain pending. The earlier 79/81 comparison/assertion failure and setup checkpoints remain in [tasks](tasks.md#simple-styles-and-measured-elevated-review).
 
 ## Measurement limits and verification
 

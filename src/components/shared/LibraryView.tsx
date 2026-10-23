@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { WorkspaceLink as Link } from "./WorkspaceLink";
 import { useEffect, useRef, useState } from "react";
 import { deleteAudio } from "@/lib/db";
 import { audioKey, duplicateProject, sortedTracks, type LibrarySort } from "@/lib/library";

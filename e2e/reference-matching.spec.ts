@@ -5,6 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { decode } from "./audio-fixture";
 import { meanOutputLevel, observeOutput, outputLevel } from "./live-output";
 import { meanRenderOutput, observeRenderOutput } from "./render-output";
+import { captureDevice, capturedDevice, capturedProgress } from "./device-capture";
 import type { AdvancedParams } from "../src/lib/types";
 
 /** Independent physical-band tones; no application EQ is used to make the reference. */
@@ -20,6 +21,24 @@ function multitone(reference = false, seconds = 4): Buffer {
     wav.writeFloatLE(mid + side, 44 + frame * 8); wav.writeFloatLE(mid - side, 48 + frame * 8);
   }
   return wav;
+}
+function capturedWav(left: number[], right: number[], sampleRate: number): Buffer {
+  const wav = Buffer.alloc(44 + left.length * 8);
+  wav.write("RIFF"); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8);
+  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(3, 20); wav.writeUInt16LE(2, 22);
+  wav.writeUInt32LE(sampleRate, 24); wav.writeUInt32LE(sampleRate * 8, 28); wav.writeUInt16LE(8, 32); wav.writeUInt16LE(32, 34); wav.write("data", 36); wav.writeUInt32LE(left.length * 8, 40);
+  for (let index = 0; index < left.length; index++) { wav.writeFloatLE(left.at(index) ?? 0, 44 + index * 8); wav.writeFloatLE(right.at(index) ?? 0, 48 + index * 8); }
+  return wav;
+}
+function rmsDb(left: ArrayLike<number>, right: ArrayLike<number>, start = 0) {
+  let power = 0;
+  for (let index = start; index < left.length; index++) power += (left[index] ?? 0) ** 2 + (right[index] ?? 0) ** 2;
+  return 10 * Math.log10(power / (2 * (left.length - start)));
+}
+function maxError(actual: ArrayLike<number>, expected: ArrayLike<number>) {
+  expect(actual.length).toBe(expected.length); let error = 0;
+  for (let index = 0; index < actual.length; index++) error = Math.max(error, Math.abs((actual[index] ?? 0) - (expected[index] ?? 0)));
+  return error;
 }
 async function upload(page: Page, file: Buffer, name: string) {
   await page.goto("/"); await page.getByLabel("Upload audio file").setInputFiles({ name, mimeType: "audio/wav", buffer: file });
@@ -61,8 +80,8 @@ async function delayReady(page: Page) {
   });
 }
 
-test("measured Reference changes real live and downloaded PCM from one immutable baseline", async ({ page, request }, info) => {
-  test.setTimeout(120_000); await observeOutput(page); await observeRenderOutput(page); await delayReady(page);
+for (const deviceRate of [44100, 48000]) test(`measured Reference changes real live and downloaded PCM at ${deviceRate} Hz`, async ({ page, request }, info) => {
+  test.setTimeout(120_000); await observeOutput(page); await observeRenderOutput(page); await captureDevice(page, deviceRate); await delayReady(page);
   const { source, sourceId } = await setup(page), before = await settings(page, sourceId);
   const measured = page.waitForResponse(async (response) => {
     if (!response.url().includes("/api/jobs/") || response.request().method() !== "GET") return false;
@@ -99,11 +118,20 @@ test("measured Reference changes real live and downloaded PCM from one immutable
   const live = await meanRenderOutput(page);
   const callbackWindows = [callbackLevel, await meanOutputLevel(page), await meanOutputLevel(page)];
   const callbackMedian = [...callbackWindows].sort((left, right) => left - right)[1];
-  const expectedDb = 10 * Math.log10((expected.left.reduce((sum, sample) => sum + sample * sample, 0) + expected.right.reduce((sum, sample) => sum + sample * sample, 0)) / (expected.left.length * 2));
-  await info.attach("reference-rms-window", { body: JSON.stringify({ live, callbackWindows, callbackMedian, expectedDb, output: await outputLevel(page) }), contentType: "application/json" });
-  expect(Math.abs(live - expectedDb), "timestamped worklet output energy must match the independently rendered proposal").toBeLessThan(.05);
+  await expect.poll(async () => (await capturedProgress(page))?.frames ?? 0).toBe(262144);
+  const capture = await capturedDevice(page); if (!capture) throw new Error("Missing actual device input/output capture");
+  expect(capture.deviceRate).toBe(deviceRate); expect(capture.missing).toBe(0);
+  const deviceRender = await request.post("/api/master/render", { multipart: { file: { name: "actual-device-input.wav", mimeType: "audio/wav", buffer: capturedWav(capture.deviceLeft, capture.deviceRight, deviceRate) }, params: JSON.stringify(job.referenceProposal.params), bitDepth: "32" } });
+  expect(deviceRender.ok()).toBe(true); const deviceExpected = decode(await deviceRender.body());
+  const pcmError = [maxError(capture.outputLeft, deviceExpected.left), maxError(capture.outputRight, deviceExpected.right)];
+  const expectedDb = rmsDb(deviceExpected.left, deviceExpected.right, deviceExpected.left.length - deviceRate);
+  const sourceRateDb = rmsDb(expected.left, expected.right);
+  await info.attach("reference-rms-window", { body: JSON.stringify({ deviceRate, sourceRate: 48000, live, callbackWindows, callbackMedian, expectedDb, sourceRateDb, pcmError, capturedFrames: capture.frames, missing: capture.missing, output: await outputLevel(page), params: job.referenceProposal.params }), contentType: "application/json" });
+  expect(pcmError[0], "actual left worklet PCM must match native processing of the captured device input").toBeLessThan(1e-6);
+  expect(pcmError[1], "actual right worklet PCM must match native processing of the captured device input").toBeLessThan(1e-6);
+  expect(Math.abs(live - expectedDb), "timestamped worklet output energy must match native processing at the actual device rate").toBeLessThan(.05);
   expect(callbackMedian).toBeDefined();
-  expect(Math.abs((callbackMedian ?? Infinity) - expectedDb), "fixed three-window speaker-feed median must match native output").toBeLessThan(.05);
+  expect(Math.abs((callbackMedian ?? Infinity) - expectedDb), "fixed three-window speaker-feed median must match native output at the actual device rate").toBeLessThan(.05);
   await info.attach("measured-reference-output", { body: JSON.stringify({ before: before.eqBands, applied: applied.eqBands, liveDbfs: live, nativeDbfs: expectedDb, ...job.referenceProposal }, null, 2), contentType: "application/json" });
 });
 

@@ -9,6 +9,7 @@ import type { Track } from "@/lib/types";
 import { Artwork, BottomSheet, Button, buttonClassName, formatTime, Modal, PageTitle, StatusBadge, statusLabel } from "./Primitives";
 import { Icon } from "./Icon";
 import { LibraryPreview, SourceRelink, StorageGuidance } from "./LibraryTools";
+import { LegacyLibraryRecovery } from "./LegacyLibraryRecovery";
 
 function ownedKeys(track: Track): string[] { return [...new Set([track.id, audioKey(track), ...(track.retiredSourceAudioIds ?? [])])]; }
 export function LibraryView() {
@@ -80,6 +81,7 @@ export function LibraryView() {
       </div>)}
     </div>
     <StorageGuidance revision={storageRevision + state.tracks.length} />
+    <LegacyLibraryRecovery />
     <BottomSheet open={!!selected} title={selected ? `Project actions: ${selected.title}` : "Project actions"} onClose={() => { setSelectedId(""); }}>
       {selected && <div className="grid gap-2">
         <Button variant="secondary" onClick={() => { setPreview(selected); setSelectedId(""); }}>Preview {selected.title}</Button>

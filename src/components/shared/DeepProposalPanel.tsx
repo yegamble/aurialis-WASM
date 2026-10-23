@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { getAudio } from "@/lib/db";
 import { analyzeDeep, compileScript, deepProfiles, deepSourceMatches, readScriptV2, type AutomationMove, type DeepProfile, type ScriptV2 } from "@/lib/deep-mastering";
 import { audioKey } from "@/lib/library";
@@ -16,7 +16,12 @@ function downloadScript(track: Track, script: ScriptV2, suffix: string) {
   setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
 }
 
-export function DeepProposalPanel({ track, sourceReady, selectedMoveId, onSelectMove, onApply }: { track: Track; sourceReady: boolean; selectedMoveId: string; onSelectMove: (id: string) => void; onApply?: (script: ScriptV2) => Promise<void> }) {
+const desktopQuery = "(min-width: 1024px)";
+function subscribeDesktop(listener: () => void) { if (typeof window.matchMedia !== "function") return () => undefined; const query = window.matchMedia(desktopQuery); query.addEventListener("change", listener); return () => { query.removeEventListener("change", listener); }; }
+function isDesktop() { return typeof window.matchMedia === "function" && window.matchMedia(desktopQuery).matches; }
+
+export function DeepProposalPanel({ track, sourceReady, selectedMoveId, onSelectMove, editorOpen, onCloseEditor, onApply }: { track: Track; sourceReady: boolean; selectedMoveId: string; onSelectMove: (id: string) => void; editorOpen: boolean; onCloseEditor: () => void; onApply?: (script: ScriptV2) => Promise<void> }) {
+  const desktop = useSyncExternalStore(subscribeDesktop, isDesktop, () => false);
   const { state, dispatch } = useStore(); const latest = useRef(state); latest.current = state;
   const operation = useRef<AbortController | null>(null);
   const [profile, setProfile] = useState<DeepProfile>(track.deepMastering?.proposal.profile ?? "Warm Analog");
@@ -41,6 +46,7 @@ export function DeepProposalPanel({ track, sourceReady, selectedMoveId, onSelect
     try {
       const blob = await getAudio(expectedKey); controller.signal.throwIfAborted(); if (!blob) throw new Error("The source is missing. Restore it before Deep analysis.");
       const measured = await analyzeDeep(blob, profile, track.sourceIdentity, controller.signal, (value, stage) => { if (operation.current === controller && !controller.signal.aborted) { setProgress(value); setMessage(stage); } });
+      controller.signal.throwIfAborted(); if (operation.current !== controller) return;
       const proposal = { ...measured, revision: Math.max(measured.revision, (expectedProposal ?? 0) + 1) };
       setMessage("Validating the proposed schedule…"); const compiled = await compileScript(proposal, proposal.source.sampleRate, controller.signal);
       controller.signal.throwIfAborted(); if (operation.current !== controller) return;
@@ -53,6 +59,7 @@ export function DeepProposalPanel({ track, sourceReady, selectedMoveId, onSelect
   }
   function addMove() {
     if (!deep || deep.proposal.moves.length >= 128) return;
+    if (deep.proposal.revision >= Number.MAX_SAFE_INTEGER) { setError("This proposal has reached its revision limit. Analyze again to start a new proposal."); return; }
     const section = deep.proposal.sections.find((item) => item.id === sectionId) ?? deep.proposal.sections[0]; if (!section) return;
     const id = "move-" + crypto.randomUUID();
     const move: AutomationMove = { id, sectionId: section.id, reason: "Manually authored move. Review its bounds and listen before applying.", target, operation: "add", points: [{ frame: section.startFrame, value: 0 }, { frame: section.endFrame, value: 0 }], fadeFrames: Math.min(Math.floor(deep.proposal.source.sampleRate / 20), Math.floor((section.endFrame - section.startFrame) / 2)), muted: false };
@@ -66,6 +73,7 @@ export function DeepProposalPanel({ track, sourceReady, selectedMoveId, onSelect
     catch (cause) { setError(cause instanceof Error ? cause.message : "The proposal could not be applied. The previous processing remains active."); }
     finally { setBusy(false); }
   }
+  const editor = selected && deep ? <DeepMoveEditor script={deep.proposal} move={selected} targets={deep.targets} solo={soloId === selected.id} onChange={edit} onSolo={() => { setSoloId((current) => current === selected.id ? "" : selected.id); }} /> : null;
   return <section className="min-w-0 space-y-4" aria-label="Measured Deep mastering">
     <div><h2>Deep mastering</h2><p className="disclosure">Review a measured, source-bound proposal before applying it. Neutral sections and change strength do not identify musical roles.</p></div>
     <label className="grid gap-2 text-xs">Deep engineer profile<select className="min-h-11 min-w-11 max-w-full rounded-xl border border-line-dark bg-paper px-3" aria-label="Deep engineer profile" value={profile} onChange={(event) => { const selectedProfile = deepProfiles.find((item) => item === event.target.value); if (selectedProfile) setProfile(selectedProfile); }}>{deepProfiles.map((item) => <option key={item}>{item}</option>)}</select></label>
@@ -83,6 +91,6 @@ export function DeepProposalPanel({ track, sourceReady, selectedMoveId, onSelect
       {deep.proposal.findings.map((finding) => <div className="rounded-xl border border-line bg-paper-deep p-3" key={finding.id}><strong className="text-sm">{finding.title}</strong><p className="disclosure">{finding.detail}</p><small>{finding.severity === "warning" ? "Review warning" : "Measured observation"} · {finding.lane}</small></div>)}
       <ControlGroup label="Add a manual draft move"><label className="grid gap-2 text-xs">New move target<select className="min-h-11 min-w-11 max-w-full rounded-xl border border-line-dark bg-paper px-3" aria-label="New move target" value={target} onChange={(event) => { const next = deep.targets.find((item) => item.name === event.target.value); if (next) setTarget(next.name); }}>{deep.targets.map((item) => <option value={item.name} key={item.name}>{item.name}</option>)}</select></label><label className="grid gap-2 text-xs">New move section<select className="min-h-11 min-w-11 max-w-full rounded-xl border border-line-dark bg-paper px-3" aria-label="New move section" value={sectionId || deep.proposal.sections[0]?.id || ""} onChange={(event) => { setSectionId(event.target.value); }}>{deep.proposal.sections.map((section) => <option value={section.id} key={section.id}>{section.name}</option>)}</select></label><Button variant="secondary" disabled={deep.proposal.moves.length >= 128} onClick={addMove}>Add baseline move</Button><p className="disclosure">A new move adds zero to the baseline until you edit it. The server rejects overlapping moves on the same target.</p></ControlGroup>
     </>}
-    <BottomSheet open={!!selected} title={selected ? "Edit draft " + selected.target : "Edit automation"} onClose={() => { onSelectMove(""); }}>{selected && deep && <DeepMoveEditor script={deep.proposal} move={selected} targets={deep.targets} solo={soloId === selected.id} onChange={edit} onSolo={() => { setSoloId((current) => current === selected.id ? "" : selected.id); }} />}</BottomSheet>
+    {desktop ? editorOpen && editor && <section className="min-w-0 space-y-3 border-t border-line pt-4" aria-label="Edit selected draft move"><div className="flex flex-wrap items-center justify-between gap-2"><h3>Edit draft move</h3><Button variant="ghost" onClick={onCloseEditor}>Close move editor</Button></div>{editor}</section> : <BottomSheet open={editorOpen && !!selected} title={selected ? "Edit draft " + selected.target : "Edit automation"} onClose={onCloseEditor}>{editor}</BottomSheet>}
   </section>;
 }

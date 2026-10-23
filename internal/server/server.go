@@ -50,28 +50,41 @@ type Config struct {
 	StaticFS       fs.FS
 	WasmFS         fs.FS
 	ListenAddress  string
+	Hosted         *HostedConfig
 }
 
 // Server serves the Aurialis HTTP API and embedded Next.js + WASM assets.
 type Server struct {
-	cfg     Config
-	jobs    *jobs.Manager
-	handler http.Handler
-	uploads chan struct{}
-	csp     string
+	cfg       Config
+	jobs      *jobs.Manager
+	handler   http.Handler
+	uploads   chan struct{}
+	csp       string
+	hostedErr error
 }
 
 // New constructs a new Aurialis HTTP server and starts the worker pool.
 func New(cfg Config) *Server {
+	var hostedErr error
+	if cfg.Hosted != nil {
+		hosted := *cfg.Hosted
+		hosted.Origins = append([]string(nil), cfg.Hosted.Origins...)
+		cfg.Hosted = &hosted
+		hostedErr = hosted.Validate()
+		if cfg.MaxUploadBytes <= 0 || cfg.MaxUploadBytes > HostedMaxUploadBytes {
+			cfg.MaxUploadBytes = HostedMaxUploadBytes
+		}
+	}
 	if cfg.MaxUploadBytes <= 0 || cfg.MaxUploadBytes > DefaultMaxUploadBytes {
 		cfg.MaxUploadBytes = DefaultMaxUploadBytes
 	}
 
 	s := &Server{
-		cfg:     cfg,
-		jobs:    jobs.NewManager(cfg.Workers),
-		uploads: make(chan struct{}, 1),
-		csp:     buildCSP(cfg.StaticFS),
+		cfg:       cfg,
+		hostedErr: hostedErr,
+		jobs:      jobs.NewManager(cfg.Workers),
+		uploads:   make(chan struct{}, 1),
+		csp:       buildCSP(cfg.StaticFS),
 	}
 
 	mux := http.NewServeMux()
@@ -136,19 +149,26 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 		h.Set("Cache-Control", "no-store")
 		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
 
-		// 1. Validate Host header against DNS rebinding attacks
-		if !isAllowedLocalHost(r.Host) || !s.listenerMatches(r) {
+		// 1. Keep local DNS-rebinding protection unchanged. Public container
+		// access requires the separately authenticated explicit hosted contract.
+		if s.cfg.Hosted != nil {
+			var ok bool
+			r, ok = s.authenticateHosted(w, r)
+			if !ok {
+				return
+			}
+		} else if !isAllowedLocalHost(r.Host) || !s.listenerMatches(r) {
 			writeErrorJSON(w, http.StatusForbidden, "forbidden_host", "Requests with non-local Host headers are rejected")
 			return
 		}
 
-		// 2. Validate exact origins and fetch metadata against localhost CSRF.
+		// 2. Validate exact origins and fetch metadata against CSRF.
 		{
 			if secSite := r.Header.Get("Sec-Fetch-Site"); secSite != "" && secSite != "same-origin" && secSite != "none" {
 				writeErrorJSON(w, http.StatusForbidden, "csrf_rejected", "Cross-site state-changing requests are forbidden")
 				return
 			}
-			if origin := r.Header.Get("Origin"); origin != "" {
+			if origin := r.Header.Get("Origin"); origin != "" && s.cfg.Hosted == nil {
 				u, err := url.Parse(origin)
 				if err != nil || u.Scheme != "http" || u.Host != r.Host || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
 					writeErrorJSON(w, http.StatusForbidden, "forbidden_origin", "Cross-origin state-changing requests are forbidden")
@@ -239,7 +259,12 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 			ready = true
 		}
 	}
+	mode := "local"
+	if s.cfg.Hosted != nil {
+		mode = "hosted"
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
+		"deploymentMode":             mode,
 		"status":                     "ok",
 		"service":                    "aurialis-wasm",
 		"version":                    "0.1.0",
@@ -426,7 +451,7 @@ func (s *Server) handleSeparate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, err := s.jobs.SubmitSeparate(buf, stemCount)
+	job, err := s.requestJobs(r).SubmitSeparate(buf, stemCount)
 	if err != nil {
 		writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", err.Error())
 		return
@@ -478,7 +503,7 @@ func (s *Server) handleAnalyzeDeep(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		job, submitErr := s.jobs.SubmitAnalyzeDeepV2(buf, profile)
+		job, submitErr := s.requestJobs(r).SubmitAnalyzeDeepV2(buf, profile)
 		if submitErr != nil {
 			writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", submitErr.Error())
 			return
@@ -486,7 +511,7 @@ func (s *Server) handleAnalyzeDeep(w http.ResponseWriter, r *http.Request) {
 		s.writeAdmittedJob(w, r, job)
 		return
 	}
-	job, err := s.jobs.SubmitAnalyzeDeep(buf, profile)
+	job, err := s.requestJobs(r).SubmitAnalyzeDeep(buf, profile)
 	if err != nil {
 		writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", err.Error())
 		return
@@ -641,7 +666,7 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_job_id", "Invalid job ID")
 		return
 	}
-	job, ok := s.jobs.Get(id)
+	job, ok := s.requestJobs(r).Get(id)
 	if !ok {
 		writeErrorJSON(w, http.StatusNotFound, "job_not_found", fmt.Sprintf("Job %q not found", id))
 		return
@@ -654,7 +679,7 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 				return
 			case <-time.After(15 * time.Millisecond):
 			}
-			if next, exists := s.jobs.Get(id); exists {
+			if next, exists := s.requestJobs(r).Get(id); exists {
 				job = next
 			} else {
 				break
@@ -670,7 +695,7 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_job_id", "Invalid job ID")
 		return
 	}
-	job, ok := s.jobs.Cancel(id)
+	job, ok := s.requestJobs(r).Cancel(id)
 	if !ok {
 		writeErrorJSON(w, http.StatusNotFound, "job_not_found", fmt.Sprintf("Job %q not found", id))
 		return
@@ -687,7 +712,7 @@ func (s *Server) handleDownloadStem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wavBytes, ok := s.jobs.StemWAV(id, stemName)
+	wavBytes, ok := s.requestJobs(r).StemWAV(id, stemName)
 	if !ok {
 		writeErrorJSON(w, http.StatusNotFound, "stem_not_found", fmt.Sprintf("Stem %q for job %q not found", stemName, id))
 		return
@@ -814,18 +839,18 @@ func (s *Server) handleAnalyzeFeatures(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio analysis request canceled or timed out")
 		return
 	}
-	job, err := s.jobs.SubmitAnalyzeFeatures(buf)
+	job, err := s.requestJobs(r).SubmitAnalyzeFeatures(buf)
 	if err != nil {
 		writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", err.Error())
 		return
 	}
 	if r.Context().Err() != nil {
-		s.jobs.Cancel(job.ID)
+		s.requestJobs(r).Cancel(job.ID)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusAccepted)
 	if err := json.NewEncoder(w).Encode(job); err != nil {
-		s.jobs.Cancel(job.ID)
+		s.requestJobs(r).Cancel(job.ID)
 	}
 }

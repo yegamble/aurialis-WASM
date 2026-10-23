@@ -63,8 +63,33 @@ func resolveWasmFS() fs.FS {
 	return sub
 }
 
+func resolveHostedConfig(enabled bool, origins, secret string) (*server.HostedConfig, error) {
+	if !enabled {
+		if origins != "" {
+			return nil, errors.New("public origins require explicit hosted mode")
+		}
+		return nil, nil
+	}
+	cfg := &server.HostedConfig{Origins: strings.Split(origins, ","), GatewaySecret: secret}
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func validateListenAddress(address string, hosted bool) error {
+	host, _, err := net.SplitHostPort(address)
+	ip := net.ParseIP(host)
+	if err != nil || ip == nil || (!hosted && !ip.IsLoopback()) {
+		return errors.New("listen address must use a loopback IP unless authenticated hosted mode is configured")
+	}
+	return nil
+}
+
 func run() error {
-	addrFlag := flag.String("addr", "127.0.0.1:8080", "HTTP listen address (loopback IP only)")
+	addrFlag := flag.String("addr", "127.0.0.1:8080", "HTTP listen address (loopback IP unless explicit authenticated hosted mode is configured)")
+	hostedFlag := flag.Bool("hosted", false, "Enable the authenticated private container gateway")
+	originsFlag := flag.String("public-origins", "", "Comma-separated fixed HTTPS origins for hosted mode")
 	workersFlag := flag.Int("workers", 0, "Number of concurrent audio DSP workers (0 = auto)")
 	maxUploadFlag := flag.Int64("max-upload-bytes", server.DefaultMaxUploadBytes, "Maximum upload size in bytes")
 	flag.Parse()
@@ -74,9 +99,12 @@ func run() error {
 	if maxUpload <= 0 || maxUpload > server.DefaultMaxUploadBytes {
 		return fmt.Errorf("maximum upload must be between 1 and %d bytes", server.DefaultMaxUploadBytes)
 	}
-	listenHost, _, err := net.SplitHostPort(listenAddr)
-	if err != nil || net.ParseIP(listenHost) == nil || !net.ParseIP(listenHost).IsLoopback() {
-		return errors.New("listen address must use a loopback IP")
+	hosted, err := resolveHostedConfig(*hostedFlag, *originsFlag, os.Getenv("AURIALIS_GATEWAY_SECRET"))
+	if err != nil {
+		return err
+	}
+	if err := validateListenAddress(listenAddr, hosted != nil); err != nil {
+		return err
 	}
 	listenConfig := net.ListenConfig{}
 	listener, err := listenConfig.Listen(context.Background(), "tcp", listenAddr)
@@ -92,6 +120,7 @@ func run() error {
 		StaticFS:       resolveStaticFS(),
 		WasmFS:         resolveWasmFS(),
 		ListenAddress:  listenAddr,
+		Hosted:         hosted,
 	})
 	defer srv.Close()
 

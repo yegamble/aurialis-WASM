@@ -26,7 +26,7 @@ func (s *Server) handleAnalyzeReference(w http.ResponseWriter, r *http.Request) 
 	if r.Context().Err() != nil {
 		return
 	}
-	job, err := s.jobs.SubmitAnalyzeReference(request.source, request.reference, request.baseline, request.options)
+	job, err := s.requestJobs(r).SubmitAnalyzeReference(request.source, request.reference, request.baseline, request.options)
 	if err != nil {
 		writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", err.Error())
 		return

@@ -39,12 +39,12 @@ func readRenderScriptV2(w http.ResponseWriter, r *http.Request) (*mastering.Scri
 
 func (s *Server) writeAdmittedJob(w http.ResponseWriter, r *http.Request, job *jobs.Job) {
 	if r.Context().Err() != nil {
-		s.jobs.Cancel(job.ID)
+		s.requestJobs(r).Cancel(job.ID)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusAccepted)
 	if err := json.NewEncoder(w).Encode(job); err != nil {
-		s.jobs.Cancel(job.ID)
+		s.requestJobs(r).Cancel(job.ID)
 	}
 }

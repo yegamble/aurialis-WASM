@@ -203,3 +203,76 @@ func TestStudioOpticalRatioOneAndMakeupEditLeavesNoReductionTail(t *testing.T) {
 		}
 	}
 }
+
+// Reduction reports attenuation from the detector/model. Makeup edits and their
+// control crossfade must never appear as compressor activity on a unity ratio.
+func TestStudioReductionMeterSeparatesMakeupAndBypass(t *testing.T) {
+	for _, rate := range []float64{8000, 44100, 48000, 96000, 192000} {
+		p := studioTestParams(CompOptical)
+		p.Ratio, p.MakeupDB = 1, 6
+		c := mustStudioCompressor(t, rate, p)
+		for range int(.01 * rate) {
+			c.process(.25, -.125)
+			if c.reductionDB != 0 {
+				t.Fatalf("rate %g: unity ratio with makeup reported %g dB reduction", rate, c.reductionDB)
+			}
+		}
+		p.Enabled = false
+		if err := c.setParams(p); err != nil {
+			t.Fatal(err)
+		}
+		for range int(.01 * rate) {
+			c.process(.25, -.125)
+			if c.reductionDB != 0 {
+				t.Fatal("makeup bypass fade reported gain reduction")
+			}
+		}
+		l, r := c.process(.25, -.125)
+		if l != .25 || r != -.125 || c.reductionDB != 0 {
+			t.Fatal("disabled compressor retained makeup or gain reduction")
+		}
+		p.Enabled, p.MakeupDB = true, 0
+		if err := c.setParams(p); err != nil {
+			t.Fatal(err)
+		}
+		runStudioDC(&c, .01, .25)
+		p.MakeupDB = 6
+		if err := c.setParams(p); err != nil {
+			t.Fatal(err)
+		}
+		for range int(.01 * rate) {
+			c.process(.25, -.125)
+			if c.reductionDB != 0 {
+				t.Fatal("makeup-only fade reported gain reduction")
+			}
+		}
+	}
+}
+
+func TestStudioReductionMeterPreservesCompressionDuringMakeupEdit(t *testing.T) {
+	for _, rate := range []float64{8000, 44100, 48000, 96000, 192000} {
+		p := studioTestParams(CompOptical)
+		c := mustStudioCompressor(t, rate, p)
+		runStudioDC(&c, 2, 1)
+		reference := c
+		p.MakeupDB = 6
+		if err := c.setParams(p); err != nil {
+			t.Fatal(err)
+		}
+		for range int(.01 * rate) {
+			c.process(1, .5)
+			reference.process(1, .5)
+			if math.Abs(c.reductionDB-reference.reductionDB) > .001 {
+				t.Fatalf("makeup edit changed detector reduction: %g versus %g", c.reductionDB, reference.reductionDB)
+			}
+		}
+		p.Enabled = false
+		if err := c.setParams(p); err != nil {
+			t.Fatal(err)
+		}
+		runStudioDC(&c, .01, .25)
+		if c.reductionDB != 0 {
+			t.Fatal("disabled compressor reported stale reduction")
+		}
+	}
+}

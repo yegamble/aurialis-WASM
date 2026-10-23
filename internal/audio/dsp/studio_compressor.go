@@ -17,6 +17,7 @@ type studioCompressor struct {
 	opticalCoeffs                     studioOpticalCoeffs
 	gainDB, reductionDB               float64
 	transitionFromDB                  float64
+	transitionFromReductionDB         float64
 	transitionFrame, transitionLength int
 }
 
@@ -64,6 +65,7 @@ func (c *studioCompressor) setParams(params CompressorParams) error {
 	}
 	next.gainDB = c.gainDB
 	next.transitionFromDB = c.gainDB
+	next.transitionFromReductionDB = c.reductionDB
 	next.transitionLength = int(math.Ceil(.005 * c.sampleRate))
 	*c = next
 	return nil
@@ -78,6 +80,7 @@ func (c *studioCompressor) resetHistory() {
 		c.gainDB = c.params.MakeupDB
 	}
 	c.transitionFromDB = c.gainDB
+	c.transitionFromReductionDB = 0
 	c.transitionFrame, c.transitionLength = 0, 0
 }
 
@@ -103,7 +106,7 @@ func (c *studioCompressor) process(left, right float64) (float64, float64) {
 	if !c.params.Enabled && c.transitionLength == 0 {
 		return left, right
 	}
-	targetGainDB := 0.0
+	targetGainDB, targetReductionDB := 0.0, 0.0
 	if c.params.Enabled {
 		scLeft, scRight := left, right
 		if c.params.SidechainHPFHz > 10 {
@@ -122,18 +125,20 @@ func (c *studioCompressor) process(left, right float64) (float64, float64) {
 		if c.params.Ratio == 1 {
 			gr = 0
 		}
+		targetReductionDB = gr
 		targetGainDB = c.params.MakeupDB - gr
 	}
 	c.gainDB = targetGainDB
+	c.reductionDB = targetReductionDB
 	if c.transitionLength > 0 {
 		c.transitionFrame++
 		fraction := float64(c.transitionFrame) / float64(c.transitionLength)
 		c.gainDB = c.transitionFromDB + fraction*(targetGainDB-c.transitionFromDB)
+		c.reductionDB = c.transitionFromReductionDB + fraction*(targetReductionDB-c.transitionFromReductionDB)
 		if c.transitionFrame >= c.transitionLength {
 			c.transitionFrame, c.transitionLength = 0, 0
 		}
 	}
-	c.reductionDB = math.Max(0, c.params.MakeupDB-c.gainDB)
 	if c.gainDB == 0 {
 		return left, right
 	}

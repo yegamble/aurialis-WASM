@@ -127,29 +127,7 @@ func studioSpectrum(samples []float64) []complex128 {
 	for i, value := range samples {
 		values[i] = complex(value, 0)
 	}
-	for i, j := 1, 0; i < len(values); i++ {
-		bit := len(values) >> 1
-		for j&bit != 0 {
-			j ^= bit
-			bit >>= 1
-		}
-		j ^= bit
-		if i < j {
-			values[i], values[j] = values[j], values[i]
-		}
-	}
-	for length := 2; length <= len(values); length *= 2 {
-		angle := -2 * math.Pi / float64(length)
-		root := complex(math.Cos(angle), math.Sin(angle))
-		for start := 0; start < len(values); start += length {
-			weight := complex(1, 0)
-			for offset := 0; offset < length/2; offset++ {
-				a, b := values[start+offset], weight*values[start+offset+length/2]
-				values[start+offset], values[start+offset+length/2] = a+b, a-b
-				weight *= root
-			}
-		}
-	}
+	studioTestFFT(values, false)
 	return values
 }
 

@@ -10,6 +10,9 @@ const (
 // This detector is distinct from the audio oversampler. A 1025-tap high-rate
 // Hann sinc has a 128-base-frame center and three nontrivial 4x phases. Paired
 // quarter phases and the symmetric half phase share one input-history pass.
+// Steady-tone calibration through .49 cycles/base frame does not bound the
+// ideal sinc peak of arbitrary finite records. A limiter using this detector
+// still needs independent final-output reconstruction acceptance.
 type studioPeakKernel struct {
 	quarter [256]float64
 	half    [128]float64

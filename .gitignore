@@ -49,3 +49,10 @@ next-env.d.ts
 /internal/webui/embedded/*
 !/internal/webui/embedded/.gitkeep
 /public/wasm/wasm_exec.js
+
+# Browser static deployment outputs and local Cloudflare state.
+/deploy/cloudflare/assets/
+/deploy/cloudflare/asset-policy.json
+.wrangler/
+.dev.vars
+.dev.vars.*

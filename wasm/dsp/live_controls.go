@@ -27,7 +27,9 @@ func (v *liveControlVector) apply(bridge *Bridge) uint32 {
 	if !accepted {
 		return 0
 	}
-	bridge.SetParams(params)
+	if !bridge.SetParams(params) {
+		return 0
+	}
 	return 1
 }
 

@@ -1,5 +1,5 @@
 # Aurialis-WASM War-Room Ledger
-<!-- cspell:words Embedder -->
+<!-- cspell:words Embedder automator -->
 
 Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-room-loop` iterations. The Chair updates this file after every Round D ruling and every Round E verification pass. One row per item; never delete a row — move completed items to **Verified & Merged** with commit/PR and test evidence, or to **Declined** with the reason.
 
@@ -46,6 +46,29 @@ The denied-storage browser test then proved a full-document Home-to-Master navig
 Integrated TypeScript/lint/knip/spelling passed; 321 unit/component cases in 23 files passed. The full Go quality/security/race gate passed this session on identical runtime Go `b701f4d`; later changes are frontend/tests/docs. Fresh compiled native/JS/direct/restricted-WASI paths matched all 333 frozen fixtures exactly, plus nine model-history transitions. Independent FFmpeg meter verification passed 15 comparisons (maximum 0.0542 LU / 0.0312 dB). Fresh single-binary rebuild and empty-directory embedded smoke passed. Newman passed 22 requests/27 assertions plus raw security/size probes; all 11 agents synchronize.
 
 Independent QA/Devil's Advocate/Product/Writer review found no surviving in-scope source must-fix; 58 targeted units and native identity/import tests passed, all 65 local documentation links resolve, and a real 320 px footer scroll/focus/click probe passed. Library 3 dB fixture measured +2.9999999208 dB live / +3.0000000435 dB exported, held-scrub resumption and two closed contexts. These are bounded application observations, not acoustic equivalence or hard deadlines. Final exact documentation review and green remote CI are still required before delegated merge. Partial deletion and unswept orphan limitations remain explicit in tasks/architecture.
+
+### LIB-1 merged and MUB-3B foundation checkpoint
+
+LIB-1 is verified and merged in PR #7 at `25d5653280585198df510215a58c3c07b92193ea`. All six jobs in [CI run 39906520601](https://github.com/yegamble/aurialis-WASM/actions/runs/39906520601) passed, including 70 Linux browser cases in 4.9 minutes. The primary checkout was fast-forwarded and the merged branch deleted. Earlier local/pending statuses above are historical.
+
+| Item | Current status |
+| --- | --- |
+| LIB-1 Library/source lifecycle | verified and merged, PR #7 / `25d5653` |
+| MUB-3B ScriptV2/common schedule foundation | locally verified on `codex/deep-schedule-foundation`; open — awaiting exact green remote CI and delegated merge |
+| Deep editor and actual browser schedule transport | open; not delivered by the kernel/API foundation |
+| Whole product and Waves acoustic acceptance | open |
+
+The MUB-3B foundation includes source-bound strict JSON, measured neutral proposals, native actual-PCM verification, off-thread compilation and staged numeric WASI revisions. Schema 2.0 retains sonic algorithm 1, sample-peak limiting and disabled repair; proposals use the existing generic Optical path. The compile endpoint truthfully returns `sourceVerified: false`. Static setters and different-source binding reject while attached; same-source binding is idempotent and detach restores baseline. Source/device phase, half-open/faded envelopes, bounded heavy-control cells and baseline/module semantics require their declared tests rather than a label-based completion claim.
+
+The Chair observed full Go quality/security/race gates passing after first-Apply clock correction `b3237e3`; captured static-prefix oracle `8de5063` separately passed vet/lint/race. Post-correction build/empty-directory smoke, 333 frozen PCM fixtures, nine history transitions, 45 compiled automation fixtures and Newman 29 requests/34 assertions plus raw probes passed. The earlier unchanged-frontend checkpoint passed static gates, 321 units and configured 177-file spelling; 15 FFmpeg comparisons passed at their recorded checkpoint. Independent schedule/slot/seek/loop/bridge/strict-JSON/native-source/API tests and the complete automator package passed. Preserve the strict-lint, endpoint-rounding and unsupported-baseline findings, the old-reactor clock-fixture failure corrected by rebuilding, the failed tool-URL lookup and loaded Node timing outliers up to 347 ms. Those probes are not browser or universal deadline evidence.
+
+Round E reopened first Apply because static playback did not advance a schedule-independent clock. The correction binds an independent rational source epoch before playback; static/bypassed blocks advance it, same-identity binding preserves it, and first Apply/detach/reapply retains fractional phase. Seek/reset explicitly reconstructs the epoch; hold/pause submits no processing frames. Native and actual compiled-WASI fixtures now include 16 independent static-prefix epochs in addition to the prior 29 fixtures. No ABI signature changed.
+
+The prior pre-correction existing-UI suite passed 70/70 in 5.9 minutes. The post-correction run was 69/70 in 4.3 minutes, failing keyboard focus after transport Space-hold/Escape/resume. Ten unchanged traced repetitions passed but do not replace a complete corrected acceptance run. A deterministic intermediate-render regression reproduced a matching transport focus-ownership race against old source, failing one of 11 unit cases; ownership cleared before asynchronous resume disabled and blurred the origin. Correction `ba4406d` passed all 11 transport units, strict frontend gates, the complete 321-unit suite and fresh build/smoke. It preserves keyboard ownership through the paused render and releases it on a new hold or intentional enabled blur. Fresh complete browser verification remains pending; identical cause for every prior failure is not established. The current UI does not bind the new schedule clock; no clock-causation claim follows. Final browser regression, documentation sign-off and green remote CI remain required before delegated merge. The foundation is not merge-ready and no whole-product acceptance follows.
+
+**Final Round E local acceptance:** the fresh corrected complete browser suite exited 0, 70/70 in 3.5 minutes, without relaxing the original assertions. Independent QA/Devil's Advocate/Technical Writer/Product accepted the bounded foundation contracts, evidence and atomic commits with no remaining in-scope must-fix. Status: **locally verified; open — awaiting merge**, conditional on exact green remote CI before delegated merge. Earlier pending and failed checkpoints above remain historical. This is existing-UI regression evidence, not an enabled Deep editor or actual browser automation continuity claim.
+
+After rebasing onto merged PR #7 `25d5653`, the Chair and independent writer compared the full tracked trees and found no differences. Current rebased commits are `e2e7432` (first-Apply clock), `e581a86` (captured static-prefix oracle) and `de852d3` (transport focus); earlier hashes identify executed pre-rebase checkpoints. Whole-product, Reference, studio DSP, trained stems and Waves acceptance remain open.
 
 ## Whole-product loop — 2026-10-22, current session
 

@@ -25,6 +25,18 @@
     {
       "key": "deepJobId",
       "value": ""
+    },
+    {
+      "key": "deepV2JobId",
+      "value": ""
+    },
+    {
+      "key": "deepV2Script",
+      "value": ""
+    },
+    {
+      "key": "staleV2Script",
+      "value": ""
     }
   ],
   "item": [
@@ -725,6 +737,233 @@
             }
           ]
         }
+      }
+    },
+    {
+      "name": "TS-021 Submit Source-Bound ScriptV2 Proposal",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Measured v2 proposal admitted', function () { pm.response.to.have.status(202); const body=pm.response.json(); pm.expect(body.kind).to.eql('analyze_deep_v2'); pm.collectionVariables.set('deepV2JobId',body.jobId); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/analyze/deep",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "scriptVersion",
+              "type": "text",
+              "value": "2.0"
+            },
+            {
+              "key": "profile",
+              "type": "text",
+              "value": "Dynamic & Open"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "TS-022 Verify Measured ScriptV2 Contract",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('V2 is bound to canonical source and neutral coverage', function () { pm.response.to.have.status(200); const body=pm.response.json(); pm.expect(body.status).to.eql('done'); const script=body.scriptV2; pm.expect(script.version).to.eql('2.0'); pm.expect(script.source.pcmHash).to.match(/^[0-9a-f]{64}$/); pm.expect(script.source.frames).to.eql(19200); pm.expect(script.sections[0].roleHint).to.eql('unknown'); pm.expect(script.sections.at(-1).endFrame).to.eql(19200); pm.collectionVariables.set('deepV2Script',JSON.stringify(script)); const stale=JSON.parse(JSON.stringify(script)); stale.source.pcmHash='0'.repeat(64); pm.collectionVariables.set('staleV2Script',JSON.stringify(stale)); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/jobs/{{deepV2JobId}}?wait=1"
+      }
+    },
+    {
+      "name": "TS-023 Render Explicit ScriptV2 Without Hidden Gain",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('V2 renderer returns actual output measurements', function () { pm.response.to.have.status(200); const body=pm.response.json(); pm.expect(body.frames).to.eql(19200); pm.expect(body.sampleRate).to.eql(48000); pm.expect(body.afterMetrics).to.be.an('object'); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/master/render",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "script",
+              "type": "text",
+              "value": "{{deepV2Script}}"
+            },
+            {
+              "key": "bitDepth",
+              "type": "text",
+              "value": "32"
+            },
+            {
+              "key": "format",
+              "type": "text",
+              "value": "json"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "TS-024 Reject Conflicting ScriptV2 Parameters",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Even empty params conflict with script', function () { pm.response.to.have.status(400); pm.expect(pm.response.json().error).to.eql('conflicting_parameters'); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/master/render",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "script",
+              "type": "text",
+              "value": "{{deepV2Script}}"
+            },
+            {
+              "key": "params",
+              "type": "text",
+              "value": ""
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "TS-025 Reject Stale ScriptV2 Source Identity",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Different source digest cannot render', function () { pm.response.to.have.status(400); pm.expect(pm.response.json().error).to.eql('invalid_script'); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/master/render",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "script",
+              "type": "text",
+              "value": "{{staleV2Script}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "TS-026 Compile Numeric Schedule Off Audio Thread",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Numeric schedule declares rate and unverified source', function () { pm.response.to.have.status(200); const body=pm.response.json(); pm.expect(body.version).to.eql('1.0'); pm.expect(body.deviceRate).to.eql(44100); pm.expect(body.quantumFrames).to.eql(44); pm.expect(body.sourceVerified).to.eql(false); pm.expect(body.targets).to.have.lengthOf(10); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": "{{baseUrl}}/api/automation/compile?deviceRate=44100",
+        "body": {
+          "mode": "raw",
+          "raw": "{{deepV2Script}}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "TS-027 Release Retained ScriptV2 Job",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Cancel clears retained ScriptV2 result', function () { pm.response.to.have.status(200); const body=pm.response.json(); pm.expect(body.status).to.eql('cancelled'); pm.expect(body.scriptV2).to.eql(undefined); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": "{{baseUrl}}/api/jobs/{{deepV2JobId}}"
       }
     }
   ]

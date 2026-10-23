@@ -91,6 +91,6 @@ test("serves exact dynamic HTML and RSC assets while rejecting API uploads and u
   const wasm = await request.head("/wasm/aurialis-dsp.wasm");
   expect(wasm.status()).toBe(200);
   expect(wasm.headers()["content-type"]).toBe("application/wasm");
-  expect(wasm.headers()["cache-control"]).toBe("no-store");
+  expect(wasm.headers()["cache-control"]).toBe("no-store, no-transform");
   expect(await wasm.body()).toHaveLength(0);
 });

@@ -57,6 +57,7 @@ func (processor *Processor) SeekSourceFrame(sourceFrame int64) error {
 func (processor *Processor) ProcessBlock(inL, inR, outL, outR []float32) {
 	count := min(len(inL), len(inR), len(outL), len(outR))
 	if !processor.used {
+		processor.cursor.AdvanceFrames(count)
 		processor.engine.ProcessBlock(inL, inR, outL, outR)
 		return
 	}
@@ -75,4 +76,9 @@ func (processor *Processor) ProcessBlock(inL, inR, outL, outR []float32) {
 		processor.engine.ProcessAutomationBlock(inL[start:start+span], inR[start:start+span], outL[start:start+span], outR[start:start+span], gain, width)
 		start += span
 	}
+}
+
+// InheritPosition preserves exact source phase when replacing a compatible revision.
+func (processor *Processor) InheritPosition(previous *Processor) bool {
+	return previous != nil && processor.cursor.CopyPosition(previous.cursor)
 }

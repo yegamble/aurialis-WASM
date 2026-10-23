@@ -43,9 +43,14 @@ core, _, _ = rename(assets / "decoder-core.mjs", "decoder-core", ".mjs", 4 * 102
 envelope_data = (recipe / "envelope.mjs").read_bytes()
 envelope = "envelope." + digest(envelope_data) + ".mjs"
 (assets / envelope).write_bytes(envelope_data)
+reader_data = (recipe / "bounded-read.mjs").read_bytes()
+reader = "bounded-read." + digest(reader_data) + ".mjs"
+(assets / reader).write_bytes(reader_data)
+(assets / "bounded-read.mjs").write_bytes(reader_data)
 worker_data = (recipe / "decoder.worker.mjs").read_text()
 for token, value in {
     "__AURIALIS_CORE_FILE__": core, "__AURIALIS_ENVELOPE_FILE__": envelope,
+    "__AURIALIS_READER_FILE__": reader,
     "__AURIALIS_WASM_FILE__": wasm, "__AURIALIS_WASM_SHA256__": wasm_hash,
 }.items():
     if worker_data.count(token) != 1:

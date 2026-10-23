@@ -1,6 +1,7 @@
-/* Build replaces only the four fixed asset tokens below; never a user URL. */
+/* Build replaces only the five fixed asset tokens below; never a user URL. */
 import createDecoder from "./__AURIALIS_CORE_FILE__";
 import { inspectEnvelope, selectedInput } from "./__AURIALIS_ENVELOPE_FILE__";
+import { readBoundedResponse } from "./__AURIALIS_READER_FILE__";
 const ABI = 1, HEAP = 64 * 1024 * 1024, MAX_FRAMES = 16777216, CHUNK = 4096;
 const WASM = "__AURIALIS_WASM_FILE__", SHA256 = "__AURIALIS_WASM_SHA256__";
 let core, identity, awaiting = null, sequence = 0, emitted = 0, geometry, started = false, terminal = false;
@@ -12,17 +13,11 @@ function stop() {
 function fail() { if (!terminal) { send({ kind: "error", error: "Private compressed decoding rejected this source; its old copy is retained." }); stop(); } }
 async function boundedWasm() {
   const response = await fetch(new URL(WASM, import.meta.url), { cache: "no-store", credentials: "same-origin" });
-  if (!response.ok || !response.body) throw new Error("Decoder module unavailable.");
-  const reader = response.body.getReader(); let size = 0; const pieces = [];
-  for (;;) {
-    const { done, value } = await reader.read(); if (done) break;
-    size += value.byteLength;
-    if (size > 16 * 1024 * 1024) { await reader.cancel(); throw new Error("Decoder asset exceeds its bound."); }
-    pieces.push(value);
-  }
-  const bytes = new Uint8Array(size); let offset = 0;
-  for (const piece of pieces) { bytes.set(piece, offset); offset += piece.byteLength; }
+  const check = () => { if (terminal) throw new Error("Private decoder already stopped."); };
+  const bytes = await readBoundedResponse(response, { maxBytes: 16 * 1024 * 1024, maxReads: 4096, check });
+  check();
   const digest = await crypto.subtle.digest("SHA-256", bytes);
+  check();
   const hash = Array.from(new Uint8Array(digest), (value) => value.toString(16).padStart(2, "0")).join("");
   if (hash !== SHA256) throw new Error("Decoder module integrity failed.");
   return bytes;
@@ -61,13 +56,19 @@ onmessage = async (event) => {
         !Number.isInteger(data.maxFrames) || data.maxFrames < 1 || data.maxFrames > MAX_FRAMES) { fail(); return; }
     started = true; identity = data.id;
     const input = selectedInput(data.file), format = inspectEnvelope(input), wasmBinary = await boundedWasm();
+    if (terminal) return;
     const wasmMemory = new WebAssembly.Memory({ initial: HEAP / 65536, maximum: HEAP / 65536 });
-    core = await createDecoder({ wasmBinary, wasmMemory, print: () => {}, printErr: () => {},
+    const initialized = await createDecoder({ wasmBinary, wasmMemory, print: () => {}, printErr: () => {},
       readInput: (offset, destination, bytes, heap) => {
         if (heap.buffer.byteLength !== HEAP || destination > HEAP - bytes) return -1;
         const chunk = input.read(offset, bytes); heap.set(chunk, destination); return chunk.byteLength;
       },
     });
+    if (terminal) {
+      try { initialized._aurialis_decoder_close(); } catch { /* Never open a late module. */ }
+      return;
+    }
+    core = initialized;
     if (core.HEAPU8.buffer.byteLength !== HEAP || core._aurialis_decoder_abi() !== ABI ||
         core._aurialis_decoder_open(format, input.size, data.maxFrames) !== 0) { fail(); return; }
     pump();

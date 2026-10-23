@@ -31,7 +31,9 @@
     "maxSeekCalls": 65536,
     "maxPackets": 1048576,
     "maxMetadataBytes": 1048576,
-    "deadlineMs": 130000
+    "deadlineMs": 130000,
+    "maxModuleReadCalls": 4096,
+    "maxManifestReadCalls": 1024
   },
   "scope": {
     "demuxers": [

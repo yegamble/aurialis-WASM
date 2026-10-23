@@ -25,7 +25,7 @@ Aurialis is an audio mastering workstation that runs on your computer and opens 
   <a href="docs/development.md">Developer guide</a>
 </p>
 
-> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. AI repair, validated instrument separation and certified hardware/true-peak behavior remain open work. Deep is merged with its bounded live/export workflow verified. Release now reviews the exact encoded WAV; its exact CI and merge gates remain open. See [current limits](#know-the-current-limits).
+> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. AI repair, validated instrument separation and certified hardware/true-peak behavior remain open work. Deep is merged with its bounded live/export workflow verified. Release now reviews the exact encoded WAV with its own output hash; its exact CI and merge gates remain open. See [current limits](#know-the-current-limits).
 
 ## A small studio, one clear path
 

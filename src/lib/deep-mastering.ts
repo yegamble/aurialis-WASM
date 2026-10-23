@@ -1,5 +1,6 @@
 import { createDefaultAdvancedParams } from "./audio-dsp";
 import { runAudioJob } from "./audio-jobs";
+import { deviceAudioRequest } from "./browser-jobs";
 import { engineParams } from "./browser-engine";
 import { sameSource } from "./library";
 import { normalizeShortcutUndo } from "./mastering-shortcuts";
@@ -151,10 +152,10 @@ function compiledScript(value: unknown, script: ScriptV2, deviceRate: number): C
   return { version: "1.0", source: identity, revision: script.revision, deviceRate, quantumFrames: number(data.quantumFrames, 1, 192, true), baseline, moves, targets, sourceVerified: false };
 }
 
-/** Fetch the common Go compiler's bounded numeric packet; never evaluate moves here. */
+/** Ask the common Go compiler for its bounded numeric packet; never evaluate moves here. */
 export async function compileScript(script: ScriptV2, deviceRate: number, signal?: AbortSignal): Promise<CompiledScript> {
   number(deviceRate, 8000, 192000, true); readScriptV2(script);
-  const response = await fetch(`/api/automation/compile?deviceRate=${String(deviceRate)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(script), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000) });
+  const response = await deviceAudioRequest(`/api/automation/compile?deviceRate=${String(deviceRate)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(script), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(15_000)]) : AbortSignal.timeout(15_000) });
   const body: unknown = await response.json();
   if (!response.ok) { const error = object(body); throw new Error(typeof error.detail === "string" ? error.detail.slice(0, 2048) : "The proposed automation could not be validated."); }
   return compiledScript(body, script, deviceRate);

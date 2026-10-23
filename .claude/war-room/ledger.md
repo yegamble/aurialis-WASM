@@ -1,5 +1,5 @@
 # Aurialis-WASM War-Room Ledger
-<!-- cspell:words Embedder -->
+<!-- cspell:words Embedder automator -->
 
 Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-room-loop` iterations. The Chair updates this file after every Round D ruling and every Round E verification pass. One row per item; never delete a row — move completed items to **Verified & Merged** with commit/PR and test evidence, or to **Declined** with the reason.
 
@@ -46,6 +46,21 @@ The denied-storage browser test then proved a full-document Home-to-Master navig
 Integrated TypeScript/lint/knip/spelling passed; 321 unit/component cases in 23 files passed. The full Go quality/security/race gate passed this session on identical runtime Go `b701f4d`; later changes are frontend/tests/docs. Fresh compiled native/JS/direct/restricted-WASI paths matched all 333 frozen fixtures exactly, plus nine model-history transitions. Independent FFmpeg meter verification passed 15 comparisons (maximum 0.0542 LU / 0.0312 dB). Fresh single-binary rebuild and empty-directory embedded smoke passed. Newman passed 22 requests/27 assertions plus raw security/size probes; all 11 agents synchronize.
 
 Independent QA/Devil's Advocate/Product/Writer review found no surviving in-scope source must-fix; 58 targeted units and native identity/import tests passed, all 65 local documentation links resolve, and a real 320 px footer scroll/focus/click probe passed. Library 3 dB fixture measured +2.9999999208 dB live / +3.0000000435 dB exported, held-scrub resumption and two closed contexts. These are bounded application observations, not acoustic equivalence or hard deadlines. Final exact documentation review and green remote CI are still required before delegated merge. Partial deletion and unswept orphan limitations remain explicit in tasks/architecture.
+
+### LIB-1 merged and MUB-3B foundation checkpoint
+
+LIB-1 is verified and merged in PR #7 at `25d5653280585198df510215a58c3c07b92193ea`. All six jobs in [CI run 39906520601](https://github.com/yegamble/aurialis-WASM/actions/runs/39906520601) passed, including 70 Linux browser cases in 4.9 minutes. The primary checkout was fast-forwarded and the merged branch deleted. Earlier local/pending statuses above are historical.
+
+| Item | Current status |
+| --- | --- |
+| LIB-1 Library/source lifecycle | verified and merged, PR #7 / `25d5653` |
+| MUB-3B ScriptV2/common schedule foundation | implemented on `codex/deep-schedule-foundation`; final independent/integrated verification open |
+| Deep editor and actual browser schedule transport | open; not delivered by the kernel/API foundation |
+| Whole product and Waves acoustic acceptance | open |
+
+The MUB-3B foundation includes source-bound strict JSON, measured neutral proposals, native actual-PCM verification, off-thread compilation and staged numeric WASI revisions. Schema 2.0 retains sonic algorithm 1, sample-peak limiting and disabled repair; proposals use the existing generic Optical path. The compile endpoint truthfully returns `sourceVerified: false`. Static setters/rebinding reject while attached; detach restores baseline. Source/device phase, half-open/faded envelopes, bounded heavy-control cells and baseline/module semantics require their declared tests rather than a label-based completion claim.
+
+The Chair observed full Go quality/security/race gates passing at runtime `15c248b`; captured-input oracle test `55992f7` separately passed vet/lint/race. Frontend static gates, 321 units, configured 177-file spelling, rebuilt binary/empty-directory smoke, 333 frozen PCM fixtures, nine history transitions, 29 actual compiled automation fixtures, 15 FFmpeg comparisons and expanded Newman 29 requests/34 assertions plus raw probes passed. Independent schedule/slot/seek/loop/bridge/strict-JSON/native-source/API tests and the complete automator package passed. Final existing-UI browser regression, documentation sign-off and remote CI remain pending. Preserve the two corrected strict-lint checkpoints, endpoint-rounding and unsupported-baseline findings and the loaded Node timing outliers up to 347 ms. Those timing probes are not browser or universal deadline evidence. Delegated merge remains conditional on the complete finite-scope gate; no whole-product acceptance follows.
 
 ## Whole-product loop — 2026-10-22, current session
 

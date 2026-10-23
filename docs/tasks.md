@@ -1,8 +1,19 @@
 # Aurialis-WASM task tracker
+<!-- cspell:words automator -->
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
 ## Delegated continuation — October 23, 2026
+
+### PR #7 merged; ScriptV2 foundation verification open
+
+LIB-1 is verified and merged in PR #7 at `25d5653280585198df510215a58c3c07b92193ea`. All six jobs in [CI run 39906520601](https://github.com/yegamble/aurialis-WASM/actions/runs/39906520601) passed, including 70 Linux browser cases in 4.9 minutes. The primary checkout was fast-forwarded and the merged feature branch deleted. The local-only statuses below retain their recorded checkpoints.
+
+The next isolated branch, `codex/deep-schedule-foundation`, implements MUB-3B's API/native/numeric-WASI foundation through runtime `15c248b`, with captured-input oracle tests `55992f7`. This is not the Deep editor or actual browser automation integration. It adds strict source-bound ScriptV2 proposals/rendering, ten closed scalar targets, common rational-clock evaluation and staged atomic baseline/schedule publication. Generated proposals retain algorithm 1, sample-peak limiting, disabled repair and generic Optical compression. Sonic v2, private studio algorithms, reference matching and trained stems remain separate open work.
+
+The Chair observed full Go formatting, module verification, vet, exact lint, identifier, vulnerability and race gates passing on runtime `15c248b`. Captured-input oracle test `55992f7` separately passed vet/lint/race. Frontend TypeScript/lint/knip, 321 units in 23 files and configured 177-file spelling passed. Fresh build and empty-directory binary smoke passed. Native/legacy/direct/restricted-WASI paths retained exact PCM for all 333 frozen fixtures, plus nine history transitions. The 29 compiled automation fixtures cover 12 seeks, 12 fractional loops and five public-profile baseline round trips. All 15 independent FFmpeg meter comparisons passed. Expanded Newman passed 29 requests/34 assertions plus raw probes. Independent review also passed focused schedule/slot/seek/loop/bridge/strict-JSON/native-source/API tests and the complete automator package. The final 70-case browser suite is running against the rebuilt kernel; its launch is not a passing result or browser automation acceptance.
+
+Retained failures include two strict-Go-lint checkpoints corrected at `15c248b`, interpolation rounding at an authored endpoint and unsupported generated baseline fields corrected before this checkpoint. Loaded Node timing probes retained outliers up to 347 ms; quieter-host observations do not establish browser render deadlines. Compilation reports `sourceVerified: false` until the host binds authoritative source metadata; native rendering independently verifies actual PCM. This finite foundation remains open pending final evidence, documentation review and green remote CI before delegated merge.
 
 ### LIB-1 checkpoint — locally verified, open — awaiting merge
 

@@ -63,7 +63,7 @@ func TestDenseCurveCoalescingErrorBudgetAndAtomicCompilation(t *testing.T) {
 	discontinuity := authored("compressor.thresholdDb", -1)
 	discontinuity.FadeFrames = 0
 	if _, err := CompileContext(context.Background(), 8000, 8000, 8000, 1, neutralValues(), []Move{discontinuity}); err == nil {
-		t.Fatal("nonneutral zero-fade coefficient jump accepted")
+		t.Fatal("non-neutral zero-fade coefficient jump accepted")
 	}
 	if schedule.ValueAt(EQ0, 4000) != 0.8 {
 		t.Fatal("rejected compilation changed accepted schedule")
@@ -188,6 +188,67 @@ func TestSeekUsesAbsoluteSourceZeroCoefficientLattice(t *testing.T) {
 					}
 				}
 				offset += int64(count)
+			}
+		}
+	}
+}
+
+func TestInterpolationPreservesExactKnotsAndAuthoritativeBounds(t *testing.T) {
+	baseline := neutralValues()
+	move := Move{ID: "ratio", Target: "compressor.ratio", Operation: "absolute", Points: []Point{{Frame: 0, Value: 1}, {Frame: 96000, Value: 100}, {Frame: 192000, Value: 1}, {Frame: 288000, Value: 1}}}
+	schedule, err := CompileContext(context.Background(), 8000, 8000, 288000, 1, baseline, []Move{move})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if schedule.ValueAt(CompressorRatio, 192000) != 1 {
+		t.Fatal("exact authored endpoint lost precision")
+	}
+	for i := 0; i < 200; i++ {
+		frame := 192000 + float64(i-100)*.00001
+		value := schedule.ValueAt(CompressorRatio, frame)
+		if value < 1 || value > 100 {
+			t.Fatal("convex interpolation left valid endpoint range", frame, value)
+		}
+	}
+}
+
+func TestLoopingRationalPhaseMidBlockAndManyWraps(t *testing.T) {
+	for _, pair := range []struct{ source, device int }{{8001, 44100}, {48000, 44100}, {48000, 192000}} {
+		for _, frames := range []int64{1, 127, 129, 8001} {
+			move := Move{ID: "gain", Target: "inputGainDb", Operation: "absolute", Points: []Point{{Frame: 0, Value: 0}, {Frame: frames, Value: 6}}}
+			heavy := Move{ID: "eq", Target: "eq.0.gainDb", Operation: "absolute", Points: []Point{{Frame: 0, Value: 0}, {Frame: frames, Value: 0}}}
+			if frames > 2 {
+				heavy.Points = []Point{{Frame: 0, Value: 0}, {Frame: frames / 2, Value: .0001}, {Frame: frames, Value: 0}}
+			}
+			schedule, err := CompileContext(context.Background(), pair.source, pair.device, frames, 1, neutralValues(), []Move{move, heavy})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, partition := range []int{1, 127, 128, 129, 4096} {
+				cursor := NewCursor(schedule)
+				cursor.SetLooping(true)
+				var gain, width [4096]float64
+				const outputFrames = 16384
+				for start := 0; start < outputFrames; {
+					count, held := cursor.Fill(gain[:], width[:], min(partition, outputFrames-start))
+					if count < 1 {
+						t.Fatal("loop made no progress")
+					}
+					for i := range count {
+						numerator := int64(start+i) * int64(pair.source) % (frames * int64(pair.device))
+						expected := schedule.ValueAt(InputGain, float64(numerator)/float64(pair.device))
+						devicePosition := numerator / int64(pair.source)
+						cellStart := devicePosition / int64(schedule.Quantum()) * int64(schedule.Quantum())
+						expectedHeavy := schedule.ValueAt(EQ0, float64(cellStart*int64(pair.source))/float64(pair.device))
+						if held[EQ0] != expectedHeavy {
+							t.Fatal("loop re-anchored held source-zero lattice incorrectly")
+						}
+						if gain[i] != expected {
+							t.Fatalf("loop phase mismatch %v source length %d partition%d output%d got%g want%g", pair, frames, partition, start+i, gain[i], expected)
+						}
+					}
+					start += count
+				}
 			}
 		}
 	}

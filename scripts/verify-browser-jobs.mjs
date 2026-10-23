@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile, mkdir, writeFile, rm } from "node:fs/promises";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { webcrypto } from "node:crypto";
@@ -9,8 +9,8 @@ const root = process.cwd();
 const directory = path.join(root, "artifacts/browser-local/wasm-oracle");
 await mkdir(directory, { recursive: true });
 globalThis.crypto ??= webcrypto;
-const goroot = execFileSync("go", ["env", "GOROOT"], { encoding: "utf8" }).trim();
-await import(pathToFileURL(path.join(goroot, "lib/wasm/wasm_exec.js")).href);
+// Qualify the distributed Go runtime/module pair restored from the artifact.
+await import(pathToFileURL(path.join(root, "public/wasm/wasm_exec.js")).href);
 const go = new globalThis.Go();
 const { instance } = await WebAssembly.instantiate(await readFile("public/wasm/aurialis-dsp.wasm"), go.importObject);
 void go.run(instance);

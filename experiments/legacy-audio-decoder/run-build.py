@@ -69,7 +69,7 @@ def main():
             "--security-opt", "no-new-privileges", "--cpus", str(LIMITS["cpus"]),
             "--memory", str(LIMITS["memoryBytes"]), "--memory-swap", str(LIMITS["memoryBytes"]),
             "--pids-limit", str(LIMITS["pids"]), "--ulimit", "core=0",
-            "--tmpfs", "/tmp:rw,nosuid,nodev,size=" + str(LIMITS["tmpfsBytes"]),
+            "--tmpfs", "/tmp:rw,exec,nosuid,nodev,size=" + str(LIMITS["tmpfsBytes"]),
             "-e", "SOURCE_DATE_EPOCH=1786505071", "-e", "TZ=UTC", "-e", "LC_ALL=C",
             "-e", "EM_CACHE=/output/emcache",
             "-v", str(source) + ":/ffmpeg:ro", "-v", str(recipe) + ":/recipe:ro",

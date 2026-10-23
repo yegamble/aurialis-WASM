@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Build-only configure probes execute inside the bounded temporary filesystem.
+awk '$2 == "/tmp" { print }' /proc/mounts > /output/tmp-mount.txt
 mkdir /output/ffbuild /output/assets /output/relink
 cd /output/ffbuild
 CONFIGURE=(

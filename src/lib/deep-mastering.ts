@@ -2,6 +2,7 @@ import { createDefaultAdvancedParams } from "./audio-dsp";
 import { runAudioJob } from "./audio-jobs";
 import { deviceAudioRequest } from "./browser-jobs";
 import { engineParams } from "./browser-engine";
+import { scriptMetadataBytes } from "./script-metadata";
 import { sameSource } from "./library";
 import { normalizeShortcutUndo } from "./mastering-shortcuts";
 import type { AdvancedParams, MeasuredAudioMetrics, ProfileId, ShortcutUndo, SourceIdentity, Track } from "./types";
@@ -78,7 +79,7 @@ function typedShape<T>(template: T, value: unknown): T {
   check(template, value);
   return value as T;
 }
-function params(value: unknown): ScriptParams {
+export function readScriptParams(value: unknown): ScriptParams {
   const record = object(value);
   const { algorithmVersion, ...rest } = record;
   const parsed = typedShape(engineParams(createDefaultAdvancedParams()), rest);
@@ -96,8 +97,7 @@ const metricsTemplate: MeasuredAudioMetrics = { integratedLufs: 0, shortTermLufs
 
 /** DTO safety only. Go remains the authoritative compiler, validator and evaluator. */
 export function readScriptV2(value: unknown, expectedSource?: SourceIdentity): ScriptV2 {
-  const serialized = JSON.stringify(value);
-  if (typeof serialized !== "string" || new TextEncoder().encode(serialized).byteLength > 2 * 1024 * 1024) throw failure();
+  scriptMetadataBytes(value);
   const data = object(value, ["version", "source", "revision", "profile", "summary", "chainParams", "sections", "moves", "findings", "beforeMetrics"]);
   const identity = source(data.source);
   if (data.version !== "2.0" || !deepProfiles.some((profile) => profile === data.profile) || (expectedSource && !sameSource(identity, expectedSource))) throw failure();
@@ -116,7 +116,7 @@ export function readScriptV2(value: unknown, expectedSource?: SourceIdentity): S
   const moveIds = new Set<string>();
   for (const move of moves) { if (!move.id || moveIds.has(move.id) || !sectionIds.has(move.sectionId)) throw failure(); moveIds.add(move.id); }
   const findings = list(data.findings, 128).map((item): ScriptV2["findings"][number] => { const finding = object(item, ["id", "severity", "title", "detail", "lane"]); if (finding.severity !== "info" && finding.severity !== "warning") throw failure(); return { id: text(finding.id), severity: finding.severity, title: text(finding.title, 256), detail: text(finding.detail, 2048), lane: text(finding.lane) }; });
-  return { version: "2.0", source: identity, revision: number(data.revision, 1, Number.MAX_SAFE_INTEGER, true), profile: data.profile as DeepProfile, summary: text(data.summary, 4096), chainParams: params(data.chainParams), sections, moves, findings, beforeMetrics: typedShape(metricsTemplate, data.beforeMetrics) };
+  return { version: "2.0", source: identity, revision: number(data.revision, 1, Number.MAX_SAFE_INTEGER, true), profile: data.profile as DeepProfile, summary: text(data.summary, 4096), chainParams: readScriptParams(data.chainParams), sections, moves, findings, beforeMetrics: typedShape(metricsTemplate, data.beforeMetrics) };
 }
 
 export function analyzeDeep(blob: Blob, profile: DeepProfile, identity: SourceIdentity, signal: AbortSignal, onProgress: (progress: number, stage: string) => void): Promise<ScriptV2> {
@@ -145,7 +145,7 @@ function sameJSON(left: unknown, right: unknown): boolean {
 }
 function compiledScript(value: unknown, script: ScriptV2, deviceRate: number): CompiledScript {
   const data = object(value, ["version", "source", "revision", "deviceRate", "quantumFrames", "baseline", "moves", "targets", "sourceVerified"]);
-  const identity = source(data.source); const baseline = params(data.baseline);
+  const identity = source(data.source); const baseline = readScriptParams(data.baseline);
   if (data.version !== "1.0" || data.sourceVerified !== false || data.revision !== script.revision || data.deviceRate !== deviceRate || !sameSource(identity, script.source) || !sameJSON(baseline, script.chainParams)) throw failure();
   const targets = targetMetadata(data.targets);
   const moves = list(data.moves, 128).map((item) => { const move = object(item, ["target", "fadeFrames", "muted", "points"]); return { target: number(move.target, 0, targets.length - 1, true), fadeFrames: number(move.fadeFrames, 0, Math.floor(identity.sampleRate / 10), true), muted: bool(move.muted), points: points(move.points, identity.frames) }; });

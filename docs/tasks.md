@@ -41,6 +41,8 @@ The first full frontend gate passed strict TS/configured lint but stopped at Kni
 
 The pinned 2.15 Go lint gate also found six tainted-path findings in opt-in fixture/oracle tests before the identifier/vulnerability/race phases ran. Fixed basenames now use `os.OpenRoot`-confined access, including the generated static fixture; no suppression or production audio filesystem path was added. The original failed gate remains retained; fresh gates and fixture execution remain required.
 
+The fresh native target built and restored all five members, passed embedded smoke, 333 exact direct/restricted fixtures and nine history transitions, then stopped before automation/API/browser cases: Node’s direct TypeScript verifier could not resolve the new browser transport import. The unchanged `engineParams` mapper now lives in a pure shared module, re-exported for existing clients and imported directly by the compiled verifier. Exact function text was preserved; the original module-resolution failure remains retained. Fresh native/browser builds and the remaining gates are required.
+
 These are local finite fixtures, not universal platform, music or deadline certification. Remaining gates include actual browser-target artifact restoration and final Release integration, full exact-head checks, independent QA/Devil’s Advocate/writer/Product review and delegated merge. Public preview/domain migration and old-resource retirement remain pending. Trained browser separation and broader Waves/hardware acceptance remain open. See [browser processing](browser-local.md) for resource limits and evidence boundaries.
 
 

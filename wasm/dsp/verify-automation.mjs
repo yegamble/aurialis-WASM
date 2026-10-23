@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { webcrypto } from "node:crypto";
 import assert from "node:assert/strict";
 import { createAurialisWasiHost } from "../../public/worklets/aurialis-wasi-host.js";
-import { engineParams } from "../../src/lib/browser-engine.ts";
+import { engineParams } from "../../src/lib/engine-params.ts";
 import { packLiveControls } from "../../src/lib/live-controls.ts";
 
 const [modulePath,...fixturePaths]=process.argv.slice(2);

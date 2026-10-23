@@ -35,7 +35,7 @@ export function LegacyLibraryRecovery() {
       const next = await scanLegacySources(controller.signal, after);
       controller.signal.throwIfAborted();
       setPage(next); setRecovered([]);
-      setMessage(next.sources.length ? `Showing ${String(next.sources.length)} old source keys on this page.` : next.next ? "No recoverable source keys on this page. Continue to the next page." : "No more old source keys were found on this origin.");
+      setMessage(next.sources.length ? `Showing ${String(next.sources.length)} saved source files on this page.` : next.next ? "No saved source files on this page. Continue to the next page." : "No more old source files were found at this site address.");
     } catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "The old library could not be read."); }
     finally { finish(controller); }
   }
@@ -79,12 +79,12 @@ export function LegacyLibraryRecovery() {
       <Button variant="secondary" disabled={busy} onClick={() => { void scan(); }}>Find old projects</Button>
     </div>
     <Modal open={open} title="Recover old local sources" onClose={() => { cancel(); setOpen(false); }} actions={<Button variant="secondary" onClick={() => { if (busy) cancel(); else setOpen(false); }}>{busy ? "Cancel recovery" : "Close"}</Button>}>
-      <p className="disclosure">This reads source keys and selected audio from this site’s browser storage. Saved scripts and settings are never loaded or applied. The old audio is retained.</p>
+      <p className="disclosure">This finds saved source files and reads only the audio you select from this site’s browser storage. Saved scripts and settings are never loaded or applied. The old audio is retained.</p>
       <p className="disclosure">WAV recovery supports the current source limits. Compressed originals need a separate recovery path and remain in old storage. Recovery is specific to this browser profile and site address; check each address you used before clearing browser data.</p>
       {message && <p role="status" className="disclosure">{message}</p>}
       {error && <p role="alert" className="disclosure text-danger">{error}</p>}
-      {!!page?.skipped && <p className="disclosure">Skipped {page.skipped} invalid or unsupported source keys on this page. Their old records are retained.</p>}
-      {page?.stopped && <p role="alert" className="disclosure">The bounded scan stopped at an oversized storage key. More records may remain. Their old storage is retained.</p>}
+      {!!page?.skipped && <p className="disclosure">Skipped {page.skipped} invalid or unsupported saved records on this page. Their old records are retained.</p>}
+      {page?.stopped && <p role="alert" className="disclosure">Some old records exceed the recovery read limit. More files may remain. Their old storage is retained.</p>}
       <ul className="my-4 grid min-w-0 list-none gap-3 p-0" aria-label="Old source files">
         {page?.sources.map((source) => <li key={source.key} className="grid min-w-0 gap-2 rounded-xl border border-line-dark p-3">
           <strong className="min-w-0 break-words [overflow-wrap:anywhere]">{source.name}</strong>
@@ -92,7 +92,7 @@ export function LegacyLibraryRecovery() {
           <Button variant="secondary" disabled={busy || recovered.includes(source.key)} onClick={() => { void recover(source); }} aria-label={`Recover WAV: ${source.name}`}>{recovered.includes(source.key) ? "Recovered; old copy retained" : "Recover WAV source"}</Button>
         </li>)}
       </ul>
-      {page?.next && <Button variant="secondary" disabled={busy} onClick={() => { void scan(page.next); }}>Next source keys</Button>}
+      {page?.next && <Button variant="secondary" disabled={busy} onClick={() => { void scan(page.next); }}>Next saved files</Button>}
     </Modal>
   </section>;
 }

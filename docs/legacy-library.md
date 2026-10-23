@@ -7,9 +7,9 @@ Use the same **browser profile and site address** that you used before. Differen
 ## Recovering a WAV
 
 1. Open **Library** and select **Find old projects**. Discovery starts only after this action.
-2. Review the source names and sizes. A page contains at most 32 eligible source keys; select **Next source keys** to continue.
+2. Review the source names and sizes. A page contains at most 32 eligible source files; select **Next saved files** to continue.
 3. Select **Recover WAV source** for one original. Aurialis checks its actual WAV signature and sends the selected file through the current device-local validation and reconstruction path.
-4. Wait for successful recovery. A new Library project contains the reconstructed source, fresh measurements and default mastering settings. Open it to review the audio and choose settings.
+4. Wait for successful recovery, then select **Close**. A new Library project contains the reconstructed source, fresh measurements and default mastering settings. Open it to review the audio and choose settings.
 
 The old original, project settings and scripts remain in their existing storage. Recovery does not apply or translate old DSP settings. Recovered audio is clean PCM, rather than a byte-for-byte backup of the original container.
 
@@ -29,7 +29,7 @@ The current source limits are 128 MiB plus the canonical header and 16,777,216 f
 
 ## Storage and verification boundaries
 
-Discovery uses key-only, read-only transactions in `aurialis-library-entries-v1/kv`. It never deserializes the previous app's metadata, scripts or preferences. Existing fingerprints supply the displayed filename, size and date. Selected files are read beneath the existing browser `library` directory using the encoded fingerprint basename and `create: false`. No old hydration, orphan cleanup or export code runs.
+Discovery uses key-only, read-only transactions in `aurialis-library-entries-v1/kv`. It never deserializes the previous app's metadata, scripts or preferences. Existing fingerprints supply the displayed filename and size, plus the source date used for validation. Selected files are read beneath the existing browser `library` directory using the encoded fingerprint basename and `create: false`. No old hydration, orphan cleanup or export code runs.
 
 The selected file is checked again around saving. Key existence, file size and modification date are change checks; they do not establish a cryptographic identity for the old raw original. The reconstructed PCM receives the current engine's source hash and sample geometry. Actual container validation and reconstruction remain the shared Go engine's responsibility.
 

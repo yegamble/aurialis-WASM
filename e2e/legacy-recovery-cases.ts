@@ -172,7 +172,7 @@ export function registerLegacyRecoveryCases(execution: Execution) {
           expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze()).violations).toEqual([]);
           await page.keyboard.press("Tab"); expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
           if (width === 320 || width === 1440) await page.screenshot({ path: info.outputPath(`legacy-recovery-${String(width)}.png`), fullPage: true });
-          await dialog.getByRole("button", { name: "Next source keys", exact: true }).focus(); await page.keyboard.press("Enter");
+          await dialog.getByRole("button", { name: "Next saved files", exact: true }).focus(); await page.keyboard.press("Enter");
           await expect(dialog.getByRole("list", { name: "Old source files", exact: true }).getByRole("listitem")).toHaveCount(1);
           expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
           expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze()).violations).toEqual([]);

@@ -1,3 +1,5 @@
+import { runAudioJob } from "./audio-jobs";
+
 /** Measured source summaries. These are diagnostics, not a mastering script. */
 export interface FeatureMeasurements {
   source: { pcmHash: string; sampleRate: number; frames: number };
@@ -46,36 +48,9 @@ function measurements(value: unknown): FeatureMeasurements {
   return { source, bands, sections, warnings: data.warnings.map(string) };
 }
 
-async function responseJSON(response: Response): Promise<unknown> {
-  if (!response.ok) throw new Error(response.status === 503 ? "The local audio processor is busy. Try again shortly." : `Audio analysis request failed (${String(response.status)}).`);
-  return response.json() as Promise<unknown>;
-}
-
-/** Retain the admission response after Cancel so an admitted job can be deleted. */
+/** Measure canonical source audio without mutating its processing settings. */
 export async function analyzeSourceFeatures(blob: Blob, signal: AbortSignal, onProgress: (progress: number, stage: string) => void): Promise<FeatureMeasurements> {
-  signal.throwIfAborted();
   const body = new FormData();
   body.append("file", blob, "source.wav");
-  onProgress(0, "Validating original audio…");
-  const submitted = record(await responseJSON(await fetch("/api/analyze/features", { method: "POST", body, signal: AbortSignal.timeout(65_000) })));
-  const id = string(submitted.jobId);
-  if (!/^[a-zA-Z0-9-]{1,80}$/u.test(id)) throw new Error("Invalid analysis job identity.");
-  const url = `/api/jobs/${encodeURIComponent(id)}`;
-  let job = submitted;
-  const deadline = Date.now() + 130_000;
-  try {
-    for (;;) {
-      signal.throwIfAborted();
-      if (job.status === "done") return measurements(job.features);
-      if (job.status === "failed" || job.status === "cancel" + "led") throw new Error(typeof job.error === "string" ? job.error : "Audio analysis stopped before completion.");
-      if (job.status !== "queued" && job.status !== "running") throw new Error("Unexpected analysis job state.");
-      if (Date.now() > deadline) throw new Error("Audio analysis exceeded its time limit.");
-      onProgress(Math.max(0, Math.min(100, finite(job.progress))), string(job.stage));
-      job = record(await responseJSON(await fetch(`${url}?wait=1`, { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) })));
-      if (job.jobId !== id) throw new Error("Analysis job identity changed.");
-    }
-  } finally {
-    // Also release retained successful summaries after taking their bounded copy.
-    try { await fetch(url, { method: "DELETE", keepalive: true, signal: AbortSignal.timeout(5000) }); } catch { /* Server timeout/retention remains the fallback when disconnected. */ }
-  }
+  return runAudioJob("/api/analyze/features", body, signal, onProgress, (job) => measurements(job.features));
 }

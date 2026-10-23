@@ -205,10 +205,10 @@ export function registerLegacyRecoveryCases(execution: Execution) {
       await boundary(context, page, info, execution, async () => {
         await seed(page, sources()); const before = await oldSnapshot(page); await scan(page);
         await page.getByRole("button", { name: `Recover WAV: ${compressed.name}`, exact: true }).click();
-        await expect(page.getByRole("alert")).toContainText("Codec recovery is unavailable");
+        await expect(page.getByRole("dialog", { name: "Recover old local sources", exact: true }).getByRole("alert")).toContainText("Codec recovery is unavailable");
         expect(await current(page)).toEqual({ tracks: [], audio: [] }); expect(await oldSnapshot(page)).toEqual(before);
         await page.getByRole("button", { name: `Recover WAV: ${poisoned.name}`, exact: true }).click();
-        await expect(page.getByRole("alert")).toContainText(/polyglot|payload|container|trailing/iu);
+        await expect(page.getByRole("dialog", { name: "Recover old local sources", exact: true }).getByRole("alert")).toContainText(/polyglot|payload|container|trailing/iu);
         expect(await current(page)).toEqual({ tracks: [], audio: [] }); expect(await oldSnapshot(page)).toEqual(before); await assertNoOldExecution(page);
         await page.reload(); await scan(page);
         await expect(page.getByRole("button", { name: `Recover WAV: ${compressed.name}`, exact: true })).toBeEnabled();
@@ -269,7 +269,7 @@ export function registerLegacyRecoveryCases(execution: Execution) {
         expect(externallyChanged.files.filter((file) => file.name !== changedName)).toEqual(before.files.filter((file) => file.name !== changedName));
         expect(externallyChanged.files.find((file) => file.name === changedName)?.bytes).toEqual([...selected.bytes, 0]);
         await page.evaluate(() => { (window as HeldWindow).heldLegacyFile?.release(); });
-        await expect(page.getByRole("alert")).toContainText("changed during recovery");
+        await expect(page.getByRole("dialog", { name: "Recover old local sources", exact: true }).getByRole("alert")).toContainText("changed during recovery");
         expect(await current(page)).toEqual({ tracks: [], audio: [] }); expect(await oldSnapshot(page)).toEqual(externallyChanged); await assertNoOldExecution(page);
         await page.reload(); expect(await current(page)).toEqual({ tracks: [], audio: [] }); expect(await oldSnapshot(page)).toEqual(externallyChanged);
       });

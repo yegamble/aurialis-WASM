@@ -7,6 +7,8 @@ Library relink consumes the existing canonical import source identity; it adds n
 
 Current routes are implemented by `internal/server`; exact DSP structs are in `internal/audio/dsp/engine.go` and the experimental script schema is in `internal/mastering/mastering.go`. No API presence alone establishes a verified product workflow. See [tasks](tasks.md) for evidence and open requirements.
 
+API CI runs the complete Newman collection and raw security probes against the verified native build artifact, independently of compiler caches and browser shard scheduling. [The CI guide](development.md#how-ci-reuses-builds-and-runs-checks) describes provenance checks and fresh execution; HTTP contracts below are unchanged.
+
 ## Device-local transport boundary
 
 The HTTP routes below describe the user’s local Go server. The hosted application must run all audio reconstruction, analysis, jobs and rendering in browser workers/WASM on that same user’s device, using equivalent validated DTOs and cancellation. Cloudflare serves only static app, WASM and model files; no remote audio POST or hosted audio processor is authorized. The native loopback server remains the local fallback, and the browser worker adapter is still pending verification. The earlier container proposal is superseded.

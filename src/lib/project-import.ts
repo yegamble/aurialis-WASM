@@ -1,7 +1,7 @@
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "./audio-dsp";
 import { importAudio, readCanonicalWAV, serverRender, trackMetrics, type StereoPCM } from "./browser-engine";
 import { newAudioAssetId } from "./db";
-import type { Track } from "./types";
+import type { SourceIdentity, Track } from "./types";
 const MAX_SOURCE_FRAMES = 16 * 1024 * 1024;
 const MAX_SOURCE_BYTES = MAX_SOURCE_FRAMES * 8 + 44;
 // Capacity preflight only. The Go server remains the authoritative container validator.
@@ -73,3 +73,31 @@ export async function readStoredSource(blob: Blob, signal: AbortSignal): Promise
   return { blob: clean, pcm };
 }
 
+
+const sourceReceipts = new WeakMap<Blob, Promise<SourceIdentity>>();
+/** Verify the exact loaded canonical bytes off the audio thread before script binding. */
+export async function verifyCanonicalSource(blob: Blob, expected: SourceIdentity, signal: AbortSignal): Promise<SourceIdentity> {
+  signal.throwIfAborted();
+  if (blob.size < 52 || blob.size > MAX_SOURCE_BYTES) throw new Error("The stored source cannot be verified.");
+  let receipt = sourceReceipts.get(blob);
+  if (!receipt) {
+    receipt = (async () => {
+      const bytes = await blob.arrayBuffer();
+      const view = new DataView(bytes);
+      const id = (offset: number) => String.fromCharCode(...Array.from({ length: 4 }, (_, index) => view.getUint8(offset + index)));
+      const rate = view.getUint32(24, true), frames = (bytes.byteLength - 44) / 8;
+      if (id(0) !== "RIFF" || view.getUint32(4, true) + 8 !== bytes.byteLength || id(8) !== "WAVE" || id(12) !== "fmt " || view.getUint32(16, true) !== 16 || view.getUint16(20, true) !== 3 || view.getUint16(22, true) !== 2 || !Number.isInteger(frames) || frames < 1 || rate < 8000 || rate > 192000 || view.getUint32(28, true) !== rate * 8 || view.getUint16(32, true) !== 8 || view.getUint16(34, true) !== 32 || id(36) !== "data" || view.getUint32(40, true) !== bytes.byteLength - 44) throw new Error("The stored source is not a canonical verified WAV.");
+      // Reuse the final16 header bytes as Go's LE layout prefix. PCM bits stay exact,
+      // including float headroom and negative zero; no interleave buffer is allocated.
+      view.setUint32(28, rate, true); view.setUint32(32, 2, true); view.setBigUint64(36, BigInt(frames), true);
+      const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes, 28));
+      const pcmHash = Array.from(new Uint8Array(digest)).map((value) => value.toString(16).padStart(2, "0")).join("");
+      return { pcmHash, sampleRate: rate, frames };
+    })();
+    sourceReceipts.set(blob, receipt);
+  }
+  const actual = await receipt;
+  signal.throwIfAborted();
+  if (actual.pcmHash !== expected.pcmHash || actual.sampleRate !== expected.sampleRate || actual.frames !== expected.frames) throw new Error("The stored PCM differs from this script's source. Restore the correct source before applying automation.");
+  return actual;
+}

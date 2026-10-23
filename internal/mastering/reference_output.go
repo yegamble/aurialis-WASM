@@ -25,7 +25,10 @@ func referenceOutputResidual(bands [5]ReferenceBand, measured, reference [5]floa
 		return 0
 	}
 	if measuredTotal <= 0 || referenceTotal <= 0 {
-		return 300
+		// An established audible band set cannot be matched by erasing its
+		// output. This sentinel stays internal: the guard retains the finite
+		// measured baseline instead of publishing the candidate.
+		return math.Inf(1)
 	}
 	levelDifference := 10 * math.Log10(referenceTotal/measuredTotal)
 	total := 0.0

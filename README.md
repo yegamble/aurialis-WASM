@@ -25,7 +25,7 @@ Aurialis is an audio mastering workstation that runs on your computer and opens 
   <a href="docs/development.md">Developer guide</a>
 </p>
 
-> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. AI repair, validated instrument separation and certified hardware/true-peak behavior remain open work. Deep and Release are merged with their bounded workflows verified. Browser processing is merged after local and Linux CI checks; public deployment remains open. See [current limits](#know-the-current-limits).
+> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. AI repair, validated instrument separation and certified hardware/true-peak behavior remain open work. Deep and Release are merged with their bounded workflows verified. Browser processing is merged, and both public addresses passed their scoped hosted checks. See [current limits](#know-the-current-limits).
 
 ## A small studio, one clear path
 
@@ -86,13 +86,13 @@ For a measured handoff, open **Release check** in Tools. Choose a destination an
 
 Aurialis keeps audio processing on your device. The browser build reconstructs, analyzes and renders audio in local Web Workers using the shared Go engine. The local executable offers the same Go processing through its own loopback server. Both paths validate and reconstruct audio in memory, stripping container metadata.
 
-Cloudflare serves only application, WASM and qualified model files. The browser build sends no audio uploads and does not automatically connect to a local server. Browser processing merged in [PR #16](https://github.com/yegamble/aurialis-WASM/pull/16); [the verification record](docs/browser-local.md#verification-status) retains its bounded evidence. Public-domain migration remains open. The existing public site has not been replaced yet.
+Cloudflare serves only application, WASM and qualified model files. The browser build sends no audio uploads and does not automatically connect to a local server. Browser processing merged in [PR #16](https://github.com/yegamble/aurialis-WASM/pull/16); [the verification record](docs/browser-local.md#verification-status) retains its bounded evidence. The new app now serves [aurialis.yosefgamble.com](https://aurialis.yosefgamble.com/) and [aurialis.yosef.app](https://aurialis.yosef.app/). Each address passed all 12 hosted browser checks; broader product acceptance remains open.
 
 Projects and settings are saved in this browser's local storage, and reconstructed source audio is saved in IndexedDB, the browser's local database. **Keep your original files and downloaded masters separately.** Browser storage can be cleared or evicted, and the reconstructed audio is not a byte-for-byte backup of your upload. Changing the server address, port or browser uses a different browser storage location. Replacing the older public app also requires separately verified local recovery of selected supported WAVs through CDR, while preserving its older library and unsupported compressed originals. Selected WAV recovery is qualified; compressed clean PCM recovery remains required before permanently retiring rollback resources.
 
 **Library → Find old projects** finds saved source files only after you request it. Selected WAVs become independent projects with default settings; old audio, scripts and settings remain untouched. This bounded recovery workflow merged in [PR #17](https://github.com/yegamble/aurialis-WASM/pull/17). [The recovery guide](docs/legacy-library.md) explains the separate browser/site storage and compressed-format limits.
 
-The first public-domain trial was rolled back after Cloudflare injected an external analytics script. Both public addresses still serve the older app, and its rollback resources remain intact. A Reference review-state correction and an app response-header correction are **open — awaiting verification and merge**. [The task record](docs/tasks.md#reference-state-and-public-domain-trial) retains the failed trial and remaining checks.
+The first public-domain trial was rolled back after Cloudflare injected an external analytics script. The response-header and Reference review-state corrections then merged in [PR #18](https://github.com/yegamble/aurialis-WASM/pull/18), followed by successful checks on both public addresses. The older app’s resources remain intact until compressed recovery is qualified. [The task record](docs/tasks.md#reference-state-and-public-domain-trial) retains the failed trial and exact deployment evidence.
 
 ## Know the current limits
 

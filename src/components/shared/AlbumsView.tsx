@@ -118,20 +118,34 @@ function AlbumWorkspace({ album, tracks }: { album: Album; tracks: Track[] }) {
     importing.current?.abort(); const controller = new AbortController(); importing.current = controller;
     setImportBusy(true); setError("");
     const owner = album;
+    let memoryOwner: ReturnType<typeof reserveBrowserAudioMemory> | undefined;
+    let staged: { id: string; durable: boolean } | null = null;
     try {
       // One file per import keeps cohort ownership explicit; the ordinary library accepts multi-file imports.
       if (files.length !== 1) throw new Error("Choose one WAV at a time here, or import several in the library first.");
       if (album.trackIds.length >= 64) throw new Error("An album can contain at most 64 tracks.");
       const file = files.at(0); if (!file) return;
+      memoryOwner = reserveBrowserAudioMemory(file.size);
       const imported = await prepareProjectFile(file, controller.signal, (stage) => { if (!controller.signal.aborted) setMessage(stage); });
       controller.signal.throwIfAborted();
+      // Retain the selected file, reconstructed Blob and possible storage copy.
+      memoryOwner.update(file.size + imported.canonical.size * 2);
       const track = importedTrack(file, imported), saved = await saveAudio(track.id, imported.canonical);
-      if (controller.signal.aborted || importing.current !== controller || latest.current.album !== owner) { await discardStagedAudio(track.id, saved.durable); return; }
+      staged = { id: track.id, durable: saved.durable };
+      if (controller.signal.aborted || importing.current !== controller || latest.current.album !== owner) return;
       track.persistenceWarning = saved.durable ? "" : saved.warning;
       dispatch({ type: "IMPORT_ALBUM_TRACK", expected: owner, track });
+      staged = null;
       setMessage(`Imported “${track.title}”. ${saved.durable ? "Audio is stored in this browser." : saved.warning}`);
     } catch (cause) { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "The WAV could not be imported."); }
-    finally { if (importing.current === controller) { importing.current = null; setImportBusy(false); } }
+    finally {
+      if (staged) {
+        try { await discardStagedAudio(staged.id, staged.durable); }
+        catch { setError("Album import stopped, but the new temporary copy could not be removed. Retry after freeing browser storage."); }
+      }
+      memoryOwner?.dispose();
+      if (importing.current === controller) { importing.current = null; setImportBusy(false); }
+    }
   }
   const active = busy || importBusy;
   return <div className="page"><h1 className="sr-only">Album mastering workspace</h1>

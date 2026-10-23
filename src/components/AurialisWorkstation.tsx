@@ -13,7 +13,6 @@ import {
   type StereoPCM,
 } from "@/lib/browser-engine";
 import { clearNextPlaybackHandoff, reconcileNextPlaybackHandoff, stageNextPlaybackHandoff, takeNextPlaybackHandoff } from "@/lib/playback-handoff";
-import { currentMasteringTarget, masteringTargets } from "@/lib/mastering-targets";
 import { bindPlaybackControls } from "@/lib/media-session";
 import { ExtendedCompressorControls, ExtendedStereoControls, FrequencyDynamicsControls, MasteringShortcuts } from "./shared/AdvancedDynamics";
 import { DSPModule } from "./shared/DSPModule";
@@ -69,6 +68,7 @@ import { useTransportScrub } from "@/lib/use-transport-scrub";
 import { audioKey } from "@/lib/library";
 import { FeatureAnalysisPanel } from "./shared/FeatureAnalysisPanel";
 import { ReferenceMatchingPanel } from "./shared/ReferenceMatchingPanel";
+import { SimpleControls } from "./shared/SimpleControls";
 
 const stemNames = new Map<number, string[]>([
   [2, ["Vocals", "Instrumental"]],
@@ -1015,6 +1015,7 @@ function MasterView({ trackId }: { trackId: string }) {
           {track.mode === "simple" && (
             <SimpleControls
               track={track}
+              sourceBlob={sourceBlob}
               processing={processing}
               sourceReady={source !== null && sourceBlob !== null}
               onApply={() => void applySimpleDirection()}
@@ -1439,116 +1440,6 @@ function AdvancedControls({
         }}
       >
         Reset modules
-      </Button>
-    </div>
-  );
-}
-
-function SimpleControls({
-  track,
-  processing,
-  sourceReady,
-  onApply,
-}: {
-  track: Track;
-  processing: boolean;
-  sourceReady: boolean;
-  onApply: () => void;
-}) {
-  const { dispatch } = useStore();
-  const update = (patch: Partial<Pick<Track, "genre" | "tone" | "intensity" | "target">>) => {
-    dispatch({ type: "UPDATE_SIMPLE", id: track.id, patch });
-  };
-  const activeDirection = track.simpleCustom === false;
-  const selectedTarget = currentMasteringTarget(track.advanced.limiter, track.target);
-  const targetLufsLabel = String(track.advanced.limiter.targetLufs).replace("-", "−");
-  const targetCeilingLabel = String(track.advanced.limiter.ceiling).replace("-", "−");
-
-  return (
-    <div className="control-stack">
-      <div>
-        <h2>Find the feeling</h2>
-        <p>Choose a direction to update the shared settings. Advanced edits stay in place until you choose another direction.</p>
-        {!activeDirection && <p className="disclosure" role="status">Custom settings</p>}
-      </div>
-      <ControlGroup label="Genre">
-        <div className="choice-grid">
-          {["Pop", "Hip-hop", "Rock", "Electronic", "Acoustic", "R&B"].map(
-            (item) => (
-              <button
-                type="button"
-                className={activeDirection && track.genre === item ? "choice is-active" : "choice"}
-                aria-pressed={activeDirection && track.genre === item}
-                key={item}
-                onClick={() => {
-                  update({ genre: item });
-                }}
-              >
-                {item}
-              </button>
-            ),
-          )}
-        </div>
-      </ControlGroup>
-      <ControlGroup label="Tone intention">
-        <div className="choice-grid">
-          {["Warm", "Open", "Punchy", "Intimate", "Wide", "Clean"].map(
-            (item) => (
-              <button
-                type="button"
-                className={activeDirection && track.tone === item ? "choice is-active" : "choice"}
-                aria-pressed={activeDirection && track.tone === item}
-                key={item}
-                onClick={() => {
-                  update({ tone: item });
-                }}
-              >
-                {item}
-              </button>
-            ),
-          )}
-        </div>
-      </ControlGroup>
-      <SliderField
-        label="Intensity"
-        value={track.intensity}
-        defaultValue={50}
-        min={0}
-        max={100}
-        step={1}
-        unit="%"
-        onChange={(intensity) => {
-          update({ intensity });
-        }}
-      />
-      <ControlGroup label="Output target">
-        <div className="select-wrap">
-          <select
-            value={selectedTarget}
-            aria-label="Output target"
-            onChange={(e) => {
-              update({ target: e.target.value });
-            }}
-          >
-            {selectedTarget === "custom" && <option value="custom" disabled>Custom ({targetLufsLabel} LUFS)</option>}
-            {masteringTargets.map((target) => <option value={target.name} key={target.name}>{target.name} ({String(target.targetLufs).replace("-", "−")} LUFS)</option>)}
-          </select>
-          <Icon name="chevron-down" />
-        </div>
-      </ControlGroup>
-      <p className="disclosure">Current target: {targetLufsLabel} LUFS · ceiling {targetCeilingLabel} dBFS. Set target loudness measures these current settings.</p>
-      <Button
-        className="full-button"
-        disabled={processing || !sourceReady}
-        icon={
-          <Icon
-            name={processing ? "refresh-cw" : "sparkles"}
-            className={processing ? "spin" : ""}
-          />
-        }
-        onClick={onApply}
-      >
-        {processing ? "Setting loudness…" : "Set target loudness"}
       </Button>
     </div>
   );

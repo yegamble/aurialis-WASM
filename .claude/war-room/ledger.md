@@ -1,5 +1,5 @@
 # Aurialis-WASM War-Room Ledger
-<!-- cspell:words Embedder automator Turbopack -->
+<!-- cspell:words Embedder automator Turbopack yyosefgamble yosefgamble -->
 
 Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-room-loop` iterations. The Chair updates this file after every Round D ruling and every Round E verification pass. One row per item; never delete a row — move completed items to **Verified & Merged** with commit/PR and test evidence, or to **Declined** with the reason.
 
@@ -21,12 +21,45 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ## Delegated continuation — 2026-10-23
 
-### Measured Reference implementation and review checkpoint
+### Authorized repository protection and deployment work
+
+| Item | Decision/current status |
+| --- | --- |
+| GitHub branch protection | applied; independent GET confirmed all six CI checks plus app-bound GitGuardian, strict up-to-date PRs/resolved conversations, administrator enforcement, no force push/deletion, zero human approvals |
+| Cloudflare deployment | open; static app/WASM/model files only, all audio processing on the user’s device; prior container proposal superseded |
+| Intended domains | verified `aurialis.yosefgamble.com` and `aurialis.yosef.app`; production switch and acceptance pending |
+
+Browser workers/WASM must provide local import/CDR, analysis, mastering, separation and rendering. Native Go remains a device-local loopback fallback. No remote audio POST or hosted audio job is authorized. A static deployment alone cannot close those workflow gates. No resource deletion/replacement or completed production migration is claimed.
+
+### Simple styles and measured Elevated checkpoint
+
+**Latest: locally verified — open, awaiting exact CI and delegated merge.** Clean `adf0032` passed the full 82/82 Chromium cases in 5.4 minutes, 342/342 units in 29 files (8.34 s), TypeScript/lint/Knip, production build/smoke and corrected 212-file spelling. Chair-observed full Go format/module/vet/lint 2.15/identifier/vulnerability/race gates passed; signal gates passed 333 exact static fixtures across native/JS/direct/WASI plus 45 schedules. Newman passed 34 requests/39 assertions and cURL probes. Independent writer checked `browser.log`/`browser.json`: 82 expected, no unexpected/flaky/skipped cases, exit-0 stdout. Binary SHA-256: `4eccb86c5928bfa782d69d78bd7dea8b2e78649fad60ebb48ca3301d7b2073f4`. Stable ignored evidence is under `artifacts/simple-final/`. Historical 79/81 and the inherited three-word spelling failure remain below; the new Deep union, device-local worker deployment and whole-product/Waves gates are separate and open.
 
 | Item | Current status |
 | --- | --- |
-| MUB-3C measured Reference endpoint | locally verified; open — awaiting exact green CI and delegated merge |
-| Reference review, source binding, Apply/Revert | locally verified within the bounded static-chain scope; open — awaiting merge |
+| Simple styles, Metal/Jazz, Depth/Presence | locally verified, 82/82; open awaiting exact CI and merge |
+| Elevated source-bound render review | implemented and locally exercised; upper-bound diagnostics, not normalization/certification |
+| Reference dependency | verified and merged, PR #9 / `f9ae077`; all six exact CI jobs green, 73 Linux browser cases |
+| Whole product, studio DSP, trained stems and Waves acceptance | open |
+
+Runtime `79ddeb6`/`db74b8b`/`555a740` and tests `f1861b8` add original creative priors with explicit metadata version 2. Fresh recipe composition preserves current Input trim and LUFS/ceiling; zero intensity removes direction shaping while retaining explicit gain/limiter, and Depth/Presence combine once in either order. Manual controls clear active badges while remembering the last style/modifiers. Hydration does not remap saved processing; API mappings remain unchanged. Elevated requires known actual canonical-Blob identity, verifies receipts before/after native candidate measurement and checks returned layout, then rejects sample/reconstructed peak above ceiling +0.02/+0.05 dB or loudness above target +0.5 LU. Full-record ownership, cancellation and errors prevent stale publication; explicit Input correction survives retry. Attached Deep requires Detach.
+
+Chair-observed static/build/binary smoke, 342/342 units in 29 files and configured 209-file spelling passed. Actual focused browser evidence is 9/9 in 1.7 minutes: seven independent live/native/export changes, hot-candidate rejection and explicit −18 dB retry/reload, plus six-width axe/44 px/keyboard. Independent writer reran 25 focused units and found no source must-fix. Retain the mistaken mock measurement-identity assumption and old test expectation of Input 6→0; final behavior preserves explicit gain. After rebase through Reference `e31114a`, the complete integrated run at `50fd265` failed 79/81 in 11.1 minutes: an actual 44.1 kHz Reference signal was compared with its 48 kHz export, and a Simple case expected explicit Input reset despite the approved preservation contract. Controlled two-rate captured-input/native Reference proof later matched both channels exactly and explains that integrated comparator error; the first Linux discrepancy remains unverified. The test’s obsolete Input 6→0 and later 4→0 assertions now preserve 6/4, but corrected execution is pending. The current 342-unit checkpoint remains historical; a fresh build, expanded 82-case integrated suite and exact remote CI are required. Status: **open — awaiting merge**. No Waves coefficients, learned song adaptation, target attainment, true-peak certification or whole-product completion is implied.
+
+The fresh Simple preflight passed TypeScript/lint/Knip but stopped at configured spelling: three inherited wording errors in 212 files. Units/build/browser gates did not execute in that attempt. This five-document sync corrects the wording; a fresh spelling run, complete 82-case regression, exact CI and merge remain pending. Former temporary Simple/Reference output directories are unavailable; historical observed counts remain evidence of their recorded runs, without claiming retained raw artifacts. New output belongs in stable ignored `.verification/` paths.
+
+### Measured Reference verified merge
+
+PR #9 is verified and merged at `f9ae07753ccd76b3f45121f6782498d5854874e8`, from exact reviewed head `557442a`. All six jobs in [CI run 39939937259](https://github.com/yegamble/aurialis-WASM/actions/runs/39939937259) passed, including 73 Linux browser cases in 6.1 minutes (job `120370227089`, Chair-observed logs). Reviewed and merged tracked trees were identical; the primary checkout was fast-forwarded and both local/remote feature branches deleted. The earlier pending/failure checkpoints below remain history. Bounded implementation acceptance does not establish perceptual or Waves equivalence.
+
+Simple rebased onto that merge with an identical tree (`e0488ef`→`be67c04`, exit 0). Its expanded 82-case regression, exact CI and merge remain open. Branch protection is verified applied; device-local deployment remains open; Deep/studio/stems and whole-product acceptance remain open.
+
+### Measured Reference implementation and review history
+
+| Item | Current status |
+| --- | --- |
+| MUB-3C measured Reference endpoint | verified and merged, PR #9 / `f9ae077` |
+| Reference review, source binding, Apply/Revert | verified and merged within the bounded static-chain scope, PR #9 |
 | ScriptV2 foundation PR #8 | verified and merged at `d999f4e`; exact source `f29bc8c`, all six CI jobs green |
 | Whole product, studio DSP, trained stems and Waves acceptance | open |
 
@@ -42,7 +75,7 @@ A later integrated Simple checkpoint at `50fd265` failed 79/81 browser cases in 
 
 [CI run 39937462719](https://github.com/yegamble/aurialis-WASM/actions/runs/39937462719) separately failed the Reference panel unit checkpoint, 331/332. Its test fired a click during a protected intermediate render before Apply/Revert became enabled, so no user action occurred. The test now waits for enabled Apply before repeated application and enabled Revert before clicking, then verifies both exact starting settings and the restoration message. Correction `3d57b47` retains production ownership guards. The three focused panel units passed in 259 ms; this checkpoint does not establish a production Revert failure.
 
-Test-only correction `de6269f` forces both 44.1 and 48 kHz devices, captures 262,144 actual device-input/wet frames, and submits that exact Float32 input at its actual rate plus unchanged proposal parameters to native rendering. The controlled proof exited 0: **2/2 in 1.1 minutes**, with both-channel wet errors exactly zero and no missing capture quanta at either rate. At 44.1 kHz, worklet/speaker-median/native RMS was −26.462430836/−26.463919754/−26.463919755 dBFS; at 48 kHz it was −26.214787729/−26.215243981/−26.215243981 dBFS. Source-rate 48 kHz export remained −26.215245432 dBFS. This reproduces the later integrated comparison error while retaining per-channel PCM <1e−6 and both original 0.05 dB limits against rate-correct native output. Exact source-rate downloaded/native PCM equality remains separate. Values are retained in `/private/tmp/aurialis-reference-device-rates/values.json`.
+Test-only correction `de6269f` forces both 44.1 and 48 kHz devices, captures 262,144 actual device-input/wet frames, and submits that exact Float32 input at its actual rate plus unchanged proposal parameters to native rendering. The controlled proof exited 0: **2/2 in 1.1 minutes**, with both-channel wet errors exactly zero and no missing capture quanta at either rate. At 44.1 kHz, worklet/speaker-median/native RMS was −26.462430836/−26.463919754/−26.463919755 dBFS; at 48 kHz it was −26.214787729/−26.215243981/−26.215243981 dBFS. Source-rate 48 kHz export remained −26.215245432 dBFS. This reproduces the later integrated comparison error while retaining per-channel PCM <1e−6 and both original 0.05 dB limits against rate-correct native output. Exact source-rate downloaded/native PCM equality remains separate. The values above were observed in stdout; the former temporary values file is no longer available and is not retained raw-output evidence.
 
 The controlled proof used existing embedded binary SHA-256 `3219133870f4de54be357133d49bf2010f0519d8996592578598cc1cd92f0aa7`: DSP was unchanged, but the newest Tools copy was not embedded yet. Strict E2E typing also passed. A fresh full binary build, complete **73-case Reference** regression, complete **82-case Simple** integration and exact green remote CI remain required; focused proof does not replace them.
 
@@ -672,3 +705,7 @@ The user authorized repairing the failed PR #5 CI gate. Both [run 39790348108](h
 Workflow correction `72839a1` reuses an installed FFmpeg or provisions it with `--no-install-recommends`, two acquisition retries and 30-second HTTP/HTTPS timeouts. Logs also showed slow core-package downloads from the Azure archive; only when installation is needed and `/etc/apt/apt-mirrors.txt` exists, the workflow replaces that URL with Ubuntu’s official HTTPS archive. Package signature validation remains enabled. Separate five-minute provisioning and three-minute comparison step limits retain the independent meter assertions and existing job timeout. No production code or API contract changes.
 
 Local actionlint 1.7.7 passed. All 15 actual FFmpeg comparisons passed, with maximum reported differences of 0.0542 LU and 0.0312 dB; the whitespace check was clean. New remote evidence remains pending. Status: **open — awaiting merge**, with CI verification still required. Preserve the failed provisioning checkpoints; successful local application gates do not replace the missing remote meter comparison.
+
+### Concurrent reader-guide integration
+
+Main advanced through reader-guide PR #10 at `bbc254a` while Simple PR #11 was being published. The Simple branch merges that documentation-only update and preserves the readable README, first-use and developer guides, with current Simple styles and the device-local hosting decision added. Runtime source remains identical to the 82-case passing `adf0032` checkpoint; exact merged-head CI remains required. The earlier README claim review is historical and does not verify the newer Simple controls.

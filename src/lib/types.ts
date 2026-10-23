@@ -1,3 +1,14 @@
+export type SimpleStyle = "precise" | "organic" | "elevated";
+export type SimpleDirection = {
+  version: 2;
+  genre: "Pop" | "Hip-hop" | "Rock" | "Electronic" | "Acoustic" | "R&B" | "Metal" | "Jazz";
+  tone: "Warm" | "Open" | "Punchy" | "Intimate" | "Wide" | "Clean";
+  style: SimpleStyle;
+  depth: boolean;
+  presence: boolean;
+  intensity: number;
+};
+
 export type MasterMode = "simple" | "advanced" | "deep";
 
 export type ProfileId =
@@ -157,6 +168,7 @@ export type Track = {
   shortcutUndo?: ShortcutUndo;
   /** Only an explicit Simple selection establishes a preset association. */
   simpleCustom?: boolean;
+  simpleDirection?: SimpleDirection;
   persistenceWarning?: string;
   measurements?: MeasuredAudioMetrics;
   measurementKind?: "source" | "album-render";

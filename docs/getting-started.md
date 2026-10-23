@@ -18,11 +18,13 @@ When import finishes, the first successfully imported track opens in the masteri
 
 ## 2. Find the feeling
 
-Choose a **Genre**, a **Tone intention**, and an **Intensity**. These apply preset settings that you can hear during playback. They are starting points; they do not analyze the song or decide what sounds best.
+Choose a **Genre**, a **Tone intention**, a **Mastering style**, and an **Intensity**. These are original creative starting points, not song analysis. **Precise** keeps a restrained curve; **Organic** eases compression and color. **Elevated** measures the complete candidate against peak and loudness upper bounds before accepting it, without adding automatic gain. If it rejects a candidate, your current sound stays in place; reduce **Input gain** in Advanced and retry, or choose another style.
+
+**Depth** and **Presence** add optional low-frequency and upper-frequency contours. They combine once in either order. Metal and Jazz are also available as genre starting points.
 
 Use **Play**, then compare **A Processed** with **B Original**. Both follow the same playback position. A is selected by default. There is no automatic volume matching between them, so a louder version can seem more impressive even when its tone is less useful.
 
-Simple and Advanced share one set of processing settings. Switching tabs preserves your sound. Choosing a new Genre, Tone intention or Intensity replaces that shared processing direction, including custom Advanced edits.
+Simple and Advanced share one set of processing settings. Switching tabs preserves your sound. Choosing a new genre, tone, style, modifier or intensity replaces other custom Advanced edits while retaining explicit **Input gain** and the selected loudness/ceiling. Manual edits clear active direction badges and remember the last style/modifiers. Zero intensity removes direction shaping while retaining explicit gain and limiter targets.
 
 ## 3. Set the level, if you need to
 

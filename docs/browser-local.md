@@ -2,7 +2,7 @@
 
 The browser build keeps imported audio, measurements and mastered files on your device. Cloudflare serves the application and audio-engine files. It accepts no audio uploads.
 
-This browser execution path has passed its bounded local checks on `codex/browser-local-jobs`; exact-head remote CI and merge remain required. It has not replaced the existing public deployment. The local native executable remains available for jobs that exceed a browser's resources.
+This browser execution path merged in [PR #16](https://github.com/yegamble/aurialis-WASM/pull/16) at `85aa7cd7556a26e540e40212397624dcf30a16d6`. Exact head `98397c6` passed all 14 jobs and GitGuardian in [run 40021166540](https://github.com/yegamble/aurialis-WASM/actions/runs/40021166540), including 107 native browser cases and eight static browser cases. The reviewed and merged trees matched. This supersedes the historical awaiting-merge checkpoints below. It has not replaced the existing public deployment. The local native executable remains available for jobs that exceed a browser's resources.
 
 ## Where processing happens
 
@@ -53,7 +53,7 @@ The latest local proof uses runtime/test source `cd0e404`, based on merged Relea
 
 Earlier seven-case proof `4e5b40b` and eight-case proof `a669729` remain separate historical checkpoints. The original whole-JSON mismatch (3.55e-15 LUFS and 1.7e-17 correlation), attachment-retention gap, strict-lint failures, unused-wrapper Knip failure, opt-in fixture-path findings and Node module-resolution failure remain recorded in [tasks](tasks.md#browser-local-processing-and-static-worker--open-awaiting-merge). Corrections were followed by fresh checks; no control, schedule or audio-byte tolerance was added.
 
-The public deployment remains unchanged. Independent final scoped QA/Devil’s Advocate review accepted `cd0e404`. Final writer/Product review also accepted the bounded local slice. Exact-head remote CI, merge and reviewed preview/domain migration remain open. Migration also requires separately qualified local recovery of selected supported WAVs through existing CDR, without executing old metadata or settings. Old records and unsupported compressed originals remain stored; raw originals are not re-exported by the new app. Separately qualified clean PCM recovery is required before permanently retiring rollback resources. No old Worker, Container or R2 resource has been removed. These finite fixtures do not certify arbitrary music, devices, deadlines, trained separation or hardware/Waves equivalence.
+At that historical local checkpoint, independent scoped QA/Devil’s Advocate and writer/Product review accepted `cd0e404`; exact-head CI and merge were still pending. The merged CI result is recorded above. The public deployment and reviewed preview/domain migration remain open. Migration also requires separately qualified local recovery of selected supported WAVs through existing CDR, without executing old metadata or settings. Old records and unsupported compressed originals remain stored; raw originals are not re-exported by the new app. Separately qualified clean PCM recovery is required before permanently retiring rollback resources. No old Worker, Container or R2 resource has been removed. These finite fixtures do not certify arbitrary music, devices, deadlines, trained separation or hardware/Waves equivalence.
 
 ## Browser build artifacts
 

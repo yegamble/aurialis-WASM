@@ -78,7 +78,7 @@ func (c *studioCompressor) setParams(params CompressorParams) error {
 			next.sidechainState = c.sidechainState
 		}
 	}
-	next.gainDB = c.gainDB
+	next.gainDB, next.reductionDB = c.gainDB, c.reductionDB
 	next.transitionFromDB = c.gainDB
 	next.transitionFromReductionDB = c.reductionDB
 	next.transitionLength = int(math.Ceil(.005 * c.sampleRate))

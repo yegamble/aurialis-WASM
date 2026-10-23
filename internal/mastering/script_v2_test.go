@@ -123,3 +123,31 @@ func TestMeasuredProposalsSilenceAndRegularizedEQFit(t *testing.T) {
 		}
 	}
 }
+
+func TestPublicScriptV2ProposalsAvoidUnsupportedProcessing(t *testing.T) {
+	buf, _ := scriptFixture(t)
+	for _, profile := range []ProfileID{ProfileWarmAnalog, ProfilePunchyCommercial, ProfileDynamicOpen, ProfileVocalForward, ProfileBassHeavy} {
+		script, err := AnalyzeDeepV2Context(context.Background(), buf, profile, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		params := script.ChainParams
+		if params.AlgorithmVersion != dsp.LegacyAlgorithmVersion || params.Repair != (dsp.RepairParams{}) || params.Limiter.TruePeak || params.Compressor.Topology != dsp.CompOptical || params.Limiter.CeilingDBTP > -1 {
+			t.Fatal("public v2 proposal contains unavailable processing", profile, params)
+		}
+		legacy := ProfilePreset(profile)
+		if !legacy.Repair.Enabled || !legacy.Limiter.TruePeak {
+			t.Fatal("public v2 changed legacy v1 presets")
+		}
+		unsupported := script.Clone()
+		unsupported.ChainParams.Repair.Enabled = true
+		if _, err := ValidateScriptV2Context(context.Background(), unsupported, 8000); err == nil {
+			t.Fatal("unsupported repair accepted")
+		}
+		unsupported = script.Clone()
+		unsupported.ChainParams.Limiter.TruePeak = true
+		if _, err := ValidateScriptV2Context(context.Background(), unsupported, 8000); err == nil {
+			t.Fatal("unsupported true-peak limiter accepted")
+		}
+	}
+}

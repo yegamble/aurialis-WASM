@@ -9,9 +9,11 @@ import (
 	"os"
 	"testing"
 
+	"github.com/yegamble/Aurialis-WASM/internal/audio"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/automation"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/automator"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
+	"github.com/yegamble/Aurialis-WASM/internal/mastering"
 )
 
 func scheduleFixture(t *testing.T, rate int) (sourceBinding, dsp.Params, *automation.Schedule) {
@@ -117,6 +119,7 @@ func TestWriteAutomationParityFixture(t *testing.T) {
 		t.Skip("set AURIALIS_AUTOMATION_FIXTURE for actual compiled-WASI parity")
 	}
 	type fixture struct {
+		PublicProfile                        bool                     `json:"publicProfile"`
 		Looping                              bool                     `json:"looping"`
 		Seek                                 int64                    `json:"seek"`
 		Rate                                 int                      `json:"rate"`
@@ -179,6 +182,28 @@ func TestWriteAutomationParityFixture(t *testing.T) {
 			}
 			fixtures = append(fixtures, item)
 		}
+	}
+
+	for _, profile := range []mastering.ProfileID{mastering.ProfileWarmAnalog, mastering.ProfilePunchyCommercial, mastering.ProfileDynamicOpen, mastering.ProfileVocalForward, mastering.ProfileBassHeavy} {
+		const count = 4096
+		buf := &audio.Buffer{SampleRate: 48000, Channels: 2, Frames: count, Duration: float64(count) / 48000, Left: make([]float32, count), Right: make([]float32, count)}
+		for i := range count {
+			buf.Left[i] = float32(i*73%997-498) / 1024
+			buf.Right[i] = float32(i*31%991-495) / 1024
+		}
+		script, err := mastering.AnalyzeDeepV2Context(context.Background(), buf, profile, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		schedule, err := mastering.ValidateScriptV2Context(context.Background(), script, 48000)
+		if err != nil {
+			t.Fatal(err)
+		}
+		left, right, _, err := mastering.RenderScriptV2Context(context.Background(), buf, script)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fixtures = append(fixtures, fixture{PublicProfile: true, Rate: 48000, SourceRate: 48000, Frames: count, Params: script.ChainParams, Moves: schedule.NumericMoves(), Left: buf.Left, Right: buf.Right, OutputLeft: left, OutputRight: right})
 	}
 
 	data, err := json.Marshal(fixtures)

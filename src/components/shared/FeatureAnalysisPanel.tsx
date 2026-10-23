@@ -5,7 +5,7 @@ import { getAudio } from "@/lib/db";
 import { analyzeSourceFeatures, type FeatureMeasurements } from "@/lib/feature-analysis";
 import { Button, ControlGroup } from "./Primitives";
 
-export function FeatureAnalysisPanel({ trackId, sourceReady }: { trackId: string; sourceReady: boolean }) {
+export function FeatureAnalysisPanel({ trackId, sourceReady, audioId = trackId }: { trackId: string; sourceReady: boolean; audioId?: string }) {
   const operation = useRef<AbortController | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -18,7 +18,7 @@ export function FeatureAnalysisPanel({ trackId, sourceReady }: { trackId: string
     setError("");
     setBusy(false);
     return () => { const current = operation.current; operation.current = null; current?.abort(); };
-  }, [trackId, sourceReady]);
+  }, [trackId, sourceReady, audioId]);
 
   async function analyze() {
     operation.current?.abort();
@@ -30,7 +30,7 @@ export function FeatureAnalysisPanel({ trackId, sourceReady }: { trackId: string
     setProgress(0);
     setMessage("Loading original audio…");
     try {
-      const blob = await getAudio(trackId);
+      const blob = await getAudio(audioId);
       controller.signal.throwIfAborted();
       if (!blob) throw new Error("Original audio is missing. Restore the source before analysis.");
       const measured = await analyzeSourceFeatures(blob, controller.signal, (value, stage) => {

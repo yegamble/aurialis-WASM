@@ -1558,3 +1558,6 @@ input[type="range"] {
   .drop-icon svg { width: 24px; height: 24px; }
   .file-types { max-width: none; font-size: 10px; letter-spacing: 0.1em; }
 }
+
+/* File names and local-server diagnostics must wrap within narrow panels. */
+.disclosure, .drop-zone p { overflow-wrap: anywhere; }

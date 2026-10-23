@@ -22,7 +22,7 @@ func TestReferenceStreamingBassMatchesFullReconstructedRender(t *testing.T) {
 			params.Saturation.Enabled = true
 			params.Saturation.Amount = 20
 			params.DitherBits = 16
-			streamed, err := renderedReferenceBassPower(context.Background(), source, params, spectrumEdges)
+			streamed, err := renderedReferenceSpectrumContext(context.Background(), source, params, spectrumEdges)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -36,8 +36,10 @@ func TestReferenceStreamingBassMatchesFullReconstructedRender(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if math.Abs(streamed-powers[0]) > 1e-12 {
-				t.Fatalf("rate%d duration%g: streamed %.15g full %.15g", rate, seconds, streamed, powers[0])
+			for band := range powers {
+				if math.Abs(streamed[band]-powers[band]) > 1e-12 {
+					t.Fatalf("rate%d duration%g band%d: streamed %.15g full %.15g", rate, seconds, band, streamed[band], powers[band])
+				}
 			}
 		}
 	}

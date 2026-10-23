@@ -10,17 +10,23 @@ import (
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
 )
 
+func renderedReferenceBassPower(ctx context.Context, source *audio.Buffer, params dsp.Params, edges [6]float64) (float64, error) {
+	powers, err := renderedReferenceSpectrumContext(ctx, source, params, edges)
+	return powers[0], err
+}
+
 // Streaming two-pass analysis removes the exact rendered DC mean without retaining
 // song-length output buffers. Scratch depends on FFT size, never source duration.
-func renderedReferenceBassPower(ctx context.Context, source *audio.Buffer, params dsp.Params, edges [6]float64) (float64, error) {
+// All five physical bands describe the complete fixed-length algorithm1 output.
+func renderedReferenceSpectrumContext(ctx context.Context, source *audio.Buffer, params dsp.Params, edges [6]float64) ([5]float64, error) {
 	engine := dsp.NewEngine(float64(source.SampleRate))
 	engine.SetParams(params)
 	if engine.LatencyFrames() != 0 {
-		return 0, errors.New("rendered reference guard requires zero-buffered-latency algorithm1")
+		return [5]float64{}, errors.New("rendered reference guard requires zero-buffered-latency algorithm1")
 	}
 	meanLeft, meanRight, err := renderedReferenceMeans(ctx, source, engine)
 	if err != nil {
-		return 0, err
+		return [5]float64{}, err
 	}
 	engine.Reset()
 	engine.SetParams(params)
@@ -37,10 +43,10 @@ func renderedReferenceBassPower(ctx context.Context, source *audio.Buffer, param
 		weights[i] = .5 - .5*math.Cos(2*math.Pi*float64(i)/float64(size))
 		weightPower += weights[i] * weights[i]
 	}
-	total := 0.0
+	var total [5]float64
 	for start := 0; start < len(source.Left)+3*hop; start += hop {
 		if err := ctx.Err(); err != nil {
-			return 0, err
+			return [5]float64{}, err
 		}
 		copy(left, left[hop:])
 		copy(right, right[hop:])
@@ -55,7 +61,7 @@ func renderedReferenceBassPower(ctx context.Context, source *audio.Buffer, param
 			if index >= 0 && index < len(source.Left) {
 				l, r := float64(left[i]), float64(right[i])
 				if !isFinite(l) || !isFinite(r) {
-					return 0, errors.New("reference render produced invalid samples")
+					return [5]float64{}, errors.New("reference render produced invalid samples")
 				}
 				scratch[i] = complex((l-meanLeft)*weights[i], (r-meanRight)*weights[i])
 			} else {
@@ -63,9 +69,15 @@ func renderedReferenceBassPower(ctx context.Context, source *audio.Buffer, param
 			}
 		}
 		fftInPlace(scratch)
-		total += referenceBassWindowPower(scratch, source.SampleRate, weightPower, edges[0], edges[1]) * float64(hop)
+		powers := referenceWindowBandPowers(scratch, source.SampleRate, weightPower, edges)
+		for band := range total {
+			total[band] += powers[band] * float64(hop)
+		}
 	}
-	return total / float64(len(source.Left)), nil
+	for band := range total {
+		total[band] /= float64(len(source.Left))
+	}
+	return total, nil
 }
 
 func renderedReferenceMeans(ctx context.Context, source *audio.Buffer, engine *dsp.Engine) (float64, float64, error) {
@@ -89,17 +101,13 @@ func renderedReferenceMeans(ctx context.Context, source *audio.Buffer, engine *d
 	return meanLeft / float64(len(source.Left)), meanRight / float64(len(source.Left)), nil
 }
 
-func referenceBassWindowPower(scratch []complex128, rate int, weightPower, low, high float64) float64 {
+func referenceWindowBandPowers(scratch []complex128, rate int, weightPower float64, edges [6]float64) [5]float64 {
 	size := len(scratch)
 	binWidth := float64(rate) / float64(size)
-	total := 0.0
+	var total [5]float64
 	for k := 0; k <= size/2; k++ {
 		frequency := float64(k) * binWidth
 		binLow, binHigh := math.Max(0, frequency-binWidth/2), math.Min(float64(rate)/2, frequency+binWidth/2)
-		fraction := math.Max(0, math.Min(binHigh, high)-math.Max(binLow, low)) / (binHigh - binLow)
-		if fraction == 0 {
-			continue
-		}
 		left := (scratch[k] + cmplx.Conj(scratch[(size-k)%size])) / 2
 		right := (scratch[k] - cmplx.Conj(scratch[(size-k)%size])) / complex(0, 2)
 		power := (real(left)*real(left) + imag(left)*imag(left) + real(right)*real(right) + imag(right)*imag(right)) / 2
@@ -107,7 +115,10 @@ func referenceBassWindowPower(scratch []complex128, rate int, weightPower, low, 
 		if k != 0 && k != size/2 {
 			power *= 2
 		}
-		total += power * fraction
+		for band := range total {
+			fraction := math.Max(0, math.Min(binHigh, edges[band+1])-math.Max(binLow, edges[band])) / (binHigh - binLow)
+			total[band] += power * fraction
+		}
 	}
 	return total
 }

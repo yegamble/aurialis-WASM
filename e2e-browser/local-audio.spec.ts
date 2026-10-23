@@ -35,7 +35,9 @@ test("imports, measures and exports native-equivalent PCM with zero audio networ
   expect(output).toEqual(native);
   expect(decode(output).left.length).toBe(48_000);
   expect(forbidden).toEqual([]);
-  await info.attach("local-only-network-evidence", { body: JSON.stringify({ forbidden, exportedBytes: output.length, nativeBytes: native.length, exactPCM: true }), contentType: "application/json" });
+  const evidence = info.outputPath("local-only-network-evidence.json");
+  await writeFile(evidence, JSON.stringify({ forbidden, exportedBytes: output.length, nativeBytes: native.length, exactPCM: true }, null, 2));
+  await info.attach("local-only-network-evidence", { path: evidence, contentType: "application/json" });
 });
 
 test("rejects hostile audio in actual Go WASM without sending a network body", async ({ page, context }) => {

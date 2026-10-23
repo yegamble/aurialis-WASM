@@ -6,7 +6,7 @@ import { analyzeDeep, compileScript, deepProfiles, deepSourceMatches, readScript
 import { audioKey } from "@/lib/library";
 import { useStore } from "@/lib/store";
 import type { Track } from "@/lib/types";
-import { BottomSheet, Button, ControlGroup } from "./Primitives";
+import { BottomSheet, Button, ControlGroup, Modal } from "./Primitives";
 import { automationLabel } from "./DeepTimeline";
 import { DeepMoveEditor } from "./DeepMoveEditor";
 
@@ -26,10 +26,12 @@ export const DeepProposalPanel = memo(function DeepProposalPanel({ track, source
   const { state, dispatch } = useStore(); const latest = useRef(state); latest.current = state;
   const operation = useRef<AbortController | null>(null);
   const [profile, setProfile] = useState<DeepProfile>(track.deepMastering?.proposal.profile ?? "Warm Analog");
+  const latestProfile = useRef(profile); latestProfile.current = profile;
+  const [replacement, setReplacement] = useState<{ track: Track; proposal: ScriptV2; profile: DeepProfile } | null>(null);
   const [busy, setBusy] = useState(false); const [progress, setProgress] = useState(0); const [message, setMessage] = useState(""); const [error, setError] = useState(""); const [soloId, setSoloId] = useState("");
   const [target, setTarget] = useState<AutomationMove["target"]>("inputGainDb"); const [sectionId, setSectionId] = useState("");
   const deep = track.deepMastering; const selected = deep?.proposal.moves.find((move) => move.id === selectedMoveId);
-  useEffect(() => { setBusy(false); setProgress(0); setError(""); setMessage(""); setSoloId(""); return () => { const current = operation.current; operation.current = null; current?.abort(); }; }, [track.id, track.sourceRevision, track.sourceAudioId]);
+  useEffect(() => { setBusy(false); setProgress(0); setError(""); setMessage(""); setSoloId(""); setReplacement(null); return () => { const current = operation.current; operation.current = null; current?.abort(); }; }, [track.id, track.sourceRevision, track.sourceAudioId]);
   function saveProposal(proposal: ScriptV2, expected = deep?.proposal.revision ?? null, targets = deep?.targets) {
     if (!targets) return;
     dispatch({ type: "SAVE_DEEP_PROPOSAL", id: track.id, expectedSourceRevision: track.sourceRevision ?? 0, expectedAudioKey: audioKey(track), expectedProposalRevision: expected, deep: { sourceRevision: track.sourceRevision ?? 0, proposal, targets } });
@@ -39,24 +41,38 @@ export const DeepProposalPanel = memo(function DeepProposalPanel({ track, source
     if (deep.proposal.revision >= Number.MAX_SAFE_INTEGER) { setError("This proposal has reached its revision limit. Analyze again to start a new proposal."); return; }
     saveProposal({ ...deep.proposal, revision: deep.proposal.revision + 1, moves: deep.proposal.moves.map((item) => item.id === move.id ? move : item) });
   }
-  async function analyze() {
-    if (!track.sourceIdentity) { setError("Restore this source to record its canonical identity before Deep analysis."); return; }
+  async function analyze(expectedTrack: Track, expectedProfile: DeepProfile) {
+    if (!expectedTrack.sourceIdentity) { setError("Restore this source to record its canonical identity before Deep analysis."); return; }
     operation.current?.abort(); const controller = new AbortController(); operation.current = controller;
-    const sourceRevision = track.sourceRevision ?? 0; const expectedProposal = deep?.proposal.revision ?? null; const expectedAdvanced = track.advanced; const expectedKey = audioKey(track);
+    const sourceRevision = expectedTrack.sourceRevision ?? 0; const expectedProposal = expectedTrack.deepMastering?.proposal.revision ?? null; const expectedAdvanced = expectedTrack.advanced; const expectedKey = audioKey(expectedTrack);
     setBusy(true); setError(""); setProgress(0); setMessage("Loading original audio…");
     try {
       const blob = await getAudio(expectedKey); controller.signal.throwIfAborted(); if (!blob) throw new Error("The source is missing. Restore it before Deep analysis.");
-      const measured = await analyzeDeep(blob, profile, track.sourceIdentity, controller.signal, (value, stage) => { if (operation.current === controller && !controller.signal.aborted) { setProgress(value); setMessage(stage); } });
+      const measured = await analyzeDeep(blob, expectedProfile, expectedTrack.sourceIdentity, controller.signal, (value, stage) => { if (operation.current === controller && !controller.signal.aborted) { setProgress(value); setMessage(stage); } });
       controller.signal.throwIfAborted(); if (operation.current !== controller) return;
       const proposal = { ...measured, revision: Math.max(measured.revision, (expectedProposal ?? 0) + 1) };
       setMessage("Validating the proposed schedule…"); const compiled = await compileScript(proposal, proposal.source.sampleRate, controller.signal);
       controller.signal.throwIfAborted(); if (operation.current !== controller) return;
-      const current = latest.current.tracks.find((item) => item.id === track.id);
+      const current = latest.current.tracks.find((item) => item.id === expectedTrack.id);
       if (!current || !deepSourceMatches(current, proposal, sourceRevision) || audioKey(current) !== expectedKey || current.advanced !== expectedAdvanced || (current.deepMastering?.proposal.revision ?? null) !== expectedProposal) throw new Error("The source, settings or draft changed. Analyze again when ready.");
-      dispatch({ type: "SAVE_DEEP_PROPOSAL", id: track.id, expectedSourceRevision: sourceRevision, expectedAudioKey: expectedKey, expectedProposalRevision: expectedProposal, expectedAdvanced, deep: { sourceRevision, proposal, targets: compiled.targets } });
+      dispatch({ type: "SAVE_DEEP_PROPOSAL", id: expectedTrack.id, expectedSourceRevision: sourceRevision, expectedAudioKey: expectedKey, expectedProposalRevision: expectedProposal, expectedAdvanced, deep: { sourceRevision, proposal, targets: compiled.targets } });
       setMessage("Measured proposal ready. Your applied processing has not changed."); setSoloId(""); onSelectMove("");
     } catch (cause) { if (operation.current === controller && !controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Deep analysis failed."); }
     finally { if (operation.current === controller) { setBusy(false); operation.current = null; } }
+  }
+  function requestAnalysis() {
+    setError("");
+    if (deep) setReplacement({ track, proposal: deep.proposal, profile });
+    else void analyze(track, profile);
+  }
+  function confirmReplacement() {
+    if (!replacement) return;
+    const expected = replacement; setReplacement(null);
+    const current = latest.current.tracks.find((item) => item.id === expected.track.id);
+    if (current !== expected.track || current.deepMastering?.proposal !== expected.proposal || latestProfile.current !== expected.profile) {
+      setError("The source, settings, draft or selected profile changed. Review the current draft and analyze again."); return;
+    }
+    void analyze(expected.track, expected.profile);
   }
   function addMove() {
     if (!deep || deep.proposal.moves.length >= 128) return;
@@ -77,8 +93,8 @@ export const DeepProposalPanel = memo(function DeepProposalPanel({ track, source
   const editor = selected && deep ? <DeepMoveEditor script={deep.proposal} move={selected} targets={deep.targets} solo={soloId === selected.id} onChange={edit} onDelete={() => { if (deep.proposal.revision >= Number.MAX_SAFE_INTEGER) return; saveProposal({ ...deep.proposal, revision: deep.proposal.revision + 1, moves: deep.proposal.moves.filter((move) => move.id !== selected.id) }); if (soloId === selected.id) setSoloId(""); onSelectMove(""); }} onSolo={() => { setSoloId((current) => current === selected.id ? "" : selected.id); }} /> : null;
   return <section className="min-w-0 space-y-4" aria-label="Measured Deep mastering">
     <div><h2>Deep mastering</h2><p className="disclosure">Review a measured, source-bound proposal before applying it. Neutral sections and change strength do not identify musical roles.</p></div>
-    <label className="grid gap-2 text-xs">Deep engineer profile<select className="min-h-[44px] min-w-[44px] max-w-full rounded-xl border border-line-dark bg-paper px-3" aria-label="Deep engineer profile" value={profile} onChange={(event) => { const selectedProfile = deepProfiles.find((item) => item === event.target.value); if (selectedProfile) setProfile(selectedProfile); }}>{deepProfiles.map((item) => <option key={item}>{item}</option>)}</select></label>
-    <div className="flex flex-wrap gap-2"><Button disabled={busy || !sourceReady || !track.sourceIdentity} onClick={() => { void analyze(); }}>Analyze Deep proposal</Button>{busy && operation.current && <Button variant="secondary" onClick={() => { const current = operation.current; operation.current = null; current?.abort(); setBusy(false); setProgress(0); setMessage("Deep analysis canceled."); }}>Cancel Deep analysis</Button>}</div>
+    <label className="grid gap-2 text-xs">Deep engineer profile<select className="min-h-[44px] min-w-[44px] max-w-full rounded-xl border border-line-dark bg-paper px-3" aria-label="Deep engineer profile" value={profile} onChange={(event) => { const selectedProfile = deepProfiles.find((item) => item === event.target.value); if (selectedProfile) { latestProfile.current = selectedProfile; setProfile(selectedProfile); } }}>{deepProfiles.map((item) => <option key={item}>{item}</option>)}</select></label>
+    <div className="flex flex-wrap gap-2"><Button disabled={busy || !sourceReady || !track.sourceIdentity} onClick={requestAnalysis}>Analyze Deep proposal</Button>{busy && operation.current && <Button variant="secondary" onClick={() => { const current = operation.current; operation.current = null; current?.abort(); setBusy(false); setProgress(0); setMessage("Deep analysis canceled."); }}>Cancel Deep analysis</Button>}</div>
     {busy && <progress className="w-full" max={100} value={progress} aria-label="Deep analysis progress" />}
     <p className="disclosure min-h-10" role="status">{message}</p>{error && <p className="disclosure text-danger" role="alert">{error}</p>}
     {!track.sourceIdentity && <p className="disclosure">This older project needs an explicit source restore before measured Deep analysis.</p>}
@@ -93,5 +109,9 @@ export const DeepProposalPanel = memo(function DeepProposalPanel({ track, source
       <ControlGroup label="Add a manual draft move"><label className="grid gap-2 text-xs">New move target<select className="min-h-[44px] min-w-[44px] max-w-full rounded-xl border border-line-dark bg-paper px-3" aria-label="New move target" value={target} onChange={(event) => { const next = deep.targets.find((item) => item.name === event.target.value); if (next) setTarget(next.name); }}>{deep.targets.map((item) => <option value={item.name} key={item.name}>{automationLabel(item.name)}</option>)}</select></label><label className="grid gap-2 text-xs">New move section<select className="min-h-[44px] min-w-[44px] max-w-full rounded-xl border border-line-dark bg-paper px-3" aria-label="New move section" value={sectionId || deep.proposal.sections[0]?.id || ""} onChange={(event) => { setSectionId(event.target.value); }}>{deep.proposal.sections.map((section) => <option value={section.id} key={section.id}>{section.name}</option>)}</select></label><Button variant="secondary" disabled={deep.proposal.moves.length >= 128} onClick={addMove}>Add baseline move</Button><p className="disclosure">A new move adds zero to the baseline until you edit it. The server rejects overlapping moves on the same target.</p></ControlGroup>
     </>}
     {desktop ? editorOpen && editor && <section className="min-w-0 space-y-3 border-t border-line pt-4" aria-label="Edit selected draft move"><div className="flex flex-wrap items-center justify-between gap-2"><h3>Edit draft move</h3><Button variant="ghost" onClick={onCloseEditor}>Close move editor</Button></div>{editor}</section> : <BottomSheet open={editorOpen && !!selected} title={selected ? "Edit draft " + automationLabel(selected.target) : "Edit automation"} onClose={onCloseEditor}>{editor}</BottomSheet>}
+    <Modal open={replacement !== null} title="Replace Deep draft?" onClose={() => { setReplacement(null); }} actions={<><Button variant="secondary" onClick={() => { setReplacement(null); }}>Keep draft</Button><Button onClick={confirmReplacement}>Replace draft and analyze</Button></>}>
+      <p>This replaces the current draft, including edited points and muted or deleted moves, with a new {replacement?.profile} analysis. Cancel keeps every draft edit.</p>
+      <p className="disclosure mt-3">Your applied processing stays unchanged until you choose Apply.</p>
+    </Modal>
   </section>;
 });

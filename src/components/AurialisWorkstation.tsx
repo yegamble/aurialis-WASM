@@ -40,7 +40,6 @@ import type {
   Album,
   AdvancedParams,
   EQBandId,
-  EQBandParams,
   ExportBitDepth,
   ProfileId,
   SaturationCharacter,
@@ -69,6 +68,7 @@ import { SourceRelink } from "./shared/LibraryTools";
 import { useTransportScrub } from "@/lib/use-transport-scrub";
 import { audioKey } from "@/lib/library";
 import { FeatureAnalysisPanel } from "./shared/FeatureAnalysisPanel";
+import { ReferenceMatchingPanel } from "./shared/ReferenceMatchingPanel";
 
 const stemNames = new Map<number, string[]>([
   [2, ["Vocals", "Instrumental"]],
@@ -78,7 +78,6 @@ const stemNames = new Map<number, string[]>([
   [6, ["Vocals", "Drums", "Bass", "Guitar", "Piano", "Other"]],
 ]);
 
-const DEFAULT_REFERENCE_AMOUNT = 62;
 
 
 
@@ -244,7 +243,7 @@ export function AurialisWorkstation({
         {route === "split" && <SplitView key={resolvedId} trackId={resolvedId} />}
         {route === "albums" && <AlbumsView />}
         {route === "album" && <AlbumView key={resolvedId} albumId={resolvedId} />}
-        {route === "reference" && <ReferenceView key={resolvedId} trackId={resolvedId} />}
+        {route === "reference" && <ReferenceMatchingPanel key={resolvedId} trackId={resolvedId} />}
         {route === "release-check" && <ReleaseView key={resolvedId} trackId={resolvedId} />}
         {route === "tools" && <ToolsView />}
       </main>
@@ -1971,188 +1970,6 @@ function AlbumView({ albumId }: { albumId: string }) {
   );
 }
 
-function ReferenceView({ trackId }: { trackId: string }) {
-  const { state, dispatch } = useStore();
-  const track =
-    state.tracks.find((item) => item.id === trackId);
-  const [referenceId, setReferenceId] = useState(
-    state.tracks.find((item) => item.id !== track?.id)?.id ?? "",
-  );
-  const [amount, setAmount] = useState(DEFAULT_REFERENCE_AMOUNT);
-  const [protectLowEnd, setProtectLowEnd] = useState(true);
-  const [includeWidth, setIncludeWidth] = useState(false);
-
-  if (!track) return <div className="page"><PageTitle eyebrow="Reference settings" title="Choose your audio first" copy="Import a track, then compare its EQ settings with another project." /><Link className={buttonClassName("primary")} href="/">Import audio</Link></div>;
-  const reference = state.tracks.find((item) => item.id === referenceId);
-
-  return (
-    <div className="page">
-      <PageTitle
-        eyebrow="Reference direction"
-        title="Compare without copying"
-        copy="Compare two projects and blend their EQ settings. Audio spectrum matching remains in development."
-        action={
-          <Button
-            variant="secondary"
-            icon={<Icon name="arrow-left" />}
-            onClick={() => {
-              navigateWorkspace(`/master/${track.id}`);
-            }}
-          >
-            Back to master
-          </Button>
-        }
-      />
-      <div className="reference-layout">
-        <section className="paper-panel">
-          <div className="compare-head">
-            <div>
-              <span className="eyebrow">Source</span>
-              <h2>{track.title}</h2>
-              <MetricMini track={track} />
-            </div>
-            <span className="versus">and</span>
-            <div>
-              <span className="eyebrow">Reference</span>
-              <div className="select-wrap">
-                <select
-                  aria-label="Reference track"
-                  value={referenceId}
-                  onChange={(e) => {
-                    setReferenceId(e.target.value);
-                  }}
-                >
-                  <option value="">Choose a reference project</option>
-                  {state.tracks
-                    .filter((item) => item.id !== track.id)
-                    .map((item) => (
-                      <option value={item.id} key={item.id}>
-                        {item.title}
-                      </option>
-                    ))}
-                </select>
-                <Icon name="chevron-down" />
-              </div>
-              {reference !== undefined && <MetricMini track={reference} />}
-            </div>
-          </div>
-          <div className="overlay-chart">
-            <SpectrumChart
-              eqBands={track.advanced.eqBands}
-              sampleRate={track.sampleRate}
-              {...(reference ? {
-                referenceBands: reference.advanced.eqBands,
-                referenceSampleRate: reference.sampleRate,
-                referenceLabel: `Reference EQ settings for ${reference.title}`,
-              } : {})}
-            />
-          </div>
-        </section>
-        <aside className="paper-panel reference-controls">
-          <span className="eyebrow">Match direction</span>
-          <h2>Keep what matters</h2>
-          <p>
-            Blend the other project’s EQ settings into this project. This does not measure or match the source audio spectrum.
-          </p>
-          <SliderField
-            label="Match amount"
-            value={amount}
-            defaultValue={DEFAULT_REFERENCE_AMOUNT}
-            min={0}
-            max={100}
-            step={1}
-            unit="%"
-            onChange={setAmount}
-          />
-          <label className="check-row">
-            <input type="checkbox" checked={protectLowEnd} onChange={(event) => { setProtectLowEnd(event.target.checked); }} />
-            <span><Icon name="check" /></span>Protect low end
-          </label>
-          <label className="check-row">
-            <input type="checkbox" checked={includeWidth} onChange={(event) => { setIncludeWidth(event.target.checked); }} />
-            <span><Icon name="check" /></span>Include width
-          </label>
-          <Button
-            className="full-button"
-            disabled={!reference}
-            icon={<Icon name="arrow-right" />}
-            onClick={() => {
-              if (reference) {
-                const ratio = amount / 100;
-                const nextBands = track.advanced.eqBands.map((band, i) => {
-                  const refBand = reference.advanced.eqBands.at(i);
-                  const refGain = refBand ? refBand.gainDb : 0;
-                  const delta = protectLowEnd && i < 2 ? 0 : (refGain - band.gainDb) * ratio;
-                  return {
-                    ...band,
-                    gainDb: Math.round((band.gainDb + delta) * 10) / 10,
-                  };
-                }) as [
-                  EQBandParams,
-                  EQBandParams,
-                  EQBandParams,
-                  EQBandParams,
-                  EQBandParams,
-                ];
-                const widthDelta =
-                  (reference.advanced.stereo.width -
-                    track.advanced.stereo.width) *
-                  ratio;
-                const nextWidth = includeWidth ? Math.round(track.advanced.stereo.width + widthDelta) : track.advanced.stereo.width;
-                dispatch({
-                  type: "UPDATE_TRACK",
-                  id: track.id,
-                  patch: {
-                    advanced: {
-                      ...track.advanced,
-                      eqBands: nextBands,
-                      stereo: {
-                        ...track.advanced.stereo,
-                        width: nextWidth,
-                      },
-                    },
-                    mode: "advanced",
-                  },
-                });
-              } else {
-                dispatch({
-                  type: "UPDATE_SIMPLE",
-                  id: track.id,
-                  patch: { tone: "Reference-led", intensity: amount },
-                });
-              }
-              navigateWorkspace(`/master/${track.id}`);
-            }}
-          >
-            Apply EQ settings
-          </Button>
-        </aside>
-      </div>
-    </div>
-  );
-}
-
-function MetricMini({ track }: { track: Track }) {
-  return (
-    <div className="metric-mini">
-      <span>
-        <strong>
-          {track.measurements ? track.metrics.lufs.toFixed(1) : "Unmeasured"}
-        </strong>
-        <small>{track.measurementKind === "source" ? "Source LUFS" : track.measurementKind === "album-render" ? "Album render LUFS" : "Saved LUFS"}</small>
-      </span>
-      <span>
-        <strong>{track.measurements ? track.metrics.dynamics.toFixed(1) : "Unmeasured"}</strong>
-        <small>Crest dB</small>
-      </span>
-      <span>
-        <strong>{track.advanced.stereo.width}%</strong>
-        <small>Width</small>
-      </span>
-    </div>
-  );
-}
-
 function ReleaseView({ trackId }: { trackId: string }) {
   const { state } = useStore();
   const track = state.tracks.find((item) => item.id === trackId);
@@ -2244,7 +2061,7 @@ function ToolsView() {
           icon="refresh-cw"
           eyebrow="Direction"
           title="Reference match"
-          copy="Reference audio analysis and automatic matching are not available."
+          copy="Measure your starting chain against reference audio, then review bounded EQ and optional width changes."
           href={`/reference/${targetId}`}
         />
         <ToolCard

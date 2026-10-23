@@ -1,5 +1,5 @@
 # Aurialis-WASM War-Room Ledger
-<!-- cspell:words Embedder automator -->
+<!-- cspell:words Embedder automator Turbopack -->
 
 Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-room-loop` iterations. The Chair updates this file after every Round D ruling and every Round E verification pass. One row per item; never delete a row — move completed items to **Verified & Merged** with commit/PR and test evidence, or to **Declined** with the reason.
 
@@ -12,6 +12,39 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 ---
 
 ## Delegated continuation — 2026-10-23
+
+### Measured Reference implementation and review checkpoint
+
+| Item | Current status |
+| --- | --- |
+| MUB-3C measured Reference endpoint | locally verified; open — awaiting exact green CI and delegated merge |
+| Reference review, source binding, Apply/Revert | locally verified within the bounded static-chain scope; open — awaiting merge |
+| ScriptV2 foundation PR #8 | verified and merged at `d999f4e`; exact source `f29bc8c`, all six CI jobs green |
+| Whole product, studio DSP, trained stems and Waves acceptance | open |
+
+Reference runtime `47b856e` and UI assertions `2f97b27` compare complete baseline-rendered source against raw reference audio, using normalized common-band spectra. The bounded EQ/opt-in-width proposal preserves unrelated chain fields and disabled stages, verifies actual output residual/protected bass, and falls back to the exact baseline. Full-output and contour-fit diagnostics remain separately labeled. Client canonical-Blob receipts, exact baseline/options/delta validation, complete-record Apply and one session baseline/Revert close the former saved-settings blend workflow. Attached Deep automation requires Detach.
+
+Independent review retained and corrected the raw-source/zero-residual defect for a non-neutral chain: reported output mismatch now improves approximately 7.110→4.540 dB, corroborated by independent tones at 7.120→4.542 dB. A no-audible-energy candidate is rejected internally, not retained as an infinite or falsely successful JSON result. Width and bass constraints are jointly verified on complete rendered output. These are source-specific broad-band checks, not perceptual or hardware equivalence.
+
+Final local evidence at source `2f97b27`: full frontend static/unit and configured 203-file spelling, rebuilt binary/smoke, all 333 frozen PCM and 45 automation fixtures, independent meters, Newman 34 requests/39 assertions plus raw probes, and the complete browser suite **72/72 in 3.8 minutes** passed. The earlier full Go quality/security/race checkpoint precedes the final erased-energy follow-up; changed mastering/jobs/server packages separately passed final race/lint. Three actual browser workflows passed in 13.2 seconds, including native/export equality, live RMS agreement and six-width accessibility. Independent writer review passed 11 client/receipt/panel units and hostile API/non-neutral/erased-energy tests; DSP passed six final high-Q/dense-frequency/settled-tone/energy/width/mono/correlation regressions with no remaining in-scope must-fix.
+
+Retain the initial isolated-worktree Newman missing-asset failure and symlinked-dependency Turbopack failure; rebuilt assets/local frozen installation corrected those setup conditions. Independent QA/Devil's Advocate/Technical Writer/Product review accepts the measured static-chain Reference implementation and synchronized documentation, conditional on its own exact green CI and delegated merge. The PR #8 foundation is verified and merged as recorded below. Status: **locally verified; open — awaiting merge**. Whole-product and Waves acceptance remain open.
+
+A later integrated Simple checkpoint at `50fd265` failed 79/81 browser cases in 11.1 minutes. Reference render-thread RMS was −26.46243 dBFS versus −26.215245 dBFS for the source-rate 48 kHz export, a 0.247185 dB difference; its separate three-window speaker readings were about −26.4639197545 dBFS, and the actual AudioContext rate was 44.1 kHz. The later controlled proof below explains this integrated discrepancy as an invalid source/device-rate comparison. It does not establish the cause of the earlier Linux discrepancy, whose actual device rate was not recorded. The other failure retained obsolete Simple expectations that a direction resets explicit Input 6→0 and later 4→0, contrary to the approved gain-preservation contract. The two stale Simple assertions have now been changed to retain Input 6 and 4; their corrected complete integrated outcome remains pending.
+
+[CI run 39937462719](https://github.com/yegamble/aurialis-WASM/actions/runs/39937462719) separately failed the Reference panel unit checkpoint, 331/332. Its test fired a click during a protected intermediate render before Apply/Revert became enabled, so no user action occurred. The test now waits for enabled Apply before repeated application and enabled Revert before clicking, then verifies both exact starting settings and the restoration message. Correction `3d57b47` retains production ownership guards. The three focused panel units passed in 259 ms; this checkpoint does not establish a production Revert failure.
+
+Test-only correction `de6269f` forces both 44.1 and 48 kHz devices, captures 262,144 actual device-input/wet frames, and submits that exact Float32 input at its actual rate plus unchanged proposal parameters to native rendering. The controlled proof exited 0: **2/2 in 1.1 minutes**, with both-channel wet errors exactly zero and no missing capture quanta at either rate. At 44.1 kHz, worklet/speaker-median/native RMS was −26.462430836/−26.463919754/−26.463919755 dBFS; at 48 kHz it was −26.214787729/−26.215243981/−26.215243981 dBFS. Source-rate 48 kHz export remained −26.215245432 dBFS. This reproduces the later integrated comparison error while retaining per-channel PCM <1e−6 and both original 0.05 dB limits against rate-correct native output. Exact source-rate downloaded/native PCM equality remains separate. Values are retained in `/private/tmp/aurialis-reference-device-rates/values.json`.
+
+The controlled proof used existing embedded binary SHA-256 `3219133870f4de54be357133d49bf2010f0519d8996592578598cc1cd92f0aa7`: DSP was unchanged, but the newest Tools copy was not embedded yet. Strict E2E typing also passed. A fresh full binary build, complete **73-case Reference** regression, complete **82-case Simple** integration and exact green remote CI remain required; focused proof does not replace them.
+
+A subsequent entry-point audit corrected the Tools card, which still described Reference analysis as unavailable. It now describes the implemented measured review workflow; no processing or API contract changes.
+
+The next [CI run 39935896825](https://github.com/yegamble/aurialis-WASM/actions/runs/39935896825) stopped at the dead-code gate: `renderOutputLevel` was exported although only used inside its test helper. Making that function private changes no observer behavior, production processing or tolerance. This omitted local dead-code check is retained as a failed checkpoint. Independent review reran the full configured local Knip check after the correction: exit 0. Corrected exact-head CI remains required.
+
+The first Linux [PR #9 CI run 39928617362](https://github.com/yegamble/aurialis-WASM/actions/runs/39928617362) failed **70/72** browser cases; its other verification jobs passed. Library observed one queued 1024-frame callback after the test had counted a request to close as completed closure. Reference observed a 0.250319292 dB difference in its one-second speaker-feed aggregate. The cause of that Reference discrepancy remains unproven. Native/export equality and numerical proposal guards passed; no production processing change follows from this checkpoint.
+
+Test-only corrections `d9b80f7` and `cf5793b` await fulfilled native AudioContext closure and require its clock to remain stopped. Reference now additionally checks continuous, timestamped, equal-duration actual worklet energy over at least two settled seconds. A separate speaker-feed probe uses a fixed three-window median. Both retain the original **0.05 dB** tolerance, independent native rendering and exact both-channel downloaded PCM equality. A deterministic 1500 ms delay of the actual ready-message delivery also exercises readiness; the old observer passed that local delay probe, so this does not prove the Linux cause. A custom test-worklet interception attempt returned 404 and a Blob attempt hit CSP; neither workaround nor a CSP change was retained. The corrected targeted two cases passed in 25.9 seconds; the fresh complete suite at `cf5793b` exited 0: **72/72 in 4.3 minutes**, using production code identical to published `6b61331`. These are local results; corrected exact-head Linux CI and delegated merge remain required.
 
 The owner authorized merging PR #6 and continuing the whole-product loop with `merge=delegated` until all planned features and remaining Waves acceptance work are tested. This explicit continuation supersedes the default four-iteration stop. Verified branches may now merge after the existing QA, Devil’s Advocate, Technical Writer, Product Engineer and green-CI gates without another owner merge question.
 
@@ -47,14 +80,16 @@ Integrated TypeScript/lint/knip/spelling passed; 321 unit/component cases in 23 
 
 Independent QA/Devil's Advocate/Product/Writer review found no surviving in-scope source must-fix; 58 targeted units and native identity/import tests passed, all 65 local documentation links resolve, and a real 320 px footer scroll/focus/click probe passed. Library 3 dB fixture measured +2.9999999208 dB live / +3.0000000435 dB exported, held-scrub resumption and two closed contexts. These are bounded application observations, not acoustic equivalence or hard deadlines. Final exact documentation review and green remote CI are still required before delegated merge. Partial deletion and unswept orphan limitations remain explicit in tasks/architecture.
 
-### LIB-1 merged and MUB-3B foundation checkpoint
+### LIB-1 and MUB-3B foundation merged
 
 LIB-1 is verified and merged in PR #7 at `25d5653280585198df510215a58c3c07b92193ea`. All six jobs in [CI run 39906520601](https://github.com/yegamble/aurialis-WASM/actions/runs/39906520601) passed, including 70 Linux browser cases in 4.9 minutes. The primary checkout was fast-forwarded and the merged branch deleted. Earlier local/pending statuses above are historical.
+
+MUB-3B's bounded API/native/numeric-WASI foundation is verified and merged in PR #8 at `d999f4e7b430ed33cf315c388ac8b3531d434642`, from exact reviewed source `f29bc8cfbcf18d73b3785720ae4d88e798961cae`. All six jobs in [CI run 39926912858](https://github.com/yegamble/aurialis-WASM/actions/runs/39926912858) passed, including 70 Linux browser cases in 5.3 minutes. The primary checkout was fast-forwarded and the local feature branch deleted; remote branch deletion was underway at this checkpoint. Subsequent local/pending statements retain their earlier checkpoints.
 
 | Item | Current status |
 | --- | --- |
 | LIB-1 Library/source lifecycle | verified and merged, PR #7 / `25d5653` |
-| MUB-3B ScriptV2/common schedule foundation | locally verified on `codex/deep-schedule-foundation`; open — awaiting exact green remote CI and delegated merge |
+| MUB-3B ScriptV2/common schedule foundation | verified and merged, PR #8 / `d999f4e` |
 | Deep editor and actual browser schedule transport | open; not delivered by the kernel/API foundation |
 | Whole product and Waves acoustic acceptance | open |
 

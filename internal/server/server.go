@@ -88,6 +88,8 @@ func New(cfg Config) *Server {
 	mux.HandleFunc("POST /api/analyze/features", s.handleAnalyzeFeatures)
 
 	mux.HandleFunc("POST /api/automation/compile", s.handleCompileAutomation)
+	mux.HandleFunc("POST /api/analyze/reference", s.handleAnalyzeReference)
+
 	mux.HandleFunc("POST /api/master/render", s.handleMasterRender)
 	mux.HandleFunc("POST /master/render", s.handleMasterRender)
 

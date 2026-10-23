@@ -11,9 +11,13 @@ import (
 
 // SubmitAnalyzeDeepV2 admits a bounded measured proposal job without rendering output PCM.
 func (m *Manager) SubmitAnalyzeDeepV2(buf *audio.Buffer, profile mastering.ProfileID) (*Job, error) {
+	return m.submitAnalyzeDeepV2("", buf, profile)
+}
+
+func (m *Manager) submitAnalyzeDeepV2(owner string, buf *audio.Buffer, profile mastering.ProfileID) (*Job, error) {
 	id := newJobID()
 	now := time.Now().UTC()
-	job := &Job{ID: id, JobID: id, Kind: KindAnalyzeDeepV2, Status: StatusQueued, Stage: "Queued for measured ScriptV2 proposal", Profile: string(profile), CreatedAt: now, UpdatedAt: now}
+	job := &Job{owner: owner, ID: id, JobID: id, Kind: KindAnalyzeDeepV2, Status: StatusQueued, Stage: "Queued for measured ScriptV2 proposal", Profile: string(profile), CreatedAt: now, UpdatedAt: now}
 	m.mu.Lock()
 	if err := m.admitLocked(job, buf, 0); err != nil {
 		m.mu.Unlock()

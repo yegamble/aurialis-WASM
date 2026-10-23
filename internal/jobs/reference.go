@@ -30,6 +30,10 @@ func (m *Manager) admitReferenceLocked(job *Job, source, reference *audio.Buffer
 
 // SubmitAnalyzeReference admits both reconstructed sources and output scratch atomically.
 func (m *Manager) SubmitAnalyzeReference(source, reference *audio.Buffer, baseline dsp.Params, options mastering.ReferenceOptions) (*Job, error) {
+	return m.submitAnalyzeReference("", source, reference, baseline, options)
+}
+
+func (m *Manager) submitAnalyzeReference(owner string, source, reference *audio.Buffer, baseline dsp.Params, options mastering.ReferenceOptions) (*Job, error) {
 	if err := dsp.ValidateParams(baseline); err != nil {
 		return nil, err
 	}
@@ -38,7 +42,7 @@ func (m *Manager) SubmitAnalyzeReference(source, reference *audio.Buffer, baseli
 	}
 	id := newJobID()
 	now := time.Now().UTC()
-	job := &Job{ID: id, JobID: id, Kind: KindAnalyzeReference, Status: StatusQueued, Stage: "Queued for measured reference EQ proposal", CreatedAt: now, UpdatedAt: now}
+	job := &Job{owner: owner, ID: id, JobID: id, Kind: KindAnalyzeReference, Status: StatusQueued, Stage: "Queued for measured reference EQ proposal", CreatedAt: now, UpdatedAt: now}
 	m.mu.Lock()
 	if err := m.admitReferenceLocked(job, source, reference); err != nil {
 		m.mu.Unlock()

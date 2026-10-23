@@ -84,6 +84,7 @@ type Job struct {
 	Features          *mastering.AnalysisFeatures  `json:"features,omitempty"`
 	Stems             []StemDescriptor             `json:"stems,omitempty"`
 
+	owner         string
 	stemWAVs      map[string][]byte
 	cancel        context.CancelFunc
 	reservedBytes int64
@@ -278,12 +279,17 @@ func newJobID() string {
 
 // SubmitSeparate enqueues a 2..6 stem separation job.
 func (m *Manager) SubmitSeparate(buf *audio.Buffer, stemCount int) (*Job, error) {
+	return m.submitSeparate("", buf, stemCount)
+}
+
+func (m *Manager) submitSeparate(owner string, buf *audio.Buffer, stemCount int) (*Job, error) {
 	if stemCount < 2 || stemCount > 6 {
 		return nil, errors.New("stem count must be between 2 and 6")
 	}
 	id := newJobID()
 	now := time.Now().UTC()
 	job := &Job{
+		owner:     owner,
 		ID:        id,
 		JobID:     id,
 		Kind:      KindSeparate,
@@ -371,9 +377,14 @@ func (m *Manager) SubmitSeparate(buf *audio.Buffer, stemCount int) (*Job, error)
 
 // SubmitAnalyzeDeep enqueues a Deep MasteringScript v1 generation job.
 func (m *Manager) SubmitAnalyzeDeep(buf *audio.Buffer, profile mastering.ProfileID) (*Job, error) {
+	return m.submitAnalyzeDeep("", buf, profile)
+}
+
+func (m *Manager) submitAnalyzeDeep(owner string, buf *audio.Buffer, profile mastering.ProfileID) (*Job, error) {
 	id := newJobID()
 	now := time.Now().UTC()
 	job := &Job{
+		owner:     owner,
 		ID:        id,
 		JobID:     id,
 		Kind:      KindAnalyzeDeep,
@@ -481,10 +492,14 @@ func (m *Manager) markFailed(id string, err error) {
 
 // Get returns a snapshot of a job by ID.
 func (m *Manager) Get(id string) (*Job, bool) {
+	return m.get("", id)
+}
+
+func (m *Manager) get(owner string, id string) (*Job, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	j, ok := m.jobs[id]
-	if !ok {
+	if !ok || j.owner != owner {
 		return nil, false
 	}
 	return m.cloneJob(j), true
@@ -492,10 +507,14 @@ func (m *Manager) Get(id string) (*Job, bool) {
 
 // StemWAV returns the encoded WAV bytes for a completed stem separation job.
 func (m *Manager) StemWAV(jobID, stemName string) ([]byte, bool) {
+	return m.stemWAV("", jobID, stemName)
+}
+
+func (m *Manager) stemWAV(owner string, jobID, stemName string) ([]byte, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	j, ok := m.jobs[jobID]
-	if !ok || j.Status != StatusDone || j.stemWAVs == nil {
+	if !ok || j.owner != owner || j.Status != StatusDone || j.stemWAVs == nil {
 		return nil, false
 	}
 	wav, found := j.stemWAVs[stemName]
@@ -504,9 +523,13 @@ func (m *Manager) StemWAV(jobID, stemName string) ([]byte, bool) {
 
 // Cancel cancels an in-flight or queued job idempotently and frees its stem buffers.
 func (m *Manager) Cancel(id string) (*Job, bool) {
+	return m.cancel("", id)
+}
+
+func (m *Manager) cancel(owner string, id string) (*Job, bool) {
 	m.mu.Lock()
 	j, ok := m.jobs[id]
-	if !ok {
+	if !ok || j.owner != owner {
 		m.mu.Unlock()
 		return nil, false
 	}
@@ -570,9 +593,13 @@ func retainedBytes(job *Job) int64 {
 
 // SubmitAnalyzeFeatures enqueues bounded measured analysis without rendering audio.
 func (m *Manager) SubmitAnalyzeFeatures(buf *audio.Buffer) (*Job, error) {
+	return m.submitAnalyzeFeatures("", buf)
+}
+
+func (m *Manager) submitAnalyzeFeatures(owner string, buf *audio.Buffer) (*Job, error) {
 	id := newJobID()
 	now := time.Now().UTC()
-	job := &Job{ID: id, JobID: id, Kind: KindAnalyzeFeatures, Status: StatusQueued, Stage: "Queued for measured feature analysis", CreatedAt: now, UpdatedAt: now}
+	job := &Job{owner: owner, ID: id, JobID: id, Kind: KindAnalyzeFeatures, Status: StatusQueued, Stage: "Queued for measured feature analysis", CreatedAt: now, UpdatedAt: now}
 	m.mu.Lock()
 	if err := m.admitLocked(job, buf, 0); err != nil {
 		m.mu.Unlock()

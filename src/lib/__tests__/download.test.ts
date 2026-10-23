@@ -23,6 +23,24 @@ afterEach(() => {
 });
 
 describe("owned local Blob downloads", () => {
+  it("keeps an awaiting storage consumer pending until its URL is revoked", async () => {
+    const { downloadLocalBlobAndWait: downloadAndWait } = await import("../download");
+    const blob = new Blob(["verified stored master"]);
+    let settled = false;
+    const pending = downloadAndWait(blob, "master.wav").then(() => { settled = true; });
+    expect(create).toHaveBeenCalledExactlyOnceWith(blob); expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(999); expect(settled).toBe(false); expect(dispose).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1); await pending;
+    expect(settled).toBe(true); expect(revoke).toHaveBeenCalledExactlyOnceWith("blob:local-1"); expect(dispose).toHaveBeenCalledOnce();
+  });
+  it("retains the synchronous failure contract for a waiting consumer without a pending URL", async () => {
+    const { downloadLocalBlobAndWait: downloadAndWait } = await import("../download");
+    vi.mocked(reserveBrowserAudioMemory).mockImplementationOnce(() => { throw new Error("memory budget"); });
+    expect(() => { void downloadAndWait(new Blob(["a"]), "a.wav"); }).toThrow("memory budget"); expect(create).not.toHaveBeenCalled();
+    click.mockImplementationOnce(() => { throw new Error("click blocked"); });
+    expect(() => { void downloadAndWait(new Blob(["b"]), "b.wav"); }).toThrow("click blocked");
+    expect(revoke).toHaveBeenCalledExactlyOnceWith("blob:local-1"); expect(dispose).toHaveBeenCalledOnce(); expect(vi.getTimerCount()).toBe(0);
+  });
   it("claims before creating a URL and holds one owner until all same-Blob URLs expire", async () => {
     const { downloadLocalBlob } = await import("../download");
     const blob = new Blob(["exact retained WAV"]);

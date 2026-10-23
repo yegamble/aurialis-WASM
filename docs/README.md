@@ -9,6 +9,7 @@ Choose the guide for what you want to do. Start with the [project README](../REA
 | Import a track, compare changes and export my first WAV | [Your first master](getting-started.md) |
 | Organize projects, preview audio or restore a missing source | [Library workflows](getting-started.md#keep-your-library-organized) |
 | Measure my original recording without changing it | [Deep source diagnostics](getting-started.md#measure-the-original-in-deep) |
+| Review, edit and explicitly apply source-frame automation | [Deep proposals and recovery](getting-started.md#review-and-apply-a-deep-proposal) |
 | Review and apply a measured reference proposal | [Reference workflow](getting-started.md#compare-with-a-reference-recording) |
 | Understand supported files, storage, limits or an error | [Getting started: formats and limits](getting-started.md#1-bring-in-a-track), [storage](getting-started.md#where-your-work-lives) and [troubleshooting](getting-started.md#if-something-gets-stuck) |
 | Understand the Simple recipes and expanded controls | [Mastering controls: research and parameter tables](mastering-controls-research.md) |

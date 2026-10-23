@@ -49,7 +49,7 @@ export function SourceRelink({ track, open, onClose }: { track: Track; open: boo
     const current = latest.current.tracks.find((item) => item.id === track.id);
     if (!current || (current.sourceRevision ?? 0) !== (track.sourceRevision ?? 0) || audioKey(current) !== audioKey(track)) { await discardStagedAudio(id, saved.durable); throw new Error("The project source changed. Close and retry source recovery."); }
     const next = matched ? current : replacementProject(current, file, imported);
-    dispatch({ type: "COMMIT_TRACK_SOURCE", id: track.id, expectedRevision: track.sourceRevision ?? 0, expectedAudioKey: audioKey(track), track: { ...next, sourceAudioId: id, sourceRevision: (track.sourceRevision ?? 0) + 1, retiredSourceAudioIds: [...new Set([...(track.retiredSourceAudioIds ?? []), audioKey(track)])], persistenceWarning: saved.durable ? "" : saved.warning } });
+    dispatch({ type: "COMMIT_TRACK_SOURCE", id: track.id, expectedRevision: track.sourceRevision ?? 0, expectedAudioKey: audioKey(track), track: { ...next, ...(matched && next.deepMastering ? { deepMastering: { ...next.deepMastering, sourceRevision: (track.sourceRevision ?? 0) + 1 } } : {}), sourceAudioId: id, sourceRevision: (track.sourceRevision ?? 0) + 1, retiredSourceAudioIds: [...new Set([...(track.retiredSourceAudioIds ?? []), audioKey(track)])], persistenceWarning: saved.durable ? "" : saved.warning } });
     onClose();
   }
   async function select(file: File) {
@@ -84,7 +84,7 @@ export function LibraryPreview({ track, onClose }: { track: Track; onClose: () =
       const blob = await getAudio(audioKey(track)); controller.signal.throwIfAborted();
       if (!blob) throw new Error("The source is missing. Close preview and restore the audio file.");
       const stored = await readStoredSource(blob, controller.signal); controller.signal.throwIfAborted();
-      playback = createLivePlayback(stored.pcm, track.advanced, { onState: (next) => { if (!controller.signal.aborted) setState(next); }, onError: (cause) => { if (!controller.signal.aborted) setError(cause.message); } });
+      playback = createLivePlayback(stored.pcm, track.advanced, { onState: (next) => { if (!controller.signal.aborted) setState(next); }, onError: (cause) => { if (!controller.signal.aborted) setError(cause.message); } }, track.sourceIdentity ? { blob: stored.blob, identity: track.sourceIdentity, ...(track.deepMastering?.applied ? { applied: track.deepMastering.applied } : {}) } : undefined);
       live.current = playback; setState(playback.getState());
     })().catch((cause: unknown) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Preview failed."); });
     return () => { controller.abort(); stopScrub(false); playback?.dispose(); live.current = null; };

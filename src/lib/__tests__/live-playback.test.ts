@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdvancedParams } from "../audio-dsp";
 import { createLivePlayback } from "../live-playback";
+import * as automation from "../live-automation";
+import { engineParams } from "../browser-engine";
+import type { ScriptV2 } from "../deep-mastering";
 
 const source = () => ({ sampleRate: 48000, left: new Float32Array(48000), right: new Float32Array(48000) });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
-function graphHarness(autoReady = true) {
+function graphHarness(autoReady = true, autoArm = true, autoAutomation = false) {
   const contexts: Context[] = [];
   const nodes: Node[] = [];
   const worker = vi.fn();
@@ -14,12 +17,19 @@ function graphHarness(autoReady = true) {
   vi.spyOn(WebAssembly, "compile").mockResolvedValue(compiledModule);
   class Port {
     onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
-    postMessage = vi.fn();
+    revision = 0;
+    postMessage = vi.fn((message: { type?: string; generation?: number; token?: number; revision?: number; looping?: boolean }) => {
+      if (message.type === "arm" && autoArm) queueMicrotask(() => { this.message({ type: "stream-armed", generation: message.generation }); });
+      if (autoAutomation && message.type === "bind-source") queueMicrotask(() => { this.message({ type: "automation-ack", token: message.token, revision: 0 }); });
+      if (autoAutomation && message.type === "schedule") { this.revision = message.revision ?? 0; queueMicrotask(() => { this.message({ type: "automation-staged", token: message.token }); }); }
+      if (autoAutomation && message.type === "schedule-commit") queueMicrotask(() => { this.message({ type: "automation-ack", token: message.token, revision: this.revision }); });
+    });
     close = vi.fn();
     message(data: unknown) { this.onmessage?.(new MessageEvent("message", { data })); }
   }
   type ProcessorOptions = {
     controls: SharedArrayBuffer;
+    stream: SharedArrayBuffer;
     header: SharedArrayBuffer;
     module: WebAssembly.Module;
     entropy: Uint8Array;
@@ -62,7 +72,86 @@ function graphHarness(autoReady = true) {
   return { contexts, nodes, fetchModule, compiledModule, worker };
 }
 
+async function attachedGraph() {
+  const harness = graphHarness(true, true, true);
+  const identity = { pcmHash: "a".repeat(64), sampleRate: 48000, frames: 48000 };
+  const params = engineParams(createDefaultAdvancedParams());
+  const script: ScriptV2 = { version: "2.0", source: identity, revision: 1, profile: "Warm Analog", summary: "Explicit baseline", chainParams: params, sections: [{ id: "all", name: "Section 1", roleHint: "unknown", confidence: 0, startFrame: 0, endFrame: 48000 }], moves: [], findings: [], beforeMetrics: { integratedLufs: -18, shortTermLufs: -18, truePeakDbtp: -6, samplePeakDbfs: -6, dynamicRangeDb: 12, correlation: 1, lowBassCorrelation: 1, dcLeftDbfs: -100, dcRightDbfs: -100, clippingSamples: 0, gainReductionDb: 0 } };
+  vi.spyOn(automation, "verifiedSourceVector").mockResolvedValue(new Float64Array(11));
+  vi.spyOn(automation, "prepareLiveAutomation").mockImplementation((candidate) => Promise.resolve({ source: new Float64Array(11), controls: new Float64Array(82), moves: new Float64Array(0), moveCount: 0, revision: candidate.revision, deviceRate: 48000 }));
+  const controller = createLivePlayback(source(), createDefaultAdvancedParams(), {}, { blob: new Blob(), identity });
+  await controller.applyScript(script, new AbortController().signal);
+  const context = harness.contexts[0], node = harness.nodes[0]; if (!context || !node) throw new Error("Missing attached graph");
+  return { ...harness, controller, context, node };
+}
+
 describe("per-track live audio lifecycle", () => {
+  it("keeps a finite native source and publishes its exact audible deadline before playback", async () => {
+    const { contexts, nodes } = graphHarness();
+    const controller = createLivePlayback({ sampleRate: 8001, left: new Float32Array(129), right: new Float32Array(129) }, createDefaultAdvancedParams());
+    await controller.play(); const context = contexts[0], node = nodes[0]; if (!context || !node) throw new Error("Missing graph");
+    expect((context.createBufferSource.mock.results[0]?.value as ReturnType<typeof context.createBufferSource> | undefined)?.loop).toBe(false);
+    expect(node.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "arm", looping: false }));
+    const epoch = new Float64Array(node.options.processorOptions.stream, 8, 2);
+    expect(epoch[1]).toBe((epoch[0] ?? 0) + Math.ceil(129 * 48000 / 8001) + Math.ceil(48000 * .08 / 128) * 128);
+    controller.dispose();
+  });
+  it("rearms a changed Repeat intent before creating its source", async () => {
+    const { contexts, nodes } = graphHarness(true, false); const controller = createLivePlayback(source(), createDefaultAdvancedParams());
+    const playing = controller.play(); await vi.waitFor(() => { expect(nodes[0]?.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "arm" })); });
+    const node = nodes[0], context = contexts[0]; if (!node || !context) throw new Error("Missing graph");
+    const first = node.port.postMessage.mock.calls.find(([message]) => message.type === "arm")?.[0]; controller.setRepeat(true);
+    node.port.message({ type: "stream-armed", generation: first?.generation });
+    await vi.waitFor(() => { expect(node.port.postMessage.mock.calls.filter(([message]) => message.type === "arm")).toHaveLength(2); });
+    expect(context.createBufferSource).not.toHaveBeenCalled();
+    const latest = node.port.postMessage.mock.calls.filter(([message]) => message.type === "arm").at(-1)?.[0]; expect(latest?.looping).toBe(true);
+    node.port.message({ type: "stream-armed", generation: latest?.generation }); await playing;
+    expect((context.createBufferSource.mock.results[0]?.value as ReturnType<typeof context.createBufferSource> | undefined)?.loop).toBe(true); controller.dispose();
+  });
+  it("finishes a finite pass before preparing Repeat and cancels a late automatic arm", async () => {
+    const { contexts, nodes } = graphHarness(true, false); const controller = createLivePlayback({ sampleRate: 8001, left: new Float32Array(129), right: new Float32Array(129) }, createDefaultAdvancedParams());
+    const playing = controller.play(); await vi.waitFor(() => { expect(nodes[0]?.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "arm" })); });
+    const node = nodes[0], context = contexts[0]; if (!node || !context) throw new Error("Missing graph");
+    const first = node.port.postMessage.mock.calls.find(([message]) => message.type === "arm")?.[0]; node.port.message({ type: "stream-armed", generation: first?.generation }); await playing;
+    controller.setRepeat(true); expect(context.createBufferSource).toHaveBeenCalledOnce();
+    const epoch = new Float64Array(node.options.processorOptions.stream, 8, 2); expect(epoch[1]).toBeLessThan(Infinity);
+    context.currentTime = (epoch[1] ?? 0) / context.sampleRate + .01;
+    node.port.message({ type: "meter", generation: first?.generation, time: context.currentTime, peakDbfs: -6, rmsDbfs: -12, crestDb: 6, correlation: 1 });
+    expect(controller.getState()).toMatchObject({ playing: false, loading: true });
+    const latest = node.port.postMessage.mock.calls.filter(([message]) => message.type === "arm").at(-1)?.[0]; expect(latest?.generation).not.toBe(first?.generation);
+    controller.setRepeat(false); node.port.message({ type: "stream-armed", generation: latest?.generation }); await Promise.resolve(); await Promise.resolve();
+    expect(context.createBufferSource).toHaveBeenCalledOnce(); expect(controller.getState()).toMatchObject({ playing: false, loading: false, repeat: false }); controller.dispose();
+  });
+  it("stops periodic playback at the next input cycle and can remove that deadline", async () => {
+    const { contexts, nodes } = graphHarness(); const controller = createLivePlayback({ sampleRate: 8001, left: new Float32Array(129), right: new Float32Array(129) }, createDefaultAdvancedParams());
+    controller.setRepeat(true); await controller.play(); const context = contexts[0], node = nodes[0]; if (!context || !node) throw new Error("Missing graph");
+    const epoch = new Float64Array(node.options.processorOptions.stream, 8, 2), start = epoch[0] ?? 0;
+    context.currentTime = (start + 1024) / context.sampleRate; controller.setRepeat(false);
+    const cycle = Math.floor(1024 * 8001 / (129 * 48000)) + 1;
+    expect(epoch[1]).toBe(start + Math.ceil(cycle * 129 * 48000 / 8001) + Math.ceil(48000 * .08 / 128) * 128);
+    expect((context.createBufferSource.mock.results[0]?.value as ReturnType<typeof context.createBufferSource> | undefined)?.loop).toBe(true);
+    controller.setRepeat(true); expect(epoch[1]).toBe(Infinity); controller.dispose();
+  });
+
+  it("rejects a Detach whose settings guard changes during context resume before publishing", async () => {
+    const { controller, context, node } = await attachedGraph(); let resume: (() => void) | undefined, current = true;
+    context.resume.mockImplementationOnce(() => new Promise<void>((resolve) => { resume = resolve; }));
+    const pending = controller.detachScript(createDefaultAdvancedParams(), new AbortController().signal, () => current);
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => { expect(resume).toBeTypeOf("function"); }); current = false; resume?.();
+    await rejected;
+    expect(node.port.postMessage.mock.calls.some(([message]) => message.type === "detach")).toBe(false);
+    expect(context.close).not.toHaveBeenCalled(); controller.dispose();
+  });
+  it("pauses an uncertain Detach ACK whose settings guard became stale", async () => {
+    const { controller, context, node } = await attachedGraph(); let current = true;
+    const pending = controller.detachScript(createDefaultAdvancedParams(), new AbortController().signal, () => current);
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => { expect(node.port.postMessage.mock.calls.some(([message]) => message.type === "detach")).toBe(true); });
+    const request = node.port.postMessage.mock.calls.find(([message]) => message.type === "detach")?.[0];
+    current = false; node.port.message({ type: "automation-ack", token: request?.token, revision: 0 });
+    await rejected; expect(controller.getState()).toMatchObject({ ready: false, playing: false }); expect(context.close).toHaveBeenCalledOnce(); controller.dispose();
+  });
   it("defers audio and network initialization until Play and starts in processed A", () => {
     const { contexts, fetchModule, worker } = graphHarness();
     const controller = createLivePlayback(source(), createDefaultAdvancedParams());
@@ -76,6 +165,48 @@ describe("per-track live audio lifecycle", () => {
     expect(fetchModule).not.toHaveBeenCalled();
     expect(worker).not.toHaveBeenCalled();
     controller.dispose();
+  });
+  it("waits for a delayed arm ACK before creating a native source and publishes a fresh shared quantum epoch", async () => {
+    const { contexts, nodes } = graphHarness(true, false);
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams()); controller.seek(0.1234567);
+    const playing = controller.play();
+    await vi.waitFor(() => { expect(nodes[0]?.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "arm" })); });
+    const context = contexts[0], node = nodes[0]; if (!context || !node) throw new Error("Missing graph");
+    expect(context.createBufferSource).not.toHaveBeenCalled();
+    context.currentTime = 4 * 128 / context.sampleRate;
+    const arm = node.port.postMessage.mock.calls.find(([message]) => message.type === "arm")?.[0];
+    node.port.message({ type: "stream-armed", generation: arm?.generation });
+    await playing;
+    const created = context.createBufferSource.mock.results[0]?.value as ReturnType<typeof context.createBufferSource> | undefined;
+    const start = created?.start.mock.calls[0] as unknown as [number, number];
+    expect(start[0]).toBeGreaterThan(context.currentTime);
+    expect(start[0] * context.sampleRate / 128).toBeCloseTo(Math.round(start[0] * context.sampleRate / 128), 9);
+    expect(start[1]).toBe(Math.floor(0.1234567 * 48000) / 48000);
+    const epoch = new Float64Array(node.options.processorOptions.stream, 8, 1);
+    expect(epoch[0]).toBe(Math.round(start[0] * context.sampleRate));
+    controller.dispose();
+  });
+  it("keeps the latest seek when a previous playing seek is still awaiting its arm ACK", async () => {
+    const { contexts, nodes } = graphHarness(true, false); const controller = createLivePlayback(source(), createDefaultAdvancedParams());
+    const playing = controller.play(); await vi.waitFor(() => { expect(nodes[0]?.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "arm" })); });
+    const context = contexts[0], node = nodes[0]; if (!context || !node) throw new Error("Missing graph");
+    const first = node.port.postMessage.mock.calls.find(([message]) => message.type === "arm")?.[0]; node.port.message({ type: "stream-armed", generation: first?.generation }); await playing;
+    controller.seek(.2); const second = node.port.postMessage.mock.calls.filter(([message]) => message.type === "arm").at(-1)?.[0];
+    controller.seek(.7); const latest = node.port.postMessage.mock.calls.filter(([message]) => message.type === "arm").at(-1)?.[0];
+    node.port.message({ type: "stream-armed", generation: second?.generation }); await Promise.resolve();
+    expect(context.createBufferSource).toHaveBeenCalledTimes(1);
+    node.port.message({ type: "stream-armed", generation: latest?.generation });
+    await vi.waitFor(() => { expect(controller.getState()).toMatchObject({ playing: true, position: .7 }); });
+    expect(context.createBufferSource).toHaveBeenCalledTimes(2); controller.dispose();
+  });
+  it("does not restart after Pause while the final context resume is pending", async () => {
+    const { contexts } = graphHarness(); const controller = createLivePlayback(source(), createDefaultAdvancedParams()); const playing = controller.play();
+    const context = contexts[0]; if (!context) throw new Error("Missing context");
+    let resume: (() => void) | undefined;
+    context.resume.mockResolvedValueOnce(undefined).mockImplementationOnce(() => new Promise<void>((resolve) => { resume = resolve; }));
+    await vi.waitFor(() => { expect(context.resume).toHaveBeenCalledTimes(3); });
+    controller.pause(); resume?.(); await playing;
+    expect(context.createBufferSource).not.toHaveBeenCalled(); expect(controller.getState()).toMatchObject({ playing: false, loading: false }); controller.dispose();
   });
   it("connects before readiness and disposes pending initialization without stale callbacks", async () => {
     const { contexts, nodes, worker } = graphHarness(false);

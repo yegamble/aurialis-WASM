@@ -8,7 +8,7 @@ Aurialis is an audio mastering workstation that runs on your computer and opens 
 
 [Get started](#run-the-studio) · [Your first master](docs/getting-started.md) · [Documentation](docs/README.md) · [Developer guide](docs/development.md)
 
-> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep includes measured source diagnostics and static presets; Reference offers measured proposals for review. Editable timeline automation, AI repair and validated instrument separation remain open work. See [current limits](#know-the-current-limits).
+> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. AI repair, validated instrument separation and certified hardware/true-peak behavior remain open work. The Deep integration is locally verified and awaiting exact final CI and merge. See [current limits](#know-the-current-limits).
 
 ## A small studio, one clear path
 
@@ -22,7 +22,7 @@ Your WAV  →  Choose a direction  →  Listen and refine  →  Download a WAV
 | Find a starting point | **Simple** genre, tone and intensity, Precise/Organic/Elevated styles, Depth/Presence, and an explicit **Set target loudness** action. |
 | Shape the details | **Advanced** five-band EQ, compression, saturation, stereo controls, sample-peak limiting, De-Harsh and multiband dynamics. EQ changes tonal balance; compression controls changes in level. |
 | Hear your decisions | **A Processed / B Original** listening, a measured live spectrum and waveform, and shared settings across Simple and Advanced. A/B does not automatically match loudness. |
-| Understand and compare | **Deep** measures the original audio's frequency balance and change points. **Reference** compares your current starting chain with another track's original audio and proposes bounded EQ and optional width changes. |
+| Understand and compare | **Deep** proposes bounded, editable changes over source-frame intervals; review them before Apply. **Reference** compares your current starting chain with another track's original audio and proposes bounded EQ and optional width changes. |
 | Make a handoff | **Export** as 16/24-bit PCM or 32-bit float WAV, preserving source sample rate and duration. Album rendering creates individual 24-bit WAV downloads. |
 
 The interface follows a warm paper-and-ink design, with a focused listening area and detailed controls when you need them. Aurialis-WASM builds on [Aurialis](https://github.com/yegamble/Aurialis); this repository contains the Go, Next.js and WebAssembly implementation.
@@ -57,9 +57,11 @@ The build embeds the interface, fonts, audio modules and worklets in one `aurial
 2. **Choose a direction.** Adjust genre, tone, style, modifiers and intensity. These update the shared settings while retaining explicit input gain and output targets. Elevated checks the rendered candidate before accepting it.
 3. **Listen.** Press Play and switch between **A Processed** and **B Original**. Volume controls listening level, not export gain. A louder result can sound more impressive, so judge tone and dynamics as well as loudness.
 4. **Set loudness when needed.** Choose a target and press **Set target loudness** to measure the current settings and adjust input gain. Selecting a target alone does not normalize the track.
-5. **Export.** Open Export, choose a bit depth, then press **Render & download WAV**. The default is 24-bit PCM. Export uses your current processing settings, including when you are listening to B Original.
+5. **Export.** Open Export, choose a bit depth, then press **Render & download WAV**. The default is 24-bit PCM. Export uses your current processing settings, including when you are listening to B Original. With Deep attached, it uses the acknowledged applied snapshot; draft or pending settings are excluded.
 
 See the [first-master guide](docs/getting-started.md) for control explanations, keyboard shortcuts, file formats and troubleshooting.
+
+For changes across the track, open **Deep**, choose an engineer profile and select **Analyze Deep proposal**. Analysis and edits leave playback unchanged. Review the neutral sections, select a move to edit its points, then select **Apply Deep proposal**. Mute/solo choices affect both live playback and export only after Apply. **Revert before first Apply** restores the saved starting settings; **Detach automation** retains the applied static baseline. [The Deep guide](docs/getting-started.md#review-and-apply-a-deep-proposal) explains drafts, recovery and the limits.
 
 ## Your audio and your computer
 
@@ -77,7 +79,7 @@ Projects and settings are saved in this browser's local storage, and reconstruct
 | Track size | At most **128 MiB + 44 bytes** and **16,777,216 decoded frames**. The frame cap is about **5 min 50 s at 48 kHz**, or **2 min 55 s at 96 kHz**; file size can limit you sooner. |
 | Processing | One expensive upload/render request at a time. A busy response asks you to retry. These are finite workstation limits. |
 | Albums | Individual 24-bit WAVs in a **128 MiB temporary output cache**. Download them before leaving the album page or changing settings/order; there is no persistent mastered-output store or ZIP export. |
-| Deep and Smart Split | Deep provides measured source diagnostics and static profiles. Change points do not identify verses or choruses. Editable automation, AI repair and validated instrument separation are unavailable in the product workflow. ScriptV2 API/schedule foundations and legacy experimental jobs use deterministic algorithms, not trained models. |
+| Deep and Smart Split | Deep provides measured source diagnostics, editable automation and separate legacy static profiles. Change points do not identify verses or choruses; AI repair and validated instrument separation remain unavailable. ScriptV2 keeps sonic algorithm 1, generic Optical compression and sample-peak limiting; it uses deterministic heuristics, not a trained mastering model. |
 | Reference and release checks | Reference analyzes original reference audio against your source through its starting settings, with explicit proposal review and Apply/Revert. Saved reference knob positions are ignored; broad-band similarity does not establish perceptual matching. Both audio files share one **129 MiB** request ceiling. Release checks measure working targets without certifying platform delivery. |
 | Audio guarantees | Hardware emulation and certified true-peak limiting remain open work. Live playback may be resampled to the audio device's rate; live and exported samples are not promised to be identical across rates. |
 
@@ -87,7 +89,9 @@ The [architecture](docs/architecture.md), [API contract](docs/api.md) and [task 
 
 **One executable, two places to process audio.** A Go server serves the embedded Next.js 16 / React 19 interface and HTTP API. During listening, shared Go DSP code runs as a WebAssembly reactor inside the browser's AudioWorklet. Export renders through the native Go implementation. Simple and Advanced edit the same canonical settings.
 
-See [architecture](docs/architecture.md) for the audio paths, shared-memory controls, resource bounds and security model, or [API reference](docs/api.md) to render audio from a script. The [ScriptV2 foundation](docs/api.md#scriptv2-foundation) adds source-bound proposals and compiled schedules; the production Deep screen does not yet attach or edit those schedules.
+See [architecture](docs/architecture.md) for the audio paths, shared-memory controls, resource bounds and security model, or [API reference](docs/api.md) to render audio from a script. The [ScriptV2 contract](docs/api.md#scriptv2-foundation) binds editable proposals and acknowledged live/export schedules to verified source audio. Draft edits wait for explicit Apply.
+
+Simple merged in [PR #11](https://github.com/yegamble/aurialis-WASM/pull/11) after its exact CI checks passed. The combined Deep branch passed 382 unit tests and the corrected complete 102-case browser suite locally; the first 101/102 result and its stale-message correction remain in [the task record](docs/tasks.md#full-combined-verification-and-main-rebase). Final Deep CI and merge remain pending. These counts do not certify the whole product or hosted deployment.
 
 ## Help improve Aurialis
 

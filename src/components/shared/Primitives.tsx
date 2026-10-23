@@ -12,6 +12,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import { computeEqMagnitudeDb, createDefaultAdvancedParams } from "@/lib/audio-dsp";
 import type { EQBandId, EQBandParams, Track } from "@/lib/types";
 import type { LiveSpectrum } from "@/lib/live-playback";
@@ -272,9 +273,9 @@ function DialogFrame({
 }: DialogProps & { sheet?: boolean }) {
   const titleId = useId();
   const panelRef = useDialogFocus(open, onClose);
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-60 grid items-end justify-items-center bg-ink/45 backdrop-blur-sm md:place-items-center md:p-4"
       role="presentation"
@@ -307,7 +308,8 @@ function DialogFrame({
         <div>{children}</div>
         {actions !== undefined && <div className="mt-6 flex flex-wrap justify-end gap-2.5">{actions}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

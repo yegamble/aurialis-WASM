@@ -1,6 +1,6 @@
 # Whole-product completion review — October 22, 2026
 
-Status: **bounded wave locally verified; open — awaiting merge. Product incomplete**. Reviewed baseline: `f5ec9ad`, clean `main`. The owner requested all planned features and a comparison with professional Waves workflows. This record distinguishes implemented behavior, required work and executed evidence.
+Status: **bounded wave verified and merged in PR #6; product incomplete**. Reviewed baseline: `f5ec9ad`, clean `main`. The owner requested all planned features and a comparison with professional Waves workflows. This record distinguishes implemented behavior, required work and executed evidence.
 
 ## Evidence and scope
 
@@ -73,6 +73,12 @@ Runtime source: `fd782c9`, with subsequent test/comment/documentation commits. T
 Independent QA/Devil’s Advocate accepted the corrected measured-feature mathematics, source identity, bounded retention/cancellation and supported controls at their scoped checkpoints. Technical Writer/Product Engineer identified documentation corrections now applied. Final local browser acceptance passed. Technical Writer accepted contract accuracy and Product Engineer accepted the atomic commit structure; the final synchronized evidence received their review. Remote checks must pass before owner merge and are tracked in the pull request. Status remains open — awaiting merge. Four loop iterations cover review/implementation, UI/calibration correction, integrated adversarial tests and Hann/observer correction; no all-product completion is claimed.
 
 Remote checkpoint: [PR run 39836685651](https://github.com/yegamble/aurialis-WASM/actions/runs/39836685651) passed every verification job except the browser job, which finished 60/61. Its measured-analysis case passed all diagnostics and six-width accessibility assertions, then failed writing a screenshot to macOS-only `/private/tmp` on Linux. The test now uses Playwright’s per-test output directory; no application code, assertion or threshold changed. Strict typing/spelling and the corrected two-case browser run passed (2/2 in 6.1 seconds). Corrected remote acceptance remains pending in PR checks; the earlier local 61/61 checkpoint is retained separately.
+
+## Merge and delegated continuation — October 23, 2026
+
+Corrected [CI run 39838476152](https://github.com/yegamble/aurialis-WASM/actions/runs/39838476152) passed all jobs at exact head `8fd8877268308ba079416142e8ebf1ba109bbf9a`: 61 Linux browser cases in 5.0 minutes, 22 Newman requests/27 assertions plus raw probes, and the Go/WASM, frontend, hygiene and aggregate gates. PR #6 merged to main as `388653635a4911b66786c672b2551cde235f7b4a`; its feature branch was deleted locally and remotely. Earlier pending statuses in this chronological record describe their checkpoints.
+
+The owner authorized continuing the whole-product loop with delegated merges until all planned features and remaining Waves acceptance work pass. That instruction supersedes the default four-iteration stop and owner merge gate. It does not waive verification or establish whole-product completion.
 
 ## Sources and limits
 

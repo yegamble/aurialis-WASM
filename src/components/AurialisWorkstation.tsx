@@ -1,15 +1,13 @@
 "use client";
 
-import Link from "next/link";
+import { WorkspaceLink as Link } from "./shared/WorkspaceLink";
 import {
   engineParams,
-  importAudio,
   measureAudio,
   trackMetrics,
   normalizeSimpleAudio,
   processPreview,
   previewWAV,
-  readCanonicalWAV,
   serverRender,
   sourcePeaks,
   type StereoPCM,
@@ -22,7 +20,8 @@ import { DSPModule } from "./shared/DSPModule";
 import { EQBandControls, LimiterReleaseControl } from "./shared/EQBandControls";
 import { RealTransport } from "./shared/RealTransport";
 import { createLivePlayback, type LiveMeter, type LivePlaybackController, type LivePlaybackState, type LiveSpectrum } from "@/lib/live-playback";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { navigateWorkspace, useWorkspacePath, workspaceRoute, type WorkstationRoute } from "@/lib/workspace-navigation";
 import {
   useEffect,
   useMemo,
@@ -35,7 +34,7 @@ import {
   clampAdvancedToSampleRate,
   mapProfileToDSP,
 } from "@/lib/audio-dsp";
-import { deleteAudio, saveAudio, getAudio } from "@/lib/db";
+import { saveAudio, getAudio, discardStagedAudio } from "@/lib/db";
 import { profiles, useStore } from "@/lib/store";
 import type {
   Album,
@@ -62,21 +61,14 @@ import {
   Waveform,
   formatTime,
   StatusBadge,
-  statusLabel,
 } from "./shared/Primitives";
 
+import { readStoredSource, prepareProjectFile, importedTrack } from "@/lib/project-import";
+import { LibraryView } from "./shared/LibraryView";
+import { SourceRelink } from "./shared/LibraryTools";
+import { useTransportScrub } from "@/lib/use-transport-scrub";
+import { audioKey } from "@/lib/library";
 import { FeatureAnalysisPanel } from "./shared/FeatureAnalysisPanel";
-
-type WorkstationRoute =
-  | "home"
-  | "library"
-  | "master"
-  | "split"
-  | "albums"
-  | "album"
-  | "reference"
-  | "release-check"
-  | "tools";
 
 const stemNames = new Map<number, string[]>([
   [2, ["Vocals", "Instrumental"]],
@@ -87,28 +79,8 @@ const stemNames = new Map<number, string[]>([
 ]);
 
 const DEFAULT_REFERENCE_AMOUNT = 62;
-const MAX_SOURCE_FRAMES = 16 * 1024 * 1024;
-const MAX_SOURCE_BYTES = MAX_SOURCE_FRAMES * 8 + 44;
 
-// Capacity preflight only. The Go server remains the authoritative container validator.
-async function wavCapacity(file: File): Promise<{ frames: number; sampleRate: number } | null> {
-  const view = new DataView(await file.slice(0, 65536).arrayBuffer());
-  const id = (offset: number) => String.fromCharCode(...Array.from({ length: 4 }, (_, index) => view.getUint8(offset + index)));
-  if (view.byteLength < 12 || id(0) !== "RIFF" || id(8) !== "WAVE") return null;
-  let blockAlign = 0;
-  let sampleRate = 0;
-  for (let offset = 12; offset + 8 <= view.byteLength;) {
-    const length = view.getUint32(offset + 4, true);
-    if (id(offset) === "data") return blockAlign > 0 && sampleRate > 0 ? { frames: Math.floor(length / blockAlign), sampleRate } : null;
-    if (offset + 8 + length > view.byteLength) return null;
-    if (id(offset) === "fmt " && length >= 16) {
-      sampleRate = view.getUint32(offset + 12, true);
-      blockAlign = view.getUint16(offset + 20, true);
-    }
-    offset += 8 + length + length % 2;
-  }
-  return null;
-}
+
 
 function resolveDynamicId(
   propId: string | undefined,
@@ -129,7 +101,7 @@ function resolveDynamicId(
 }
 
 export function AurialisWorkstation({
-  route,
+  route: initialRoute,
   paramId,
 }: {
   route: WorkstationRoute;
@@ -139,11 +111,19 @@ export function AurialisWorkstation({
   const { state } = useStore();
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [livePath, setLivePath] = useState<string | null>(pathname);
-
+  const livePath = useWorkspacePath(pathname);
+  const route = livePath ? workspaceRoute(livePath) ?? initialRoute : initialRoute;
+  const main = useRef<HTMLElement>(null);
+  const previousPath = useRef<string | null>(null);
   useEffect(() => {
-    setLivePath(window.location.pathname);
-  }, [pathname]);
+    const heading = main.current?.querySelector("h1");
+    document.title = `${heading?.textContent ?? "Mastering, made human"} — Aurialis`;
+    if (previousPath.current !== null && previousPath.current !== livePath) {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+    }
+    previousPath.current = livePath;
+  }, [livePath, state.tracks.length]);
 
   const inWorkspace = route === "master";
   const defaultTrackId = state.tracks[0]?.id ?? "placeholder";
@@ -251,6 +231,7 @@ export function AurialisWorkstation({
       </header>
 
       <main
+        ref={main}
         className={
           inWorkspace ? "main-content main-content--workspace" : "main-content"
         }
@@ -352,7 +333,6 @@ export function AurialisWorkstation({
 
 function HomeView() {
   const { state, dispatch } = useStore();
-  const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("");
@@ -360,111 +340,49 @@ function HomeView() {
   const importAbort = useRef<AbortController | null>(null);
   useEffect(() => () => { importAbort.current?.abort(); }, []);
 
-  const importFile = async (file?: File) => {
-    if (!file) return;
+  const importFiles = async (files: readonly File[]) => {
+    if (!files.length) return;
     importAbort.current?.abort();
     const controller = new AbortController();
     importAbort.current = controller;
     const active = () => !controller.signal.aborted && importAbort.current === controller;
-    if (
-      !/\.wav$/i.test(file.name) ||
-      file.size === 0 ||
-      file.size > MAX_SOURCE_BYTES
-    ) {
-      setMessage(
-        "Choose a nonempty PCM WAV file up to 128 MiB. Other codecs are not supported.",
-      );
-      setLoading(false);
-      return;
-    }
     setLoading(true);
-    setMessage(
-      "Validating and reconstructing your WAV on the local Go server…",
-    );
-    const id = `track-${crypto.randomUUID()}`;
-    const title = file.name.replace(/\.[^.]+$/, "").replace(/[-_]/g, " ");
-    let canonical: Blob;
-    let pcm: StereoPCM;
-    let measurement: Awaited<ReturnType<typeof measureAudio>>;
-    let storageWarning = "";
-    try {
-      const capacity = await wavCapacity(file);
-      if (!active()) return;
-      if (capacity && capacity.frames > MAX_SOURCE_FRAMES) throw new Error(`This WAV exceeds the ${formatTime(MAX_SOURCE_FRAMES / capacity.sampleRate)} duration limit at ${String(capacity.sampleRate / 1000)} kHz. Use a shorter track or a lower source sample rate.`);
-      const imported = await importAudio(file, controller.signal);
-      canonical = imported.canonical;
-      measurement = imported.measurement;
-      if (!active()) return;
-      setMessage("Preparing your waveform…");
-      pcm = await readCanonicalWAV(canonical);
-      if (!active()) return;
-      if (pcm.sampleRate !== measurement.sampleRate || pcm.left.length !== measurement.frames)
-        throw new Error("The reconstructed source does not match its measurements. Try importing the file again.");
-    } catch (error) {
-      if (!active()) return;
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : "This file could not be imported.",
-      );
-      setLoading(false);
-      return;
+    const added: Track[] = [];
+    const skipped: string[] = [];
+    for (const [index, file] of files.entries()) {
+      if (!active()) break;
+      try {
+        const imported = await prepareProjectFile(file, controller.signal, (stage) => { if (active()) setMessage(`${String(index + 1)} of ${String(files.length)} · ${file.name}: ${stage}`); });
+        if (!active()) break;
+        const track = importedTrack(file, imported);
+        setMessage(`Saving ${file.name} in this browser…`);
+        const saved = await saveAudio(track.id, imported.canonical);
+        if (!active()) { await discardStagedAudio(track.id, saved.durable); break; }
+        track.persistenceWarning = saved.durable ? "" : saved.warning;
+        dispatch({ type: "ADD_TRACK", track });
+        added.push(track);
+      } catch (cause) {
+        if (!active()) break;
+        skipped.push(`${file.name}: ${cause instanceof Error ? cause.message : "Import failed."}`);
+      }
     }
     if (!active()) return;
-    setMessage("Saving your track in this browser…");
-    try {
-      await saveAudio(id, canonical);
-    } catch {
-      storageWarning =
-        "Browser storage is unavailable; keep this tab open and export before leaving.";
-    }
-    if (!active()) {
-      await deleteAudio(id);
-      return;
-    }
-    const duration = pcm.left.length / pcm.sampleRate;
-
-    const seed =
-      Array.from(file.name).reduce((sum, char) => sum + char.charCodeAt(0), 0) %
-      97;
-    const nowIso = new Date().toISOString();
-    const track: Track = {
-      id,
-      title,
-      filename: file.name,
-      duration,
-      size: file.size,
-      format: file.name.split(".").pop()?.toUpperCase() ?? "WAV",
-      sampleRate: pcm.sampleRate,
-      status: "ready",
-      createdAt: nowIso,
-      updatedAt: nowIso,
-      seed,
-      source: "upload",
-      mode: "advanced",
-      genre: "Pop",
-      tone: "Warm",
-      intensity: 50,
-      target: "Streaming",
-      metrics: trackMetrics(measurement.afterMetrics),
-      measurements: measurement.afterMetrics,
-      measurementKind: "source",
-      advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), pcm.sampleRate),
-      profile: "modern_pop_polish",
-      persistenceWarning: storageWarning,
-    };
-    dispatch({ type: "ADD_TRACK", track });
     setLoading(false);
-    setMessage(storageWarning);
-    router.push(`/master/${id}`);
+    const notice = `${String(added.length)} imported. ${skipped.length ? `Skipped ${skipped.join("; ")}` : "All selected files are ready."}`;
+    setMessage(notice);
+    const first = added[0];
+    if (first) {
+      if (files.length > 1) dispatch({ type: "UPDATE_TRACK", id: first.id, patch: { importNotice: notice } });
+      navigateWorkspace(`/master/${first.id}`);
+    }
   };
 
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
-      const file = Array.from(event.clipboardData?.files ?? []).find((item) =>
-        item.type.startsWith("audio/"),
-      );
-      if (file) void importFile(file);
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, [contenteditable]"))) return;
+      const files = Array.from(event.clipboardData?.files ?? []).filter((item) => item.type.startsWith("audio/") || /\.wav$/iu.test(item.name));
+      if (files.length) { event.preventDefault(); void importFiles(files); }
     };
     document.addEventListener("paste", onPaste);
     return () => {
@@ -505,7 +423,7 @@ function HomeView() {
           onDrop={(event: DragEvent) => {
             event.preventDefault();
             setDragging(false);
-            void importFile(event.dataTransfer.files[0]);
+            void importFiles(Array.from(event.dataTransfer.files));
           }}
           role="region"
           aria-label="Bring in a track: drop audio or choose a file"
@@ -514,13 +432,14 @@ function HomeView() {
           <input
             ref={inputRef}
             type="file"
+            multiple
             accept="audio/wav,.wav"
             hidden
             aria-label="Upload audio file"
             onChange={(event) => {
-              const file = event.currentTarget.files?.[0];
+              const files = Array.from(event.currentTarget.files ?? []);
               event.currentTarget.value = "";
-              void importFile(file);
+              void importFiles(files);
             }}
           />
           <div className="drop-icon">
@@ -639,193 +558,14 @@ function TrackCard({ track, index = 0 }: { track: Track; index?: number }) {
   );
 }
 
-function LibraryView() {
-  const { state, dispatch } = useStore();
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("All");
-  const [pendingDelete, setPendingDelete] = useState<Track | null>(null);
-
-  const tracks = state.tracks.filter(
-    (track) =>
-      track.title.toLowerCase().includes(query.toLowerCase()) &&
-      (filter === "All" || statusLabel(track.status) === filter.toLowerCase()),
-  );
-
-  return (
-    <div className="page">
-      <PageTitle
-        eyebrow="Your local archive"
-        title="Library"
-        copy={`${String(state.tracks.length)} projects stored only in this browser.`}
-        action={
-          <Link className={buttonClassName("primary")} href="/">
-            <Icon name="plus" />
-            New project
-          </Link>
-        }
-      />
-      <div className="library-tools">
-        <label className="search-field">
-          <Icon name="search" />
-          <input
-            value={query}
-            aria-label="Search your library"
-            onChange={(e) => {
-              setQuery(e.target.value);
-            }}
-            placeholder="Search your library"
-          />
-        </label>
-        <div
-          className="filter-row"
-          role="group"
-          aria-label="Filter projects by status"
-        >
-          {["All", "Draft", "Ready", "Mastered", "Needs review"].map((item) => (
-            <button
-              type="button"
-              className={filter === item ? "chip is-active" : "chip"}
-              aria-pressed={filter === item}
-              onClick={() => {
-                setFilter(item);
-              }}
-              key={item}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
-      </div>
-      <div className="library-list">
-        <div className="library-list-head">
-          <span>Project</span>
-          <span>Format</span>
-          <span>Saved LUFS</span>
-          <span>Modified</span>
-          <span />
-        </div>
-        {tracks.map((track, index) => (
-          <div className="library-item" key={track.id}>
-            <Link className="library-project" href={`/master/${track.id}`}>
-              <Artwork seed={track.seed} index={index} />
-              <span>
-                <strong>{track.title}</strong>
-                <small>
-                  {formatTime(track.duration)} ·{" "}
-                  <StatusBadge status={track.status} />
-                </small>
-              </span>
-            </Link>
-            <span>
-              {track.format}
-              <small>{track.sampleRate / 1000} kHz</small>
-            </span>
-            <span className="metric-number">
-              {track.measurements ? track.metrics.lufs.toFixed(1) : "Unmeasured"}
-              <small>{track.measurementKind === "source" ? "Source LUFS" : track.measurementKind === "album-render" ? "Album render LUFS" : "Saved LUFS"}</small>
-            </span>
-            <span>
-              {new Date(track.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}<small>Local</small>
-            </span>
-            <button
-              type="button"
-              className="icon-button"
-              aria-label={`Delete ${track.title}`}
-              onClick={() => {
-                setPendingDelete(track);
-              }}
-            >
-              <Icon name="trash" />
-            </button>
-          </div>
-        ))}
-      </div>
-      <div className="storage-note">
-        <div>
-          <Icon name="disc" />
-          <span>
-            <strong>Browser storage</strong>
-            <small>Audio and settings stay on this device.</small>
-          </span>
-        </div>
-        <span className="disclosure">
-          Stored only in this browser. Browser data can be cleared by your
-          device.
-        </span>
-      </div>
-
-      <Modal
-        open={pendingDelete !== null}
-        eyebrow="Confirm removal"
-        title={
-          pendingDelete ? `Delete “${pendingDelete.title}”?` : "Delete track"
-        }
-        onClose={() => {
-          setPendingDelete(null);
-        }}
-        actions={
-          <>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setPendingDelete(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="danger"
-              icon={<Icon name="trash" />}
-              onClick={() => {
-                if (pendingDelete) {
-                  const id = pendingDelete.id;
-                  dispatch({ type: "DELETE_TRACK", id });
-                  void deleteAudio(id);
-                  setPendingDelete(null);
-                }
-              }}
-            >
-              Delete project
-            </Button>
-          </>
-        }
-      >
-        <p style={{ color: "var(--ink-soft)", margin: 0 }}>
-          This removes the project and its locally stored audio from this
-          browser.
-        </p>
-      </Modal>
-    </div>
-  );
-}
 
 function masteringSettingsKey(settings: AdvancedParams) {
   return JSON.stringify({ ...engineParams(settings), requestedTargetLufs: settings.limiter.targetLufs });
 }
 
-async function readStoredSource(blob: Blob, signal: AbortSignal): Promise<{ blob: Blob; pcm: StereoPCM }> {
-  signal.throwIfAborted();
-  const header = new DataView(await blob.slice(0, 44).arrayBuffer());
-  const id = (offset: number) => String.fromCharCode(...Array.from({ length: 4 }, (_, index) => header.getUint8(offset + index)));
-  const canonical = header.byteLength === 44 && blob.size >= 52 && blob.size <= 44 + MAX_SOURCE_FRAMES * 8 &&
-    id(0) === "RIFF" && header.getUint32(4, true) + 8 === blob.size && id(8) === "WAVE" &&
-    id(12) === "fmt " && header.getUint32(16, true) === 16 && header.getUint16(20, true) === 3 &&
-    header.getUint16(22, true) === 2 && header.getUint32(24, true) >= 8000 && header.getUint32(24, true) <= 192000 &&
-    header.getUint32(28, true) === header.getUint32(24, true) * 8 && header.getUint16(32, true) === 8 &&
-    header.getUint16(34, true) === 32 && id(36) === "data" && header.getUint32(40, true) === blob.size - 44 && (blob.size - 44) % 8 === 0;
-  // Imported sources already passed Go reconstruction. Other stored WAV layouts still go through it.
-  const clean = canonical ? blob : await serverRender(blob, { bypass: true }, 32, signal);
-  const pcm = await readCanonicalWAV(clean);
-  for (let index = 0; index < pcm.left.length; index++) {
-    if (!Number.isFinite(pcm.left.at(index)) || !Number.isFinite(pcm.right.at(index))) throw new Error("The stored audio contains invalid samples. Import the source again.");
-  }
-  signal.throwIfAborted();
-  return { blob: clean, pcm };
-}
 
 function MasterView({ trackId }: { trackId: string }) {
   const { state, dispatch } = useStore();
-  const router = useRouter();
   const track = state.tracks.find((item) => item.id === trackId);
   // Match the unfiltered Library order; editing a project does not reorder this queue.
   const queueIndex = state.tracks.findIndex((item) => item.id === trackId);
@@ -839,7 +579,7 @@ function MasterView({ trackId }: { trackId: string }) {
   const [renderedKey, setRenderedKey] = useState("");
   const live = useRef<LivePlaybackController | null>(null);
   const playbackControls = useRef<ReturnType<typeof bindPlaybackControls> | null>(null);
-  const scrub = useRef<{ controller: LivePlaybackController; direction: -1 | 1; startedAt: number; lastAt: number; position: number; wasPlaying: boolean; frame: number } | null>(null);
+  const { session: scrub, stopScrub, onScrub } = useTransportScrub(live, { available: () => !handoverActive.current, resume: () => { void play(); }, advance: (next) => { playbackControls.current?.update(next, true); } });
   const [playback, setPlayback] = useState<LivePlaybackState | null>(null);
   const [meter, setMeter] = useState<LiveMeter | null>(null);
   const [spectrum, setSpectrum] = useState<LiveSpectrum | null>(null);
@@ -851,6 +591,7 @@ function MasterView({ trackId }: { trackId: string }) {
   const playheadRatio = playback?.duration ? playback.position / playback.duration : 0;
   const [activeBandId, setActiveBandId] = useState<EQBandId>("low");
   const [exportOpen, setExportOpen] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
   const [bitDepth, setBitDepth] = useState<ExportBitDepth>(24);
   const [message, setMessage] = useState("");
   const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
@@ -943,38 +684,7 @@ function MasterView({ trackId }: { trackId: string }) {
     playbackControls.current?.update(controller.getState(), true);
   }
   function seek(ratio: number) { seekSeconds(Math.max(0, Math.min(1, ratio)) * (source ? source.left.length / source.sampleRate : 0)); }
-  function stopScrub(resume: boolean) {
-    const session = scrub.current;
-    if (!session) return;
-    cancelAnimationFrame(session.frame);
-    scrub.current = null;
-    const state = session.controller.getState();
-    if (resume && session.wasPlaying && live.current === session.controller && (state.position < state.duration || state.repeat)) void play();
-  }
-  function onScrub(direction: -1 | 1, phase: "start" | "end" | "cancel") {
-    if (phase !== "start") { stopScrub(true); return; }
-    const controller = live.current;
-    if (!controller || handoverActive.current || controller.getState().loading) return;
-    stopScrub(false);
-    const state = controller.getState();
-    controller.pause();
-    const now = performance.now();
-    const session = { controller, direction, startedAt: now, lastAt: now, position: controller.getState().position, wasPlaying: state.playing, frame: 0 };
-    scrub.current = session;
-    function advance(time: number) {
-      if (scrub.current !== session || live.current !== controller) return;
-      if (time - session.lastAt >= 50) {
-        const elapsed = (time - session.startedAt) / 1000;
-        const speed = elapsed >= 3 ? 8 : elapsed >= 1 ? 4 : 2;
-        session.position = Math.max(0, Math.min(state.duration, session.position + direction * speed * Math.min(0.25, (time - session.lastAt) / 1000)));
-        session.lastAt = time;
-        session.controller.seek(session.position);
-        playbackControls.current?.update(session.controller.getState(), true);
-      }
-      session.frame = requestAnimationFrame(advance);
-    }
-    session.frame = requestAnimationFrame(advance);
-  }
+
   function forward() {
     const controller = live.current;
     if (!controller || handover) return;
@@ -986,7 +696,7 @@ function MasterView({ trackId }: { trackId: string }) {
     handoverActive.current = true;
     setHandover(true);
     controller.pause();
-    try { router.push(`/master/${encodeURIComponent(nextTrack.id)}`); }
+    try { navigateWorkspace(`/master/${encodeURIComponent(nextTrack.id)}`); }
     catch (error) {
       clearNextPlaybackHandoff();
       handoverActive.current = false;
@@ -1012,10 +722,10 @@ function MasterView({ trackId }: { trackId: string }) {
     async function prepare() {
       if (!track) return;
       try {
-        const blob = await getAudio(track.id);
+        const blob = await getAudio(audioKey(track));
         if (!blob)
           throw new Error(
-            "The source audio is missing. Import the file again to create a new project.",
+            "The source audio is missing. Restore its file to keep this project and its settings.",
           );
         if (controller.signal.aborted) return;
         const stored = await readStoredSource(blob, controller.signal);
@@ -1041,7 +751,7 @@ function MasterView({ trackId }: { trackId: string }) {
       cancelled = true;
       controller.abort();
     };
-  }, [track?.id, sourceAttempt]);
+  }, [track?.id, track?.sourceRevision, sourceAttempt]);
 
   async function renderPreview(params: AdvancedParams = track?.advanced ?? createDefaultAdvancedParams(), pending?: AbortController) {
     if (!track || !source) return;
@@ -1163,7 +873,7 @@ function MasterView({ trackId }: { trackId: string }) {
           type="button"
           className="icon-button"
           onClick={() => {
-            router.push("/library");
+            navigateWorkspace("/library");
           }}
           aria-label="Back to library"
         >
@@ -1261,7 +971,7 @@ function MasterView({ trackId }: { trackId: string }) {
           <LiveSpectrumChart frame={spectrum} playing={playback?.playing ?? false} />
           {sourceError && <div className="flex flex-wrap items-center gap-3" role="alert">
             <p className="disclosure">{sourceError}</p>
-            <Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry source</Button>
+            <Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry source</Button><Button variant="secondary" onClick={() => { setRestoreOpen(true); }}>Restore source</Button>
           </div>}
           {liveError && <div className="flex flex-wrap items-center gap-3" role="alert"><p className="disclosure">{liveError}</p><Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry playback</Button></div>}
           <div className="render-actions">
@@ -1288,6 +998,7 @@ function MasterView({ trackId }: { trackId: string }) {
           <p className="disclosure" role="status">
             {sourceLoading ? "Loading stored audio…" : message}
           </p>
+          {track.importNotice && <p className="disclosure" role="status">{track.importNotice}</p>}
           {track.persistenceWarning && (
             <p className="disclosure" role="alert">
               {track.persistenceWarning}
@@ -1379,6 +1090,7 @@ function MasterView({ trackId }: { trackId: string }) {
           {message}
         </p>
       </Modal>
+      <SourceRelink track={track} open={restoreOpen} onClose={() => { setRestoreOpen(false); }} />
     </div>
   );
 }
@@ -1878,7 +1590,7 @@ function DeepControls({ track, processing, sourceReady, onApply }: {
         }}>
         {processing ? "Rendering profile…" : "Apply profile"}
       </Button>
-      <FeatureAnalysisPanel trackId={track.id} sourceReady={sourceReady} />
+      <FeatureAnalysisPanel trackId={track.id} audioId={audioKey(track)} sourceReady={sourceReady} />
     </div>
   );
 }
@@ -1992,7 +1704,7 @@ function AlbumView({ albumId }: { albumId: string }) {
   const albumTracks = (album?.trackIds ?? [])
     .map((id) => state.tracks.find((track) => track.id === id))
     .filter((track): track is Track => track !== undefined);
-  const artifactKey = JSON.stringify(albumTracks.map((track) => [track.id, engineParams(track.advanced)]));
+  const artifactKey = JSON.stringify(albumTracks.map((track) => [track.id, track.sourceRevision, engineParams(track.advanced)]));
   useEffect(() => {
     setRendered((previous) => previous && previous.key !== artifactKey ? null : previous);
   }, [artifactKey]);
@@ -2071,7 +1783,7 @@ function AlbumView({ albumId }: { albumId: string }) {
               const files: { id: string; title: string; blob: Blob }[] = [];
               let totalBytes = 0;
               for (const track of albumTracks) {
-                const file = await getAudio(track.id);
+                const file = await getAudio(audioKey(track));
                 if (!file) throw new Error(`The source for “${track.title}” is missing. Import it again.`);
                 const advanced = await normalizeSimpleAudio(file, track.advanced, -14, controller.signal);
                 const measurement = await measureAudio(file, engineParams(advanced), controller.signal);
@@ -2092,7 +1804,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                 } });
               }
               dispatch({ type: "UPDATE_ALBUM", id: album.id, patch: { mastered: true } });
-              setRendered({ key: JSON.stringify(prepared.map((item) => [item.track.id, engineParams(item.advanced)])), files });
+              setRendered({ key: JSON.stringify(prepared.map((item) => [item.track.id, item.track.sourceRevision, engineParams(item.advanced)])), files });
               setMessage("Rendered 24-bit WAV masters are ready below. Original source files are preserved. Downloads remain available until settings change or you leave this page.");
             } catch (error) {
               if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "The sequence could not be prepared.");
@@ -2261,7 +1973,6 @@ function AlbumView({ albumId }: { albumId: string }) {
 
 function ReferenceView({ trackId }: { trackId: string }) {
   const { state, dispatch } = useStore();
-  const router = useRouter();
   const track =
     state.tracks.find((item) => item.id === trackId);
   const [referenceId, setReferenceId] = useState(
@@ -2285,7 +1996,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
             variant="secondary"
             icon={<Icon name="arrow-left" />}
             onClick={() => {
-              router.push(`/master/${track.id}`);
+              navigateWorkspace(`/master/${track.id}`);
             }}
           >
             Back to master
@@ -2410,7 +2121,7 @@ function ReferenceView({ trackId }: { trackId: string }) {
                   patch: { tone: "Reference-led", intensity: amount },
                 });
               }
-              router.push(`/master/${track.id}`);
+              navigateWorkspace(`/master/${track.id}`);
             }}
           >
             Apply EQ settings
@@ -2452,7 +2163,7 @@ function ReleaseView({ trackId }: { trackId: string }) {
   const pending = useRef<AbortController | null>(null);
   useEffect(() => () => { pending.current?.abort(); }, []);
   if (!track) return <div className="page"><PageTitle eyebrow="Release check" title="Choose your audio first" copy="Import a track to measure its rendered audio." /><Link className={buttonClassName("primary")} href="/">Import audio</Link></div>;
-  const key = JSON.stringify([track.id, engineParams(track.advanced)]);
+  const key = JSON.stringify([track.id, track.sourceRevision, engineParams(track.advanced)]);
   const metrics = scan?.key === key ? scan.metrics : null;
   const targetLufs = platform === "Dynamic" || platform === "Spoken word" ? -16 : -14;
   const maxPeak = -1;
@@ -2471,7 +2182,7 @@ function ReleaseView({ trackId }: { trackId: string }) {
     pending.current = controller;
     setScanning(true); setError("");
     try {
-      const file = await getAudio(track.id);
+      const file = await getAudio(audioKey(track));
       if (!file) throw new Error("The source audio is missing. Import the track again.");
       const result = await measureAudio(file, engineParams(track.advanced), controller.signal);
       if (!controller.signal.aborted) setScan({ key, metrics: result.afterMetrics });

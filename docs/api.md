@@ -1,5 +1,7 @@
 # Aurialis-WASM API reference
 <!-- cspell:words Hann steganography -->
+Library relink consumes the existing canonical import source identity; it adds no HTTP endpoint. Exact PCM identity is independent of filenames and does not acknowledge durable browser metadata storage. Source replacement uses a fresh local asset key and retained recovery audio as described in [architecture](architecture.md#library-source-lifecycle).
+
 
 Current routes are implemented by `internal/server`; exact DSP structs are in `internal/audio/dsp/engine.go` and the experimental script schema is in `internal/mastering/mastering.go`. No API presence alone establishes a verified product workflow. See [tasks](tasks.md) for evidence and open requirements.
 
@@ -67,7 +69,7 @@ Supplied `bands` arrays require exactly five complete EQ objects; supplied `mult
 
 WAV output uses `Content-Type: audio/wav`, `Content-Disposition: attachment; filename="aurialis-mastered.wav"` and compatibility headers `X-Aurialis-Before-LUFS`, `X-Aurialis-After-LUFS`, `X-Aurialis-After-Peak-dBTP`. Rendering preserves the uploaded sample rate and frame count. Metric fields are `integratedLufs`, `shortTermLufs`, `truePeakDbtp`, `samplePeakDbfs`, `dynamicRangeDb`, `correlation`, `lowBassCorrelation`, `dcLeftDbfs`, `dcRightDbfs`, `clippingSamples`, `gainReductionDb`; see the measurement limitations below.
 
-For an audio response with `params.bypass=true` and `bitDepth=32`, the server additionally sends `X-Aurialis-Source-Metrics`: at most 4096 bytes of JSON containing `sampleRate`, `frames`, `duration`, `beforeMetrics` and `afterMetrics`. Both metric objects describe the reconstructed source and use the schema above. The server measures this bypass source once and reuses its decoded samples instead of running the enabled-DSP render path. WAV responses declare their exact `Content-Length`. This changes neither CDR validation nor request, frame, admission or timeout limits.
+For an audio response with `params.bypass=true` and `bitDepth=32`, the server additionally sends `X-Aurialis-Source-Metrics`: at most 4096 bytes of JSON containing `sourceIdentity`, `sampleRate`, `frames`, `duration`, `beforeMetrics` and `afterMetrics`. The identity has `pcmHash`, `sampleRate` and `frames`, using exactly the canonical SHA-256 byte layout described under measured source features. It is computed without FFT analysis and remains stable through canonical float-WAV reconstruction. Both metric objects describe the reconstructed source and use the schema above. The server measures this bypass source once and reuses its decoded samples instead of running the enabled-DSP render path. WAV responses declare their exact `Content-Length`. This changes neither CDR validation nor request, frame, admission or timeout limits.
 
 The browser import uses this single response instead of separate measurement and reconstruction POSTs. It rejects missing, oversized or invalid measurement headers, cancels an unusable response body, checks canonical byte size (`44 + frames × 8`), then validates the decoded sample rate and frame count against the header. These checks describe transfer consistency; they do not replace the authoritative native decoder.
 

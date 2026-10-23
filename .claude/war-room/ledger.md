@@ -11,6 +11,42 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Delegated continuation — 2026-10-23
+
+The owner authorized merging PR #6 and continuing the whole-product loop with `merge=delegated` until all planned features and remaining Waves acceptance work are tested. This explicit continuation supersedes the default four-iteration stop. Verified branches may now merge after the existing QA, Devil’s Advocate, Technical Writer, Product Engineer and green-CI gates without another owner merge question.
+
+PR #6 was already merged when this continuation began: merge `388653635a4911b66786c672b2551cde235f7b4a`, verified source `8fd8877`. Corrected [CI run 39838476152](https://github.com/yegamble/aurialis-WASM/actions/runs/39838476152) succeeded, including 61 Linux browser cases in 5.0 minutes and 22 Newman requests/27 assertions plus raw probes. MUB-2A, MUB-3A and MUB-4A are verified and merged within their bounded scopes. The clean primary checkout was fast-forwarded; the merged branch was deleted locally and remotely. The older pending statuses below are historical checkpoints.
+
+Continuation baseline: clean `main` at `3886536`; isolated integration branch `codex/waves-completion`. Three independent Round A councils are reviewing DSP/version/latency, ScriptV2/security/model feasibility, and Library/import/recovery. Whole-product completion and Waves equivalence remain open. No sonic algorithm 2, trained separation or automation is implied by the foundation merge.
+
+### Round D continuation ruling
+
+| Item | Decision and reason | Acceptance and ownership |
+| --- | --- | --- |
+| MUB-2B private preparation | ACCEPT private Optical, Variable-Mu, VCA and FET primitives; do not publish an incomplete algorithm 2 whose later sound/latency would change saved projects | Independent transfer/ballistics/rate/silence/DC tests and compiled execution; legacy compressor path untouched. DSP council owns new studio compressor files. Public activation remains gated on the coherent studio bundle and recoverable migration. |
+| MUB-3B typed automation | ACCEPT ScriptV2 with source identity, closed typed targets, bounded common Go evaluator, native rendering and separate schedule ABI | Exact source binding, bounded fields/IDs/coverage/overlap, atomic revision publication, rational source/device clock and partition invariance. Input gain and width remain per sample at their correct stages. Expensive fields use an absolute device lattice no longer than 1 ms; curves exceeding declared cell tolerances are rejected explicitly. Backend owns automation/mastering/jobs/server/schedule bridge, excluding private studio files. |
+| LIB-1 upload and Library lifecycle | ACCEPT sequential multi-import, sort, real quick preview, duplicate settings, album assignment, identity-based relink, awaited deletion and storage guidance | Reuse CDR import and live engine; one active import/preview; bounded aggregate session fallback; independent duplicate source; staged replacement preserves old source until metadata durability; meaningful denied/quota/cancel/reload probes and six populated responsive widths. Frontend owns library/import/storage components and adapters. |
+
+Round B changed the plan: dense one-frame points must not cause per-sample coefficient preparation or silently lose authored curves; neutral fast bypass must not swallow scheduled input/width. Initial maximum cell variation is 0.1 dB for EQ/threshold, 0.01 absolute ratio and 0.1 percentage point saturation, including fades. These bound parameter sampling error, not universal audible error. A compiler error directs users to extend fades or reduce changes. Unsupported repair targets remain rejected and automation never implicitly enables modules.
+
+The Library review found an unbounded memory fallback after failed IndexedDB writes. New imports need a typed durable/session/unavailable outcome and a finite aggregate session cap. Canonical identity will travel in the existing source-metrics import header; filename or byte size is not identity. Replacement stages a fresh source key, preserves the old source on persistence failure, invalidates source-dependent artifacts only on explicit replacement, and retains project/settings/album identity. Rejected bloat: a second DSP preview engine, arbitrary automation object paths and a broad shared-source reference-count migration.
+
+No code in these continuation items is accepted as complete yet. Each implementation must sync the five documentation surfaces and survive independent QA/Devil’s Advocate, native/WASM/static/API/browser/build gates and green CI before delegated merge. Training/runtime/quality evidence for real 2–6 instrument stems remains an independent open requirement; the original Python Demucs service is not a drop-in single-Go-binary implementation.
+
+### LIB-1 peer findings and navigation ruling
+
+Peer review found that merging a replacement patch retained deleted derived fields, a duplicate IndexedDB key could mask a request `ConstraintError` and fall through to session storage, and Library held-scrub did not share Master lifecycle behavior. Dedicated full-record source revision commits, factory-issued immutable assets with request-error preservation, optional-field hydration checks and a shared scrub hook correct those findings. The integrated intermediate frontend checkpoint passed TypeScript, lint and knip plus 317 cases in 22 unit/component files.
+
+The denied-storage browser test then proved a full-document Home-to-Master navigation, discarding the module's session audio. Round D accepts the documented native History API with known workstation routes selected from the live pathname. Back/Forward, direct deep-link reload, modifier/target/download semantics, focus/scroll and old graph disposal require execution proof. Do not rewrite private Next RSC payloads or move raw audio into alternate persistent browser storage. The original failed test remains evidence; LIB-1 is open pending the correction and full integrated gates.
+
+### LIB-1 Round E local acceptance — source 3c88027, tests 7e8811b
+
+**Locally verified; open — awaiting merge. Whole product incomplete.** Corrected full Chromium suite passed 70/70 in 7.7 minutes, with no retries/skips. All nine new Library cases passed, including denied-IDB in-app navigation/Back/Forward/live/export until reload, staged-write cancellation, exact relink, explicit replacement with failed metadata persistence, independent copy/delete, queue cancellation and six populated widths/18 dialog axe states. The earlier 22/23 targeted checkpoint included one pre/post-hydration fixture equality failure; its corrected baseline and complete rerun passed. No product assertion was waived.
+
+Integrated TypeScript/lint/knip/spelling passed; 321 unit/component cases in 23 files passed. The full Go quality/security/race gate passed this session on identical runtime Go `b701f4d`; later changes are frontend/tests/docs. Fresh compiled native/JS/direct/restricted-WASI paths matched all 333 frozen fixtures exactly, plus nine model-history transitions. Independent FFmpeg meter verification passed 15 comparisons (maximum 0.0542 LU / 0.0312 dB). Fresh single-binary rebuild and empty-directory embedded smoke passed. Newman passed 22 requests/27 assertions plus raw security/size probes; all 11 agents synchronize.
+
+Independent QA/Devil's Advocate/Product/Writer review found no surviving in-scope source must-fix; 58 targeted units and native identity/import tests passed, all 65 local documentation links resolve, and a real 320 px footer scroll/focus/click probe passed. Library 3 dB fixture measured +2.9999999208 dB live / +3.0000000435 dB exported, held-scrub resumption and two closed contexts. These are bounded application observations, not acoustic equivalence or hard deadlines. Final exact documentation review and green remote CI are still required before delegated merge. Partial deletion and unswept orphan limitations remain explicit in tasks/architecture.
+
 ## Whole-product loop — 2026-10-22, current session
 
 **Status: bounded wave locally verified; open — awaiting merge. Product incomplete.** Baseline `f5ec9ad` is clean main, including merged PRs #3/#4/#5. MUB-0 is resolved; its earlier blocking ruling below is historical. The [whole-product review](../../docs/reviews/2026-10-22-war-room-completion.md) records surviving requirements and the supplied Gemini conversation’s stale claims.
@@ -152,7 +188,9 @@ The corrective subset passed current-session QA and Devil’s Advocate review an
 
 | ID | Priority | Area | Title | Merged Commit / PR | Verification Evidence |
 |---|---|---|---|---|---|
-| *(None yet — War Room Loop starts with pessimistic baseline: 0 features verified until merged to main)* | | | | | |
+| MUB-2A | P1 | wasm-dsp | Algorithm-1 compatibility, capability and latency foundation | `3886536` / PR #6 | 333 exact compiled fixtures; zero-buffered-latency/drain contracts; corrected six-job CI `39838476152` |
+| MUB-3A | P1 | go-backend / nextjs-ui | Source-bound measured features and cancellable diagnostics | `3886536` / PR #6 | 22 Newman requests/27 assertions plus raw probes; 61 browser cases; independent coverage/cancellation review |
+| MUB-4A | P1 | nextjs-ui / audio-verify | Supported EQ type/enable and limiter release controls | `3886536` / PR #6 | Native/live/export checks, mobile target geometry and six-width accessibility within the 61-case suite |
 
 ---
 

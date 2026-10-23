@@ -3,9 +3,21 @@
 
 This describes current implementation boundaries. [`AGENTS.md`](../AGENTS.md) and [`docs/tasks.md`](tasks.md) retain the full product requirements. Implementation on a branch is not verified delivery or a merge to main.
 
+## Library source lifecycle
+
+Home processes selected, dropped or pasted WAVs sequentially through the existing CDR import. The browser checks finite byte/frame capacity; Go remains authoritative. Cancel or unmount aborts the active operation, removes any newly staged asset and retains finished projects. The first successful project opens after the queue settles, carrying partial-failure details.
+
+`newAudioAssetId` issues immutable source keys; IndexedDB `add`, rather than overwrite, rejects a collision. A denied write can retain canonical audio in an aggregate session cache capped at 128 MiB plus 44 bytes. A full cache rejects further imports. Session audio survives navigation within the application but is lost on reload or tab closure. Library preview uses the same WASI controller and held-scrub hook as Master. Settings duplication makes an independent audio asset and a deep settings copy.
+
+`WorkspaceLink` keeps supported same-origin workstation routes in one document through the native History API and a pathname subscription. This avoids static-export RSC navigation reloading the page and losing session audio for newly created project IDs. Modified clicks, new tabs, downloads, hash links and external or unsupported routes retain native browser behavior. Back/Forward updates the same shell; route changes update the title, focus its heading, scroll to the top and dispose the outgoing audio graph.
+
+Source recovery compares canonical PCM hash, sample rate and frame count. Exact relink preserves settings and album membership. Explicit replacement validates the retained chain for the new rate, clears derived artifacts and commits a complete project record with an expected source revision and asset key. New source keys are staged before metadata changes. Old source keys remain as recovery copies, capped at 64, until project deletion: localStorage autosave does not acknowledge durability. Deletion waits for unshared active and recovery assets before removing metadata; a failed partial deletion leaves the project available for retry or source recovery. Hydration validates the new optional source metadata instead of trusting stored shapes.
+
 ## Measured analysis and compatibility foundations
 
 `internal/mastering/features.go` hashes reconstructed PCM/layout, measures normalized short Hann spectra and aggregates one-second source features every 250 ms. FFT resolution scales from 1024 to 16384 samples so high-rate low bands remain useful. Spectral windows overlap by 75% with padded endpoints and constant squared-window coverage; original-sample RMS/stereo windows remain separate. Fractional bin overlap distributes band-edge power; spectral DC removal does not alter source samples or RMS. Neutral change points use robustly scaled energy/centroid/width novelty and shorter-window refinement, with eight-second separation. This is deterministic measurement, not musical-role recognition or a learned mastering model.
+
+`SourceIdentityContext` validates canonical stereo PCM and hashes its sample-rate/channel/frame layout and interleaved Float32 bits without FFT analysis. The canonical bypass/32-bit import response includes this identity in its existing bounded source-metrics header, so relink can compare the same identity as Deep analysis without a second upload.
 
 `KindAnalyzeFeatures` uses the bounded worker pool through `/api/analyze/features`. Its reservation includes decoded input and 16 MiB scratch headroom. Retained summaries are charged and deep-copied for snapshots, then released on DELETE or expiry. The Deep panel reads the original stored Blob, polls the native job states and displays measured bands/neutral intervals without changing processing settings. Cancel invalidates its UI generation immediately; the pending admission is retained solely to delete the actual job once its ID arrives. POST, polling and cleanup requests have independent bounded transport timeouts. No late result may replace a newer operation or another track.
 

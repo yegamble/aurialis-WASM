@@ -2,6 +2,40 @@
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
+## Delegated continuation — October 23, 2026
+
+### LIB-1 checkpoint — locally verified, open — awaiting merge
+
+The Library/import wave adds sequential multi-import, sorting and status filters, shared WASI quick preview, independent settings/audio copies, album assignment, canonical-identity relink, explicit replacement, storage guidance and awaited deletion. The final runtime source is `3c88027`, with browser tests `7e8811b` and navigation documentation `6005a2d`. Independent review found no surviving in-scope source must-fix. Whole-product requirements remain open.
+
+The denied-storage browser case exposed a real full-document navigation when a runtime track ID lacked a generated static-export RSC payload. That reload discarded session audio. The correction uses the documented native History API and a pathname-derived workstation shell for known application routes, preserving native modified/external/download/hash links. Back/Forward, focused headings, titles/scroll, old graph disposal and direct deep-link reload were exercised. Session audio survives in-app navigation; reload still loses it and exposes honest source recovery. No private RSC rewriting or alternate raw-audio persistence was added.
+
+Peer review corrected stale derived results during full-record replacement, immutable-asset collision error handling, optional-field hydration and shared held-scrub behavior. The first combined targeted browser run was 22/23: one held-write fixture compared pre-reload metadata against post-reload normalized metadata. Capturing the baseline after its deliberate reload corrected that fixture; all nine Library cases then passed. The full integrated 70-case rerun below passed without retries or skips.
+
+| Evidence tier | Executed current-session result |
+| --- | --- |
+| unit / native static | Full Go formatting, module verification, vet, lint, identifier checks, vulnerability scan and race suite exited 0 on the identical Go runtime at `b701f4d`; subsequent changes are frontend/tests/docs. Native source-identity and server import tests also passed independent review. |
+| unit / frontend static | TypeScript, lint, knip and configured 156-file spelling exited 0; 321 unit/component cases passed in 23 files. The subsequently integrated Library browser file passed its separate spelling check. Independent targeted review passed 58 cases. |
+| wasm-bridge | Fresh JS/WASM legacy 279+54 fixtures and direct/restricted-host 333-fixture paths matched native PCM exactly. Nine model-history transitions passed. Fifteen independent FFmpeg meter comparisons passed with maximum errors 0.0542 LU and 0.0312 dB. |
+| compiled-binary-smoke | Fresh `build:binary` and empty-directory `test:binary` exited 0, rebuilding frontend, both WASM targets and matching runtime into one host executable. |
+| newman-e2e / api-curl | 22 requests / 27 assertions passed; raw foreign-Host 403 and upload-limit 413 probes passed. All 11 agent definitions synchronized. |
+| playwright-a11y-responsive | Full integrated Chromium suite: 70/70 in 7.7 minutes, zero retries/skips. Includes real Library preview/export, immutable copy/delete, exact relink, explicit replacement with metadata failure/reload, post-write cancel, queue unmount, denied storage through native history and six populated widths with 18 dialog axe states. The complete export-control matrix also passed. |
+| independent review | No in-scope source must-fix. All 65 local documentation links resolve. A real 320 px footer interaction confirmed scrolling/focus makes the persistence button reachable and clickable. Final documentation sign-off and exact remote CI remain required before merge. |
+
+Library preview measured +2.9999999208 dB live and +3.0000000435 dB in export for the 3 dB fixture, with held-scrub resumption and two disposed contexts. These are bounded fixture observations, not device or hard real-time certification. Deletion can partially remove audio before a storage failure; metadata remains for retry/relink. Metadata-failure or failed-cleanup orphan assets are not globally swept. The finite slice remains **open — awaiting merge** until green remote CI and the delegated merge are recorded.
+
+PR #6 is verified and merged at `388653635a4911b66786c672b2551cde235f7b4a`. Its corrected [CI run 39838476152](https://github.com/yegamble/aurialis-WASM/actions/runs/39838476152) passed all jobs, including 61 Linux browser cases in 5.0 minutes and 22 Newman requests/27 assertions plus raw security probes. The merged feature branch was deleted locally and remotely. The previous section retains the local and failed remote checkpoints as history.
+
+The owner authorized continued whole-product work with delegated merges until all planned features and remaining Waves acceptance work pass. The default four-iteration stop no longer applies to this continuation. Work resumes from clean main `3886536` on isolated `codex/waves-completion`; the next councils cover DSP topologies/latency, source-bound automation and Library/import/recovery. Broad product and acoustic requirements remain open.
+
+### Current implementation wave
+
+- MUB-2B: private compressor primitives with independent topology/ballistics tests. Public algorithm 2 remains unavailable until the complete studio graph, latency and migration contract pass.
+- MUB-3B: source-bound ScriptV2 validation, bounded common Go schedule evaluation, native render contract and separate live schedule ABI. Unsupported repair targets remain excluded.
+- LIB-1: bounded multi-import and complete Library source lifecycle, including real preview, independent settings duplicates and recoverable identity-based relink.
+
+These items are in progress in isolated branches. Their acceptance criteria and the dense-automation/storage safeguards are recorded in the ledger. They are not verified features yet.
+
 ## Whole-product completion loop — October 22, 2026
 
 **Status: bounded wave locally verified; open — awaiting merge. Product incomplete.** The reviewed baseline `f5ec9ad` includes owner-merged PR #5. The older pending-merge entries below retain their historical status. The [current completion review](reviews/2026-10-22-war-room-completion.md) lists outstanding planned features and Round D rulings.

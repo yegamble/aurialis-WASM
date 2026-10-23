@@ -8,7 +8,7 @@ Aurialis is an audio mastering workstation that runs on your computer and opens 
 
 [Get started](#run-the-studio) · [Your first master](docs/getting-started.md) · [Documentation](docs/README.md) · [Developer guide](docs/development.md)
 
-> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep offers static presets; source-driven AI analysis, timeline automation and validated instrument separation remain open work. See [current limits](#know-the-current-limits).
+> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep includes measured source diagnostics and static presets; Reference offers measured proposals for review. Editable timeline automation, AI repair and validated instrument separation remain open work. See [current limits](#know-the-current-limits).
 
 ## A small studio, one clear path
 
@@ -22,6 +22,7 @@ Your WAV  →  Choose a direction  →  Listen and refine  →  Download a WAV
 | Find a starting point | **Simple** genre, tone and intensity controls, plus an explicit **Set target loudness** action. |
 | Shape the details | **Advanced** five-band EQ, compression, saturation, stereo controls, sample-peak limiting, De-Harsh and multiband dynamics. EQ changes tonal balance; compression controls changes in level. |
 | Hear your decisions | **A Processed / B Original** listening, a measured live spectrum and waveform, and shared settings across Simple and Advanced. A/B does not automatically match loudness. |
+| Understand and compare | **Deep** measures the original audio's frequency balance and change points. **Reference** compares your current starting chain with another track's original audio and proposes bounded EQ and optional width changes. |
 | Make a handoff | **Export** as 16/24-bit PCM or 32-bit float WAV, preserving source sample rate and duration. Album rendering creates individual 24-bit WAV downloads. |
 
 The interface follows a warm paper-and-ink design, with a focused listening area and detailed controls when you need them. Aurialis-WASM builds on [Aurialis](https://github.com/yegamble/Aurialis); this repository contains the Go, Next.js and WebAssembly implementation.
@@ -52,7 +53,7 @@ The build embeds the interface, fonts, audio modules and worklets in one `aurial
 
 ## Your first master
 
-1. **Import a WAV.** Start with a short mono or stereo file. The studio initially opens in Advanced; select **Simple** for guided controls.
+1. **Import a WAV.** Start with a short mono or stereo file. The first imported track opens in Advanced; select **Simple** for guided controls. You can import multiple files in one queue and find the others in Library.
 2. **Choose a direction.** Adjust genre, tone and intensity. These choices update the shared processing settings; you can refine them in Advanced.
 3. **Listen.** Press Play and switch between **A Processed** and **B Original**. Volume controls listening level, not export gain. A louder result can sound more impressive, so judge tone and dynamics as well as loudness.
 4. **Set loudness when needed.** Choose a target and press **Set target loudness** to measure the current settings and adjust input gain. Selecting a target alone does not normalize the track.
@@ -74,8 +75,8 @@ Projects and settings are saved in this browser's local storage, and reconstruct
 | Track size | At most **128 MiB + 44 bytes** and **16,777,216 decoded frames**. The frame cap is about **5 min 50 s at 48 kHz**, or **2 min 55 s at 96 kHz**; file size can limit you sooner. |
 | Processing | One expensive upload/render request at a time. A busy response asks you to retry. These are finite workstation limits. |
 | Albums | Individual 24-bit WAVs in a **128 MiB temporary output cache**. Download them before leaving the album page or changing settings/order; there is no persistent mastered-output store or ZIP export. |
-| Deep and Smart Split | Deep applies static tonal profiles. Musical analysis, editable automation, AI repair and validated instrument separation are unavailable in the product workflow. Experimental API jobs use deterministic heuristics, not trained models. |
-| Reference and release checks | Reference blends another project's saved EQ settings; it does not analyze reference audio. Release checks measure rendered audio against working targets and do not certify platform delivery. |
+| Deep and Smart Split | Deep provides measured source diagnostics and static profiles. Change points do not identify verses or choruses. Editable automation, AI repair and validated instrument separation are unavailable in the product workflow. ScriptV2 API/schedule foundations and legacy experimental jobs use deterministic algorithms, not trained models. |
+| Reference and release checks | Reference analyzes original reference audio against your source through its starting settings, with explicit proposal review and Apply/Revert. Saved reference knob positions are ignored; broad-band similarity does not establish perceptual matching. Both audio files share one **129 MiB** request ceiling. Release checks measure working targets without certifying platform delivery. |
 | Audio guarantees | Hardware emulation and certified true-peak limiting remain open work. Live playback may be resampled to the audio device's rate; live and exported samples are not promised to be identical across rates. |
 
 The [architecture](docs/architecture.md), [API contract](docs/api.md) and [task tracker](docs/tasks.md) document the exact boundaries and recorded verification evidence.
@@ -84,7 +85,7 @@ The [architecture](docs/architecture.md), [API contract](docs/api.md) and [task 
 
 **One executable, two places to process audio.** A Go server serves the embedded Next.js 16 / React 19 interface and HTTP API. During listening, shared Go DSP code runs as a WebAssembly reactor inside the browser's AudioWorklet. Export renders through the native Go implementation. Simple and Advanced edit the same canonical settings.
 
-See [architecture](docs/architecture.md) for the audio paths, shared-memory controls, resource bounds and security model, or [API reference](docs/api.md) to render audio from a script.
+See [architecture](docs/architecture.md) for the audio paths, shared-memory controls, resource bounds and security model, or [API reference](docs/api.md) to render audio from a script. The [ScriptV2 foundation](docs/api.md#scriptv2-foundation) adds source-bound proposals and compiled schedules; the production Deep screen does not yet attach or edit those schedules.
 
 ## Help improve Aurialis
 

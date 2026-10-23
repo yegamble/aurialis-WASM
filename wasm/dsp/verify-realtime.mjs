@@ -22,6 +22,11 @@ for (const entry of WebAssembly.Module.imports(module)) {
 const requiredExports = new Set([
   "_initialize", "memory", "aurialis_init", "aurialis_live_buffer", "aurialis_live_process",
   "aurialis_live_reset", "aurialis_control_buffer", "aurialis_set_controls",
+  "aurialis_control_count", "aurialis_algorithm_supported", "aurialis_latency_frames",
+  "aurialis_live_drain", "aurialis_control_buffer_v2", "aurialis_set_controls_v2",
+  "aurialis_schedule_abi", "aurialis_schedule_source_buffer", "aurialis_schedule_bind_source",
+  "aurialis_schedule_begin", "aurialis_schedule_move_buffer", "aurialis_schedule_stage_move",
+  "aurialis_schedule_commit", "aurialis_schedule_revision", "aurialis_schedule_seek", "aurialis_schedule_detach", "aurialis_schedule_set_looping",
 ]);
 for (const entry of WebAssembly.Module.exports(module)) {
   assert.ok(requiredExports.delete(entry.name), `unexpected or repeated reactor export ${entry.name}`);
@@ -30,7 +35,7 @@ assert.equal(requiredExports.size, 0, "reactor is missing required exports");
 function compare(actual, expected, message) {
   assert.equal(actual, expected === 0 ? 0 : Math.fround(expected), message);
 }
-async function createKernel(fixture) {
+async function createKernel(fixture, abi = 1) {
   const host = createAurialisWasiHost({ entropy: webcrypto.getRandomValues(new Uint8Array(256)),
     now: () => performance.now() + 1 });
   const instance = await WebAssembly.instantiate(module, host.imports);
@@ -40,9 +45,16 @@ async function createKernel(fixture) {
   wasm._initialize();
   assert.equal(wasm.aurialis_init(fixture.rate), 1);
   const pointers = [0, 1, 2, 3].map(channel => wasm.aurialis_live_buffer(channel) >>> 0);
-  const controlPointer = wasm.aurialis_control_buffer() >>> 0;
+  assert.equal(wasm.aurialis_control_count(1), 81);
+  assert.equal(wasm.aurialis_control_count(2), 82);
+  for (const unknown of [0, 3, 0xffffffff]) assert.equal(wasm.aurialis_control_count(unknown), 0);
+  assert.equal(wasm.aurialis_algorithm_supported(1), 1);
+  for (const unknown of [0, 2, 3, 0xffffffff]) assert.equal(wasm.aurialis_algorithm_supported(unknown), 0);
+  assert.equal(wasm.aurialis_latency_frames(), 0);
+  const count = wasm.aurialis_control_count(abi);
+  const controlPointer = (abi === 2 ? wasm.aurialis_control_buffer_v2() : wasm.aurialis_control_buffer()) >>> 0;
   for (const [index, pointer] of [...pointers, controlPointer].entries()) {
-    const length = index === 4 ? 81 * 8 : 128 * 4;
+    const length = index === 4 ? count * 8 : 128 * 4;
     assert.ok(pointer > 0 && pointer % (index === 4 ? 8 : 4) === 0);
     assert.ok(pointer + length <= wasm.memory.buffer.byteLength);
     for (let previous = 0; previous < index; previous++) {
@@ -56,12 +68,12 @@ async function createKernel(fixture) {
     if (buffer !== wasm.memory.buffer) {
       buffer = wasm.memory.buffer;
       channels = pointers.map(pointer => new Float32Array(buffer, pointer, 128));
-      controls = new Float64Array(buffer, controlPointer, 81);
+      controls = new Float64Array(buffer, controlPointer, count);
     }
   }
   refresh();
-  controls.set(packLiveControls(fixture.params));
-  assert.equal(wasm.aurialis_set_controls(), 1);
+  controls.set(packLiveControls(fixture.params, abi));
+  assert.equal(abi === 2 ? wasm.aurialis_set_controls_v2(count) : wasm.aurialis_set_controls(), 1);
   assert.equal(wasm.aurialis_live_reset(), 1);
   refresh();
   host.beginRender();
@@ -193,3 +205,47 @@ const zeroOutput = kernel.render(zero, zero);
 for (const channel of [2, 3]) for (const sample of zeroOutput[channel]) assert.equal(Object.is(sample, -0), false);
 assert.equal(Object.is(kernel.channels()[0][0], -0), true, "processing changed input zero sign");
 console.log(`wasm-realtime: ${fixtures.length} native fixtures matched exactly through restricted host; fixed numeric controls, invalid input atomicity, reset and memory growth passed`);
+
+
+// ABI 2 is a negotiated wire extension carrying algorithm 1, never a claim that
+// a second sonic engine exists. Compare all pre-change native fixtures again.
+const versionedKernels = new Map();
+for (const [index, fixture] of fixtures.entries()) {
+  let kernel = versionedKernels.get(fixture.rate);
+  if (!kernel) {
+    kernel = await createKernel(fixture, 2);
+    versionedKernels.set(fixture.rate, kernel);
+  }
+  kernel.controls().set(packLiveControls(fixture.params, 2));
+  assert.equal(kernel.wasm.aurialis_set_controls_v2(82), 1);
+  assert.equal(kernel.wasm.aurialis_live_reset(), 1);
+  const left = Float32Array.from(fixture.left), right = Float32Array.from(fixture.right);
+  for (let start = 0; start < left.length; start += 128) {
+    const output = kernel.render(left.subarray(start, start + 128), right.subarray(start, start + 128));
+    for (let frame = 0; frame < 128; frame++) {
+      compare(output[2][frame], fixture.outputLeft[start + frame], `ABI2 left fixture${index} frame${start + frame}`);
+      compare(output[3][frame], fixture.outputRight[start + frame], `ABI2 right fixture${index} frame${start + frame}`);
+    }
+  }
+  const beforeDrain = kernel.channels().map(channel => channel.slice());
+  assert.equal(kernel.wasm.aurialis_live_drain(), 0);
+  assert.deepEqual(kernel.channels(), beforeDrain, "drain changed immediate-engine output");
+}
+const versioned = versionedKernels.get(active.rate);
+versioned.controls().set(packLiveControls(active.params, 2));
+assert.equal(versioned.wasm.aurialis_set_controls_v2(82), 1);
+assert.equal(versioned.wasm.aurialis_live_reset(), 1);
+versioned.render(Float32Array.from(active.left.slice(0, 128)), Float32Array.from(active.right.slice(0, 128)));
+const acceptedControls = versioned.controls().slice();
+for (const count of [0, 81, 83, 0xffffffff]) assert.equal(versioned.wasm.aurialis_set_controls_v2(count), 0);
+for (const algorithm of [0, 2, -1, 1.5, NaN, Infinity]) {
+  versioned.controls()[81] = algorithm;
+  assert.equal(versioned.wasm.aurialis_set_controls_v2(82), 0);
+}
+versioned.controls().set(acceptedControls);
+const afterInvalid = versioned.render(Float32Array.from(active.left.slice(128, 256)), Float32Array.from(active.right.slice(128, 256)));
+for (let frame = 0; frame < 128; frame++) {
+  compare(afterInvalid[2][frame], active.outputLeft[128 + frame], "invalid ABI2 settings advanced left history");
+  compare(afterInvalid[3][frame], active.outputRight[128 + frame], "invalid ABI2 settings advanced right history");
+}
+console.log(`wasm-realtime: ${fixtures.length} frozen native fixtures also matched exactly through ABI2/algorithm1; capability, length/version rejection and zero-frame drain passed`);

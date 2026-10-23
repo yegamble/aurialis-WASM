@@ -13,8 +13,6 @@
     "scripts/*.mjs"
   ],
   "ignoreDependencies": [
-    "@testing-library/jest-dom",
-    "fake-indexeddb",
     "newman",
     "tailwindcss"
   ],

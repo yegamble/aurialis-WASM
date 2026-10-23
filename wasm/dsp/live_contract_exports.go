@@ -1,0 +1,47 @@
+//go:build wasm
+
+package main
+
+// cspell:words wasmexport
+
+var versionedControls liveVersionedControlVector
+
+// WasmControlCount negotiates a packet ABI independently of the sonic algorithm.
+// Unknown ABIs return zero. ABI 1 has 81 values; ABI 2 has 82 values.
+//
+//go:wasmexport aurialis_control_count
+func WasmControlCount(abi uint32) uint32 { return liveControlCount(abi) }
+
+// WasmAlgorithmSupported advertises only implemented, explicit algorithm IDs.
+//
+//go:wasmexport aurialis_algorithm_supported
+func WasmAlgorithmSupported(version uint32) uint32 { return liveAlgorithmSupported(version) }
+
+// WasmLatencyFrames reports buffered DSP frames, excluding transport alignment.
+//
+//go:wasmexport aurialis_latency_frames
+func WasmLatencyFrames() uint32 { return liveFrameCount(runtimeBridge().LatencyFrames()) }
+
+// WasmLiveDrain emits buffered tail frames into the fixed output channels.
+// The immediate v1 engine returns zero and leaves channel contents untouched.
+//
+//go:wasmexport aurialis_live_drain
+func WasmLiveDrain() uint32 {
+	blocks := runtimeBlocks()
+	return liveFrameCount(runtimeBridge().Drain(blocks.channels[2][:], blocks.channels[3][:]))
+}
+
+// WasmVersionedControlBuffer exposes ABI 2 without changing the legacy buffer.
+//
+//go:wasmexport aurialis_control_buffer_v2
+func WasmVersionedControlBuffer() *[liveVersionedControlValues]float64 {
+	return (*[liveVersionedControlValues]float64)(&versionedControls)
+}
+
+// WasmSetVersionedControls rejects wrong lengths and unknown algorithms before
+// changing either parameters or signal history. ABI 2 requires algorithm ID 1.
+//
+//go:wasmexport aurialis_set_controls_v2
+func WasmSetVersionedControls(count uint32) uint32 {
+	return versionedControls.apply(runtimeBridge(), count)
+}

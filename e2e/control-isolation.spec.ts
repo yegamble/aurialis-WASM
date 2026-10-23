@@ -42,7 +42,7 @@ test.describe("End-to-End Parameter Orthogonality & Control Isolation", () => {
   test("profiles apply real processing while unavailable separation cannot invent stems", async ({ page }) => {
     const id = await uploadProject(page)
     await page.getByRole("tab", { name: "deep", exact: true }).click()
-    await expect(page.getByText("Musical section detection, timeline automation and AI repair are not available.", { exact: false })).toBeVisible()
+    await expect(page.getByText("Musical role detection, timeline automation and AI repair are not available.", { exact: false })).toBeVisible()
     await page.getByRole("button", { name: "Apply profile", exact: true }).click()
     await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled()
     await expect(page.getByText("Profile applied to live playback. Adjust it in Advanced mode while you listen.", { exact: true })).toBeVisible()

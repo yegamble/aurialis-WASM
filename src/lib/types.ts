@@ -146,7 +146,14 @@ export type ShortcutUndo = {
   eqBaseline?: { enabled: boolean; bands: AdvancedParams["eqBands"] };
 };
 
+export type SourceIdentity = { pcmHash: string; sampleRate: number; frames: number };
+
 export type Track = {
+  sourceAudioId?: string;
+  retiredSourceAudioIds?: string[];
+  importNotice?: string;
+  sourceIdentity?: SourceIdentity;
+  sourceRevision?: number;
   shortcutUndo?: ShortcutUndo;
   /** Only an explicit Simple selection establishes a preset association. */
   simpleCustom?: boolean;

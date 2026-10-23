@@ -1468,7 +1468,7 @@ input[type="range"] {
   .album-art-large { width: 200px; }
   .album-hero { margin: -70px calc(clamp(28px, 5vw, 78px) * -1) 50px; padding: 50px clamp(28px, 5vw, 78px); grid-template-columns: 150px minmax(0, 1fr); gap: 28px; }
   .album-hero .album-art-large { width: 150px; box-shadow: inset 0 0 0 30px #3b342e, inset 0 0 0 31px #81766d; }
-  .compare-head { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 25px; }
+  .compare-head { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 25px; }
   .release-top { grid-template-columns: 150px minmax(0, 1fr); gap: 28px; padding: 30px; }
   .release-top > .button { grid-column: 1 / -1; }
 }
@@ -1558,3 +1558,6 @@ input[type="range"] {
   .drop-icon svg { width: 24px; height: 24px; }
   .file-types { max-width: none; font-size: 10px; letter-spacing: 0.1em; }
 }
+
+/* File names and local-server diagnostics must wrap within narrow panels. */
+.disclosure, .drop-zone p { overflow-wrap: anywhere; }

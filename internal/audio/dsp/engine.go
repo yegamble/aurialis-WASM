@@ -119,20 +119,22 @@ type RepairParams struct {
 
 // Params holds the complete, orthogonal parameter state for the mastering chain.
 type Params struct {
-	Bypass          bool                   `json:"bypass"`
-	ABOriginal      bool                   `json:"abOriginal"`
-	LoudnessMatchAB bool                   `json:"loudnessMatchAb"`
-	InputGainDB     float64                `json:"inputGainDb"`
-	EQEnabled       bool                   `json:"eqEnabled"`
-	Bands           [NumEQBands]BandParams `json:"bands"`
-	Compressor      CompressorParams       `json:"compressor"`
-	Saturation      SaturationParams       `json:"saturation"`
-	Stereo          StereoParams           `json:"stereo"`
-	Limiter         LimiterParams          `json:"limiter"`
-	Repair          RepairParams           `json:"repair"`
-	DeHarsh         DeHarshParams          `json:"deHarsh"`
-	Multiband       MultibandParams        `json:"multiband"`
-	DitherBits      int                    `json:"ditherBits"`
+	// Omitted/zero retains the original algorithm. Version 2 is not implemented.
+	AlgorithmVersion uint32                 `json:"algorithmVersion,omitempty"`
+	Bypass           bool                   `json:"bypass"`
+	ABOriginal       bool                   `json:"abOriginal"`
+	LoudnessMatchAB  bool                   `json:"loudnessMatchAb"`
+	InputGainDB      float64                `json:"inputGainDb"`
+	EQEnabled        bool                   `json:"eqEnabled"`
+	Bands            [NumEQBands]BandParams `json:"bands"`
+	Compressor       CompressorParams       `json:"compressor"`
+	Saturation       SaturationParams       `json:"saturation"`
+	Stereo           StereoParams           `json:"stereo"`
+	Limiter          LimiterParams          `json:"limiter"`
+	Repair           RepairParams           `json:"repair"`
+	DeHarsh          DeHarshParams          `json:"deHarsh"`
+	Multiband        MultibandParams        `json:"multiband"`
+	DitherBits       int                    `json:"ditherBits"`
 }
 
 // DefaultParams returns a neutral, bit-transparent default parameter set.
@@ -671,6 +673,10 @@ func (e *Engine) isChainNeutral() bool {
 
 // ProcessBlock processes a stereo Float32 block in-place or into outL/outR with zero heap allocations.
 func (e *Engine) ProcessBlock(inL, inR, outL, outR []float32) {
+	e.processBlock(inL, inR, outL, outR, nil)
+}
+
+func (e *Engine) processBlock(inL, inR, outL, outR []float32, lanes *automationLanes) {
 	n := len(inL)
 	if len(inR) < n {
 		n = len(inR)
@@ -686,7 +692,8 @@ func (e *Engine) ProcessBlock(inL, inR, outL, outR []float32) {
 	}
 
 	// Fast bit-identical bypass when Bypass is enabled or all stages are neutral (and not in loudness-matched A mode).
-	if e.params.Bypass || (e.isChainNeutral() && !e.params.ABOriginal) {
+	laneActive := lanes != nil && (len(lanes.gain) > 0 || (e.params.Stereo.Enabled && len(lanes.width) > 0))
+	if e.params.Bypass || (!laneActive && e.isChainNeutral() && !e.params.ABOriginal) {
 		for i := 0; i < n; i++ {
 			l := float64(inL[i])
 			r := float64(inR[i])
@@ -713,7 +720,7 @@ func (e *Engine) ProcessBlock(inL, inR, outL, outR []float32) {
 
 	compActive := e.params.Compressor.Enabled && (e.params.Compressor.Ratio > 1.0001 || math.Abs(e.params.Compressor.MakeupDB) >= 1e-7)
 	satActive := e.params.Saturation.Enabled && e.params.Saturation.Amount >= 1e-5 && e.params.Saturation.Character != SatClean
-	stereoActive := e.params.Stereo.Enabled && (math.Abs(e.params.Stereo.WidthPct-100.0) >= 1e-5 || e.params.Stereo.MonoBass || e.params.Stereo.MidGainDB != 0 || e.params.Stereo.SideGainDB != 0 || math.Abs(e.extended.currentMid-e.extended.midGain) > 1e-7 || math.Abs(e.extended.currentSide-e.extended.sideGain) > 1e-7)
+	stereoActive := e.params.Stereo.Enabled && ((lanes != nil && len(lanes.width) > 0) || math.Abs(e.params.Stereo.WidthPct-100.0) >= 1e-5 || e.params.Stereo.MonoBass || e.params.Stereo.MidGainDB != 0 || e.params.Stereo.SideGainDB != 0 || math.Abs(e.extended.currentMid-e.extended.midGain) > 1e-7 || math.Abs(e.extended.currentSide-e.extended.sideGain) > 1e-7)
 	repairActive := e.params.Repair.Enabled && (math.Abs(e.params.Repair.DeEssDB) >= 1e-7 || math.Abs(e.params.Repair.TransientDB) >= 1e-7 || e.params.Repair.DeClip)
 	limActive := e.params.Limiter.Enabled
 
@@ -721,8 +728,15 @@ func (e *Engine) ProcessBlock(inL, inR, outL, outR []float32) {
 		rawL := sanitizeSample(float64(inL[i]))
 		rawR := sanitizeSample(float64(inR[i]))
 
-		l := rawL * inGain
-		r := rawR * inGain
+		frameGain := inGain
+		if lanes != nil && len(lanes.gain) > 0 {
+			frameGain = 1
+			if math.Abs(lanes.gain[i]) >= 1e-7 {
+				frameGain = dbToLin(lanes.gain[i])
+			}
+		}
+		l := rawL * frameGain
+		r := rawR * frameGain
 
 		// Stage 1: Deterministic soft clipping, de-essing, and transient shaping
 		if repairActive {
@@ -761,7 +775,15 @@ func (e *Engine) ProcessBlock(inL, inR, outL, outR []float32) {
 
 		// Stage 5: Mid/Side Stereo Width + cascaded Side high-pass bass narrowing
 		if stereoActive {
-			l, r = e.processStereoSample(l, r)
+			if lanes != nil && len(lanes.width) > 0 {
+				width := lanes.width[i] / 100
+				neutral := width == 1 && !e.params.Stereo.MonoBass && e.extended.midGain == 1 && e.extended.sideGain == 1 && e.extended.currentMid == 1 && e.extended.currentSide == 1
+				if !neutral {
+					l, r = e.processStereoSampleWidth(l, r, width)
+				}
+			} else {
+				l, r = e.processStereoSample(l, r)
+			}
 		}
 
 		// Stage 6: Sample-peak limiter with optional cubic inter-sample estimate
@@ -1051,7 +1073,10 @@ func (e *Engine) processSaturationSample(l, r float64) (float64, float64) {
 }
 
 func (e *Engine) processStereoSample(l, r float64) (float64, float64) {
-	width := e.stages.stereoWidth
+	return e.processStereoSampleWidth(l, r, e.stages.stereoWidth)
+}
+
+func (e *Engine) processStereoSampleWidth(l, r, width float64) (float64, float64) {
 	smooth := e.extended.gainSmooth
 	e.extended.currentMid = smooth*e.extended.currentMid + (1-smooth)*e.extended.midGain
 	e.extended.currentSide = smooth*e.extended.currentSide + (1-smooth)*e.extended.sideGain

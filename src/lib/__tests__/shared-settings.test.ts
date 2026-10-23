@@ -15,6 +15,19 @@ describe("one canonical mastering snapshot", () => {
     expect(trackOf(changed).simpleCustom).toBe(false);
   });
 
+  it("preserves other bands, modules and retained gain when changing a filter type or bypass", () => {
+    const initial = selected();
+    const before = trackOf(initial);
+    const typed = reduceStoreState(initial, { type: "UPDATE_EQ_BAND", trackId: before.id, bandId: "mid", patch: { type: "highpass" } });
+    const bypassed = reduceStoreState(typed, { type: "UPDATE_EQ_BAND", trackId: before.id, bandId: "mid", patch: { enabled: false } });
+    expect(trackOf(bypassed).advanced).toEqual({ ...before.advanced, eqBands: before.advanced.eqBands.map((band) => band.id === "mid" ? { ...band, type: "highpass", enabled: false } : band) });
+    expect(trackOf(bypassed).simpleCustom).toBe(true);
+    const restored = normalizeHydratedState(bypassed);
+    expect(restored?.tracks[0]?.advanced).toEqual(trackOf(bypassed).advanced);
+    const viewed = reduceStoreState(bypassed, { type: "UPDATE_TRACK", id: before.id, patch: { mode: "simple" } });
+    expect(trackOf(viewed).advanced).toBe(trackOf(bypassed).advanced);
+  });
+
   it("changes only the view when switching modes in either direction", () => {
     let state = selected(); const snapshot = trackOf(state).advanced;
     for (const mode of ["simple", "advanced", "simple", "advanced"] as const) {
@@ -65,6 +78,13 @@ describe("one canonical mastering snapshot", () => {
     expect(measured.advanced).toEqual({ ...expected, input: 4 }); expect(measured.simpleCustom).toBe(false);
     const edited = reduceStoreState(initial, { type: "UPDATE_EQ_BAND", trackId: source().id, bandId: "mid", patch: { gainDb: 5 } });
     expect(trackOf(reduceStoreState(edited, { type: "APPLY_NORMALIZED_GAIN", id: source().id, expected, input: 4 }))).toBe(trackOf(edited));
+  });
+
+  it("ignores corrupt optional source metadata without losing legacy mastering settings", () => {
+    const original = source();
+    const corrupted = { ...testStore, tracks: [{ ...original, sourceAudioId: 42, retiredSourceAudioIds: {}, sourceRevision: "bad", sourceIdentity: { pcmHash: "wrong", sampleRate: 1, frames: -1 } }] };
+    const restored = normalizeHydratedState(corrupted)?.tracks[0];
+    expect(restored?.advanced).toEqual(original.advanced); expect(restored?.sourceAudioId).toBeUndefined(); expect(restored?.retiredSourceAudioIds).toBeUndefined(); expect(restored?.sourceRevision).toBeUndefined(); expect(restored?.sourceIdentity).toBeUndefined(); expect(restored?.persistenceWarning).toContain("metadata was invalid");
   });
 
   it("restores legacy settings as Custom and retains only explicitly saved preset association", () => {

@@ -1,4 +1,4 @@
-import type { AdvancedParams, MeasuredAudioMetrics } from "./types";
+import type { AdvancedParams, MeasuredAudioMetrics, SourceIdentity } from "./types";
 
 export interface StereoPCM {
   left: Float32Array<ArrayBuffer>;
@@ -331,6 +331,7 @@ type AudioMeasurement = {
   sampleRate: number;
   frames: number;
   duration: number;
+  sourceIdentity?: SourceIdentity;
   beforeMetrics: MeasuredAudioMetrics;
   afterMetrics: MeasuredAudioMetrics;
 };
@@ -416,9 +417,16 @@ function audioMeasurement(body: unknown): AudioMeasurement {
     sampleRate: body.sampleRate,
     frames: body.frames,
     duration: body.duration,
+    ...("sourceIdentity" in body ? { sourceIdentity: sourceIdentity(body.sourceIdentity, body.sampleRate, body.frames) } : {}),
     beforeMetrics: metricObject(body.beforeMetrics),
     afterMetrics: metricObject(body.afterMetrics),
   };
+}
+
+function sourceIdentity(value: unknown, rate: number, frames: number): SourceIdentity {
+  if (typeof value !== "object" || value === null || !("pcmHash" in value) || !("sampleRate" in value) || !("frames" in value) || typeof value.pcmHash !== "string" || !/^[a-f0-9]{64}$/u.test(value.pcmHash) || value.sampleRate !== rate || value.frames !== frames)
+    throw new Error("The server returned an invalid source identity.");
+  return { pcmHash: value.pcmHash, sampleRate: rate, frames };
 }
 
 // range/dynamics are legacy display slots for measured crest factor, not LRA.

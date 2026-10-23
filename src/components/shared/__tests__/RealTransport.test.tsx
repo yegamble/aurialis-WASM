@@ -182,6 +182,9 @@ it("restores the keyboard hold origin after a disabled resume without stealing a
     const forward = screen.getByRole("button", { name: "Next track: Second song" });
     function releaseHold() { forward.focus(); fireEvent.keyDown(forward, { key: " " }); vi.advanceTimersByTime(300); fireEvent.keyDown(window, { key: "Escape" }); }
     releaseHold();
+    // An ordinary paused-state render can arrive before an asynchronous resume
+    // reports loading. It must not consume the pending keyboard origin early.
+    rerender(<RealTransport {...callbacks} state={{ ...state, playing: false }} sourceReady nextTrackTitle="Second song" />);
     rerender(<RealTransport {...callbacks} state={{ ...state, playing: false, loading: true }} sourceReady nextTrackTitle="Second song" />);
     document.body.focus();
     expect(document.activeElement).toBe(document.body);

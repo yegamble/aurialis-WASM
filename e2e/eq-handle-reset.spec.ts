@@ -19,7 +19,7 @@ test("selected overlapping EQ handles receive pointer resets and preserve other 
     await page.getByRole("slider", { name: "Low Q", exact: true }).fill("1.234");
     await page.getByRole("slider", { name: "Low frequency", exact: true }).fill("1200");
     await page.getByRole("slider", { name: "Low gain", exact: true }).fill("4");
-    const selected = page.locator(".eq-handle").nth(1);
+    const selected = page.getByRole("button", { name: /^Low EQ:/ });
     await expect(selected).toHaveAttribute("aria-pressed", "true");
     await selected.scrollIntoViewIfNeeded();
     const before = await settings();

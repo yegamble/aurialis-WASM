@@ -2,6 +2,8 @@
 
 package main
 
+// cspell:words nolint
+
 import (
 	"encoding/binary"
 	"encoding/json"
@@ -143,6 +145,7 @@ func prepareChannels(args []js.Value) (channels [4]channelByteView, n int) {
 		channels[index] = channel
 	}
 	length := channels[0].length
+	//nolint:gosec // G602: channels is a fixed [4] array; constant index 1 is always in bounds.
 	if length < 1 || length > maxBridgeFrames || channels[1].length != length {
 		return channels, 0
 	}
@@ -217,7 +220,9 @@ func jsProcessBlock(_ js.Value, args []js.Value) any {
 	if n == 0 || !readChannels(channels, n) {
 		return 0
 	}
-	globalBridge.ProcessBlock(bridgeBuffers[0][:n], bridgeBuffers[1][:n], bridgeBuffers[2][:n], bridgeBuffers[3][:n])
+	if !globalBridge.ProcessBlock(bridgeBuffers[0][:n], bridgeBuffers[1][:n], bridgeBuffers[2][:n], bridgeBuffers[3][:n]) {
+		return 0
+	}
 	writeChannels(channels, n)
 	return n
 }

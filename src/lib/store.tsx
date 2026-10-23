@@ -13,6 +13,7 @@ import {
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP } from "./audio-dsp";
 import { normalizeShortcutUndo, pruneShortcutUndo, toggleMasteringShortcut, type MasteringShortcut } from "./mastering-shortcuts";
 import { masteringTargets } from "./mastering-targets";
+import { hasAppliedDeep } from "./reference-matching";
 import type {
   Album,
   AdvancedParams,
@@ -66,8 +67,10 @@ type StoreState = {
 
 type StoreAction =
   | { type: "ADD_TRACK"; track: Track }
+  | { type: "APPLY_REFERENCE"; expected: Track; reference?: Track; advanced: AdvancedParams; restore?: Pick<Track, "mode" | "simpleCustom" | "shortcutUndo"> }
   | { type: "TOGGLE_MASTERING_SHORTCUT"; trackId: string; shortcut: MasteringShortcut }
   | { type: "UPDATE_TRACK"; id: string; patch: Partial<Track> }
+  | { type: "COMMIT_TRACK_SOURCE"; id: string; expectedRevision: number; expectedAudioKey: string; track: Track }
   | { type: "APPLY_NORMALIZED_GAIN"; id: string; expected: AdvancedParams; input: number }
   | {
       type: "UPDATE_SIMPLE";
@@ -78,7 +81,7 @@ type StoreAction =
       type: "UPDATE_EQ_BAND";
       trackId: string;
       bandId: EQBandId;
-      patch: Partial<Omit<EQBandParams, "id" | "label" | "type">>;
+      patch: Partial<Omit<EQBandParams, "id" | "label">>;
     }
   | { type: "TOGGLE_EQ_ENABLED"; trackId: string; enabled: boolean }
   | {
@@ -125,10 +128,24 @@ export function reduceStoreState(
   action: StoreAction,
 ): StoreState {
   switch (action.type) {
+    case "APPLY_REFERENCE":
+      if (action.reference && !state.tracks.includes(action.reference)) return state;
+      return { ...state, tracks: updateTrackInList(state.tracks, action.expected.id, (track) => {
+        if (track !== action.expected || hasAppliedDeep(track)) return track;
+        const next: Track = { ...track, advanced: action.advanced, mode: "advanced", simpleCustom: true, ...action.restore, updatedAt: new Date().toISOString() };
+        if (action.restore) {
+          if (action.restore.simpleCustom === undefined) delete next.simpleCustom;
+          if (action.restore.shortcutUndo === undefined) delete next.shortcutUndo;
+        }
+        return next;
+      }) };
     case "TOGGLE_MASTERING_SHORTCUT":
       return { ...state, tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({ ...track, ...toggleMasteringShortcut(track, action.shortcut), simpleCustom: true, updatedAt: new Date().toISOString() })) };
     case "ADD_TRACK":
       return { ...state, tracks: [{ ...action.track, simpleCustom: action.track.simpleCustom ?? true }, ...state.tracks] };
+
+    case "COMMIT_TRACK_SOURCE":
+      return { ...state, tracks: updateTrackInList(state.tracks, action.id, (track) => (track.sourceRevision ?? 0) === action.expectedRevision && (track.sourceAudioId ?? track.id) === action.expectedAudioKey ? { ...action.track, updatedAt: new Date().toISOString() } : track) };
 
     case "UPDATE_TRACK":
       return {
@@ -381,6 +398,19 @@ export function reduceStoreState(
   }
 }
 
+function normalizeSourceMetadata<T extends Omit<Track, "advanced">>(track: T): T {
+  const restored = { ...track };
+  let invalid = false;
+  const asset = (value: unknown): value is string => typeof value === "string" && /^(?:track|source)-[a-zA-Z0-9-]{1,96}$/u.test(value);
+  if (restored.sourceAudioId !== undefined && !asset(restored.sourceAudioId)) { delete restored.sourceAudioId; invalid = true; }
+  if (restored.sourceRevision !== undefined && (!Number.isSafeInteger(restored.sourceRevision) || restored.sourceRevision < 0)) { delete restored.sourceRevision; invalid = true; }
+  if (restored.retiredSourceAudioIds !== undefined && (!Array.isArray(restored.retiredSourceAudioIds) || restored.retiredSourceAudioIds.length > 64 || !restored.retiredSourceAudioIds.every(asset))) { delete restored.retiredSourceAudioIds; invalid = true; }
+  const identity: unknown = restored.sourceIdentity;
+  if (identity !== undefined && (typeof identity !== "object" || identity === null || !("pcmHash" in identity) || !("sampleRate" in identity) || !("frames" in identity) || typeof identity.pcmHash !== "string" || !/^[a-f0-9]{64}$/u.test(identity.pcmHash) || typeof identity.sampleRate !== "number" || !Number.isSafeInteger(identity.sampleRate) || identity.sampleRate < 8000 || identity.sampleRate > 192000 || identity.sampleRate !== track.sampleRate || typeof identity.frames !== "number" || !Number.isSafeInteger(identity.frames) || identity.frames < 1 || identity.frames > 16_777_216 || Math.abs(identity.frames / track.sampleRate - track.duration) > 0.001)) { delete restored.sourceIdentity; invalid = true; }
+  if (invalid) restored.persistenceWarning = "Some source recovery metadata was invalid and was ignored. Restore the source if playback is unavailable; your mastering settings were preserved.";
+  return restored;
+}
+
 export function normalizeHydratedState(raw: unknown): StoreState | null {
   if (typeof raw !== "object" || raw === null) return null;
   const candidate = raw as {
@@ -402,7 +432,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
   const tracks: Track[] = candidate.tracks.filter((track) => track.source !== "demo").map((track) => {
     const baseAdv = createDefaultAdvancedParams(track.advanced);
     const storedBands: unknown = track.advanced?.eqBands;
-    const restored: Track & { script?: unknown } = { ...track, advanced: createDefaultAdvancedParams() };
+    const restored: Track & { script?: unknown } = { ...normalizeSourceMetadata(track), advanced: createDefaultAdvancedParams() };
     delete restored.script;
     delete restored.releaseScore;
     return pruneShortcutUndo({

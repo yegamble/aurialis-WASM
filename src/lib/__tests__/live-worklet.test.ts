@@ -14,14 +14,15 @@ type Processor = {
 
 // This VM kernel only tests protocol/lifecycle behavior. Compiled Go signal
 // parity is covered independently by the native/WASI verification script.
-function workletFixture(initialOdd = false) {
+function workletFixture(initialOdd = false, abiVersion: number | null = 1, capability: "count" | "algorithm" | "latency" | "missing" | null = null) {
   let Constructor: (new (options: unknown) => Processor) | undefined;
   const header = new Int32Array(new SharedArrayBuffer(8 * 4));
   const tags = new Int32Array(new SharedArrayBuffer(256 * 5 * 4));
   const samples = new Float32Array(new SharedArrayBuffer(128 * 256 * 4 * 4));
-  const controlHeader = new Int32Array(new SharedArrayBuffer(664), 0, 4);
-  const values = new Float64Array(controlHeader.buffer, 16, 81);
+  const controlHeader = new Int32Array(new SharedArrayBuffer(16 + (abiVersion === 1 ? 81 : 82) * 8), 0, 4);
+  const values = new Float64Array(controlHeader.buffer, 16, abiVersion === 1 ? 81 : 82);
   header[2] = 1; controlHeader[0] = initialOdd ? 1 : 2; controlHeader[1] = 1; values[3] = 2;
+  if (abiVersion === 2) values[81] = 1;
   const memory = new WebAssembly.Memory({ initial: 1, maximum: 4 });
   let gain = 1;
   const processGo = () => {
@@ -39,6 +40,12 @@ function workletFixture(initialOdd = false) {
     aurialis_live_buffer: vi.fn((channel: number) => [512, 1024, 1536, 2048].at(channel) ?? 0),
     aurialis_control_buffer: vi.fn(() => 2560), aurialis_set_controls: vi.fn(applyGo),
     aurialis_live_process: vi.fn(processGo), aurialis_live_reset: vi.fn(() => 1),
+    aurialis_control_count: capability === "missing" ? undefined : vi.fn((abi: number) => capability === "count" ? 99 : abi === 1 ? 81 : abi === 2 ? 82 : 0),
+    aurialis_algorithm_supported: vi.fn((version: number) => capability === "algorithm" ? 0 : Number(version === 1)),
+    aurialis_latency_frames: vi.fn(() => capability === "latency" ? 96 : 0),
+    aurialis_live_drain: vi.fn(() => 0),
+    aurialis_control_buffer_v2: vi.fn(() => 2560),
+    aurialis_set_controls_v2: vi.fn((count: number) => count === 82 ? applyGo() : 0),
   };
   const host = { imports: {}, attach: vi.fn(), beginRender: vi.fn() };
   const load = vi.fn((array: Int32Array, index: number) => Atomics.load(array, index));
@@ -56,7 +63,7 @@ function workletFixture(initialOdd = false) {
   if (!Constructor) throw new Error("Audio worklet was not installed");
   const processor = new Constructor({ processorOptions: { header: header.buffer, tags: tags.buffer,
     samples: samples.buffer, controls: controlHeader.buffer, delayBlocks: 1, module: {},
-    entropy: new Uint8Array(256), clockOriginMs: 1 } });
+    entropy: new Uint8Array(256), clockOriginMs: 1, controlAbiVersion: abiVersion } });
   const message = (data: unknown) => { processor.port.onmessage({ data }); };
   const render = (left = 0.25, right = 0.5) => {
     const output = [new Float32Array(128), new Float32Array(128)];
@@ -71,6 +78,33 @@ function workletFixture(initialOdd = false) {
 const silent = (output: Float32Array[]) => output.every(channel => channel.every(sample => sample === 0));
 
 describe("direct Go worklet lifecycle", () => {
+  it.each([0, 3, 1.5, null])("rejects explicit unsupported packet ABI %s", (abi) => {
+    const f = workletFixture(false, abi);
+    expect(f.processor.failed).toBe(true);
+    expect(f.processor.ready).toBe(false);
+    expect(f.kernel.aurialis_live_process).not.toHaveBeenCalled();
+    expect(f.host.beginRender).not.toHaveBeenCalled();
+  });
+  it("negotiates the additive ABI without changing legacy packet playback", () => {
+    const f = workletFixture(false, 2);
+    expect(f.values.length).toBe(82);
+    expect(f.processor.ready).toBe(true);
+    expect(f.kernel.aurialis_control_count).toHaveBeenCalledWith(2);
+    expect(f.kernel.aurialis_set_controls).not.toHaveBeenCalled();
+    expect(f.kernel.aurialis_set_controls_v2).toHaveBeenCalledWith(82);
+    f.message({ type: "reset", generation: 1 });
+    f.render();
+    expect(f.render()[0]?.every(value => value === .5)).toBe(true);
+  });
+  it.each(["count", "algorithm", "latency", "missing"] as const)("rejects %s capability mismatch before warming or producing audio", (capability) => {
+    const f = workletFixture(false, 1, capability);
+    expect(f.processor.failed).toBe(true);
+    expect(f.processor.ready).toBe(false);
+    expect(f.kernel.aurialis_live_process).not.toHaveBeenCalled();
+    expect(f.host.beginRender).not.toHaveBeenCalled();
+    expect(silent(f.render())).toBe(true);
+    expect(f.processor.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
+  });
   it("warms and resets before ready, then stays dormant without erasing cumulative misses", () => {
     const f = workletFixture();
     expect(f.host.attach).toHaveBeenCalledWith(f.memory);

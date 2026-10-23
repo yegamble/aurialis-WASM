@@ -56,7 +56,7 @@ The executable accepts only loopback IP addresses. It has no supported public or
 | Flag | Default | Environment variable | Behavior |
 | --- | --- | --- | --- |
 | `-addr` | `127.0.0.1:8080` | `AURIALIS_ADDR`, then `PORT` | First nonempty environment value overrides the flag. A numeric `PORT` becomes `127.0.0.1:<port>`; an address must use a loopback IP. |
-| `-workers` | `0` (automatic) | None | Automatic starts the smaller of two workers or the available logical CPU count; explicit worker counts are capped at four. This configures experimental background jobs, not simultaneous synchronous renders. |
+| `-workers` | `0` (automatic) | None | Automatic starts the smaller of two workers or the available logical CPU count; explicit worker counts are capped at four. This configures background analysis jobs, not simultaneous synchronous renders. |
 | `-max-upload-bytes` | `135266304` (129 MiB) | `MAX_UPLOAD_BYTES_OVERRIDE` | Caps the entire multipart request, including overhead. A positive integer environment value overrides the flag. The resolved value must be between 1 and the hard 129 MiB ceiling. |
 
 For example, when address environment overrides are unset:

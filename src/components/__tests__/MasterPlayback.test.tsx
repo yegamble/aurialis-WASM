@@ -1,7 +1,6 @@
 import { Blob as NodeBlob } from "node:buffer";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ComponentProps } from "react";
 import { previewWAV, type StereoPCM } from "@/lib/browser-engine";
 import * as engine from "@/lib/browser-engine";
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP } from "@/lib/audio-dsp";
@@ -16,8 +15,8 @@ import { AurialisWorkstation } from "../AurialisWorkstation";
 const mocks = vi.hoisted(() => ({ getAudio: vi.fn(), createLivePlayback: vi.fn(), push: vi.fn() }));
 vi.mock("@/lib/db", () => ({ getAudio: mocks.getAudio, saveAudio: vi.fn(), deleteAudio: vi.fn() }));
 vi.mock("@/lib/live-playback", () => ({ createLivePlayback: mocks.createLivePlayback }));
-vi.mock("next/navigation", () => ({ usePathname: () => null, useRouter: () => ({ push: mocks.push }) }));
-vi.mock("next/link", () => ({ default: ({ href, children, ...props }: ComponentProps<"a">) => <a {...props} href={href}>{children}</a> }));
+vi.mock("next/navigation", () => ({ usePathname: () => null }));
+vi.mock("@/lib/workspace-navigation", async (original) => ({ ...await original<typeof import("@/lib/workspace-navigation")>(), navigateWorkspace: mocks.push }));
 
 type Callbacks = {
   onState?: (state: LivePlaybackState) => void;
@@ -35,12 +34,14 @@ function savedTrack() { const saved = JSON.parse(localStorage.getItem("aurialis-
 function latest() { const instance = instances.at(-1); if (!instance) throw new Error("No live controller was constructed"); return instance; }
 
 beforeEach(() => {
+  vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
   vi.stubGlobal("Blob", NodeBlob);
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Network unavailable")));
   const storage = new Map([["aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1) })]]);
   vi.stubGlobal("localStorage", { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value); } });
   instances.length = 0;
-  mocks.push.mockReset();
+  window.history.replaceState(null, "", "/master/demo-1");
+  mocks.push.mockReset().mockImplementation((href: string) => { window.history.replaceState(null, "", href); });
   mocks.getAudio.mockReset().mockResolvedValue(previewWAV(pcm));
   mocks.createLivePlayback.mockReset().mockImplementation((_source: StereoPCM, _settings: AdvancedParams, callbacks: Callbacks) => {
     const instance: Instance = { controller: {} as LivePlaybackController, callbacks,

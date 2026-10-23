@@ -41,6 +41,13 @@ const (
 	KindSeparate Kind = "separate"
 	// KindAnalyzeDeep is a MasteringScript v1 deep analysis job.
 	KindAnalyzeDeep Kind = "analyze_deep"
+	// KindAnalyzeDeepV2 is a source-bound measured ScriptV2 proposal job.
+	KindAnalyzeDeepV2 Kind = "analyze_deep_v2"
+	// KindAnalyzeReference produces a measured source/reference EQ proposal.
+	KindAnalyzeReference Kind = "analyze_reference"
+
+	// KindAnalyzeFeatures measures spectra and neutral change points without proposing processing.
+	KindAnalyzeFeatures Kind = "analyze_features"
 )
 
 // ErrQueueFull indicates the bounded job queue is at capacity.
@@ -59,20 +66,23 @@ type StemDescriptor struct {
 
 // Job holds the state and result artifacts of an asynchronous audio processing task.
 type Job struct {
-	ID        string            `json:"jobId"`
-	JobID     string            `json:"job_id"`
-	Kind      Kind              `json:"kind"`
-	Status    Status            `json:"status"`
-	Progress  int               `json:"progress"`
-	Stage     string            `json:"stage"`
-	Profile   string            `json:"profile,omitempty"`
-	StemCount int               `json:"stemCount,omitempty"`
-	Error     string            `json:"error,omitempty"`
-	Detail    string            `json:"detail,omitempty"`
-	CreatedAt time.Time         `json:"createdAt"`
-	UpdatedAt time.Time         `json:"updatedAt"`
-	Script    *mastering.Script `json:"script,omitempty"`
-	Stems     []StemDescriptor  `json:"stems,omitempty"`
+	ID                string                       `json:"jobId"`
+	JobID             string                       `json:"job_id"`
+	Kind              Kind                         `json:"kind"`
+	Status            Status                       `json:"status"`
+	Progress          int                          `json:"progress"`
+	Stage             string                       `json:"stage"`
+	Profile           string                       `json:"profile,omitempty"`
+	StemCount         int                          `json:"stemCount,omitempty"`
+	Error             string                       `json:"error,omitempty"`
+	Detail            string                       `json:"detail,omitempty"`
+	CreatedAt         time.Time                    `json:"createdAt"`
+	UpdatedAt         time.Time                    `json:"updatedAt"`
+	ReferenceProposal *mastering.ReferenceProposal `json:"referenceProposal,omitempty"`
+	ScriptV2          *mastering.ScriptV2          `json:"scriptV2,omitempty"`
+	Script            *mastering.Script            `json:"script,omitempty"`
+	Features          *mastering.AnalysisFeatures  `json:"features,omitempty"`
+	Stems             []StemDescriptor             `json:"stems,omitempty"`
 
 	stemWAVs      map[string][]byte
 	cancel        context.CancelFunc
@@ -199,9 +209,7 @@ func (m *Manager) reapLoop() {
 func (m *Manager) pruneLocked(now time.Time) {
 	for id, j := range m.jobs {
 		if j.reservedBytes == 0 && now.Sub(j.UpdatedAt) >= Retention {
-			for _, wav := range j.stemWAVs {
-				m.usedBytes -= int64(len(wav))
-			}
+			m.usedBytes -= retainedBytes(j)
 			delete(m.jobs, id)
 		}
 	}
@@ -213,9 +221,7 @@ func (m *Manager) releaseReservation(id string) {
 	if j, ok := m.jobs[id]; ok && j.reservedBytes > 0 {
 		m.usedBytes -= j.reservedBytes
 		j.reservedBytes = 0
-		for _, wav := range j.stemWAVs {
-			m.usedBytes += int64(len(wav))
-		}
+		m.usedBytes += retainedBytes(j)
 		j.cancel = nil
 	}
 }
@@ -232,10 +238,27 @@ func (m *Manager) admitLocked(job *Job, buf *audio.Buffer, stemCount int) error 
 	// buffers and encoded 16-bit artifacts. Deep rendering also needs a stereo
 	// float output. Scratch/headroom covers metering history and small objects.
 	bytesPerFrame := int64(16)
+	if job.Kind == KindAnalyzeFeatures || job.Kind == KindAnalyzeDeepV2 {
+		bytesPerFrame = 8 // Input only; features and FFT scratch fit the reserved headroom.
+	}
 	if stemCount > 0 {
 		bytesPerFrame = 8 + int64(stemCount)*12
 	}
 	reservation := int64(buf.Frames)*bytesPerFrame + int64(stemCount)*44 + 16*1024*1024
+	if job.Kind == KindAnalyzeDeepV2 {
+		reservation += 16 * 1024 * 1024
+	}
+	return m.admitReservationLocked(job, reservation)
+}
+
+func (m *Manager) admitReservationLocked(job *Job, reservation int64) error {
+	if m.closed {
+		return errors.New("job manager is closed")
+	}
+	m.pruneLocked(time.Now())
+	if reservation < 1 {
+		return errors.New("invalid job reservation")
+	}
 	if len(m.jobs) >= MaxRetainedJobs || reservation > MaxMemoryBytes-m.usedBytes {
 		return ErrQueueFull
 	}
@@ -490,15 +513,16 @@ func (m *Manager) Cancel(id string) (*Job, bool) {
 	cancelFn := j.cancel
 	if j.Status != StatusCanceled {
 		if j.reservedBytes == 0 {
-			for _, wav := range j.stemWAVs {
-				m.usedBytes -= int64(len(wav))
-			}
+			m.usedBytes -= retainedBytes(j)
 		}
 		j.Status = StatusCanceled
 		j.Stage = "Canceled"
 		j.stemWAVs = nil
 		j.Stems = nil
 		j.Script = nil
+		j.ScriptV2 = nil
+		j.ReferenceProposal = nil
+		j.Features = nil
 		j.UpdatedAt = time.Now().UTC()
 	}
 	snapshot := m.cloneJob(j)
@@ -512,9 +536,79 @@ func (m *Manager) Cancel(id string) (*Job, bool) {
 
 func (m *Manager) cloneJob(j *Job) *Job {
 	cp := *j
+	cp.ReferenceProposal = j.ReferenceProposal.Clone()
+	if j.ScriptV2 != nil {
+		cp.ScriptV2 = j.ScriptV2.Clone()
+	}
 	if j.Stems != nil {
 		cp.Stems = make([]StemDescriptor, len(j.Stems))
 		copy(cp.Stems, j.Stems)
 	}
+	if j.Features != nil {
+		features := *j.Features
+		features.Frames = append([]mastering.FeatureFrame(nil), j.Features.Frames...)
+		features.Sections = append([]mastering.FeatureSection(nil), j.Features.Sections...)
+		features.Warnings = append([]string{}, j.Features.Warnings...)
+		cp.Features = &features
+	}
 	return &cp
+}
+
+func retainedBytes(job *Job) int64 {
+	var bytes int64
+	for _, wav := range job.stemWAVs {
+		bytes += int64(len(wav))
+	}
+	if job.ScriptV2 != nil {
+		bytes += mastering.MaxScriptV2Bytes
+	}
+	if job.ReferenceProposal != nil {
+		bytes += MaxReferenceResultBytes
+	}
+	return bytes + job.Features.StorageBytes()
+}
+
+// SubmitAnalyzeFeatures enqueues bounded measured analysis without rendering audio.
+func (m *Manager) SubmitAnalyzeFeatures(buf *audio.Buffer) (*Job, error) {
+	id := newJobID()
+	now := time.Now().UTC()
+	job := &Job{ID: id, JobID: id, Kind: KindAnalyzeFeatures, Status: StatusQueued, Stage: "Queued for measured feature analysis", CreatedAt: now, UpdatedAt: now}
+	m.mu.Lock()
+	if err := m.admitLocked(job, buf, 0); err != nil {
+		m.mu.Unlock()
+		return nil, err
+	}
+	snapshot := m.cloneJob(job)
+	work := workItem{jobID: id, run: func(ctx context.Context) {
+		features, err := mastering.AnalyzeFeaturesContext(ctx, buf, func(pct int, stage string) { m.updateProgress(id, pct, stage) })
+		if err != nil {
+			if ctx.Err() != nil {
+				m.markCanceled(id)
+			} else {
+				m.markFailed(id, err)
+			}
+			return
+		}
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		current, ok := m.jobs[id]
+		if !ok || current.Status == StatusCanceled {
+			return
+		}
+		current.Features = features
+		current.Status = StatusDone
+		current.Progress = 100
+		current.Stage = "Measured features ready"
+		current.UpdatedAt = time.Now().UTC()
+	}}
+	select {
+	case m.queue <- work:
+		m.mu.Unlock()
+		return snapshot, nil
+	default:
+		m.usedBytes -= job.reservedBytes
+		delete(m.jobs, id)
+		m.mu.Unlock()
+		return nil, ErrQueueFull
+	}
 }

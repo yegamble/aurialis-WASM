@@ -17,6 +17,7 @@ type RealTransportProps = {
   onScrub: (direction: -1 | 1, phase: "start" | "end" | "cancel") => void;
   nextTrackTitle?: string;
   handover?: boolean;
+  inline?: boolean;
 };
 
 const actionClass = "touch-none select-none grid size-[44px] shrink-0 place-items-center rounded-full border border-transparent bg-transparent text-ink [&_svg]:size-5 transition-colors hover:enabled:bg-paper-deep disabled:cursor-not-allowed disabled:opacity-45";
@@ -47,6 +48,7 @@ function useHoldAction(direction: -1 | 1, onScrub: RealTransportProps["onScrub"]
   function begin(origin: "pointer" | "key", element: HTMLButtonElement) {
     if (disabled || session.current !== null) return;
     suppressClick.current = false;
+    resumeFocus.current = null;
     session.current = { origin, held: false, element };
     timer.current = setTimeout(() => {
       timer.current = null;
@@ -71,8 +73,11 @@ function useHoldAction(direction: -1 | 1, onScrub: RealTransportProps["onScrub"]
   useEffect(() => {
     if (disabled || resumeFocus.current === null) return;
     const element = resumeFocus.current;
+    // Resume can report loading after an intervening paused-state render. Keep
+    // the origin while it still has focus so that later disabling cannot lose it.
+    if (element.isConnected && document.activeElement === element) return;
     resumeFocus.current = null;
-    if (element.isConnected && document.hasFocus() && (document.activeElement === document.body || document.activeElement === element)) element.focus({ preventScroll: true });
+    if (element.isConnected && document.hasFocus() && document.activeElement === document.body) element.focus({ preventScroll: true });
   });
   return {
     onPointerDown: (event: React.PointerEvent<HTMLButtonElement>) => {
@@ -83,7 +88,12 @@ function useHoldAction(direction: -1 | 1, onScrub: RealTransportProps["onScrub"]
     onPointerUp: () => { finish("end"); },
     onPointerCancel: () => { finish("cancel"); },
     onLostPointerCapture: () => { finish("cancel"); },
-    onBlur: () => { finish("cancel"); },
+    onBlur: (event: React.FocusEvent<HTMLButtonElement>) => {
+      finish("cancel");
+      // Native disabling blurs the origin during resume. An intentional move to
+      // another control or the page instead relinquishes its pending ownership.
+      if (!event.currentTarget.disabled) resumeFocus.current = null;
+    },
     onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => { event.preventDefault(); },
     onClick: () => {
       if (suppressClick.current) { suppressClick.current = false; return; }
@@ -106,7 +116,7 @@ function useHoldAction(direction: -1 | 1, onScrub: RealTransportProps["onScrub"]
 }
 
 /** One live audio clock: A is processed, B original; restart always means this track at zero. */
-export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal, onVolume, onRestart, onForward, onRepeat, onScrub, nextTrackTitle, handover = false }: RealTransportProps) {
+export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal, onVolume, onRestart, onForward, onRepeat, onScrub, nextTrackTitle, handover = false, inline = false }: RealTransportProps) {
   const playing = state?.playing ?? false;
   const loading = state?.loading ?? false;
   const original = state?.original ?? false;
@@ -120,7 +130,7 @@ export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal,
   const backActions = useHoldAction(-1, onScrub, onRestart, unavailable || loading);
   const forwardActions = useHoldAction(1, onScrub, onForward, unavailable || loading);
   return (
-    <div className="transport @container fixed right-[14px] bottom-[calc(82px+env(safe-area-inset-bottom,0px))] left-[14px] z-25 w-auto min-w-0 rounded-[22px] border border-line-dark bg-paper px-3 py-2 shadow-[var(--shadow)] md:sticky md:right-auto md:bottom-3 md:left-auto md:w-full"
+    <div className={`transport @container ${inline ? "relative w-full" : "fixed right-[14px] bottom-[calc(82px+env(safe-area-inset-bottom,0px))] left-[14px] z-25 w-auto md:sticky md:right-auto md:bottom-3 md:left-auto md:w-full"} min-w-0 rounded-[22px] border border-line-dark bg-paper px-3 py-2 shadow-[var(--shadow)]`}
       aria-label="Playback transport" aria-busy={loading || handover}
       data-position={position} data-playing={playing} data-ready={state?.ready ?? false}
       data-parameter-version={state?.parameterVersion ?? 0} data-applied-version={state?.appliedVersion ?? 0}>

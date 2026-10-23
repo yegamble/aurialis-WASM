@@ -6,15 +6,15 @@ Need to launch Aurialis first? Follow the [README setup steps](../README.md#run-
 
 ## 1. Bring in a track
 
-On **Home**, drop a WAV onto the upload area or choose a file. The library starts empty; there are no bundled songs.
+On **Home**, drop WAV files onto the upload area, paste audio files from the clipboard, or select **Choose audio**. The library starts empty; there are no bundled songs.
 
 Use an uncompressed mono or stereo WAV at **8–192 kHz**: 8/16/24/32-bit integer PCM or 32-bit float. Mono is converted to stereo. The browser import does not accept MP3, FLAC, OGG, M4A, AAC or AIFF. The [API reference](api.md#security-and-resource-contract) describes its additional, limited AIFF support.
 
-Aurialis validates the file on the local Go server, rebuilds its audio into a clean stereo-float WAV, prepares a waveform, and saves that reconstructed source in this browser. Select **Cancel import** to stop it. Keep your original file separately: the stored version does not retain the original container metadata.
+Aurialis imports selected files one at a time. It validates each file on the local Go server, rebuilds its audio into a clean stereo-float WAV, prepares a waveform, and saves that reconstructed source in this browser. Invalid files are skipped with a reason. Select **Cancel import** to stop the queue; already imported projects remain in your Library. Keep your original files separately: the stored versions do not retain the original container metadata.
 
 The file cap is **128 MiB plus a 44-byte WAV header**, with at most **16,777,216 decoded frames**. That is about **5 min 50 s at 48 kHz**, or **2 min 55 s at 96 kHz**; the file-size limit may shorten this. Longer recordings need a shorter selection or a lower sample rate before import. Lowering bit depth alone does not increase the frame limit.
 
-When import succeeds, your track opens in the mastering workspace in **Advanced** mode. Select **Simple** to follow the next steps.
+When import finishes, the first successfully imported track opens in the mastering workspace in **Advanced** mode. Other imported projects are in **Library**. Select **Simple** to follow the next steps.
 
 ## 2. Find the feeling
 
@@ -51,13 +51,47 @@ Export always renders the current processing settings from the reconstructed sou
 | In the app | Use it for |
 | --- | --- |
 | **Advanced** | Adjust input gain, five-band EQ, compression, saturation, stereo width, a sample-peak limiter, De-Harsh and three-band compression. These controls change the shared chain used by Simple and export. |
-| **Deep** | Apply one of five static **Engineer profiles**, then refine it in Advanced. Profiles apply throughout the track. Musical section detection, timeline automation and AI repair are unavailable. |
+| **Deep** | Apply one of five static **Engineer profiles**, or measure the original audio's frequency balance and change intervals. Diagnostics do not apply processing. Musical role detection, editable timeline automation and AI repair are unavailable. |
 | **Albums** | Create and order a sequence, then select **Render album masters** to measure and render individual 24-bit WAVs. Download them before leaving the page. |
-| **Reference match** in **Tools** | Blend another project's saved EQ settings, with low-end and width options. Recorded audio spectrum matching remains in development. |
+| **Reference match** in **Tools** | Measure your track against another imported recording, review a bounded EQ and optional width proposal, then explicitly apply it. |
 | **Release check** in **Tools** | Select Streaming, Dynamic or Spoken word, then **Run release check** to measure rendered audio against working targets. **Download JSON report** saves the measurements. This is guidance, not platform certification. |
 | **Smart stem splitter** | Inspect the intended layout. Instrument separation, stem playback and stem downloads are unavailable. |
 
 Album downloads use a **128 MiB total cache**. Changing the sequence or processing settings invalidates them; leaving the album page discards them. Render a smaller sequence or export tracks individually if it exceeds the cache. Album rendering does not establish full album-consistency mastering.
+
+## Keep your Library organized
+
+Use **Search your library**, status filters and **Sort projects** to find a project. Each row's action button opens its project actions:
+
+| Action | What it does |
+| --- | --- |
+| **Preview** followed by the track title | Listen with that project's processing settings and A/B controls without opening Master. |
+| **Duplicate settings** | Create an independent project and stored source copy for another direction. Restore a missing source before duplicating. |
+| **Add to album** | Add the project to an existing album or create one with **New album with this project**. |
+| **Restore source** | Reconnect a missing original WAV, or explicitly replace it as described below. |
+| **Delete** followed by the track title | Open a confirmation dialog. **Delete project** removes the project, its album links and unshared source/recovery audio after storage confirms deletion. |
+
+To recover missing audio, select **Restore source**, then **Choose source WAV**. An exact reconstructed-audio match keeps all settings; the filename alone does not establish a match. For different audio, or an older project without verifiable source identity, Aurialis asks you to select **Replace source** explicitly. Replacement keeps the project and album links, adjusts settings for the new sample rate, and clears source-derived results. Any available earlier source audio is kept as a recovery copy until the project is deleted; already missing audio cannot be recovered from browser storage.
+
+## Measure the original in Deep
+
+In **Deep**, select **Analyze original audio** under **Measured source analysis**. It measures the stored source's frequency-band energy and intervals where energy, tone or stereo width changes. Use **Cancel analysis** to stop it.
+
+Results use neutral interval names; a change-strength percentage is a heuristic score, not the probability of a verse or chorus. The analysis does not generate mastering moves or change your settings. The separate **Apply profile** action applies a static preset throughout the track.
+
+## Compare with a reference recording
+
+Import the recording you want to use as a reference, then open **Reference match** from **Tools** for your source project.
+
+1. Choose a **Reference track**. Aurialis compares your source through this session's starting processing settings with the original reference audio. The reference project's saved knob positions are ignored.
+2. Choose **Match amount**. Leave **Protect low end** on to constrain changes in the 20–120 Hz range; enable **Include width** only if you want a stereo-width proposal too.
+3. Select **Analyze reference audio**. This leaves your settings unchanged. Both sources must be available and have verified identities; use Library's **Restore source** for older or missing sources when prompted.
+4. Review the measured band averages, proposed EQ changes, residual mismatch and warnings. These describe a broad tonal comparison, not a guarantee that the two recordings will sound alike.
+5. Select **Apply measured proposal** when you want those settings. Repeated Apply and amount changes use the session's original baseline, so they do not stack corrections. Choose **Back to master** to listen or export.
+
+**Revert Reference** restores the settings from before this Reference session while its applied settings remain current. This is a temporary, session-specific undo: leaving Reference or making other processing/source changes ends that protection. For a lasting alternative, use **Duplicate settings** in Library before experimenting.
+
+Changing the reference or matching options requires fresh analysis before Apply. There is no hidden gain adjustment or automatic loudness matching; check final loudness and peak headroom separately. Both audio sources share the **129 MiB multipart request ceiling**, so two individually supported files may still be too large together. See the [measured Reference API contract](api.md#measured-reference-proposals) for its exact bounds.
 
 ## Playback and keyboard shortcuts
 
@@ -67,7 +101,7 @@ Tap **Restart track** to return to the beginning. The forward control opens the 
 | --- | --- |
 | The waveform | Left/Right seeks one second; Shift seeks ten seconds; Alt seeks a tenth of a second. Home returns to the start; End goes to the end. |
 | A mastering slider | Arrow keys adjust its value. Backspace or double-click resets it to its default. |
-| An EQ point | Left/Right changes frequency; Up/Down changes gain. Backspace or double-click resets its frequency and gain. |
+| An EQ point | Left/Right changes frequency; Up/Down changes gain for filters other than high-pass. Backspace or double-click resets its frequency and gain. |
 | A dialog | Escape closes it. |
 
 ## Where your work lives
@@ -76,7 +110,9 @@ Audio processing uses the browser and your local Go server. The standard app doe
 
 Reconstructed audio lives in **IndexedDB**, the browser's local database. Project settings and album metadata live in **localStorage**, another browser storage area. Use the same browser profile and local address to return to that workspace. Changing the host or port uses a different browser storage location.
 
-Browser storage is not a backup: clearing site data, switching profiles, or storage failure can make your work unavailable. If Aurialis warns that storage is unavailable, keep the tab open and export before leaving; the audio fallback lasts only in memory. Re-import a missing source from your original file.
+Browser storage is not a backup: clearing site data, switching profiles, or storage failure can make your work unavailable. Library shows storage estimates when available and offers **Request persistent storage**; the browser may decline it, and permission does not replace a backup.
+
+If Aurialis warns that audio is available only in this tab, export before closing or reloading. Session-only audio survives navigation inside Aurialis, with a total cache cap of **128 MiB plus 44 bytes**; further imports fail when it fills. Use **Restore source** to reconnect a missing source from your original file.
 
 ## If something gets stuck
 
@@ -86,10 +122,12 @@ Browser storage is not a backup: clearing site data, switching profiles, or stor
 | “Failed to fetch” or a local-server connection error | Confirm the local server is running at the page's address, then retry. The message alone does not establish why the connection failed. |
 | The server is busy | Let the current import or render finish, or cancel it, then retry. One expensive audio request is admitted at a time. |
 | Import rejects the file | Check its format, channel count, size and duration against step 1. Renaming a compressed file to `.wav` does not convert it. |
-| “The source audio is missing” | Use **Retry source** if offered. If the source is still unavailable, import the original file again to create a new project. |
+| “The source audio is missing” | Use **Retry source** if offered, then **Restore source** to reconnect the original WAV without creating a new project. |
 | Playback initialization fails | Select **Retry playback** when shown, then Play. A current Chromium-based browser is a useful starting point; recorded Chromium/Brave results do not establish support for every browser or device. |
 | The requested loudness cannot be reached | Choose a less demanding target or change processing, then run **Set target loudness** again. |
 | An album exceeds its download cache | Render a smaller sequence or export its tracks individually. |
+| Reference analysis needs verified source identity | Restore the source WAV through Library. Older or different audio requires explicit **Replace source** and invalidates source-derived results. |
+| A Reference proposal is stale | Analyze again after source, reference, options or processing changes; your newer settings are preserved. |
 
 For a bug report, include your browser and operating system, the action that failed, the exact message, and the file's format, size, sample rate and channel count. Avoid sharing private audio unless you intend to.
 

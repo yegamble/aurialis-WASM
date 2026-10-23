@@ -12,9 +12,9 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     const config = options.processorOptions;
     this.header = new Int32Array(config.header);
     if (config.stream !== undefined) {
-      if (!(config.stream instanceof SharedArrayBuffer) || config.stream.byteLength !== 16) throw new Error("The source epoch buffer is invalid.");
+      if (!(config.stream instanceof SharedArrayBuffer) || config.stream.byteLength !== 24) throw new Error("The source epoch buffer is invalid.");
       this.streamHeader = new Int32Array(config.stream, 0, 2);
-      this.streamTime = new Float64Array(config.stream, 8, 1);
+      this.streamTime = new Float64Array(config.stream, 8, 2);
       this.streamSequence = 0;
     }
     this.tags = new Int32Array(config.tags);
@@ -55,6 +55,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         this.generation = message.generation;
         this.sourceFrame = Number.isSafeInteger(message.sourceFrame) && message.sourceFrame >= 0 ? message.sourceFrame : 0;
         this.startTime = Number.isFinite(message.startTime) && message.startTime >= 0 ? message.startTime : 0;
+        if (this.sourceBound && this.kernel.aurialis_schedule_set_looping(Number(message.looping === true)) !== 1) throw new Error("The source loop clock could not be configured.");
         if (this.sourceBound && this.kernel.aurialis_schedule_seek(this.sourceFrame) !== 1) throw new Error("The automation clock could not seek.");
         this.active = message.type !== "arm";
         this.sequence = 0;
@@ -69,7 +70,6 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         this.sourceVector.set(message.source);
         if (this.kernel.aurialis_schedule_bind_source() !== 1) throw new Error("The audio engine rejected the verified source.");
         this.sourceBound = true;
-        if (this.kernel.aurialis_schedule_set_looping(1) !== 1) throw new Error("The source loop clock could not be enabled.");
         this.refreshBuffers();
         this.port.postMessage({ type: "automation-ack", token: message.token, revision: 0 });
       } else if (message.type === "schedule") {
@@ -201,11 +201,14 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     if (!this.streamHeader) return;
     const sequence = Atomics.load(this.streamHeader, 0);
     if (!sequence || sequence % 2 || sequence === this.streamSequence) return;
-    const generation = Atomics.load(this.streamHeader, 1), frame = this.streamTime[0];
+    const generation = Atomics.load(this.streamHeader, 1), frame = this.streamTime[0], endFrame = this.streamTime[1];
     if (sequence !== Atomics.load(this.streamHeader, 0)) return;
     if (generation !== this.generation || generation !== Atomics.load(this.header, GENERATION)) return;
-    if (!Number.isSafeInteger(frame) || frame < 0 || currentTime * sampleRate > frame + 0.5) throw new Error("The source start deadline was missed. Retry playback.");
-    this.startTime = frame / sampleRate; this.streamSequence = sequence; this.active = true;
+    if (!Number.isSafeInteger(frame) || frame < 0 || !(endFrame === Infinity || Number.isSafeInteger(endFrame) && endFrame >= frame)) throw new Error("The source epoch deadline is invalid.");
+    if (!this.active && currentTime * sampleRate > frame + 0.5) throw new Error("The source start deadline was missed. Retry playback.");
+    if (this.active && Math.round(this.startTime * sampleRate) !== frame) throw new Error("An active source epoch cannot change.");
+    this.startTime = frame / sampleRate; this.endTime = endFrame / sampleRate;
+    this.streamSequence = sequence; this.active = true;
   }
   advanceSchedule() {
     const detach = this.pendingDetach;
@@ -245,7 +248,6 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         pending.commitStarted = true;
         if (this.kernel.aurialis_schedule_commit() !== 1 || this.kernel.aurialis_schedule_revision() !== pending.revision) throw new Error("The audio engine did not acknowledge the complete schedule.");
         this.scheduleAttached = true;
-        if (this.kernel.aurialis_schedule_set_looping(1) !== 1) throw new Error("The automation loop clock could not be enabled.");
         this.refreshBuffers(); this.controlVersion = pending.version;
         this.pendingSchedule = null;
         this.port.postMessage({ type: "automation-ack", token: pending.token, revision: pending.revision });
@@ -343,6 +345,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     const targetMix = this.original ? 1 : 0;
     const step = 1 / (sampleRate * 0.008);
     const volumeStep = 1 / (sampleRate * 0.01);
+    const blockFrame = Math.round(currentTime * sampleRate), endFrame = Math.round(this.endTime * sampleRate);
     for (let i = 0; i < QUANTUM; i++) {
       this.mix += Math.max(-step, Math.min(step, targetMix - this.mix));
       this.volume += Math.max(-volumeStep, Math.min(volumeStep, this.targetVolume - this.volume));
@@ -350,7 +353,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       const dryR = expected > 0 ? this.samples[FRAMES + outputOffset + i] : 0;
       const wetL = available ? this.samples[2 * FRAMES + outputOffset + i] : 0;
       const wetR = available ? this.samples[3 * FRAMES + outputOffset + i] : 0;
-      const audible = currentTime + i / sampleRate < this.endTime;
+      const audible = blockFrame + i < endFrame;
       const l = audible ? (wetL * (1 - this.mix) + dryL * this.mix) * this.volume : 0;
       const r = audible ? (wetR * (1 - this.mix) + dryR * this.mix) * this.volume : 0;
       outL[i] = l; outR[i] = r;

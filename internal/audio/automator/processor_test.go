@@ -115,7 +115,41 @@ func BenchmarkDenseAutomation128(b *testing.B) {
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
-	for range b.N {
+	for iteration := range b.N {
+		if iteration%300 == 0 {
+			if err := processor.SeekSourceFrame(1000); err != nil {
+				b.Fatal(err)
+			}
+		}
 		processor.ProcessBlock(left[:], right[:], outL[:], outR[:])
+	}
+}
+
+func TestMutedRevisionRetainsExactFractionalPosition(t *testing.T) {
+	params := dsp.DefaultParams()
+	for _, rate := range []int{8000, 44100, 48000, 192000} {
+		inactive, err := New(dsp.NewEngine(float64(rate)), params, compiled(t, params, nil, rate))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := inactive.SeekSourceFrame(123); err != nil {
+			t.Fatal(err)
+		}
+		var inL, inR, outL, outR [129]float32
+		inactive.ProcessBlock(inL[:], inR[:], outL[:], outR[:])
+		active, err := New(dsp.NewEngine(float64(rate)), params, compiled(t, params, testMoves(), rate))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !active.InheritPosition(inactive) {
+			t.Fatal("compatible revision lost source clock")
+		}
+		var gain, width [1]float64
+		active.cursor.Fill(gain[:], width[:], 1)
+		expectedSource := 123 + 129*48000/float64(rate)
+		expected := active.schedule.ValueAt(automation.InputGain, expectedSource)
+		if math.Abs(gain[0]-expected) > 1e-12 {
+			t.Fatalf("muted revision reset clock rate %d got %g expected %g", rate, gain[0], expected)
+		}
 	}
 }

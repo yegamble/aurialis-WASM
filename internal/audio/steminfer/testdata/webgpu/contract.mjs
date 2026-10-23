@@ -25,11 +25,11 @@ export function shapePlan(m, n, k) {
   const referenceWork = safe(m * n * k, "reference multiply-adds");
   if (paddedWork > MAX_PADDED_WORK || referenceWork > MAX_REFERENCE_WORK) throw new Error("Fixture work exceeds its limit");
   const aBytes = safe(aElements * 4, "A bytes"), bBytes = safe(bElements * 4, "B bytes"), cBytes = safe(cElements * 4, "C bytes");
-  // Four input copies: retained fixture, transfer clone, GPU and upload staging.
-  // Ten output copies cover F64 reference/sumabs + F32 diagnostic in the retained
-  // fixture, output initialization, GPU result/readback, mapped/result copies.
+  // Five input copies: caller file, immutable private snapshot, transfer clone,
+  // GPU and upload staging. Sixteen output copies cover the caller+snapshot
+  // F64 reference/sumabs + F32 diagnostic, initialization, GPU/readback and mapping.
   // This bounds declared application buffers, not opaque driver/device overhead.
-  const chargedBytes = 4 * (aBytes + bBytes) + 10 * cBytes + 4096;
+  const chargedBytes = 5 * (aBytes + bBytes) + 16 * cBytes + 4096;
   if (!Number.isSafeInteger(chargedBytes) || chargedBytes > MAX_BUFFER_BYTES) throw new Error("Fixture buffers exceed 16 MiB");
   return Object.freeze({ m, n, k, aElements, bElements, cElements, aBytes, bBytes, cBytes, chargedBytes, paddedWork, referenceWork, x, y,
     fixtureBytes: 24 + aBytes + bBytes + cElements * 20 });
@@ -49,10 +49,15 @@ export function validateRequest(message) {
   const plan = shapePlan(message.m, message.n, message.k);
   if (!(message.a instanceof ArrayBuffer) || !(message.b instanceof ArrayBuffer)
     || message.a.byteLength !== plan.aBytes || message.b.byteLength !== plan.bBytes) throw new Error("Invalid fixture operand layout");
+  validateOperands(plan, new Float32Array(message.a), new Float32Array(message.b));
+  return plan;
+}
+export function validateOperands(plan, a, b) {
+  if (!(a instanceof Float32Array) || !(b instanceof Float32Array) || a.length !== plan.aElements || b.length !== plan.bElements) throw new Error("Invalid fixture operand views");
   let maxA = 0, maxB = 0;
-  for (const [buffer, which] of [[message.a, "A"], [message.b, "B"]]) {
+  for (const [buffer, which] of [[a, "A"], [b, "B"]]) {
     let maximum = 0;
-    for (const value of new Float32Array(buffer)) {
+    for (const value of buffer) {
       if (!Number.isFinite(value)) throw new Error("Nonfinite fixture operand");
       maximum = Math.max(maximum, Math.abs(value));
     }
@@ -60,7 +65,6 @@ export function validateRequest(message) {
   }
   // Bound every possible partial dot conservatively; no cancellation exemption.
   if (maxA * maxB * plan.k > MAX_FLOAT32 / 2) throw new Error("Fixture could overflow Float32");
-  return plan;
 }
 export function validateDevice(plan, limits) {
   if (!plan) return;
@@ -92,16 +96,23 @@ export function compareFixture(fixture, output) {
   for (let row = 0; row < plan.m; row++) for (let col = 0; col < plan.n; col++) {
     const i = row * plan.n + col, actual = output[i], expected = view.getFloat64(expectedOffset + i * 8, true), sumabs = view.getFloat64(sumOffset + i * 8, true), diagnostic = view.getFloat32(f32Offset + i * 4, true);
     if (![actual, expected, sumabs, diagnostic].every(Number.isFinite) || sumabs < 0) throw new Error("Nonfinite or invalid fixture comparison");
-    const error = Math.abs(actual - expected);
-    // Includes cancellation via sumabs; Float64-reference accumulation and a
-    // subnormal rounding floor are explicit. This is a diagnostic bound, not a
-    // universal WebGPU or whole-model arithmetic guarantee.
-    const standardBound = gamma * sumabs + Number.EPSILON * plan.k * sumabs + 2 ** -149 * (2 * plan.k + 1);
     let flushAllowance = MIN_NORMAL * (2 * plan.k + 1);
+    let independent = 0, correction = 0, independentAbs = 0, absCorrection = 0, rounded = 0;
     for (let index = 0; index < plan.k; index++) {
-      const av = a[row * plan.k + index], bv = b[col * plan.k + index];
-      if ((av !== 0 && Math.abs(av) < MIN_NORMAL) || (bv !== 0 && Math.abs(bv) < MIN_NORMAL) || Math.abs(av * bv) < MIN_NORMAL) flushAllowance += Math.abs(av * bv);
+      const av = a[row * plan.k + index], bv = b[col * plan.k + index], product = av * bv;
+      const adjusted = product - correction, next = independent + adjusted;
+      correction = (next - independent) - adjusted; independent = next;
+      const absAdjusted = Math.abs(product) - absCorrection, absNext = independentAbs + absAdjusted;
+      absCorrection = (absNext - independentAbs) - absAdjusted; independentAbs = absNext;
+      rounded = Math.fround(rounded + Math.fround(product));
+      if ((av !== 0 && Math.abs(av) < MIN_NORMAL) || (bv !== 0 && Math.abs(bv) < MIN_NORMAL) || Math.abs(product) < MIN_NORMAL) flushAllowance += Math.abs(product);
     }
+    // Never let edited file-provided references or an inflated sumabs grant a pass.
+    if (independent !== expected || independentAbs !== sumabs || rounded !== diagnostic) throw new Error("Saved Go reference disagrees with independent exact-input dot");
+    const error = Math.abs(actual - independent);
+    // Cancellation uses sumabs, not output-relative error. These are diagnostic
+    // bounds, not universal GPU or whole-model arithmetic guarantees.
+    const standardBound = gamma * independentAbs + Number.EPSILON * plan.k * independentAbs + 2 ** -149 * (2 * plan.k + 1);
     if (error > standardBound) {
       normalViolations++;
       if (error > standardBound + flushAllowance) throw new Error(`GEMM error exceeds declared diagnostic bound at ${row},${col}`);

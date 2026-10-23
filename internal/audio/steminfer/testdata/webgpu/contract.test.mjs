@@ -53,3 +53,11 @@ test("subnormal flushing is separately disclosed, never promoted to normal confo
   assert.equal(compareFixture(f, Float32Array.of(0)).denormalOnlyViolations, 1);
   assert.match(compareFixture(f, Float32Array.of(0)).verdict, /not normal/);
 });
+
+test("forged finite reference values and inflated sumabs cannot manufacture conformance", () => {
+  const f = fixture([1, 2], [3, 4]);
+  f.view.setFloat64(f.sumOffset, 1e30, true);
+  assert.throws(() => compareFixture(f, Float32Array.of(999)), /Saved Go reference disagrees/);
+  const g = fixture([1], [2]);g.view.setFloat64(g.expectedOffset, 999, true);
+  assert.throws(() => compareFixture(g, Float32Array.of(999)), /Saved Go reference disagrees/);
+});

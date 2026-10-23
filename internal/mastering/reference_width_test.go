@@ -27,7 +27,7 @@ func TestReferenceWidthIsOptInAndLevelIndependent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Width == nil || !result.Width.Applied || result.Params.Stereo.WidthPct != 120 || result.Width.AfterCorrelation < .1 || result.Width.AfterSideMidDB <= result.Width.BeforeSideMidDB {
+	if result.Width == nil || !result.Width.Applied || (result.Params.Stereo.WidthPct <= 100 || result.Params.Stereo.WidthPct > 120) || result.Width.AfterCorrelation < .1 || result.Width.AfterSideMidDB <= result.Width.BeforeSideMidDB || result.AfterOutputResidualDB > result.BeforeOutputResidualDB+referenceOutputResidualToleranceDB {
 		t.Fatalf("invalid conservative width: %+v", result.Width)
 	}
 	for i := range reference.Left {

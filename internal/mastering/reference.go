@@ -19,7 +19,8 @@ type ReferenceOptions struct {
 	IncludeWidth   bool    `json:"includeWidth,omitempty"`
 }
 
-// ReferenceBand describes identical physical bandwidth in both reconstructed sources.
+// ReferenceBand describes identical physical bandwidth in baseline-rendered source
+// and raw reconstructed reference. Source/reference identities always identify raw PCM.
 type ReferenceBand struct {
 	LowHz              float64 `json:"lowHz"`
 	HighHz             float64 `json:"highHz"`
@@ -34,6 +35,7 @@ type ReferenceBand struct {
 // Callers must apply from Baseline, never repeatedly compound Params onto the last proposal.
 type ReferenceProposal struct {
 	Version                    string           `json:"version"`
+	SourceSpectrum             string           `json:"sourceSpectrum"`
 	Source                     SourceIdentity   `json:"source"`
 	Reference                  SourceIdentity   `json:"reference"`
 	Baseline                   dsp.Params       `json:"baseline"`
@@ -42,6 +44,8 @@ type ReferenceProposal struct {
 	Bands                      [5]ReferenceBand `json:"bands"`
 	BeforeResidualDB           float64          `json:"beforeResidualDb"`
 	FitResidualDB              float64          `json:"fitResidualDb"`
+	BeforeOutputResidualDB     float64          `json:"beforeOutputResidualDb"`
+	AfterOutputResidualDB      float64          `json:"afterOutputResidualDb"`
 	MaxPredictedBoostDB        float64          `json:"maxPredictedBoostDb"`
 	MaxProtectedDeltaDB        float64          `json:"maxProtectedDeltaDb"`
 	RemeasuredProtectedDeltaDB float64          `json:"remeasuredProtectedDeltaDb"`
@@ -68,16 +72,16 @@ func MatchReferenceContext(ctx context.Context, source, reference *audio.Buffer,
 	if err != nil {
 		return nil, err
 	}
-	result := &ReferenceProposal{Version: "1.0", Source: sourceID, Reference: referenceID, Baseline: baseline, Params: baseline, Options: options, Warnings: []string{"A five-band tonal and optional width estimate cannot establish a perceptual match. Final loudness and reconstructed-peak headroom require separate output verification."}}
+	result := &ReferenceProposal{Version: "1.0", SourceSpectrum: "baseline_rendered", Source: sourceID, Reference: referenceID, Baseline: baseline, Params: baseline, Options: options, Warnings: []string{"A five-band tonal and optional width estimate cannot establish a perceptual match. Final loudness and reconstructed-peak headroom require separate output verification."}}
 	edges := spectrumEdges
 	commonNyquist := float64(min(source.SampleRate, reference.SampleRate)) / 2
 	for i := range edges {
 		edges[i] = math.Min(edges[i], commonNyquist)
 	}
 	if onProgress != nil {
-		onProgress(10, "Measuring source and reference over common physical bandwidth...")
+		onProgress(10, "Measuring baseline-rendered source and reference over common physical bandwidth...")
 	}
-	sourceBands, err := referenceSpectrum(ctx, source, edges)
+	sourceBands, err := renderedReferenceSpectrumContext(ctx, source, baseline, edges)
 	if err != nil {
 		return nil, err
 	}
@@ -104,6 +108,8 @@ func MatchReferenceContext(ctx context.Context, source, reference *audio.Buffer,
 		}
 		result.Bands[i] = band
 	}
+	result.BeforeOutputResidualDB = referenceOutputResidual(result.Bands, sourceBands, referenceBands)
+	result.AfterOutputResidualDB = result.BeforeOutputResidualDB
 	if count < 3 {
 		result.Warnings = append(result.Warnings, "Fewer than three audible common bands: no tonal correction proposed.")
 		if !options.IncludeWidth {
@@ -143,11 +149,13 @@ func MatchReferenceContext(ctx context.Context, source, reference *audio.Buffer,
 			return nil, err
 		}
 	}
+	fitted, finalBands, err := guardReferenceOutputContext(ctx, source, result, fitted, sourceBands, referenceBands, edges)
+	if err != nil {
+		return nil, err
+	}
+	result.AfterOutputResidualDB = referenceOutputResidual(result.Bands, finalBands, referenceBands)
 	if options.ProtectBelowHz > 0 && fitted != baseline {
-		fitted, result.RemeasuredProtectedDeltaDB, err = protectRenderedReferenceBass(ctx, source, result, fitted, edges)
-		if err != nil {
-			return nil, err
-		}
+		result.RemeasuredProtectedDeltaDB = 10 * math.Log10(math.Max(finalBands[0], 1e-30)/sourceBands[0])
 		result.ProtectionVerified = true
 	}
 	if result.Width != nil {
@@ -155,6 +163,11 @@ func MatchReferenceContext(ctx context.Context, source, reference *audio.Buffer,
 		if err != nil {
 			return nil, err
 		}
+	}
+	if fitted == baseline {
+		result.AfterOutputResidualDB = result.BeforeOutputResidualDB
+		result.RemeasuredProtectedDeltaDB = 0
+		result.ProtectionVerified = false
 	}
 	result.Params = fitted
 	result.FitResidualDB = referenceResidual(result, fitted, float64(source.SampleRate))

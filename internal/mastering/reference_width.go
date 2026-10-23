@@ -106,9 +106,16 @@ func proposeReferenceWidth(ctx context.Context, source, reference *audio.Buffer,
 	if err != nil {
 		return params, nil, err
 	}
-	before, err := renderedStereoMoments(ctx, source, params)
+	before, err := renderedStereoMoments(ctx, source, result.Baseline)
 	if err != nil {
 		return params, nil, err
+	}
+	current := before
+	if params != result.Baseline {
+		current, err = renderedStereoMoments(ctx, source, params)
+		if err != nil {
+			return params, nil, err
+		}
 	}
 	width := &ReferenceWidth{SourceSideMidDB: original.sideMidDB(), ReferenceSideMidDB: referenceMoments.sideMidDB(), BeforeSideMidDB: before.sideMidDB(), AfterSideMidDB: before.sideMidDB(), BeforeCorrelation: before.correlation(), AfterCorrelation: before.correlation(), BeforeWidthPct: params.Stereo.WidthPct, AfterWidthPct: params.Stereo.WidthPct, AfterSamplePeakDBFS: powerDB(before.peak * before.peak)}
 	_, sourceSide := original.powers()
@@ -118,10 +125,10 @@ func proposeReferenceWidth(ctx context.Context, source, reference *audio.Buffer,
 		width.Reason = "Stereo processing is disabled and remains disabled."
 	case sourceSide < 1e-12 || referenceMid+referenceSide < 1e-12 || params.Stereo.WidthPct == 0:
 		width.Reason = "Insufficient stereo energy for a width proposal; no missing stereo information was invented."
-	case before.correlation() < .1 || referenceMoments.correlation() < 0:
+	case current.correlation() < .1 || referenceMoments.correlation() < 0:
 		width.Reason = "Current or reference correlation is unsuitable for an automatic width proposal."
 	default:
-		target := params.Stereo.WidthPct * math.Pow(10, (referenceMoments.sideMidDB()-before.sideMidDB())/20)
+		target := params.Stereo.WidthPct * math.Pow(10, (referenceMoments.sideMidDB()-current.sideMidDB())/20)
 		span := 20 * result.Options.Amount
 		target = math.Max(math.Max(0, params.Stereo.WidthPct-span), math.Min(math.Min(200, params.Stereo.WidthPct+span), target))
 		candidate := params

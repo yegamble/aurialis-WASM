@@ -130,10 +130,15 @@ export function reduceStoreState(
   switch (action.type) {
     case "APPLY_REFERENCE":
       if (action.reference && !state.tracks.includes(action.reference)) return state;
-      return { ...state, tracks: updateTrackInList(state.tracks, action.expected.id, (track) => track === action.expected && !hasAppliedDeep(track) ? {
-        ...track, advanced: action.advanced, mode: "advanced", simpleCustom: true,
-        ...action.restore, updatedAt: new Date().toISOString(),
-      } : track) };
+      return { ...state, tracks: updateTrackInList(state.tracks, action.expected.id, (track) => {
+        if (track !== action.expected || hasAppliedDeep(track)) return track;
+        const next: Track = { ...track, advanced: action.advanced, mode: "advanced", simpleCustom: true, ...action.restore, updatedAt: new Date().toISOString() };
+        if (action.restore) {
+          if (action.restore.simpleCustom === undefined) delete next.simpleCustom;
+          if (action.restore.shortcutUndo === undefined) delete next.shortcutUndo;
+        }
+        return next;
+      }) };
     case "TOGGLE_MASTERING_SHORTCUT":
       return { ...state, tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({ ...track, ...toggleMasteringShortcut(track, action.shortcut), simpleCustom: true, updatedAt: new Date().toISOString() })) };
     case "ADD_TRACK":

@@ -11,10 +11,10 @@ const baseline = () => createDefaultAdvancedParams();
 function mid(params: ReturnType<typeof engineParams>) { const band = params.bands.at(2); if (!band) throw new Error("Missing test band"); return band; }
 function proposal() {
   const params = engineParams(baseline()); mid(params).gainDb = 1;
-  return { version: "1.0", source: expected.source, reference: expected.reference, baseline: engineParams(baseline()), params,
+  return { version: "1.0", sourceSpectrum: "baseline_rendered", source: expected.source, reference: expected.reference, baseline: engineParams(baseline()), params,
     options: { amount: .5, protectBelowHz: 120 },
     bands: [20, 120, 500, 2000, 6000].map((lowHz, i) => ({ lowHz, highHz: [120, 500, 2000, 6000, 20000].at(i), sourceDensityDb: -42, referenceDensityDb: -41, targetDeltaDb: 1, predictedDeltaDb: .9, included: true })),
-    beforeResidualDb: 1, fitResidualDb: .1, maxPredictedBoostDb: 1.1, maxProtectedDeltaDb: .1, remeasuredProtectedDeltaDb: .1, protectionVerified: true, warnings: ["Five-band estimate"] };
+    beforeOutputResidualDb: 2, afterOutputResidualDb: 1, beforeResidualDb: 1, fitResidualDb: .1, maxPredictedBoostDb: 1.1, maxProtectedDeltaDb: .1, remeasuredProtectedDeltaDb: .1, protectionVerified: true, warnings: ["Five-band estimate"] };
 }
 function respond(value: unknown) {
   const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ jobId: "ref-1", kind: "analyze_reference", status: "done", referenceProposal: value }), { status: 202 })).mockResolvedValueOnce(new Response("{}"));

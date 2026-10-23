@@ -82,13 +82,14 @@ export function ReferenceMatchingPanel({ trackId }: { trackId: string }) {
   const result = review?.proposal;
   const canRevert = !!before.current && owner.current === track.advanced && track.advanced !== before.current.advanced && !blocked;
   return <div className="page">
-    <PageTitle eyebrow="Measured Reference" title="Compare without copying" copy="Measure the original audio in both projects and review a conservative tonal proposal. Saved reference knob positions are ignored." action={<WorkspaceLink className={buttonClassName("secondary")} href={`/master/${track.id}`}>Back to master</WorkspaceLink>} />
+    <PageTitle eyebrow="Measured Reference" title="Compare without copying" copy="Compare your source through its starting settings with the original reference audio. Review a conservative proposal; saved reference knob positions are ignored." action={<WorkspaceLink className={buttonClassName("secondary")} href={`/master/${track.id}`}>Back to master</WorkspaceLink>} />
     <div className="reference-layout">
       <section className="paper-panel min-w-0">
         <div className="compare-head"><div><span className="eyebrow">Source audio</span><h2 className="break-words">{track.title}</h2><p>{track.sampleRate.toLocaleString()} Hz · {track.duration.toFixed(2)} s</p></div><div><label className="eyebrow" htmlFor="reference-track">Reference audio</label><div className="select-wrap"><select id="reference-track" aria-label="Reference track" value={referenceId} onChange={(event) => { cancel("Reference changed. Analyze a new proposal."); setReferenceId(event.target.value); }}><option value="">Choose a reference project</option>{state.tracks.filter((item) => item.id !== track.id).map((item) => <option value={item.id} key={item.id}>{item.title}</option>)}</select></div>{reference && <p>{reference.sampleRate.toLocaleString()} Hz · {reference.duration.toFixed(2)} s</p>}</div></div>
         {result ? <>
           <MeasuredReferenceBands proposal={result} />
-          <div className="overlay-chart"><SpectrumChart eqBands={before.current?.advanced.eqBands ?? track.advanced.eqBands} sampleRate={track.sampleRate} referenceBands={result.advanced.eqBands} referenceLabel="Proposed EQ response" /></div>
+          <div className="overlay-chart"><SpectrumChart eqBands={audibleBands(before.current?.advanced ?? track.advanced)} sampleRate={track.sampleRate} referenceBands={audibleBands(result.advanced)} referenceLabel="Proposed EQ response" /></div>
+          <p className="disclosure">Rendered spectral mismatch: {result.beforeOutputResidualDb.toFixed(2)} → {result.afterOutputResidualDb.toFixed(2)} dB across the included common bands, after overall level normalization. These broad-band measurements do not establish perceptual similarity.</p>
           <p className="disclosure">EQ contour fit residual: {result.beforeResidualDb.toFixed(2)} → {result.fitResidualDb.toFixed(2)} dB. This measures the bounded five-band fit, not final perceptual similarity.</p>
           <p className="disclosure">Estimated added EQ peak: {result.maxPredictedBoostDb.toFixed(2)} dB.{result.options.protectBelowHz ? ` Protected 20–120 Hz: predicted ${result.maxProtectedDeltaDb.toFixed(3)} dB, rendered band energy ${result.remeasuredProtectedDeltaDb.toFixed(3)} dB${result.protectionVerified ? " (verified on this source)" : " (unchanged baseline)"}.` : " Low-end protection is off."}</p>
           <ul className="mt-3 space-y-2 text-xs" aria-label="Proposed EQ changes">{result.advanced.eqBands.map((band, i) => <li key={band.id}>{band.label}: {(before.current?.advanced.eqBands.at(i)?.gainDb ?? 0).toFixed(2)} → {band.gainDb.toFixed(2)} dB{!band.enabled || !result.advanced.eqEnabled ? " · processing disabled" : ""}</li>)}</ul>
@@ -112,6 +113,8 @@ export function ReferenceMatchingPanel({ trackId }: { trackId: string }) {
   </div>;
 }
 
+function audibleBands(advanced: AdvancedParams) { return advanced.eqEnabled ? advanced.eqBands : advanced.eqBands.map((band) => ({ ...band, enabled: false })); }
+
 function MeasuredReferenceBands({ proposal }: { proposal: ReferenceProposal }) {
   const included = proposal.bands.filter((band) => band.included);
   const density = (band: ReferenceProposal["bands"][number], key: "sourceDensityDb" | "referenceDensityDb") => key === "sourceDensityDb" ? band.sourceDensityDb : band.referenceDensityDb;
@@ -121,7 +124,7 @@ function MeasuredReferenceBands({ proposal }: { proposal: ReferenceProposal }) {
   const x = (frequency: number) => 100 * Math.log(frequency / 20) / Math.log(high / 20);
   const y = (density: number) => 60 * (1 - (Math.max(-90, Math.min(-20, density)) + 90) / 70);
   const points = (key: "sourceDensityDb" | "referenceDensityDb", normalizer: number) => included.map((band) => `${x(Math.sqrt(band.lowHz * band.highHz)).toFixed(2)},${y(density(band, key) - normalizer).toFixed(2)}`).join(" ");
-  return <div className="mt-6 min-w-0"><p className="disclosure">Measured five-band average spectral density, normalized to common-band energy. Solid: source. Dashed: reference. Lines join band averages and do not show narrow resonances.</p>
+  return <div className="mt-6 min-w-0"><p className="disclosure">Measured five-band average spectral density, normalized to common-band energy. Solid: source through this session’s starting settings. Dashed: original reference. Lines join band averages and do not show narrow resonances.</p>
     <svg className="mt-3 block h-[160px] w-full" viewBox="0 0 100 60" preserveAspectRatio="none" role="img" aria-label="Measured source and reference band averages; exact values and unavailable bands are listed below. Horizontal axis logarithmic 20 Hz to common Nyquist or 20 kHz; vertical axis normalized density minus 90 to minus 20 dB per Hz."><title>Measured common-band spectral density</title><polyline points={points("sourceDensityDb", sourceLevel)} fill="none" stroke="var(--clay)" strokeWidth="2" vectorEffect="non-scaling-stroke" /><polyline points={points("referenceDensityDb", referenceLevel)} fill="none" stroke="var(--moss)" strokeWidth="2" strokeDasharray="5 3" vectorEffect="non-scaling-stroke" /></svg>
     <ol className="mt-3 space-y-2 text-xs" aria-label="Measured reference frequency bands">{proposal.bands.map((band, index) => <li key={index}>{band.lowHz.toLocaleString()}–{band.highHz.toLocaleString()} Hz: {band.included ? `source ${band.sourceDensityDb.toFixed(2)}, reference ${band.referenceDensityDb.toFixed(2)} dBFS/Hz; target delta ${band.targetDeltaDb.toFixed(2)}, predicted EQ delta ${band.predictedDeltaDb.toFixed(2)} dB` : "Excluded: insufficient audible energy or unavailable common bandwidth"}.</li>)}</ol>
   </div>;

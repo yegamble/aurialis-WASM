@@ -46,10 +46,11 @@ test("measured Reference changes real live and downloaded PCM from one immutable
     const body: unknown = await response.json(); return typeof body === "object" && body !== null && "status" in body && body.status === "done" && "referenceProposal" in body;
   });
   await page.getByRole("button", { name: "Analyze reference audio", exact: true }).click();
-  const job = await (await measured).json() as { referenceProposal: { params: unknown; beforeResidualDb: number; fitResidualDb: number; maxProtectedDeltaDb: number; remeasuredProtectedDeltaDb: number } };
+  const job = await (await measured).json() as { referenceProposal: { params: unknown; beforeOutputResidualDb: number; afterOutputResidualDb: number; beforeResidualDb: number; fitResidualDb: number; maxProtectedDeltaDb: number; remeasuredProtectedDeltaDb: number } };
   await expect(page.getByRole("button", { name: "Apply measured proposal", exact: true })).toBeEnabled();
   expect(await settings(page, sourceId), "analysis must not change settings").toEqual(before);
   expect(job.referenceProposal.fitResidualDb).toBeLessThan(job.referenceProposal.beforeResidualDb);
+  expect(job.referenceProposal.afterOutputResidualDb).toBeLessThan(job.referenceProposal.beforeOutputResidualDb);
   expect(job.referenceProposal.maxProtectedDeltaDb).toBeLessThanOrEqual(.25);
   expect(Math.abs(job.referenceProposal.remeasuredProtectedDeltaDb)).toBeLessThanOrEqual(.25);
   await page.getByRole("button", { name: "Apply measured proposal", exact: true }).click();

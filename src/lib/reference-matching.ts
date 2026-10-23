@@ -9,11 +9,14 @@ interface ReferenceBand { lowHz: number; highHz: number; sourceDensityDb: number
 interface ReferenceWidth { sourceSideMidDb: number; referenceSideMidDb: number; beforeSideMidDb: number; afterSideMidDb: number; beforeCorrelation: number; afterCorrelation: number; beforeWidthPct: number; afterWidthPct: number; afterSamplePeakDbfs: number; applied: boolean; reason: string }
 export interface ReferenceProposal {
   version: "1.0";
+  sourceSpectrum: "baseline_rendered";
   source: SourceIdentity;
   reference: SourceIdentity;
   options: ReferenceOptions;
   advanced: AdvancedParams;
   bands: ReferenceBand[];
+  beforeOutputResidualDb: number;
+  afterOutputResidualDb: number;
   beforeResidualDb: number;
   fitResidualDb: number;
   maxPredictedBoostDb: number;
@@ -75,7 +78,7 @@ function proposedAdvanced(value: unknown, baseline: AdvancedParams, options: Ref
 function readProposal(value: unknown, baseline: AdvancedParams, options: ReferenceOptions): ReferenceProposal {
   const data = object(value);
   const returnedOptions = object(data.options);
-  if (data.version !== "1.0" || !equal(data.baseline, engineParams(baseline)) || !equal({ ...returnedOptions, includeWidth: returnedOptions.includeWidth === undefined ? false : bool(returnedOptions.includeWidth) }, options)) throw failure();
+  if (data.version !== "1.0" || data.sourceSpectrum !== "baseline_rendered" || !equal(data.baseline, engineParams(baseline)) || !equal({ ...returnedOptions, includeWidth: returnedOptions.includeWidth === undefined ? false : bool(returnedOptions.includeWidth) }, options)) throw failure();
   if (!Array.isArray(data.bands) || data.bands.length !== 5 || !Array.isArray(data.warnings) || data.warnings.length > 20) throw failure();
   const identity = source(data.source), reference = source(data.reference);
   const edges = [20, 120, 500, 2000, 6000, 20000].map((edge) => Math.min(edge, Math.min(identity.sampleRate, reference.sampleRate) / 2));
@@ -84,7 +87,8 @@ function readProposal(value: unknown, baseline: AdvancedParams, options: Referen
     if (band.lowHz !== edges.at(i) || band.highHz !== edges.at(i + 1)) throw failure();
     return { lowHz: number(band.lowHz), highHz: number(band.highHz), sourceDensityDb: number(band.sourceDensityDb), referenceDensityDb: number(band.referenceDensityDb), targetDeltaDb: number(band.targetDeltaDb, -6, 6), predictedDeltaDb: number(band.predictedDeltaDb), included: bool(band.included) };
   });
-  const result: ReferenceProposal = { version: "1.0", source: identity, reference, options, advanced: proposedAdvanced(data.params, baseline, options), bands,
+  const result: ReferenceProposal = { version: "1.0", sourceSpectrum: "baseline_rendered", source: identity, reference, options, advanced: proposedAdvanced(data.params, baseline, options), bands,
+    beforeOutputResidualDb: number(data.beforeOutputResidualDb, 0), afterOutputResidualDb: number(data.afterOutputResidualDb, 0),
     beforeResidualDb: number(data.beforeResidualDb, 0), fitResidualDb: number(data.fitResidualDb, 0), maxPredictedBoostDb: number(data.maxPredictedBoostDb, 0, 3.00000001), maxProtectedDeltaDb: number(data.maxProtectedDeltaDb, 0), remeasuredProtectedDeltaDb: number(data.remeasuredProtectedDeltaDb), protectionVerified: bool(data.protectionVerified), warnings: data.warnings.map(text) };
   if (options.protectBelowHz && (result.maxProtectedDeltaDb > .25000001 || Math.abs(result.remeasuredProtectedDeltaDb) > .25000001)) throw failure();
   if (data.width !== undefined) {

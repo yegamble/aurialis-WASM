@@ -13,7 +13,7 @@ const track = () => { const source = current?.state.tracks.at(0); if (!source) t
 const initial = () => ({ ...structuredClone(testStore), tracks: testStore.tracks.map((item, i) => ({ ...structuredClone(item), sourceRevision: 0, sourceIdentity: { pcmHash: (i === 0 ? "a" : "b").repeat(64), sampleRate: 48000, frames: 48000 } })) });
 function result(baseline: Parameters<typeof matchReference>[2], options: Parameters<typeof matchReference>[3]): ReferenceProposal {
   const advanced = { ...baseline, eqBands: baseline.eqBands.map((band, i) => ({ ...band, gainDb: band.gainDb + (i === 2 ? options.amount : 0) })) as typeof baseline.eqBands };
-  return { version: "1.0", source: { pcmHash: "a".repeat(64), sampleRate: 48000, frames: 48000 }, reference: { pcmHash: "b".repeat(64), sampleRate: 48000, frames: 48000 }, options, advanced, bands: [], beforeResidualDb: 1, fitResidualDb: .1, maxPredictedBoostDb: .6, maxProtectedDeltaDb: .01, remeasuredProtectedDeltaDb: .01, protectionVerified: true, warnings: [] };
+  return { version: "1.0", sourceSpectrum: "baseline_rendered", source: { pcmHash: "a".repeat(64), sampleRate: 48000, frames: 48000 }, reference: { pcmHash: "b".repeat(64), sampleRate: 48000, frames: 48000 }, options, advanced, bands: [], beforeOutputResidualDb: 2, afterOutputResidualDb: 1, beforeResidualDb: 1, fitResidualDb: .1, maxPredictedBoostDb: .6, maxProtectedDeltaDb: .01, remeasuredProtectedDeltaDb: .01, protectionVerified: true, warnings: [] };
 }
 async function open() {
   render(<StoreProvider><Probe /><ReferenceMatchingPanel trackId="demo-1" /></StoreProvider>);

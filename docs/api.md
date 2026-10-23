@@ -74,6 +74,8 @@ Source start first waits for an arm acknowledgment, then shares a future 128-fra
 
 The full draft/applied JSON is persisted without truncation. Quota failure leaves the prior durable record and displays session guidance; validated draft and applied Script JSON downloads provide backups. These downloads do not provide a script-import UI. Browser evidence and outstanding gates are recorded in [tasks](tasks.md#integrated-deep-editor-and-live-schedule).
 
+The focused editor/publication integration passed 26/26 browser cases at `2c196ce`, including both device-rate Reference comparisons and finite/sought speaker PCM. Rebase onto Simple `adf0032` adds no endpoint, DTO or sonic change. The new combined source still requires its full regression, exact CI and merge; the browser worker adapter must preserve these contracts without remote audio HTTP.
+
 ## Measured Reference proposals
 
 `POST /api/analyze/reference` accepts multipart audio parts `source` and `reference`, optional `params` (up to 64 KiB, existing DSP validation, native defaults when omitted) and optional `options` (up to 2048 bytes). There is no root alias. Both files pass the in-memory CDR boundary and retain raw canonical source identities. The combined multipart body shares the existing 129 MiB maximum, including metadata and boundaries; adding a reference does not double that limit. Each decoded file retains the 16,777,216-frame bound. Query parameters, duplicate/unknown parts and invalid file dispositions are rejected.

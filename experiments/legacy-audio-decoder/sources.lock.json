@@ -80,5 +80,14 @@
       "swresample",
       "avutil"
     ]
+  },
+  "buildPolicy": {
+    "cpus": 2,
+    "memoryBytes": 4294967296,
+    "pids": 256,
+    "tmpfsBytes": 536870912,
+    "wallSeconds": 1800,
+    "outputBytes": 2147483648,
+    "minimumFreeBytes": 6442450944
   }
 }

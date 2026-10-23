@@ -221,6 +221,8 @@ Shared Tailwind button variants, dialog surfaces, control groups and module disc
 
 ## Album cohort ownership — private integration checkpoint
 
+Direct imports claim the selected file before reconstruction and source plus two canonical copies before storage. Cancellation and unmount retain that owner through actual save/rollback settlement; failed staged cleanup reports an error without publishing a track.
+
 The album branch now uses merged browser-local baseline `85aa7cd`. Accepted-script measurement reuses the shared render JSON adapter; no transport or DSP implementation is duplicated. Complete album browser/audio acceptance remains open.
 
 `album-batch.ts` owns one immutable snapshot of the ordered album, source keys/hashes/layout/revisions, full static parameters, every applied Deep script point, target/mode/offsets and 24-bit encoding. Only saved report metadata is excluded from that binding, so saving a report preserves an owned WAV. The first pass retains measurements only, then the second renders one track at a time. Every final file is inspected/hashed and bypass-measured; final decoded PCM supplies spectral features. Common-band fractions require complete, nonzero physical coverage shared by all audible tracks. The 2 LU and 3 dB outlier thresholds are working listening flags; crest is not LRA.

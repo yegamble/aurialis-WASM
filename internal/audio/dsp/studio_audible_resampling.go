@@ -10,7 +10,7 @@ const studioAudibleMaxTaps = 3073
 // cspell:ignore Upsampler Downsampler
 
 // This distinct private candidate intentionally rolls off above its declared
-// audible passband. It does not inherit the old .49Fs-wideband contract. Actual
+// audible passband. It does not inherit the old .49Fs full-frequency contract. Actual
 // response, alias, final-output and CPU qualification are required before use.
 // No public Engine or version2 capability selects this candidate.
 type studioAudibleKernel struct {
@@ -28,7 +28,7 @@ func prepareStudioAudibleKernel(rate float64, factor int) (*studioAudibleKernel,
 	}
 	pass, stop := math.Min(20000, .49*rate), rate*.5
 	// Kaiser 100 dB design estimate plus 5% order margin. These preparation
-	// choices require separate measured passband and stopband qualification.
+	// choices require separate measured passband and stop band qualification.
 	const beta = .1102 * (100 - 8.7)
 	width := (stop - pass) / (float64(factor) * rate)
 	order := 1.05 * (100 - 8) / (2.285 * 2 * math.Pi * width)

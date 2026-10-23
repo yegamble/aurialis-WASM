@@ -1,3 +1,5 @@
+// cspell:ignore Upsampler Downsampler
+
 package dsp
 
 import (
@@ -57,7 +59,7 @@ func TestStudioAudibleActualImpulsePassbandStopAndLatency(t *testing.T) {
 				phase := math.Abs(math.Atan2(imag(rotated), real(rotated)) * 180 / math.Pi)
 				minimum, maxDB, maxPhase = math.Min(minimum, db), math.Max(maxDB, db), math.Max(maxPhase, phase)
 				if math.Abs(db) > .1 || phase > .001 {
-					t.Fatalf("rate%g factor%d frequency%g pass%g dB phase%gdegrees", rate, factor, frequency, db, phase)
+					t.Fatalf("rate%g factor%d frequency%g pass%g dB phase %g degrees", rate, factor, frequency, db, phase)
 				}
 			}
 			// Recover the ACTUAL high-rate decimator response by injecting each
@@ -86,7 +88,7 @@ func TestStudioAudibleActualImpulsePassbandStopAndLatency(t *testing.T) {
 				}
 			}
 			stopDB := 20 * math.Log10(stop)
-			t.Logf("rate%.0f factor%d taps%d passHz%g pairdelay%d pass%.9f..%.9fdB phase%.9fdeg stop%.9fdB", rate, factor, c.taps, c.passHz, largest, minimum, maxDB, maxPhase, stopDB)
+			t.Logf("rate%.0f factor%d taps%d passHz%g pair delay %d pass%.9f..%.9fdB phase %.9f deg stop%.9fdB", rate, factor, c.taps, c.passHz, largest, minimum, maxDB, maxPhase, stopDB)
 			if stopDB > -90 {
 				t.Fatal("actual decimator did not meet candidate 90 dB stop target")
 			}

@@ -29,7 +29,7 @@ func TestStudioLimiterGain4xActualSamplesBoundLinkedAndTail(t *testing.T) {
 		last := 0.0
 		for frame := 0; frame < count+l.lookahead; frame++ {
 			x := 0.0
-			if frame < count {
+			if frame < len(source) {
 				x = source[frame]
 			}
 			left, right, dryLeft, dryRight := l.process(x, x*.7)
@@ -67,7 +67,7 @@ func TestStudioLimiterGain4xTransparentDisabledInvalidAndNoAllocations(t *testin
 				t.Fatal(err)
 			}
 			const count = 2048
-			var source [count]float64
+			source := make([]float64, count)
 			for i := range source {
 				source[i] = .05 * math.Sin(float64(i)*.317)
 			}
@@ -78,7 +78,7 @@ func TestStudioLimiterGain4xTransparentDisabledInvalidAndNoAllocations(t *testin
 			}
 			for frame := 0; frame < count+l.lookahead; frame++ {
 				x := 0.0
-				if frame < count {
+				if frame < len(source) {
 					x = source[frame]
 				}
 				a, b, _, _ := l.process(x, x)

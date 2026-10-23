@@ -20,6 +20,21 @@ MEMBERS = {
 MAXIMUM_BYTES = 512 * 1024 * 1024
 RECEIPT = "artifacts/ci-runtime/receipt.json"
 
+BROWSER_MEMBERS = {
+    "artifacts/ci-browser-runtime/assets.tar": 0o644,
+    "artifacts/ci-browser-runtime/assets-manifest.json": 0o644,
+    "deploy/cloudflare/asset-policy.json": 0o644,
+}
+BROWSER_RECEIPT = "artifacts/ci-browser-runtime/receipt.json"
+
+
+def profile_members(profile):
+    if profile == "native":
+        return MEMBERS, RECEIPT, "native"
+    if profile == "browser":
+        return BROWSER_MEMBERS, BROWSER_RECEIPT, "browser"
+    raise ValueError("Unknown closed CI artifact profile")
+
 
 def digest(path):
     value = hashlib.sha256()
@@ -56,19 +71,22 @@ def provenance(root):
     }
 
 
-def checked_manifest(value, expected):
+def checked_manifest(value, expected, profile="native"):
+    members, _, execution_target = profile_members(profile)
+    if expected["executionTarget"] != execution_target:
+        raise ValueError("CI artifact execution target differs from its closed profile")
     if not isinstance(value, dict) or set(value) != {"version", "provenance", "files"} or type(value["version"]) is not int or value["version"] != 1 or value["provenance"] != expected:
         raise ValueError("CI artifact checkout/run/platform/target provenance differs")
     files = value["files"]
-    if not isinstance(files, dict) or set(files) != set(MEMBERS):
+    if not isinstance(files, dict) or set(files) != set(members):
         raise ValueError("CI artifact member set differs")
     total = 0
-    for name, mode in MEMBERS.items():
+    for name, mode in members.items():
         entry = files[name]
         if not isinstance(entry, dict) or set(entry) != {"bytes", "sha256", "mode"}:
             raise ValueError("Invalid CI file descriptor")
         size, checksum = entry["bytes"], entry["sha256"]
-        if type(size) is not int or not 0 < size <= MAXIMUM_BYTES or entry["mode"] != mode or not isinstance(checksum, str) or len(checksum) != 64 or any(c not in "0123456789abcdef" for c in checksum):
+        if type(size) is not int or not 0 < size <= MAXIMUM_BYTES or type(entry["mode"]) is not int or entry["mode"] != mode or not isinstance(checksum, str) or len(checksum) != 64 or any(c not in "0123456789abcdef" for c in checksum):
             raise ValueError("Invalid CI file bound, hash or mode")
         total += size
     if total > MAXIMUM_BYTES:
@@ -101,9 +119,10 @@ def checked_file(root, name):
     return path
 
 
-def verify(root, binary=None):
-    manifest = checked_manifest(load_json(checked_file(root, RECEIPT)), provenance(root))
-    if binary is not None and Path(binary).absolute() not in (root / "aurialis", root / "artifacts/ci-runtime/aurialis-e2e"):
+def verify(root, binary=None, profile="native"):
+    _, receipt, _ = profile_members(profile)
+    manifest = checked_manifest(load_json(checked_file(root, receipt)), provenance(root), profile)
+    if binary is not None and (profile != "native" or Path(binary).absolute() not in (root / "aurialis", root / "artifacts/ci-runtime/aurialis-e2e")):
         raise ValueError("Prebuilt executable must be a verified CI runtime member")
     for name, entry in manifest["files"].items():
         path = checked_file(root, name)
@@ -112,16 +131,17 @@ def verify(root, binary=None):
     return manifest
 
 
-def pack(root, destination):
+def pack(root, destination, profile="native"):
+    members, _, _ = profile_members(profile)
     files = {}
-    for name, mode in MEMBERS.items():
+    for name, mode in members.items():
         path = checked_file(root, name)
         files[name] = {"bytes": path.stat().st_size, "sha256": digest(path), "mode": mode}
-    manifest = checked_manifest({"version": 1, "provenance": provenance(root), "files": files}, provenance(root))
+    manifest = checked_manifest({"version": 1, "provenance": provenance(root), "files": files}, provenance(root), profile)
     destination.mkdir(parents=True, exist_ok=True)
     (destination / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     with tarfile.open(destination / "runtime.tar", "w", format=tarfile.USTAR_FORMAT) as archive:
-        for name, mode in MEMBERS.items():
+        for name, mode in members.items():
             info = archive.gettarinfo(str(root / name), arcname=name)
             if not info.isfile():
                 raise ValueError("CI runtime member must be a regular file")
@@ -131,24 +151,25 @@ def pack(root, destination):
     (destination / "SHA256SUMS").write_text("".join(digest(destination / name) + "  " + name + "\n" for name in ("manifest.json", "runtime.tar")))
 
 
-def restore(root, directory):
+def restore(root, directory, profile="native"):
+    members, receipt_name, _ = profile_members(profile)
     if (directory / "SHA256SUMS").stat().st_size > 256 or (directory / "manifest.json").stat().st_size > 65536 or (directory / "runtime.tar").stat().st_size > MAXIMUM_BYTES + 1024 * 1024:
         raise ValueError("Oversized CI artifact container or metadata")
     sums = (directory / "SHA256SUMS").read_text()
     expected_sums = "".join(digest(directory / name) + "  " + name + "\n" for name in ("manifest.json", "runtime.tar"))
     if sums != expected_sums:
         raise ValueError("CI archive/manifest checksum differs")
-    manifest = checked_manifest(load_json(directory / "manifest.json"), provenance(root))
+    manifest = checked_manifest(load_json(directory / "manifest.json"), provenance(root), profile)
     archive_path = directory / "runtime.tar"
-    receipt = checked_file(root, RECEIPT)
+    receipt = checked_file(root, receipt_name)
     receipt.unlink(missing_ok=True)
     # Never use unrestricted tar extraction. Reject directories, links, duplicate
-    # members and traversal before writing only the five closed known filenames.
+    # members and traversal before writing only this profile's closed known filenames.
     with tempfile.TemporaryDirectory(prefix="aurialis-ci-") as temporary:
         staging = Path(temporary)
         with tarfile.open(archive_path, "r:") as archive:
             entries = archive.getmembers()
-            if len(entries) != len(MEMBERS) or {entry.name for entry in entries} != set(MEMBERS):
+            if len(entries) != len(members) or {entry.name for entry in entries} != set(members):
                 raise ValueError("Unexpected CI tar members")
             for entry in entries:
                 expected = manifest["files"][entry.name]
@@ -163,14 +184,14 @@ def restore(root, directory):
                     shutil.copyfileobj(source, output, 1024 * 1024)
                 if digest(target) != expected["sha256"]:
                     raise ValueError("CI tar member checksum differs")
-            for name, mode in MEMBERS.items():
+            for name, mode in members.items():
                 target = checked_file(root, name)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(staging / name, target)
                 target.chmod(mode)
         receipt.parent.mkdir(parents=True, exist_ok=True)
         receipt.write_text(json.dumps(manifest, indent=2) + "\n")
-    verify(root)
+    verify(root, profile=profile)
 
 
 def main():

@@ -9,6 +9,10 @@ import stat
 PREVIOUS_WASM = "261c4b4b5cb9ad36e7ac5eebc3dccfc9a0f319b15d2cff53acac263ec4530878"
 CACHE = (633412843, 2109, 104, "541c28f83a9a45e4282a6227265360dea8ec1f6e577ece613c0294d2caae9287")
 HEADERS = (1207103, 134, 4, "064a3dfba66bd50693069d87f0331f075542bf7c51e950199142cdd7c75aaa82")
+RECEIPTS = {
+    "module-inspection.json": "1c3ab83b4a138880577e3271f2254fe17579735fae293b8ba6892bcb62685451",
+    "build-status.json": "01a44a2274ba9a4bbc00fb788f2d67ae8b5cde3a2c71129e1b37ea4fbe063902",
+}
 MAX_CACHE = 768 * 1024 * 1024
 
 def digest(path):
@@ -55,6 +59,9 @@ def copy_tree(source, target, expected):
 
 def main():
     previous, recipe, output = Path("/previous"), Path("/recipe"), Path("/output")
+    for name, expected in RECEIPTS.items():
+        if digest(previous / name) != expected:
+            raise RuntimeError("Inspected Build04 receipt changed: " + name)
     build = json.loads((previous / "build-status.json").read_text())
     proof = json.loads((previous / "module-inspection.json").read_text())
     if build.get("exitCode") != 0 or build.get("resourceFailure") or build.get("timedOut") or build.get("cleanupError") or build.get("containerState", {}).get("OOMKilled"):
@@ -87,7 +94,7 @@ def main():
     for name in ["config.h", "config_components.h"]:
         shutil.copyfile(target / name, output / "ffbuild" / name)
     (output / "relink-inputs.json").write_text(json.dumps({
-        "previousRuntimeSHA256": PREVIOUS_WASM, "archivesAndObject": records,
+        "previousRuntimeSHA256": PREVIOUS_WASM, "pinnedReceipts": RECEIPTS, "archivesAndObject": records,
         "cache": cache, "headers": headers, "maximumCacheBytes": MAX_CACHE,
         "previousRecipeHashes": proof["sourceRecipeHashes"],
     }, indent=2) + "\n")

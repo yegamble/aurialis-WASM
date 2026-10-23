@@ -68,3 +68,13 @@ it("releases a pending reservation on unmount and never retains its late rendere
   await act(async () => { finish?.(wav); await Promise.resolve(); });
   expect(owners[0]?.dispose).toHaveBeenCalledTimes(2);
 });
+
+it("surfaces download allocation failure while preserving the already rendered cache", async () => {
+  mount(); await start();
+  const download = await screen.findByRole("button", { name: "Download Album source 2" });
+  vi.mocked(memory.reserveBrowserAudioMemory).mockImplementationOnce(() => { throw new Error("Controlled download memory budget"); });
+  fireEvent.click(download);
+  expect(await screen.findByText("Controlled download memory budget")).toBeDefined();
+  expect(screen.getByRole("region", { name: "Rendered album downloads" })).toBeDefined();
+  expect(owners[0]?.dispose).not.toHaveBeenCalled();
+});

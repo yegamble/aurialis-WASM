@@ -12,7 +12,9 @@
     "public/wasm/**",
     "pnpm-lock.yaml",
     "docs/design/figma-make-reference/**",
-    ".git/**"
+    ".git/**",
+    "deploy/cloudflare/assets/**",
+    "deploy/cloudflare/worker-configuration.d.ts"
   ],
   "words": [
     "multiband",
@@ -365,6 +367,8 @@
     "Xover",
     "yegamble",
     "Yosef",
-    "ZDF"
+    "ZDF",
+    "browserjobs",
+    "yosefgamble"
   ]
 }

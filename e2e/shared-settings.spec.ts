@@ -160,7 +160,7 @@ test("Simple and Advanced share one audible settings snapshot without changing s
       expect(writes?.[0]?.advanced).toEqual((await savedTrack(page, id)).advanced);
     }
     const preset = await savedTrack(page, id);
-    expect(preset.advanced.input).toBe(0);
+    expect(preset.advanced.input).toBe(6); // Explicit input trim survives a new Simple direction.
     expect(preset.advanced.eqBands.map((band) => band.gainDb)).toEqual([0.1, -0.25, 0, 0.2, 0.1]);
     expect(preset.advanced.compressor).toMatchObject({ threshold: -11, ratio: 1.35, attack: 30, release: 150 });
     expect(preset.advanced.saturationModule).toMatchObject({ drive: 0, character: "Clean" });
@@ -173,7 +173,7 @@ test("Simple and Advanced share one audible settings snapshot without changing s
     await mode(page, id, "simple");
     await customSelections(page);
     await page.getByRole("button", { name: "Rock", exact: true }).click();
-    await expect.poll(async () => (await savedTrack(page, id)).advanced.input).toBe(0);
+    await expect.poll(async () => (await savedTrack(page, id)).advanced.input).toBe(4);
     await mode(page, id, "advanced");
     await page.getByRole("tab", { name: "Mid", exact: true }).click();
     await page.getByRole("slider", { name: "Mid gain", exact: true }).fill("2.5");

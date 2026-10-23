@@ -2,7 +2,7 @@
 
 The browser build keeps imported audio, measurements and mastered files on your device. Cloudflare serves the application and audio-engine files. It accepts no audio uploads.
 
-This browser execution path has passed its bounded local checks on `codex/browser-local-jobs`; exact-head remote CI and merge remain required. It has not replaced the existing public deployment. The local native executable remains available for jobs that exceed a browser's resources.
+This browser execution path merged in [PR #16](https://github.com/yegamble/aurialis-WASM/pull/16) at `85aa7cd7556a26e540e40212397624dcf30a16d6`. Exact head `98397c6` passed all 14 jobs and GitGuardian in [run 40021166540](https://github.com/yegamble/aurialis-WASM/actions/runs/40021166540), including 107 native browser cases and eight static browser cases. The reviewed and merged trees matched. This supersedes the historical awaiting-merge checkpoints below. It has not replaced the existing public deployment. The local native executable remains available for jobs that exceed a browser's resources.
 
 ## Where processing happens
 

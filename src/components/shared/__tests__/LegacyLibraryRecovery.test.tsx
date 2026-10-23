@@ -22,7 +22,7 @@ const source: LegacySource = { key: "old-mix.wav|52|1700000000000", name: "old-m
 const page: LegacyPage = { sources: [source], next: null, skipped: 0, stopped: false };
 const metrics = { integratedLufs: -20, shortTermLufs: -20, truePeakDbtp: -6, samplePeakDbfs: -6, dynamicRangeDb: 14, correlation: 0.8, lowBassCorrelation: 1, dcLeftDbfs: -100, dcRightDbfs: -100, clippingSamples: 0, gainReductionDb: 0 };
 const identity = { pcmHash: "a".repeat(64), sampleRate: 8000, frames: 1 };
-const maximumResident = 448 * 1024 * 1024; // Default512 MiB budget minus64 MiB processing headroom.
+const maximumResident = 448 * 1024 * 1024; // Default 512 MiB budget minus 64 MiB processing headroom.
 let file: File;
 let imported: Imported;
 let verify: ReturnType<typeof vi.fn<() => Promise<void>>>;

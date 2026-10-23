@@ -8,6 +8,7 @@ Choose the guide for what you want to do. Start with the [project README](../REA
 | --- | --- |
 | Import a track, compare changes and export my first WAV | [Your first master](getting-started.md) |
 | Organize projects, preview audio or restore a missing source | [Library workflows](getting-started.md#keep-your-library-organized) |
+| Recover a source saved by the previous Aurialis | [Old local library recovery](legacy-library.md) |
 | Measure my original recording without changing it | [Deep source diagnostics](getting-started.md#measure-the-original-in-deep) |
 | Review, edit and explicitly apply source-frame automation | [Deep proposals and recovery](getting-started.md#review-and-apply-a-deep-proposal) |
 | Review and apply a measured reference proposal | [Reference workflow](getting-started.md#compare-with-a-reference-recording) |

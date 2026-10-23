@@ -13,7 +13,7 @@ const change = prepareSimpleChange(track, { style: "elevated" });
 const source = new Blob(["canonical fixture"]);
 function measured() {
   const metrics = { integratedLufs: -20, shortTermLufs: -20, truePeakDbtp: -6, samplePeakDbfs: -6.1, dynamicRangeDb: 8, correlation: 0.7, lowBassCorrelation: 1, dcLeftDbfs: -120, dcRightDbfs: -120, clippingSamples: 0, gainReductionDb: 1 };
-  return { sampleRate: 48000, frames: 48000, duration: 1, sourceIdentity: identity, beforeMetrics: metrics, afterMetrics: { ...metrics } };
+  return { sampleRate: 48000, frames: 48000, duration: 1, beforeMetrics: metrics, afterMetrics: { ...metrics } };
 }
 afterEach(() => { vi.clearAllMocks(); });
 describe("measured Elevated acceptance", () => {
@@ -34,7 +34,7 @@ describe("measured Elevated acceptance", () => {
     expect(change.advanced.input).toBe(track.advanced.input);
   });
   it("discards changed identities and late measurements after cancellation", async () => {
-    vi.mocked(measureAudio).mockResolvedValue({ ...measured(), sourceIdentity: { ...identity, pcmHash: "b".repeat(64) } });
+    vi.mocked(measureAudio).mockResolvedValue({ ...measured(), frames: 47999 });
     await expect(verifyElevatedChange(source, track, change, new AbortController().signal)).rejects.toThrow(/source changed/u);
     const controller = new AbortController();
     vi.mocked(measureAudio).mockImplementation(() => { controller.abort(); return Promise.resolve(measured()); });

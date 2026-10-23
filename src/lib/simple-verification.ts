@@ -4,15 +4,15 @@ import type { SimpleChange } from "./simple-directions";
 import type { Track } from "./types";
 
 export async function verifyElevatedChange(source: Blob, track: Track, change: SimpleChange, signal: AbortSignal): Promise<{ lufs: number; peak: number }> {
-  if (track.sourceIdentity) await verifyCanonicalSource(source, track.sourceIdentity, signal);
+  const identity = track.sourceIdentity;
+  if (!identity) throw new Error("Restore the matching source in Library before checking Elevated.");
+  await verifyCanonicalSource(source, identity, signal);
   const measured = await measureAudio(source, engineParams(change.advanced), signal);
   signal.throwIfAborted();
-  if (!measured.sourceIdentity || measured.sampleRate !== track.sampleRate
-    || Math.abs(measured.frames / measured.sampleRate - track.duration) > 0.001)
-    throw new Error("Restore the matching source before checking Elevated.");
-  await verifyCanonicalSource(source, measured.sourceIdentity, signal);
-  if (track.sourceIdentity && (track.sourceIdentity.pcmHash !== measured.sourceIdentity.pcmHash
-    || track.sourceIdentity.frames !== measured.frames)) throw new Error("The measured source changed. Restore the matching source.");
+  if (measured.sampleRate !== identity.sampleRate || measured.frames !== identity.frames
+    || measured.sampleRate !== track.sampleRate || Math.abs(measured.duration - track.duration) > 0.001)
+    throw new Error("The measured source changed. Restore the matching source.");
+  await verifyCanonicalSource(source, identity, signal);
   const { afterMetrics } = measured;
   if (afterMetrics.samplePeakDbfs > change.advanced.limiter.ceiling + 0.02
     || afterMetrics.truePeakDbtp > change.advanced.limiter.ceiling + 0.05)

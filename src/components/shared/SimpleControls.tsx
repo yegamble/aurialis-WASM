@@ -69,8 +69,9 @@ export function SimpleControls({
     <div className="control-stack">
       <div>
         <h2>Find the feeling</h2>
-        <p>Choose a direction to update the shared settings. Advanced edits stay in place until you choose another direction.</p>
+        <p>Choose a direction to update the shared settings. Input gain and output targets stay in place. Other Advanced edits stay until you choose another direction.</p>
         {!activeDirection && <p className="disclosure" role="status">Custom settings</p>}
+        {!activeDirection && track.simpleDirection && <p className="disclosure">Your last direction is remembered. Choosing a direction restores its style and modifiers.</p>}
       </div>
       {hasAppliedDeep(track) && <p className="disclosure">Detach Deep automation before choosing a Simple direction.</p>}
       <fieldset className="m-0 min-w-0 border-0 p-0" disabled={hasAppliedDeep(track)}>
@@ -126,9 +127,9 @@ export function SimpleControls({
       <ControlGroup label="Optional modifiers">
         <div className="choice-grid">
           <button type="button" className={activeDirection && depth ? "choice is-active min-h-[44px]" : "choice min-h-[44px]"}
-            aria-pressed={activeDirection && depth} onClick={() => { void update({ depth: !(activeDirection && depth) }); }}>Depth {activeDirection && depth ? "on" : "off"}</button>
+            aria-pressed={activeDirection && depth} onClick={() => { void update({ depth: !(activeDirection && depth) }); }}>Depth {activeDirection && depth ? "on" : depth ? "last on" : "off"}</button>
           <button type="button" className={activeDirection && presence ? "choice is-active min-h-[44px]" : "choice min-h-[44px]"}
-            aria-pressed={activeDirection && presence} onClick={() => { void update({ presence: !(activeDirection && presence) }); }}>Presence {activeDirection && presence ? "on" : "off"}</button>
+            aria-pressed={activeDirection && presence} onClick={() => { void update({ presence: !(activeDirection && presence) }); }}>Presence {activeDirection && presence ? "on" : presence ? "last on" : "off"}</button>
         </div>
       </ControlGroup>
       <SliderField

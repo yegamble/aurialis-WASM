@@ -168,7 +168,8 @@ describe("master live playback lifecycle", () => {
     expect(offline).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("tab", { name: "simple" }));
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
-    expect(savedTrack().advanced).toEqual(mapSimpleToDSP("Pop", "Open", 50, "Streaming"));
+    // Retain explicit input gain so a headroom correction survives a new direction.
+    expect(savedTrack().advanced).toEqual({ ...mapSimpleToDSP("Pop", "Open", 50, "Streaming"), input: 6 });
     expect(screen.queryByText("Custom settings")).toBeNull();
   }, 30000);
 

@@ -6,7 +6,8 @@ test -s public/wasm/aurialis-realtime.wasm
 fixture="$(mktemp)"
 adaa_fixture="$(mktemp)"
 automation_fixture="$(mktemp)"
-trap 'rm -f "$fixture" "$adaa_fixture" "$automation_fixture"' EXIT
+source_clock_fixture="$(mktemp)"
+trap 'rm -f "$fixture" "$adaa_fixture" "$automation_fixture" "$source_clock_fixture"' EXIT
 AURIALIS_PARITY_FIXTURE="$fixture" AURIALIS_ADAA_BASELINE_FIXTURE="$adaa_fixture" \
   go test ./wasm/dsp -run 'TestWrite(NativeParity|ADAABaseline)Fixture$' -count=1
 node wasm/dsp/verify.mjs public/wasm/aurialis-dsp.wasm "$(go env GOROOT)/lib/wasm/wasm_exec.js" "$fixture"
@@ -14,5 +15,5 @@ node wasm/dsp/verify.mjs public/wasm/aurialis-dsp.wasm "$(go env GOROOT)/lib/was
 node wasm/dsp/verify-live.mjs public/wasm/aurialis-dsp.wasm "$(go env GOROOT)/lib/wasm/wasm_exec.js" "$fixture" "$adaa_fixture"
 node wasm/dsp/verify-realtime.mjs public/wasm/aurialis-realtime.wasm "$fixture" "$adaa_fixture"
 
-AURIALIS_AUTOMATION_FIXTURE="$automation_fixture" go test ./wasm/dsp -run TestWriteAutomationParityFixture -count=1
-node wasm/dsp/verify-automation.mjs public/wasm/aurialis-realtime.wasm "$automation_fixture"
+AURIALIS_AUTOMATION_FIXTURE="$automation_fixture" AURIALIS_SOURCE_CLOCK_FIXTURE="$source_clock_fixture" go test ./wasm/dsp -run 'TestWrite(AutomationParity|SourceClockParity)Fixture$' -count=1
+node wasm/dsp/verify-automation.mjs public/wasm/aurialis-realtime.wasm "$automation_fixture" "$source_clock_fixture"

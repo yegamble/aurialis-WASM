@@ -34,7 +34,9 @@ describe("measured Reference review", () => {
     await screen.findByText(/Measured proposal ready/u); expect(track().advanced).toBe(original);
     fireEvent.click(screen.getByRole("button", { name: "Apply measured proposal" }));
     await waitFor(() => { expect(track().advanced.eqBands[2].gainDb).toBe(.62); });
+    await waitFor(() => { expect(screen.getByRole("button", { name: "Apply measured proposal" })).toBeEnabled(); });
     fireEvent.click(screen.getByRole("button", { name: "Apply measured proposal" }));
+    await waitFor(() => { expect(screen.getByRole("button", { name: "Apply measured proposal" })).toBeEnabled(); });
     expect(track().advanced.eqBands[2].gainDb).toBe(.62);
     fireEvent.change(screen.getByRole("slider", { name: "Match amount" }), { target: { value: "100" } });
     fireEvent.click(screen.getByRole("button", { name: "Analyze reference audio" }));
@@ -42,8 +44,10 @@ describe("measured Reference review", () => {
     expect(vi.mocked(matchReference).mock.calls.at(-1)?.[2]).toBe(original);
     fireEvent.click(screen.getByRole("button", { name: "Apply measured proposal" }));
     await waitFor(() => { expect(track().advanced.eqBands[2].gainDb).toBe(1); });
+    await waitFor(() => { expect(screen.getByRole("button", { name: "Revert Reference" })).toBeEnabled(); });
     fireEvent.click(screen.getByRole("button", { name: "Revert Reference" }));
     await waitFor(() => { expect(track().advanced).toEqual(original); });
+    await screen.findByText(/complete settings from before this Reference session were restored/u);
     expect(screen.getByRole("button", { name: "Apply measured proposal" })).toBeDisabled();
   });
   it("ignores late analysis after Cancel and preserves manual edits made while a job is running", async () => {

@@ -1,3 +1,5 @@
+// cspell:words RMSDB
+
 package mastering
 
 import (

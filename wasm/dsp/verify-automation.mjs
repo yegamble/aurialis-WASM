@@ -6,10 +6,11 @@ import { createAurialisWasiHost } from "../../public/worklets/aurialis-wasi-host
 import { engineParams } from "../../src/lib/browser-engine.ts";
 import { packLiveControls } from "../../src/lib/live-controls.ts";
 
-const [modulePath,fixturePath]=process.argv.slice(2);
-assert.ok(modulePath&&fixturePath,"supply reactor and native automation fixtures");
+const [modulePath,...fixturePaths]=process.argv.slice(2);
+assert.ok(modulePath&&fixturePaths.length,"supply reactor and native automation fixtures");
 const module=await WebAssembly.compile(await readFile(modulePath));
-const fixtures=JSON.parse(await readFile(fixturePath,"utf8"));
+const fixtures=[];
+for(const path of fixturePaths)fixtures.push(...JSON.parse(await readFile(path,"utf8")));
 async function kernel(fixture){
  const host=createAurialisWasiHost({entropy:webcrypto.getRandomValues(new Uint8Array(256)),now:()=>performance.now()+1});
  const instance=await WebAssembly.instantiate(module,host.imports);const wasm=instance.exports;host.attach(wasm.memory);wasm._initialize();assert.equal(wasm.aurialis_init(fixture.rate),1);assert.equal(wasm.aurialis_schedule_abi(),1);
@@ -34,14 +35,26 @@ function assertPublicBaselineRoundTrip(params){
 }
 for(const [index,fixture]of fixtures.entries()){
  if(fixture.publicProfile)assertPublicBaselineRoundTrip(fixture.params);
- const current=await kernel(fixture),{wasm}=current;
- assert.equal(wasm.aurialis_schedule_begin(1,fixture.moves.length,fixture.rate),1);for(const [moveIndex,move]of fixture.moves.entries())assert.equal(current.stage(moveIndex,move),1);
+ const current=await kernel(fixture),{wasm}=current;let revision=1;
+ function compareRange(first,last){for(let start=first;start<last;start+=128){const output=current.render(fixture.Left.slice(start,start+128),fixture.Right.slice(start,start+128));for(let frame=0;frame<128;frame++){assert.equal(output[0][frame],Math.fround(fixture.OutputLeft[start+frame])||0,`left fixture ${index} frame ${start+frame}`);assert.equal(output[1][frame],Math.fround(fixture.OutputRight[start+frame])||0,`right fixture ${index} frame ${start+frame}`);}}}
+ function stage(next){assert.equal(wasm.aurialis_schedule_begin(next,fixture.moves.length,fixture.rate),1);for(const [moveIndex,move]of fixture.moves.entries())assert.equal(current.stage(moveIndex,move),1);}
+ if(fixture.staticFrames){
+  assert.equal(wasm.aurialis_set_controls_v2(82),1);assert.equal(wasm.aurialis_schedule_set_looping(1),1);assert.equal(wasm.aurialis_schedule_seek(fixture.seek),1);
+  compareRange(0,fixture.stageAt);current.source();assert.equal(wasm.aurialis_schedule_bind_source(),1,"same source bind must preserve static phase/history");
+  assert.equal(wasm.aurialis_schedule_begin(0,1,fixture.rate),0);assert.equal(wasm.aurialis_schedule_commit(),0);
+ }
+ stage(1);if(fixture.staticFrames)compareRange(fixture.stageAt,fixture.staticFrames);
  assert.equal(wasm.aurialis_schedule_commit(),1);assert.equal(wasm.aurialis_schedule_revision(),1);assert.equal(wasm.aurialis_set_controls_v2(82),0,"static packet silently replaced attached baseline");
- assert.equal(wasm.aurialis_schedule_set_looping(2),0);assert.equal(wasm.aurialis_schedule_set_looping(fixture.looping?1:0),1);
- assert.equal(wasm.aurialis_schedule_seek(fixture.seek),1);
- for(let start=0;start<fixture.Left.length;start+=128){const output=current.render(fixture.Left.slice(start,start+128),fixture.Right.slice(start,start+128));for(let frame=0;frame<128;frame++){assert.equal(output[0][frame],Math.fround(fixture.OutputLeft[start+frame])||0,`left fixture ${index} frame ${start+frame}`);assert.equal(output[1][frame],Math.fround(fixture.OutputRight[start+frame])||0,`right fixture ${index} frame ${start+frame}`);}}
- assert.equal(wasm.aurialis_schedule_begin(1,0,fixture.rate),0,"stale revision accepted");assert.equal(wasm.aurialis_schedule_seek(-1),0);assert.equal(wasm.aurialis_schedule_revision(),1);assert.equal(wasm.aurialis_schedule_detach(),1);assert.equal(wasm.aurialis_set_controls_v2(82),1);
+ assert.equal(wasm.aurialis_schedule_set_looping(2),0);
+ if(fixture.staticFrames){assert.equal(wasm.aurialis_schedule_bind_source(),1,"same active source bind must be idempotent");}else{assert.equal(wasm.aurialis_schedule_set_looping(fixture.looping?1:0),1);assert.equal(wasm.aurialis_schedule_seek(fixture.seek),1);}
+ for(let start=fixture.staticFrames||0;start<fixture.Left.length;start+=128){
+  if(start===fixture.detachAt){assert.equal(wasm.aurialis_schedule_detach(),1);assert.equal(wasm.aurialis_set_controls_v2(82),1);}
+  if(start===fixture.reapplyAt){stage(2);assert.equal(wasm.aurialis_schedule_commit(),1);revision=2;}
+  compareRange(start,start+128);
+ }
+ assert.equal(wasm.aurialis_schedule_begin(revision,0,fixture.rate),0,"stale revision accepted");assert.equal(wasm.aurialis_schedule_seek(-1),0);assert.equal(wasm.aurialis_schedule_revision(),revision);assert.equal(wasm.aurialis_schedule_detach(),1);assert.equal(wasm.aurialis_set_controls_v2(82),1);
 }
+
 const capacity=await kernel(fixtures.find(fixture=>fixture.rate===48000));const{wasm}=capacity;
 capacity.source(128*4096);assert.equal(wasm.aurialis_schedule_bind_source(),1);capacity.controls();
 assert.equal(wasm.aurialis_schedule_begin(1,128,48000),1);const stageTimes=[];

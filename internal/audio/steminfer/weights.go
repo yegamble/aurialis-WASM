@@ -18,8 +18,10 @@ import (
 	"unicode/utf8"
 )
 
-const modelBytes = 176487776
-const modelSHA256 = "2e551e9e50a0be1adf0d955492523f019eea913c79697c73b362aee086af8384"
+// The recovered container selects byte-identical original F16 tensors; see the
+// development recovery script and NOTICE for the preserved historical pin.
+const modelBytes = 176487688
+const modelSHA256 = "0d51845078d4c075d825ba18f776f9af96e50d34d3491102a1215b6dbaf684b7"
 const maximumHeaderBytes = 1024 * 1024
 const maximumTensorElements = 1024 * 1024
 

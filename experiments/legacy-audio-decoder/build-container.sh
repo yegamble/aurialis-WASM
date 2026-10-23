@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# The official entrypoint sources emsdk_env.sh before this script and resets
+# EM_CACHE. Override it here, keeping every compiler cache inside bounded output.
+export EM_CACHE=/output/emcache
+printf '%s\n' "$EM_CACHE" > /output/cache-path.txt
 # Build-only configure probes execute inside the bounded temporary filesystem.
 awk '$2 == "/tmp" { print }' /proc/mounts > /output/tmp-mount.txt
 mkdir /output/ffbuild /output/assets /output/relink

@@ -126,6 +126,16 @@ describe("direct Go worklet lifecycle", () => {
     f.message({ type: "hold" }); expect(silent(f.render())).toBe(true);
     expect(f.kernel.aurialis_live_process).toHaveBeenCalledTimes(warmed + 1);
   });
+  it("fails a reset delivered after its source deadline instead of processing shifted input at a stale seek", () => {
+    const f = workletFixture(false, 2); const warmed = f.kernel.aurialis_live_process.mock.calls.length;
+    f.context.currentTime = 4 * 128 / 48000;
+    f.message({ type: "reset", generation: 1, startTime: 128 / 48000, sourceFrame: 123 });
+    expect(f.processor.failed).toBe(true);
+    expect(silent(f.render())).toBe(true);
+    expect(f.kernel.aurialis_live_process).toHaveBeenCalledTimes(warmed);
+    expect(f.header[0]).toBe(0);
+    expect(f.processor.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "error", message: "The source start deadline was missed. Retry playback." }));
+  });
   it.each([0, 3, 1.5, null])("rejects explicit unsupported packet ABI %s", (abi) => {
     const f = workletFixture(false, abi);
     expect(f.processor.failed).toBe(true);

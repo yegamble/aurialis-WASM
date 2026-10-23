@@ -2,6 +2,12 @@
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
+## Delegated continuation — October 23, 2026
+
+PR #6 is verified and merged at `388653635a4911b66786c672b2551cde235f7b4a`. Its corrected [CI run 39838476152](https://github.com/yegamble/aurialis-WASM/actions/runs/39838476152) passed all jobs, including 61 Linux browser cases in 5.0 minutes and 22 Newman requests/27 assertions plus raw security probes. The merged feature branch was deleted locally and remotely. The previous section retains the local and failed remote checkpoints as history.
+
+The owner authorized continued whole-product work with delegated merges until all planned features and remaining Waves acceptance work pass. The default four-iteration stop no longer applies to this continuation. Work resumes from clean main `3886536` on isolated `codex/waves-completion`; the next councils cover DSP topologies/latency, source-bound automation and Library/import/recovery. Broad product and acoustic requirements remain open.
+
 ## Whole-product completion loop — October 22, 2026
 
 **Status: bounded wave locally verified; open — awaiting merge. Product incomplete.** The reviewed baseline `f5ec9ad` includes owner-merged PR #5. The older pending-merge entries below retain their historical status. The [current completion review](reviews/2026-10-22-war-room-completion.md) lists outstanding planned features and Round D rulings.

@@ -11,6 +11,14 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Delegated continuation — 2026-10-23
+
+The owner authorized merging PR #6 and continuing the whole-product loop with `merge=delegated` until all planned features and remaining Waves acceptance work are tested. This explicit continuation supersedes the default four-iteration stop. Verified branches may now merge after the existing QA, Devil’s Advocate, Technical Writer, Product Engineer and green-CI gates without another owner merge question.
+
+PR #6 was already merged when this continuation began: merge `388653635a4911b66786c672b2551cde235f7b4a`, verified source `8fd8877`. Corrected [CI run 39838476152](https://github.com/yegamble/aurialis-WASM/actions/runs/39838476152) succeeded, including 61 Linux browser cases in 5.0 minutes and 22 Newman requests/27 assertions plus raw probes. MUB-2A, MUB-3A and MUB-4A are verified and merged within their bounded scopes. The clean primary checkout was fast-forwarded; the merged branch was deleted locally and remotely. The older pending statuses below are historical checkpoints.
+
+Continuation baseline: clean `main` at `3886536`; isolated integration branch `codex/waves-completion`. Three independent Round A councils are reviewing DSP/version/latency, ScriptV2/security/model feasibility, and Library/import/recovery. Whole-product completion and Waves equivalence remain open. No sonic algorithm 2, trained separation or automation is implied by the foundation merge.
+
 ## Whole-product loop — 2026-10-22, current session
 
 **Status: bounded wave locally verified; open — awaiting merge. Product incomplete.** Baseline `f5ec9ad` is clean main, including merged PRs #3/#4/#5. MUB-0 is resolved; its earlier blocking ruling below is historical. The [whole-product review](../../docs/reviews/2026-10-22-war-room-completion.md) records surviving requirements and the supplied Gemini conversation’s stale claims.
@@ -152,7 +160,9 @@ The corrective subset passed current-session QA and Devil’s Advocate review an
 
 | ID | Priority | Area | Title | Merged Commit / PR | Verification Evidence |
 |---|---|---|---|---|---|
-| *(None yet — War Room Loop starts with pessimistic baseline: 0 features verified until merged to main)* | | | | | |
+| MUB-2A | P1 | wasm-dsp | Algorithm-1 compatibility, capability and latency foundation | `3886536` / PR #6 | 333 exact compiled fixtures; zero-buffered-latency/drain contracts; corrected six-job CI `39838476152` |
+| MUB-3A | P1 | go-backend / nextjs-ui | Source-bound measured features and cancellable diagnostics | `3886536` / PR #6 | 22 Newman requests/27 assertions plus raw probes; 61 browser cases; independent coverage/cancellation review |
+| MUB-4A | P1 | nextjs-ui / audio-verify | Supported EQ type/enable and limiter release controls | `3886536` / PR #6 | Native/live/export checks, mobile target geometry and six-width accessibility within the 61-case suite |
 
 ---
 

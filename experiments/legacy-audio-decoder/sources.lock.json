@@ -72,13 +72,27 @@
       "changing decoded geometry",
       "unknown containers",
       "AAC profiles outside LC/HE/HE_V2",
-      "application resampling or downmix"
+      "application resampling or downmix",
+      "Ogg FLAC and all other Ogg BOS identifiers"
     ],
     "libraries": [
       "avformat",
       "avcodec",
       "swresample",
       "avutil"
+    ],
+    "oggIdentificationProfiles": [
+      "Vorbis identification v0, mono/stereo, one complete 30-byte BOS packet",
+      "OpusHead v1, mono/stereo, mapping family 0, one complete 19-byte BOS packet"
+    ],
+    "internalOggHeaderHelpers": [
+      "Dirac/oldDirac",
+      "FLAC",
+      "OGM",
+      "Skeleton",
+      "Speex",
+      "Theora",
+      "VP8"
     ]
   },
   "buildPolicy": {

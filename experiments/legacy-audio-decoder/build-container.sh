@@ -39,4 +39,8 @@ cp /output/install/lib/libavformat.a /output/install/lib/libavcodec.a \
    /output/install/lib/libswresample.a /output/install/lib/libavutil.a /output/relink/
 cp /ffmpeg/COPYING.LGPLv2.1 /output/relink/
 cp /output/ffbuild/config.h /output/ffbuild/config_components.h /output/relink/
+# Preserve the actual archive symbol inventory, including internal Ogg video
+# header helpers. Decoder/parser component allowlists are a separate receipt.
+emnm -g --defined-only /output/relink/libavformat.a /output/relink/libavcodec.a \
+  /output/relink/libswresample.a /output/relink/libavutil.a > /output/static-symbols.txt
 python3 /recipe/package-assets.py /output

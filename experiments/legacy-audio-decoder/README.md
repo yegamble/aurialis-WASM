@@ -24,11 +24,11 @@ The script refuses an existing output folder and never fetches sources or implic
 
 Demuxers: MP3, FLAC, Ogg, ADTS AAC and ordinary non-fragmented MP4/M4A with an initial ftyp box. Decoders: native MP3 float, FLAC, Vorbis, Opus, AAC LC/HE/HEv2 and ALAC. Select actual containers; extensions and MIME types are not proof.
 
-The profile rejects multiple streams, attached pictures, encrypted inputs, fragmented MP4, chained/multiplexed Ogg, unqualified AAC profiles and changes after the first actual decoded geometry. Some valid older files will be refused. Rejected sources must remain in old storage.
+The profile rejects multiple streams, attached pictures, encrypted inputs, fragmented MP4, chained/multiplexed Ogg, Ogg FLAC and other Ogg codecs, unqualified AAC profiles and changes after the first actual decoded geometry. Some valid older files will be refused. Rejected sources must remain in old storage.
 
 Native Opus requires libswresample for intrinsic SILK/hybrid reconstruction; its output is fixed at 48 kHz in the pinned decoder. That internal dependency is allowed. AAC SBR/PS reconstruction may produce a higher rate or stereo output than its core header suggests. The first actual AVFrame establishes rate and channel layout; later changes reject. No application sample-rate conversion, downmix, loudness normalization or DSP controls are exposed. Bitstream-defined decoding semantics and gapless/edit handling still need explicit native comparisons.
 
-Only avformat, avcodec, swresample and avutil are linked. There are no CLI programs, encoders, muxers, video decoders, filters, device libraries, network protocols or externally opened inputs. The native decoder's selected helper dependencies still require review of actual build output.
+Only avformat, avcodec, swresample and avutil are linked. There are no CLI programs, encoders, muxers, video decoder or DIRAC parser components, filters, device libraries, network protocols or externally opened inputs. The pinned Ogg demuxer does compile internal header handlers for Dirac/old Dirac, FLAC, OGM, Skeleton, Speex, Theora and VP8; configure selects the dirac_parse helper. These are disclosed linked dependencies, not admitted input formats. Strict BOS preflight rejects every identifier except the narrow Vorbis/Opus profiles before module fetching or decoder opening. Actual static-library symbols are preserved in static-symbols.txt; final module symbols and reachability still require review.
 
 ## C ABI and data flow
 
@@ -36,7 +36,7 @@ Only avformat, avcodec, swresample and avutil are linked. There are no CLI progr
 
 Decoded frame counts, sample rates and channels come from AVFrames, never declared duration. The C wrapper rejects corrupted frames/packets and changed/new codec parameters. Codec-specific strict-error behavior is not assumed universal; malformed-input tests are a required gate.
 
-`envelope.mjs` reads bounded File slices in a DedicatedWorker. Its Ogg preflight checks page extents, one serial, sequence, CRC and terminal-page structure; its MP4 preflight bounds atom sizes/count/depth and rejects fragmentation. These checks do not replace FFmpeg parser qualification or prove absence of every hidden container payload.
+`envelope.mjs` reads bounded File slices in a DedicatedWorker. Its Ogg preflight requires one complete identification packet alone on the first BOS page: Vorbis v0 with the exact 30-byte header, mono/stereo layout, bounded native-rate header, valid block exponents and framing flag; or a 19-byte OpusHead v1, mono/stereo, mapping family 0. Opus input-rate metadata does not select its output rate. It also checks page extents, one serial, sequence, CRC, continuation/lacing agreement, an 8 MiB packet ceiling and complete terminal-page structure; its MP4 preflight bounds atom sizes/count/depth and rejects fragmentation. These checks do not replace FFmpeg parser qualification or prove absence of every hidden container payload.
 
 `decoder.worker.mjs` uses a fixed-asset ES module and one fixed 64 MiB imported WebAssembly.Memory with equal initial/maximum limits. Emscripten FILESYSTEM=0, DYNAMIC_EXECUTION=0 and ALLOW_MEMORY_GROWTH=0 are required. No generic unsafe-eval allowance, remote URL, arbitrary import or secondary input is exposed. The exact built Wasm is hash-checked before initialization.
 
@@ -56,7 +56,7 @@ The Wasm asset is limited to 16 MiB, below the 25 MiB static-file ceiling; JS gl
 
 ## Synthetic unit evidence
 
-With Node 26.12.0 on PATH, `node --test experiments/legacy-audio-decoder/fixtures/*.test.mjs` passed 24/24 synthetic units in 139 ms during this source review. These exercise only envelope parsing, inert Worker/client protocol adapters, fixed-buffer stream reads and admission logic. No FFmpeg Wasm, real compressed decoder, browser or actual Go CDR ran.
+With Node 26.12.0 on PATH, `node --test experiments/legacy-audio-decoder/fixtures/*.test.mjs` passed 29/29 synthetic units in 80 ms during this source review. These exercise only envelope parsing, inert Worker/client protocol adapters, fixed-buffer stream reads and admission logic. No FFmpeg Wasm, real compressed decoder, browser or actual Go CDR ran.
 
 Three additional inert Python units verify OOM/watchdog/disk failure status handling; these passed without contacting Docker. They do not verify kernel enforcement. The retained prior source failed the new one-frame chunk-retention, empty-manifest-read, exact-capacity and both late-initialization regressions before correction. The current tests cover 1,024 one-frame messages, bounded tiny/zero fetch chunks, exact frame admission, cancellation and late module settlement. This evidence does not establish real browser memory use or codec support.
 

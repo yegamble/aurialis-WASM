@@ -1,6 +1,6 @@
 # Private fixture harness
 
-No encoded audio fixtures or actual decoder/browser results are present yet. The 24 passing synthetic unit cases do not establish a codec pass.
+No encoded audio fixtures or actual decoder/browser results are present yet. The 29 passing synthetic unit cases do not establish a codec pass.
 
 After the Chair releases setup/CPU work, generate deterministic synthetic tones, impulses, silence, negative-zero Float32 inputs where applicable, and EOF markers using a separately pinned native encoder. Preserve exact encoder flags, source hashes and expected decoder-native output. Do not use user recordings or download a music corpus.
 

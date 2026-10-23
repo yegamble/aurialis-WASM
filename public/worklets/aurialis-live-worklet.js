@@ -43,6 +43,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       const message = event.data;
       if (message.type === "reset") {
         if (message.generation !== Atomics.load(this.header, GENERATION)) return;
+        if (message.startTime !== undefined && (!Number.isFinite(message.startTime) || message.startTime < 0 || currentTime > message.startTime + 0.5 / sampleRate)) throw new Error("The source start deadline was missed. Retry playback.");
         if (this.active && this.generation === message.generation) return;
         if (this.generation !== message.generation || !this.active) this.resetKernel();
         this.generation = message.generation;

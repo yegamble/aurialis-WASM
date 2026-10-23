@@ -38,7 +38,7 @@ describe("bounded durable album spool", () => {
     await first.close(); const second = await open(); await second.clear();
     await expect(first.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal())).rejects.toThrow(/closed/u);
   });
-  it("accounts whole-run disk demand transactionally across different albums and releases unused reservations", async () => {
+  it("accounts whole-run disk demand in transactions across different albums and releases unused reservations", async () => {
     const large = await open("large", maximumAlbumSpoolBytes);
     await expect(open("second")).rejects.toThrow(/disk limit/u);
     await large.close(); const second = await open("second"); expect(second.prefix()).toEqual([]);

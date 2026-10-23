@@ -221,6 +221,8 @@ Shared Tailwind button variants, dialog surfaces, control groups and module disc
 
 ## Album cohort ownership — private integration checkpoint
 
+The private storage foundation uses `aurialis-album-spool-v1` with separate bounded run metadata and encoded-output stores. Output keys include their album namespace and fresh run/asset IDs. At most 64 runs and 256 KiB metadata per run are admitted; committed, pending and reserved output demand share a transactional 6,442,453,760-byte disk ceiling. Album-level locks cover creation, continued ownership and scoped cleanup, including queued reads, writes and download consumers. A pending row is not a verified prefix. This storage foundation remains disconnected; phase-specific rendering, qualified build identities and explicit rerendered prefix recovery are still required before replacing the current RAM cache.
+
 Direct imports claim the selected file before reconstruction and source plus two canonical copies before storage. Cancellation and unmount retain that owner through actual save/rollback settlement; failed staged cleanup reports an error without publishing a track.
 
 The album branch now uses merged browser-local baseline `85aa7cd`. Accepted-script measurement reuses the shared render JSON adapter; no transport or DSP implementation is duplicated. Complete album browser/audio acceptance remains open.

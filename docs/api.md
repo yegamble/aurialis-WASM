@@ -11,6 +11,8 @@ API CI runs the complete Newman collection and raw security probes against the v
 
 ## Album orchestration — private integration checkpoint
 
+Storage-only foundation `2434a80` introduces a dedicated device-local encoded-output spool without adding an endpoint. It stages output bytes, pending metadata and disk accounting atomically under album ownership; a separate promotion marks a prefix row. Stored metadata alone cannot authorize measured output. The foundation is not connected to rendering or downloads, and the existing 128 MiB cache remains active. Browser storage commitment does not guarantee protection from eviction.
+
 The album branch is integrated on browser-local main `85aa7cd`. The shared `measureScriptAudio` JSON adapter is restored now that the album caller needs accepted-script measurements; it uses the same device-local render transport and does not allocate a caller-side float master merely to measure. Complete album runtime acceptance remains open.
 
 Direct album import reserves the selected source before reconstruction and the reconstructed/storage-copy bytes before saving, retaining them through pending cancellation and rollback. Failed cleanup remains visible. The album-consistency branch adds no endpoint. It sequentially measures each complete accepted chain through the existing render JSON contract, then renders that chain as 32-bit float, calls the same Go renderer with explicit linear input gain and every other module disabled, and encodes 24-bit WAV with the existing TPDF encoder. Applied ScriptV2 is retained; no Detach or mutation of individual tracks occurs.

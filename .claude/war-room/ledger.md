@@ -11,6 +11,10 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Documentation review — 2026-10-23
+
+**Scope:** README clarity, first-master guide, task-based documentation index and developer reference. **Status:** open — awaiting merge on `docs/readme-and-reader-guides`. Technical writer and independent claims-review agents checked the documented workflows, formats, resource limits and feature boundaries against source; QA rebuilt and smoke-tested the embedded executable using the pinned tools. The [review record](../../docs/reviews/2026-10-23-readme-review.md) contains GitHub inspirations, claim sources and executed checks. This docs-only change does not close product backlog items or add browser/hardware certification evidence.
+
 ## Current ruling — 2026-10-21 product recovery
 
 The latest whole-product review audited local and remote `main` at `ade7736` (the only live branch). The blanket verification claims in the historical activation record are withdrawn. The corrected design archive matches the canonical checked-in Figma source exactly.

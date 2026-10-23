@@ -1,6 +1,8 @@
 # Aurialis-WASM API reference
 <!-- cspell:words Hann steganography -->
 
+[Documentation](README.md) · [First-master guide](getting-started.md) · [Build and configuration](development.md) · [Architecture](architecture.md)
+
 Current routes are implemented by `internal/server`; exact DSP structs are in `internal/audio/dsp/engine.go` and the experimental script schema is in `internal/mastering/mastering.go`. No API presence alone establishes a verified product workflow. See [tasks](tasks.md) for evidence and open requirements.
 
 ## Security and resource contract

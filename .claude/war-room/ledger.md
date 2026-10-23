@@ -33,6 +33,12 @@ The Library review found an unbounded memory fallback after failed IndexedDB wri
 
 No code in these continuation items is accepted as complete yet. Each implementation must sync the five documentation surfaces and survive independent QA/Devil’s Advocate, native/WASM/static/API/browser/build gates and green CI before delegated merge. Training/runtime/quality evidence for real 2–6 instrument stems remains an independent open requirement; the original Python Demucs service is not a drop-in single-Go-binary implementation.
 
+### LIB-1 peer findings and navigation ruling
+
+Peer review found that merging a replacement patch retained deleted derived fields, a duplicate IndexedDB key could mask a request `ConstraintError` and fall through to session storage, and Library held-scrub did not share Master lifecycle behavior. Dedicated full-record source revision commits, factory-issued immutable assets with request-error preservation, optional-field hydration checks and a shared scrub hook correct those findings. The integrated intermediate frontend checkpoint passed TypeScript, lint and knip plus 317 cases in 22 unit/component files.
+
+The denied-storage browser test then proved a full-document Home-to-Master navigation, discarding the module's session audio. Round D accepts the documented native History API with known workstation routes selected from the live pathname. Back/Forward, direct deep-link reload, modifier/target/download semantics, focus/scroll and old graph disposal require execution proof. Do not rewrite private Next RSC payloads or move raw audio into alternate persistent browser storage. The original failed test remains evidence; LIB-1 is open pending the correction and full integrated gates.
+
 ## Whole-product loop — 2026-10-22, current session
 
 **Status: bounded wave locally verified; open — awaiting merge. Product incomplete.** Baseline `f5ec9ad` is clean main, including merged PRs #3/#4/#5. MUB-0 is resolved; its earlier blocking ruling below is historical. The [whole-product review](../../docs/reviews/2026-10-22-war-room-completion.md) records surviving requirements and the supplied Gemini conversation’s stale claims.

@@ -4,6 +4,13 @@ The blanket “all slices verified” claim at `ade7736` is withdrawn. The earli
 
 ## Delegated continuation — October 23, 2026
 
+### LIB-1 checkpoint — implemented, verification open
+
+The Library/import branch adds sequential multi-import, sorting and status filters, shared WASI quick preview, independent settings/audio copies, album assignment, canonical-identity relink, explicit replacement, storage guidance and awaited deletion. Peer review corrected stale derived results during full-record replacement, immutable-asset collision handling, optional-field hydration and shared held-scrub behavior. Integrated strict TypeScript, lint and knip exited 0; 317 unit/component cases passed across 22 files. This is an intermediate checkpoint, not merged acceptance.
+
+The denied-storage browser case exposed a real full-document navigation when a runtime track ID lacked a generated static-export RSC payload. That reload discarded session audio. The accepted correction uses the documented native History API and a pathname-derived workstation shell for known application routes, with Back/Forward, focus, scroll and graph-disposal tests. Rewriting private Next RSC payloads or retaining raw audio in alternate browser storage is excluded. Full integrated browser/build/API/compiled gates and independent review remain open.
+
+
 PR #6 is verified and merged at `388653635a4911b66786c672b2551cde235f7b4a`. Its corrected [CI run 39838476152](https://github.com/yegamble/aurialis-WASM/actions/runs/39838476152) passed all jobs, including 61 Linux browser cases in 5.0 minutes and 22 Newman requests/27 assertions plus raw security probes. The merged feature branch was deleted locally and remotely. The previous section retains the local and failed remote checkpoints as history.
 
 The owner authorized continued whole-product work with delegated merges until all planned features and remaining Waves acceptance work pass. The default four-iteration stop no longer applies to this continuation. Work resumes from clean main `3886536` on isolated `codex/waves-completion`; the next councils cover DSP topologies/latency, source-bound automation and Library/import/recovery. Broad product and acoustic requirements remain open.

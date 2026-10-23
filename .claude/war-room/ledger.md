@@ -25,9 +25,11 @@ Browser workers/WASM must provide local import/CDR, analysis, mastering, separat
 
 ### Simple styles and measured Elevated checkpoint
 
+**Latest: locally verified — open, awaiting exact CI and delegated merge.** Clean `adf0032` passed the full 82/82 Chromium cases in 5.4 minutes, 342/342 units in 29 files (8.34 s), TypeScript/lint/Knip, production build/smoke and corrected 212-file spelling. Chair-observed full Go format/module/vet/lint 2.15/identifier/vulnerability/race gates passed; signal gates passed 333 exact static fixtures across native/JS/direct/WASI plus 45 schedules. Newman passed 34 requests/39 assertions and cURL probes. Independent writer checked `browser.log`/`browser.json`: 82 expected, no unexpected/flaky/skipped cases, exit-0 stdout. Binary SHA-256: `4eccb86c5928bfa782d69d78bd7dea8b2e78649fad60ebb48ca3301d7b2073f4`. Stable ignored evidence is under `artifacts/simple-final/`. Historical 79/81 and the inherited three-word spelling failure remain below; the new Deep union, device-local worker deployment and whole-product/Waves gates are separate and open.
+
 | Item | Current status |
 | --- | --- |
-| Simple styles, Metal/Jazz, Depth/Presence | implemented and locally exercised; open pending complete integrated regression/CI/merge |
+| Simple styles, Metal/Jazz, Depth/Presence | locally verified, 82/82; open awaiting exact CI and merge |
 | Elevated source-bound render review | implemented and locally exercised; upper-bound diagnostics, not normalization/certification |
 | Reference dependency | verified and merged, PR #9 / `f9ae077`; all six exact CI jobs green, 73 Linux browser cases |
 | Whole product, studio DSP, trained stems and Waves acceptance | open |

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { qualifyProcessingBuild } from "../processing-build";
 import { readProcessingIdentity } from "../processing-identity";
 const identity = (target: "native" | "browser") => ({ version: 1, target, fingerprint: "a".repeat(64), offlineSha256: "b".repeat(64), offlineBytes: 8, realtimeSha256: "c".repeat(64), runtimeSha256: "d".repeat(64) });
-const response = (fingerprint: string) => new Response(JSON.stringify({ processingBuildFingerprint: fingerprint }), { headers: { "Content-Type": "application/json" } });
+const response = (fingerprint: string) => new Response(JSON.stringify({ processingBuildFingerprint: fingerprint }), { headers: { "Content-Type": "application/json", "X-Aurialis-Processing-Build": "a".repeat(64) } });
 const signal = () => new AbortController().signal;
 beforeEach(() => { vi.stubGlobal("fetch", vi.fn()); vi.stubEnv("NEXT_PUBLIC_AURIALIS_EXECUTION", "browser"); vi.stubEnv("NEXT_PUBLIC_AURIALIS_PROCESSING_BUILD", JSON.stringify(identity("browser"))); });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
@@ -38,7 +38,7 @@ describe("qualified stored processing identity", () => {
   it("rejects an oversized native health response and stops reading", async () => {
     vi.stubEnv("NEXT_PUBLIC_AURIALIS_EXECUTION", "native"); vi.stubEnv("NEXT_PUBLIC_AURIALIS_PROCESSING_BUILD", JSON.stringify(identity("native")));
     const cancel = vi.fn(), stream = new ReadableStream<Uint8Array>({ start(controller) { controller.enqueue(new Uint8Array(16_385)); }, cancel });
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(stream, { headers: { "Content-Type": "application/json" } }));
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(stream, { headers: { "Content-Type": "application/json", "X-Aurialis-Processing-Build": "a".repeat(64) } }));
     await expect(qualifyProcessingBuild(signal())).rejects.toThrow(/exceeds its limit/u); expect(cancel).toHaveBeenCalledOnce();
   });
   it("declines an already canceled qualification without a request", async () => {

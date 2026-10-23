@@ -23,7 +23,7 @@ async function worker(processing, responseBytes = moduleBytes) {
 }
 test('qualified worker hashes actual fetched bytes before instantiation', { timeout: 1000 }, async () => {
   const result = await worker({ fingerprint, offlineSha256: '0'.repeat(64), offlineBytes: moduleBytes.length });
-  assert.equal(result.instantiations, 0); assert.equal(result.messages.at(-1).kind, 'error'); assert.match(result.messages.at(-1).error, /processing module.*match/i);
+  assert.equal(result.instantiations, 0); assert.equal(result.messages.at(-1).kind, 'error'); assert.match(result.messages.at(-1).error, /processing module.*match/i); assert.equal(result.messages.at(-1).processingBuild, '');
 });
 test('qualified matching module returns its checked processing identity', { timeout: 1000 }, async () => {
   const result = await worker({ fingerprint, offlineSha256, offlineBytes: moduleBytes.length });
@@ -38,5 +38,5 @@ test('malformed processing envelopes reject before runtime import or fetch', { t
 
 test('qualified worker stops an oversized response before instantiation', { timeout: 1000 }, async () => {
   const result = await worker({ fingerprint, offlineSha256, offlineBytes: moduleBytes.length }, Uint8Array.of(...moduleBytes, 0));
-  assert.equal(result.instantiations, 0); assert.equal(result.messages.at(-1).kind, 'error'); assert.match(result.messages.at(-1).error, /unexpected length/);
+  assert.equal(result.instantiations, 0); assert.equal(result.messages.at(-1).kind, 'error'); assert.match(result.messages.at(-1).error, /unexpected length/); assert.equal(result.messages.at(-1).processingBuild, '');
 });

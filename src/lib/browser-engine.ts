@@ -1,5 +1,6 @@
 import { engineParams } from "./engine-params";
 export { engineParams } from "./engine-params";
+import { assertExpectedProcessingBuild, ProcessingBuildMismatchError } from "./processing-identity";
 import { deviceAudioRequest, usesBrowserAudio } from "./browser-jobs";
 import type { ScriptV2 } from "./deep-mastering";
 import type { AdvancedParams, MeasuredAudioMetrics, SourceIdentity } from "./types";
@@ -72,6 +73,7 @@ async function audioRequest(
   data: FormData,
   signal?: AbortSignal,
   json = false,
+  expectedBuild?: string,
 ): Promise<Response> {
   signal?.throwIfAborted();
   try {
@@ -80,8 +82,9 @@ async function audioRequest(
       body: data,
       ...(json ? { headers: { Accept: "application/json" } } : {}),
       ...(signal ? { signal } : {}),
-    });
+    }, undefined, expectedBuild);
   } catch (error: unknown) {
+    if (error instanceof ProcessingBuildMismatchError) throw error;
     signal?.throwIfAborted();
     if (usesBrowserAudio()) throw error;
     const address = typeof location === "undefined" ? "this address" : location.origin;
@@ -165,21 +168,24 @@ export async function serverRender(
   params: object,
   bitDepth: 16 | 24 | 32,
   signal?: AbortSignal,
+  expectedBuild?: string,
 ): Promise<Blob> {
+  assertExpectedProcessingBuild(expectedBuild);
   signal?.throwIfAborted();
   const data = new FormData();
   data.append("file", file, "source.wav");
   data.append("params", JSON.stringify(params));
   data.append("bitDepth", String(bitDepth));
-  const response = await audioRequest(data, signal);
+  const response = await audioRequest(data, signal, false, expectedBuild);
   if (!response.ok)
     throw await audioError(response, "Audio processing failed. Please try again.");
   return readAudioResponse(() => response.blob(), signal);
 }
-export async function serverRenderScript(file: Blob, script: ScriptV2, bitDepth: 16 | 24 | 32, signal?: AbortSignal): Promise<Blob> {
+export async function serverRenderScript(file: Blob, script: ScriptV2, bitDepth: 16 | 24 | 32, signal?: AbortSignal, expectedBuild?: string): Promise<Blob> {
+  assertExpectedProcessingBuild(expectedBuild);
   signal?.throwIfAborted();
   const data = new FormData(); data.append("file", file, "source.wav"); data.append("script", JSON.stringify(script)); data.append("bitDepth", String(bitDepth));
-  const response = await audioRequest(data, signal);
+  const response = await audioRequest(data, signal, false, expectedBuild);
   if (!response.ok) throw await audioError(response, "The applied script could not be rendered. Restore its matching source and retry.");
   return readAudioResponse(() => response.blob(), signal);
 }
@@ -344,21 +350,24 @@ export async function measureAudio(
   file: Blob,
   params: object = { bypass: true },
   signal?: AbortSignal,
+  expectedBuild?: string,
 ): Promise<AudioMeasurement> {
+  assertExpectedProcessingBuild(expectedBuild);
   const form = new FormData();
   form.append("file", file, "source.wav");
   form.append("params", JSON.stringify(params));
   form.append("format", "json");
-  const response = await audioRequest(form, signal, true);
+  const response = await audioRequest(form, signal, true, expectedBuild);
   if (!response.ok) throw await audioError(response, "Audio measurement failed.");
   const body: unknown = await readAudioResponse(() => response.json() as Promise<unknown>, signal);
   return audioMeasurement(body);
 }
 
 /** Measure the accepted script without allocating a float master in the caller. */
-export async function measureScriptAudio(file: Blob, script: ScriptV2, signal?: AbortSignal): Promise<AudioMeasurement> {
+export async function measureScriptAudio(file: Blob, script: ScriptV2, signal?: AbortSignal, expectedBuild?: string): Promise<AudioMeasurement> {
+  assertExpectedProcessingBuild(expectedBuild);
   const form = new FormData(); form.append("file", file, "source.wav"); form.append("script", JSON.stringify(script)); form.append("format", "json");
-  const response = await audioRequest(form, signal, true);
+  const response = await audioRequest(form, signal, true, expectedBuild);
   if (!response.ok) throw await audioError(response, "The applied script could not be measured. Restore its matching source and retry.");
   return audioMeasurement(await readAudioResponse(() => response.json() as Promise<unknown>, signal));
 }

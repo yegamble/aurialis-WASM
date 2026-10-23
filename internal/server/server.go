@@ -109,7 +109,7 @@ func New(cfg Config) *Server {
 
 	mux.HandleFunc("/", s.handleStaticOrSPA)
 
-	s.handler = s.securityMiddleware(mux)
+	s.handler = s.securityMiddleware(processingBuildHeader(mux, build.QualifiedFingerprint()))
 	return s
 }
 
@@ -121,6 +121,16 @@ func (s *Server) Handler() http.Handler {
 // Close shuts down the background job manager cleanly.
 func (s *Server) Close() {
 	s.jobs.Close()
+}
+
+// processingBuildHeader captures the linked identity once; request data cannot override it.
+func processingBuildHeader(next http.Handler, fingerprint string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			w.Header().Set("X-Aurialis-Processing-Build", fingerprint)
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) securityMiddleware(next http.Handler) http.Handler {

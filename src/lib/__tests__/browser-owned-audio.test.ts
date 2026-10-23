@@ -101,6 +101,33 @@ describe("explicit owned binary result handoff", () => {
     await waitFor(() => { expect(OwnedWorker.all[0]?.terminated).toBe(true); });
     expect(constructions).toBe(failure === "metadata" ? 0 : 1); reserveBrowserAudioMemory(448 * mib).dispose();
   });
+  it("waits for an actual source read to settle after a qualified JSON measurement is canceled", async () => {
+    const expected = "a".repeat(64);
+    vi.stubEnv("NEXT_PUBLIC_AURIALIS_PROCESSING_BUILD", JSON.stringify({ version: 1, target: "browser", fingerprint: expected, offlineSha256: "b".repeat(64), offlineBytes: 8, realtimeSha256: "c".repeat(64), runtimeSha256: "d".repeat(64) }));
+    const { deviceAudioRequest, reserveBrowserAudioMemory } = await transport(), controller = new AbortController(), form = body(), source = form.get("file");
+    if (!(source instanceof Blob)) throw new Error("Missing source");
+    let release: ((bytes: ArrayBuffer) => void) | undefined;
+    const held = new Promise<ArrayBuffer>((resolve) => { release = resolve; }), read = vi.spyOn(source, "arrayBuffer").mockReturnValue(held);
+    let settled = false;
+    const pending = deviceAudioRequest("/api/master/render", { method: "POST", body: form, signal: controller.signal, headers: { Accept: "application/json" } }, undefined, expected)
+      .then(() => { settled = true; return null; }, (cause: unknown) => { settled = true; return cause; });
+    await waitFor(() => { expect(read).toHaveBeenCalledOnce(); }); controller.abort(); await Promise.resolve();
+    expect(settled).toBe(false); expect(() => reserveBrowserAudioMemory(448 * mib - 315)).toThrow(/memory budget/u);
+    release?.(wav()); expect(await pending).toMatchObject({ name: "AbortError" }); expect(OwnedWorker.all).toHaveLength(0); reserveBrowserAudioMemory(448 * mib).dispose();
+  });
+  it("rejects a changed browser producer between source admission and worker startup", async () => {
+    const identity = { version: 1, target: "browser", fingerprint: "a".repeat(64), offlineSha256: "b".repeat(64), offlineBytes: 8, realtimeSha256: "c".repeat(64), runtimeSha256: "d".repeat(64) };
+    vi.stubEnv("NEXT_PUBLIC_AURIALIS_PROCESSING_BUILD", JSON.stringify(identity));
+    const { deviceAudioRequest, reserveBrowserAudioMemory } = await transport(), form = body(), source = form.get("file");
+    if (!(source instanceof Blob)) throw new Error("Missing source");
+    let release: ((bytes: ArrayBuffer) => void) | undefined;
+    const read = vi.spyOn(source, "arrayBuffer").mockReturnValue(new Promise<ArrayBuffer>((resolve) => { release = resolve; }));
+    const pending = deviceAudioRequest("/api/master/render", { method: "POST", body: form, headers: { Accept: "application/json" } }, undefined, identity.fingerprint);
+    const rejected = expect(pending).rejects.toMatchObject({ name: "ProcessingBuildMismatchError" });
+    await waitFor(() => { expect(read).toHaveBeenCalledOnce(); });
+    vi.stubEnv("NEXT_PUBLIC_AURIALIS_PROCESSING_BUILD", JSON.stringify({ ...identity, fingerprint: "e".repeat(64) }));
+    release?.(wav()); await rejected; expect(OwnedWorker.all).toHaveLength(0); reserveBrowserAudioMemory(448 * mib).dispose();
+  });
   it("claims native landing bytes before fetch and rejects mismatched Content-Length before reading", async () => {
     vi.stubEnv("NEXT_PUBLIC_AURIALIS_EXECUTION", "native");
     const { deviceOwnedAudioRequest, reserveBrowserAudioMemory } = await transport();

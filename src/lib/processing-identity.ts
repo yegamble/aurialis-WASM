@@ -17,3 +17,19 @@ export function readProcessingIdentity(encoded: unknown): Readonly<ProcessingIde
 export function injectedProcessingIdentity(): Readonly<ProcessingIdentity> | null {
   return readProcessingIdentity(process.env.NEXT_PUBLIC_AURIALIS_PROCESSING_BUILD);
 }
+
+/** A producer identity is public consistency metadata, never an authentication secret. */
+export class ProcessingBuildMismatchError extends Error {
+  constructor(cause?: unknown) { super("The actual audio response could not confirm this processing build. Plan the complete album again.", { cause }); this.name = "ProcessingBuildMismatchError"; }
+}
+export function assertExpectedProcessingBuild(expected: string | undefined): void {
+  if (expected !== undefined && !/^[a-f0-9]{64}$/u.test(expected)) throw new ProcessingBuildMismatchError();
+}
+/** Reject before parsing; keep caller ownership until actual response-body cancellation settles. */
+export async function assertNativeProcessingResponse(response: Response, expected: string | undefined): Promise<void> {
+  assertExpectedProcessingBuild(expected);
+  if (expected === undefined || response.headers.get("X-Aurialis-Processing-Build") === expected) return;
+  let failure: unknown;
+  try { await response.body?.cancel(); } catch (cause) { failure = cause; }
+  throw new ProcessingBuildMismatchError(failure);
+}

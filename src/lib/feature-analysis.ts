@@ -49,8 +49,8 @@ function measurements(value: unknown): FeatureMeasurements {
 }
 
 /** Measure canonical source audio without mutating its processing settings. */
-export async function analyzeSourceFeatures(blob: Blob, signal: AbortSignal, onProgress: (progress: number, stage: string) => void): Promise<FeatureMeasurements> {
+export async function analyzeSourceFeatures(blob: Blob, signal: AbortSignal, onProgress: (progress: number, stage: string) => void, expectedBuild?: string): Promise<FeatureMeasurements> {
   const body = new FormData();
   body.append("file", blob, "source.wav");
-  return runAudioJob("/api/analyze/features", body, signal, onProgress, (job) => measurements(job.features));
+  return runAudioJob("/api/analyze/features", body, signal, onProgress, (job) => measurements(job.features), expectedBuild);
 }

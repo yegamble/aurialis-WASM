@@ -5,9 +5,10 @@ self.onmessage = (event) => {
   if (accepted) return;
   accepted = true;
   const request = event.data;
+  let checkedProcessingBuild = "";
   const fail = (error) => {
     const message = error instanceof Error ? error.message : "Local audio processing failed.";
-    self.postMessage({ abi: OFFLINE_ABI, kind: "error", id: request?.id, error: message.slice(0, 1024), processingBuild: request?.processing?.fingerprint ?? "" });
+    self.postMessage({ abi: OFFLINE_ABI, kind: "error", id: request?.id, error: message.slice(0, 1024), processingBuild: checkedProcessingBuild });
     self.close();
   };
   const run = async () => {
@@ -40,6 +41,7 @@ self.onmessage = (event) => {
       const digest = await crypto.subtle.digest("SHA-256", moduleBytes);
       const actual = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
       if (actual !== processing.offlineSha256) throw new Error("The fetched processing module does not match this build. Reload the app.");
+      checkedProcessingBuild = processing.fingerprint;
     }
     const wasm = await WebAssembly.instantiate(moduleBytes, go.importObject);
     void go.run(wasm.instance).catch(fail);

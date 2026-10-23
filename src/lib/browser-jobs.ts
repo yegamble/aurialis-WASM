@@ -1,5 +1,5 @@
 import { assertEncodedWAVLayout, encodedWAVBytes, type EncodedLayout } from "./encoded-layout";
-import { injectedProcessingIdentity } from "./processing-identity";
+import { assertExpectedProcessingBuild, assertNativeProcessingResponse, ProcessingBuildMismatchError, injectedProcessingIdentity } from "./processing-identity";
 
 const OFFLINE_ABI = "1.0";
 const MIB = 1024 * 1024;
@@ -33,6 +33,12 @@ function memoryBudget(): number {
   if (typeof memory === "number" && Number.isFinite(memory) && memory <= 2) return 256 * MIB;
   if (typeof memory === "number" && Number.isFinite(memory) && memory >= 8) return 1024 * MIB;
   return 512 * MIB;
+}
+
+function assertBrowserProcessingBuild(expected: string | undefined): void {
+  if (expected === undefined) return;
+  const identity = injectedProcessingIdentity();
+  if (identity?.target !== "browser" || identity.fingerprint !== expected) throw new ProcessingBuildMismatchError();
 }
 
 let reservedResidentBytes = 0;
@@ -110,7 +116,8 @@ async function preflight(request: JobRequest, source: Blob, reference: Blob, sig
 let queue: Promise<void> = Promise.resolve();
 let pending = 0;
 
-function startWorker(request: JobRequest, source: ArrayBuffer, reference: ArrayBuffer, signal: AbortSignal, onProgress?: (progress: number, stage: string) => void, owned = false): Promise<JobResult> {
+function startWorker(request: JobRequest, source: ArrayBuffer, reference: ArrayBuffer, signal: AbortSignal, onProgress?: (progress: number, stage: string) => void, owned = false, expectedBuild?: string): Promise<JobResult> {
+  assertBrowserProcessingBuild(expectedBuild);
   return new Promise<JobResult>((resolve, reject) => {
     signal.throwIfAborted();
     const identity = injectedProcessingIdentity();
@@ -140,7 +147,7 @@ function startWorker(request: JobRequest, source: ArrayBuffer, reference: ArrayB
       const data = event.data;
       if (typeof data !== "object" || data === null || !("id" in data) || data.id !== id || !("kind" in data)) { finish(undefined, new Error("Invalid local audio worker identity.")); return; }
       if (!("abi" in data) || data.abi !== OFFLINE_ABI) { finish(undefined, new Error("The local audio engine version is incompatible. Reload Aurialis to retry.")); return; }
-      if (processing && (!("processingBuild" in data) || data.processingBuild !== processing.fingerprint)) { finish(undefined, new Error("The local worker uses a different processing build. Reload to retry.")); return; }
+      if (processing && (!("processingBuild" in data) || data.processingBuild !== processing.fingerprint)) { finish(undefined, new ProcessingBuildMismatchError()); return; }
       if (data.kind === "progress") {
         if (!("progress" in data) || typeof data.progress !== "number" || !Number.isFinite(data.progress) || !("stage" in data) || typeof data.stage !== "string" || data.stage.length > 1024) { finish(undefined, new Error("Invalid local audio progress.")); return; }
         try { onProgress?.(Math.max(0, Math.min(100, data.progress)), data.stage); }
@@ -187,9 +194,9 @@ function ownedJobResult(result: JobResult, layout: EncodedLayout, jobOwner: symb
     return Object.freeze({ blob, owner, dispose: owner.dispose });
   } finally { audio = null; result.audio = new ArrayBuffer(0); result.json = ""; }
 }
-function execute(request: JobRequest, source: Blob, reference: Blob, signal: AbortSignal, onProgress: ((progress: number, stage: string) => void) | undefined, layout: EncodedLayout): Promise<OwnedAudioResult>;
-function execute(request: JobRequest, source?: Blob, reference?: Blob, signal?: AbortSignal, onProgress?: (progress: number, stage: string) => void): Promise<JobResult>;
-async function execute(request: JobRequest, source = new Blob(), reference = new Blob(), signal = new AbortController().signal, onProgress?: (progress: number, stage: string) => void, layout?: EncodedLayout): Promise<JobResult | OwnedAudioResult> {
+function execute(request: JobRequest, source: Blob, reference: Blob, signal: AbortSignal, onProgress: ((progress: number, stage: string) => void) | undefined, layout: EncodedLayout, awaitActual?: boolean, expectedBuild?: string): Promise<OwnedAudioResult>;
+function execute(request: JobRequest, source?: Blob, reference?: Blob, signal?: AbortSignal, onProgress?: (progress: number, stage: string) => void, layout?: undefined, awaitActual?: boolean, expectedBuild?: string): Promise<JobResult>;
+async function execute(request: JobRequest, source = new Blob(), reference = new Blob(), signal = new AbortController().signal, onProgress?: (progress: number, stage: string) => void, layout?: EncodedLayout, awaitActual = false, expectedBuild?: string): Promise<JobResult | OwnedAudioResult> {
   signal.throwIfAborted();
   if (pending >= 2) throw new Error("Local audio processing is busy. Cancel the current job or try again shortly.");
   const inputBytes = source.size + reference.size;
@@ -197,13 +204,13 @@ async function execute(request: JobRequest, source = new Blob(), reference = new
   const inputMemory = reserveBrowserAudioMemory(inputBytes), jobOwner = Symbol("audio job");
   pending++;
   const run = async () => {
-    signal.throwIfAborted();
+    signal.throwIfAborted(); assertBrowserProcessingBuild(expectedBuild);
     let input: ArrayBuffer | null = null, comparison: ArrayBuffer | null = null, result: JobResult | null = null;
     try {
       await preflight(request, source, reference, signal, jobOwner);
       onProgress?.(0, "Preparing local audio processing…");
       input = await source.arrayBuffer(); comparison = await reference.arrayBuffer(); signal.throwIfAborted();
-      result = await startWorker(request, input, comparison, signal, onProgress, layout !== undefined);
+      result = await startWorker(request, input, comparison, signal, onProgress, layout !== undefined, expectedBuild);
       input = null; comparison = null;
       if (layout) return ownedJobResult(result, layout, jobOwner, signal);
       return result;
@@ -215,7 +222,7 @@ async function execute(request: JobRequest, source = new Blob(), reference = new
   };
   const result = queue.then(run, run).finally(() => { pending--; inputMemory.dispose(); });
   queue = result.then(() => undefined, () => undefined);
-  if (!layout) return awaitCancellation(result, signal);
+  if (!layout && !awaitActual) return awaitCancellation(result, signal);
   // Owned callers wait for actual queue/read settlement; late cancellation cannot orphan an output lease.
   const completed = await result;
   if (signal.aborted) { if ("owner" in completed) completed.dispose(); signal.throwIfAborted(); }
@@ -256,10 +263,12 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
 }
 
 /** Same contract as the device-local HTTP transport, implemented without network audio on websites. */
-export async function deviceAudioRequest(path: string, init: RequestInit, onProgress?: (progress: number, stage: string) => void): Promise<Response> {
+export async function deviceAudioRequest(path: string, init: RequestInit, onProgress?: (progress: number, stage: string) => void, expectedBuild?: string): Promise<Response> {
+  assertExpectedProcessingBuild(expectedBuild);
   const url = new URL(path, typeof location === "undefined" ? "https://local.invalid" : location.origin);
   if (!path.startsWith("/api/") || path.startsWith("//") || url.origin !== (typeof location === "undefined" ? "https://local.invalid" : location.origin)) throw new Error("Audio requests must stay on this device.");
-  if (!usesBrowserAudio()) return fetch(path, init);
+  if (!usesBrowserAudio()) { const response = await fetch(path, init); await assertNativeProcessingResponse(response, expectedBuild); return response; }
+  assertBrowserProcessingBuild(expectedBuild);
   if (init.method !== "POST") throw new Error("Unsupported local audio request method.");
   let request: JobRequest, source = new Blob(), reference = new Blob();
   if (init.body instanceof FormData) {
@@ -275,14 +284,15 @@ export async function deviceAudioRequest(path: string, init: RequestInit, onProg
       request.deviceRate = Number(rate);
     }
   } else throw new Error("Invalid local audio request body.");
-  const result = await execute(request, source, reference, init.signal ?? undefined, onProgress);
+  const result = await execute(request, source, reference, init.signal ?? undefined, onProgress, undefined, expectedBuild !== undefined, expectedBuild);
   const headers = new Headers({ "Content-Type": result.audio.byteLength ? "audio/wav" : "application/json", "Cache-Control": "no-store" });
   if (result.audio.byteLength) headers.set("X-Aurialis-Source-Metrics", result.json);
   return new Response(result.audio.byteLength ? new Blob([result.audio], { type: "audio/wav" }) : result.json, { status: 200, headers });
 }
 
 /** Internal owned binary path. Callers adopt this same owner before another audio phase. */
-export async function deviceOwnedAudioRequest(path: string, init: RequestInit, layout: EncodedLayout): Promise<OwnedAudioResult> {
+export async function deviceOwnedAudioRequest(path: string, init: RequestInit, layout: EncodedLayout, expectedBuild?: string): Promise<OwnedAudioResult> {
+  assertExpectedProcessingBuild(expectedBuild);
   const expectedBytes = encodedWAVBytes(layout), signal = init.signal ?? new AbortController().signal;
   signal.throwIfAborted();
   const url = new URL(path, typeof location === "undefined" ? "https://local.invalid" : location.origin);
@@ -290,12 +300,16 @@ export async function deviceOwnedAudioRequest(path: string, init: RequestInit, l
     || url.origin !== (typeof location === "undefined" ? "https://local.invalid" : location.origin) || init.method !== "POST" || !(init.body instanceof FormData)) throw new Error("Owned audio requests must render on this device.");
   const { request, source, reference } = formRequest(path, init.body);
   if (request.bitDepth !== layout.bitDepth || request.format === "json" || new Headers(init.headers).get("Accept")?.includes("application/json")) throw new Error("The owned render does not match its requested encoded layout.");
-  if (usesBrowserAudio()) return execute(request, source, reference, signal, undefined, layout);
+  if (usesBrowserAudio()) {
+    assertBrowserProcessingBuild(expectedBuild);
+    return execute(request, source, reference, signal, undefined, layout, false, expectedBuild);
+  }
   const nativeSignal = AbortSignal.any([signal, AbortSignal.timeout(65_000)]);
   const owner = reserveBrowserAudioMemory(expectedBytes * 3);
   let response: Response | null = null, bytes: Uint8Array<ArrayBuffer> | null = null;
   try {
-    response = await fetch(path, { ...init, signal: nativeSignal }); nativeSignal.throwIfAborted();
+    response = await fetch(path, { ...init, signal: nativeSignal });
+    await assertNativeProcessingResponse(response, expectedBuild); nativeSignal.throwIfAborted();
     const length = response.headers.get("Content-Length"), metadata = response.headers.get("X-Aurialis-Source-Metrics");
     if (!response.ok || !response.body || !response.headers.get("Content-Type")?.startsWith("audio/wav")
       || length !== null && (!/^\d+$/u.test(length) || Number(length) !== expectedBytes)) {

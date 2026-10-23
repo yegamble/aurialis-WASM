@@ -1,24 +1,27 @@
 import { deviceAudioRequest, usesBrowserAudio } from "./browser-jobs";
+import { assertExpectedProcessingBuild, assertNativeProcessingResponse } from "./processing-identity";
 function object(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Invalid audio job response.");
   return value as Record<string, unknown>;
 }
-async function responseJSON(response: Response): Promise<unknown> {
+async function responseJSON(response: Response, expectedBuild?: string): Promise<unknown> {
+  await assertNativeProcessingResponse(response, expectedBuild);
   if (!response.ok) throw new Error(response.status === 503 ? "The local audio processor is busy. Try again shortly." : `Audio analysis request failed (${String(response.status)}).`);
   return response.json() as Promise<unknown>;
 }
 
 /** Keep an admission response alive after Cancel so its admitted job can be deleted. */
-export async function runAudioJob<T>(path: string, body: FormData, signal: AbortSignal, onProgress: (progress: number, stage: string) => void, result: (job: Record<string, unknown>) => T): Promise<T> {
+export async function runAudioJob<T>(path: string, body: FormData, signal: AbortSignal, onProgress: (progress: number, stage: string) => void, result: (job: Record<string, unknown>) => T, expectedBuild?: string): Promise<T> {
+  assertExpectedProcessingBuild(expectedBuild);
   signal.throwIfAborted();
   onProgress(0, "Validating original audio…");
   if (usesBrowserAudio()) {
-    const completed = object(await responseJSON(await deviceAudioRequest(path, { method: "POST", body, signal }, onProgress)));
+    const completed = object(await responseJSON(await deviceAudioRequest(path, { method: "POST", body, signal }, onProgress, expectedBuild)));
     signal.throwIfAborted();
     if (completed.status !== "done") throw new Error("Local audio analysis did not complete.");
     return result(completed);
   }
-  const submitted = object(await responseJSON(await fetch(path, { method: "POST", body, signal: AbortSignal.timeout(65_000) })));
+  const submitted = object(await responseJSON(await fetch(path, { method: "POST", body, signal: AbortSignal.timeout(65_000) }), expectedBuild));
   if (typeof submitted.jobId !== "string" || !/^[a-zA-Z0-9-]{1,80}$/u.test(submitted.jobId)) throw new Error("Invalid analysis job identity.");
   const id = submitted.jobId;
   const url = `/api/jobs/${encodeURIComponent(id)}`;
@@ -33,7 +36,7 @@ export async function runAudioJob<T>(path: string, body: FormData, signal: Abort
       if (Date.now() > deadline) throw new Error("Audio analysis exceeded its time limit.");
       if (typeof job.progress !== "number" || !Number.isFinite(job.progress) || typeof job.stage !== "string" || job.stage.length > 512) throw new Error("Invalid audio job progress.");
       onProgress(Math.max(0, Math.min(100, job.progress)), job.stage);
-      job = object(await responseJSON(await fetch(`${url}?wait=1`, { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) })));
+      job = object(await responseJSON(await fetch(`${url}?wait=1`, { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) }), expectedBuild));
       if (job.jobId !== id) throw new Error("Analysis job identity changed.");
     }
   } finally {

@@ -1,5 +1,5 @@
 # Aurialis-WASM War-Room Ledger
-<!-- cspell:words Embedder automator -->
+<!-- cspell:words Embedder automator Turbopack -->
 
 Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-room-loop` iterations. The Chair updates this file after every Round D ruling and every Round E verification pass. One row per item; never delete a row — move completed items to **Verified & Merged** with commit/PR and test evidence, or to **Declined** with the reason.
 
@@ -12,6 +12,23 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 ---
 
 ## Delegated continuation — 2026-10-23
+
+### Measured Reference implementation and review checkpoint
+
+| Item | Current status |
+| --- | --- |
+| MUB-3C measured Reference endpoint | locally verified; open — awaiting exact green CI and delegated merge |
+| Reference review, source binding, Apply/Revert | locally verified within the bounded static-chain scope; open — awaiting merge |
+| ScriptV2 foundation PR #8 | locally verified at `f29bc8c`; exact remote CI/merge pending at this checkpoint |
+| Whole product, studio DSP, trained stems and Waves acceptance | open |
+
+Reference runtime `47b856e` and UI assertions `2f97b27` compare complete baseline-rendered source against raw reference audio, using normalized common-band spectra. The bounded EQ/opt-in-width proposal preserves unrelated chain fields and disabled stages, verifies actual output residual/protected bass, and falls back to the exact baseline. Full-output and contour-fit diagnostics remain separately labeled. Client canonical-Blob receipts, exact baseline/options/delta validation, complete-record Apply and one session baseline/Revert close the former saved-settings blend workflow. Attached Deep automation requires Detach.
+
+Independent review retained and corrected the raw-source/zero-residual defect for a non-neutral chain: reported output mismatch now improves approximately 7.110→4.540 dB, corroborated by independent tones at 7.120→4.542 dB. A no-audible-energy candidate is rejected internally, not retained as an infinite or falsely successful JSON result. Width and bass constraints are jointly verified on complete rendered output. These are source-specific broad-band checks, not perceptual or hardware equivalence.
+
+Final local evidence at source `2f97b27`: full frontend static/unit and configured 203-file spelling, rebuilt binary/smoke, all 333 frozen PCM and 45 automation fixtures, independent meters, Newman 34 requests/39 assertions plus raw probes, and the complete browser suite **72/72 in 3.8 minutes** passed. The earlier full Go quality/security/race checkpoint precedes the final erased-energy follow-up; changed mastering/jobs/server packages separately passed final race/lint. Three actual browser workflows passed in 13.2 seconds, including native/export equality, live RMS agreement and six-width accessibility. Independent writer review passed 11 client/receipt/panel units and hostile API/non-neutral/erased-energy tests; DSP passed six final high-Q/dense-frequency/settled-tone/energy/width/mono/correlation regressions with no remaining in-scope must-fix.
+
+Retain the initial isolated-worktree Newman missing-asset failure and symlinked-dependency Turbopack failure; rebuilt assets/local frozen installation corrected those setup conditions. Independent QA/Devil's Advocate/Technical Writer/Product review accepts the measured static-chain Reference implementation and synchronized documentation, conditional on exact green CI and delegated merge. PR #8 remains a separate pending foundation checkpoint. Status: **locally verified; open — awaiting merge**. Whole-product and Waves acceptance remain open.
 
 The owner authorized merging PR #6 and continuing the whole-product loop with `merge=delegated` until all planned features and remaining Waves acceptance work are tested. This explicit continuation supersedes the default four-iteration stop. Verified branches may now merge after the existing QA, Devil’s Advocate, Technical Writer, Product Engineer and green-CI gates without another owner merge question.
 

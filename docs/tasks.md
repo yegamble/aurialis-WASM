@@ -1,11 +1,27 @@
 # Aurialis-WASM task tracker
-<!-- cspell:words automator Turbopack yyosefgamble yosefgamble -->
+<!-- cspell:words automator Turbopack yyosefgamble yosefgamble ENOENT -->
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
+
+## CI build reuse and isolated checks
+
+**Implemented — open, awaiting final-head CI and merge.** Branch `codex/ci-artifact-reuse` is based on merged Deep `6154f87`. Source checkpoint `b563cbb` preserves all mandatory checks and all six protected status names. Feature pushes no longer duplicate pull-request runs; `main` pushes, PRs to `main` and manual dispatch remain enabled.
+
+Go static/security and race/meter work run on separate VMs under the existing Go aggregate. The frontend job builds native-target Next, dual WASM and production once, plus one separate QA variant. Parity, API and three browser VMs consume the exact verified same-run artifact. Browser shards retain one worker, zero retries and existing individual timeouts; a 12-minute global test limit sits below the 20-minute job. Failed/skipped dependencies fail the aggregates. Caches hold dependencies/compiler/browser data, never test outcomes. Native and browser execution targets require separate UI builds.
+
+The completed [Linux baseline Go job](https://github.com/yegamble/aurialis-WASM/actions/runs/39994806155/job/120555442690) spent about 28.2 seconds on vet/lint/identifier/vulnerability work, 151.36 seconds on race tests, 24.68 seconds provisioning FFmpeg and 4.70 seconds on meters. Separate VMs remove sequential work; no new total CI speed claim is established yet. Explicit `go.mod` cache keys correct the observed missing-`go.sum` warning. Chromium caching retains OS-dependency installation and has no measured speed guarantee.
+
+At `b563cbb`, local execution passed nine artifact-boundary units plus one QA cleanup test with failure/INT/TERM/production-alias cases, pinned actionlint 1.7.7, script syntax and diff checks. Independent source review found and corrected missing helper signal traps and a receipt-symlink read before validation. Actual fresh build, production QA-path 404 smoke, moving all five generated files aside, complete artifact restoration and repeated smoke passed. Restored assets passed all 333 exact static fixtures, nine history transitions and 45 automation fixtures. Prebuilt production passed Newman 34 requests/39 assertions and raw 403/413 probes. Restored QA passed two actual finite-tail/Repeat browser cases in 5.9 seconds with unchanged audio assertions. The first local run passed one of two because its native oracle could not find Go (`spawn go ENOENT`); explicit pinned Go corrected only the shell setup, and the failed report remains retained.
+
+Shard collection selected all 102 current Deep cases exactly once, split 36/32/34 with zero omissions or duplicates. Collection is not three-VM execution. Exact final-head Linux execution of all three shards and required checks remains pending. Local pre-documentation evidence and hashes are retained under ignored `artifacts/ci-checks/` and `artifacts/ci-package/`; those binaries are not relabeled after documentation changes. The final-head workflow must produce a fresh artifact. No whole-product, browser-deployment or Waves acceptance follows.
 
 ## README and reader guides — 2026-10-23
 
 Documentation branch: `docs/readme-and-reader-guides`; [PR #10](https://github.com/yegamble/aurialis-WASM/pull/10) records the live merge state, merge commit and CI results. Reworked the README around the local mastering workflow and added [first-use guidance](getting-started.md), a [task-based documentation index](README.md) and [developer instructions](development.md). Technical writer and independent source-review agents checked claims against the integrated source through main `f9ae077`, including measured Deep diagnostics, Library source recovery and measured Reference proposals. A separate QA agent checked the source-build quickstart with the pinned tools. [Research, claim sources and current-session verification](reviews/2026-10-23-readme-review.md) distinguish this docs-only review from historical product evidence. No application behavior or prior feature acceptance status changed.
+
+## Deep merge record
+
+[PR #13](https://github.com/yegamble/aurialis-WASM/pull/13) merged at `6154f871e30b52fd9b6742ae2a87cf9d9cf2ef2b`. Both completed Linux runs passed all 102 browser cases and the required checks. This supersedes historical awaiting-merge statements below without broadening the bounded audio evidence.
 
 ## Measured Reference merge record
 

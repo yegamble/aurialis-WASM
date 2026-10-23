@@ -8,7 +8,7 @@ Aurialis is an audio mastering workstation that runs on your computer and opens 
 
 [Get started](#run-the-studio) · [Your first master](docs/getting-started.md) · [Documentation](docs/README.md) · [Developer guide](docs/development.md)
 
-> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. AI repair, validated instrument separation and certified hardware/true-peak behavior remain open work. The Deep integration is locally verified and awaiting exact final CI and merge. See [current limits](#know-the-current-limits).
+> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. AI repair, validated instrument separation and certified hardware/true-peak behavior remain open work. Deep merged in [PR #13](https://github.com/yegamble/aurialis-WASM/pull/13) after its required checks passed. See [current limits](#know-the-current-limits).
 
 ## A small studio, one clear path
 
@@ -91,12 +91,12 @@ The [architecture](docs/architecture.md), [API contract](docs/api.md) and [task 
 
 See [architecture](docs/architecture.md) for the audio paths, shared-memory controls, resource bounds and security model, or [API reference](docs/api.md) to render audio from a script. The [ScriptV2 contract](docs/api.md#scriptv2-foundation) binds editable proposals and acknowledged live/export schedules to verified source audio. Draft edits wait for explicit Apply.
 
-Simple merged in [PR #11](https://github.com/yegamble/aurialis-WASM/pull/11) after its exact CI checks passed. The combined Deep branch passed 382 unit tests and the corrected complete 102-case browser suite locally; the first 101/102 result and its stale-message correction remain in [the task record](docs/tasks.md#full-combined-verification-and-main-rebase). Final Deep CI and merge remain pending. These counts do not certify the whole product or hosted deployment.
+Simple merged in [PR #11](https://github.com/yegamble/aurialis-WASM/pull/11) after its exact CI checks passed. The combined Deep branch passed 382 unit tests and the corrected complete 102-case browser suite locally; the first 101/102 result and its stale-message correction remain in [the task record](docs/tasks.md#full-combined-verification-and-main-rebase). Deep merged in [PR #13](https://github.com/yegamble/aurialis-WASM/pull/13) at `6154f87` after the required checks passed. These counts do not certify the whole product or hosted deployment.
 
 ## Help improve Aurialis
 
 [Report a problem](https://github.com/yegamble/aurialis-WASM/issues) with what you expected, what happened, your browser, tool versions and steps to reproduce it. A short description of the audio format and duration helps with import or playback issues.
 
-For code changes, start with the [developer guide](docs/development.md) and [`AGENTS.md`](AGENTS.md). The repository's [War Room guide](.claude/agents/README.md) describes its specialist agents and review workflow. Test requirements and historical results live in the docs rather than serving as a claim that every check passes on every checkout.
+For code changes, start with the [developer guide](docs/development.md) and [`AGENTS.md`](AGENTS.md). Pull requests run fresh checks against a verified build, with browser tests split across three isolated runners. [The CI guide](docs/development.md#how-ci-reuses-builds-and-runs-checks) explains build artifacts, caches and the six required gates. The repository's [War Room guide](.claude/agents/README.md) describes its specialist agents and review workflow. Test requirements and historical results live in the docs rather than serving as a claim that every check passes on every checkout.
 
 **License:** this checkout does not include a license file. Confirm permission with the maintainer before redistributing or reusing the code.

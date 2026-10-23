@@ -116,6 +116,34 @@ The Newman runner and Playwright configuration manage their test servers. Review
 
 Record which checks actually ran, their exit status, the source revision and their scope. Unit, WASM bridge, API, browser and compiled-binary evidence establish different things. Passing a smoke test does not establish hardware fidelity, platform certification, universal browser support or every accessibility interaction. Historical results and unresolved requirements belong in [tasks](tasks.md) and [the ledger](../.claude/war-room/ledger.md).
 
+## How CI reuses builds and runs checks
+
+[The CI workflow](../.github/workflows/ci.yml) runs on pull requests targeting `main`, pushes to `main`, and manual dispatch. A feature-branch push does not also start a duplicate run; open or update its pull request to run CI.
+
+| Required check | Work it requires |
+| --- | --- |
+| War Room, Stack & Workflow Hygiene | Repository rules, agent synchronization, artifact boundary and QA cleanup tests, workflow lint |
+| Go 1.26 & WASM Quality Gate | Separate static/security and race/meter VMs, plus actual compiled WASM/automation parity; every result must succeed |
+| Next.js 16, TypeScript & Bundle Gate | All frontend checks and units, one native-target Next/dual-WASM/production build, binary smoke and a separate QA executable |
+| Backend API & Postman/Newman Gate | Fresh complete API/security probes against the verified production executable |
+| Playwright Responsive (320px-1440px) & WCAG 2.2 AA Gate | All three Chromium shards on separate VMs, one worker each, zero retries |
+| CI Passed | All five checks above must succeed; failed, cancelled or skipped dependencies fail this gate |
+
+The build job publishes one immutable same-run artifact: the production executable, separate QA executable, both WASM modules and matching Go JavaScript runtime. The QA variant includes the static test observer; production smoke requires its URL to return 404. `scripts/ci-artifacts.py` checks the complete file list, sizes, hashes and modes before restoring files. It rejects links and binds the artifact to the checkout, source bytes, pull-request head, workflow run, producer attempt, platform and execution target. A failed-job rerun can select its earlier successful producer attempt from the same run. A different checkout or target requires its own build; native UI assets cannot substitute for a browser-execution build.
+
+**Test results are never cached.** API, signal and browser assertions execute again after artifact validation. Each browser shard retains its JSON report and PCM evidence. Its 12-minute global test limit leaves room within the 20-minute job for setup and report upload; individual test timeouts and zero-retry policy remain unchanged. Local runners keep their normal fresh-build behavior. The prebuilt environment switches are reserved for validated CI artifacts.
+
+Caches speed dependency setup or compilation: pnpm's store, Go's build/module cache keyed by `go.mod`, Next's `.next/cache` keyed by dependencies/configuration and source, and Chromium keyed by OS/architecture, Playwright version and lockfile. This standard-library-only Go repository has no `go.sum`; [setup-go supports an explicit dependency path](https://github.com/actions/setup-go/blob/v5/README.md#caching-dependency-files-and-build-outputs). [Next documents its build cache](https://nextjs.org/docs/app/guides/ci-build-caching). Linux browser dependencies install on both cache hits and misses. [Playwright warns](https://playwright.dev/docs/ci#caching-browsers) that browser-cache restoration can cost about as much as downloading, so its benefit requires measurement.
+
+For focused script checks:
+
+```bash
+python3 scripts/test-ci-artifacts.py
+python3 scripts/test-e2e-build.py
+```
+
+[The task record](tasks.md#ci-build-reuse-and-isolated-checks) distinguishes local build-consumer proof from the required final-head Linux run. Fresh checks remain mandatory before merge; build reuse does not certify product completeness or audio deadlines.
+
 ## Contribute with the specialist agents
 
 Work on a short-lived branch and keep changes in small, readable commits. Synchronize affected documentation with the technical writer before closing a change. For a complete agent roster and review modes, see [the War Room guide](../.claude/agents/README.md) and [protocol](../.claude/war-room/protocol.md).

@@ -1,5 +1,5 @@
 # Aurialis-WASM War-Room Ledger
-<!-- cspell:words Embedder automator Turbopack yyosefgamble yosefgamble -->
+<!-- cspell:words Embedder automator Turbopack yyosefgamble yosefgamble ENOENT -->
 
 Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-room-loop` iterations. The Chair updates this file after every Round D ruling and every Round E verification pass. One row per item; never delete a row — move completed items to **Verified & Merged** with commit/PR and test evidence, or to **Declined** with the reason.
 
@@ -10,6 +10,14 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 `unit` · `wasm-bridge` · `api-curl` · `newman-e2e` · `playwright-a11y-responsive` · `compiled-binary-smoke`
 
 ---
+
+## CI efficiency — 2026-10-23
+
+**Round D: ACCEPT.** Preserve the six protected statuses and every mandatory assertion. Build once per execution target, validate immutable same-run native/QA/WASM artifacts, and distribute browser tests over three one-worker VMs. Split measured Go static/security and race/meter work across separate VMs. Retain fresh test execution, zero browser retries and fail-closed aggregates; do not cache outcomes or reuse native UI assets as a browser target.
+
+**Round E: open — awaiting final-head CI and merge.** Source `b563cbb` passed nine artifact units, four failure/signal/output-alias cleanup cases, actionlint/syntax, actual missing-file artifact restore, binary smoke, 333 static plus 45 automation compiled fixtures, nine history transitions, Newman 34/39 plus raw probes and two prebuilt-QA browser cases. Independent reviews corrected helper INT/TERM cleanup and the symbolic receipt guard. Preserve the earlier local `spawn go ENOENT` browser checkpoint; only its pinned-shell setup changed before the same assertions passed. Shard collection covers 102 cases exactly once (36/32/34), while actual final-head three-VM results remain required. [The task record](../../docs/tasks.md#ci-build-reuse-and-isolated-checks) retains baseline timings and evidence paths. No unmeasured speed or whole-product claim is accepted.
+
+Deep PR #13 merged at `6154f87` after its required checks and both 102-case Linux runs passed. Older awaiting-merge statements below remain historical.
 
 ## Documentation review — 2026-10-23
 

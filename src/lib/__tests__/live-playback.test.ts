@@ -98,6 +98,28 @@ describe("per-track live audio lifecycle", () => {
     expect(epoch[0]).toBe(Math.round(start[0] * context.sampleRate));
     controller.dispose();
   });
+  it("keeps the latest seek when a previous playing seek is still awaiting its arm ACK", async () => {
+    const { contexts, nodes } = graphHarness(true, false); const controller = createLivePlayback(source(), createDefaultAdvancedParams());
+    const playing = controller.play(); await vi.waitFor(() => { expect(nodes[0]?.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "arm" })); });
+    const context = contexts[0], node = nodes[0]; if (!context || !node) throw new Error("Missing graph");
+    const first = node.port.postMessage.mock.calls.find(([message]) => message.type === "arm")?.[0]; node.port.message({ type: "stream-armed", generation: first?.generation }); await playing;
+    controller.seek(.2); const second = node.port.postMessage.mock.calls.filter(([message]) => message.type === "arm").at(-1)?.[0];
+    controller.seek(.7); const latest = node.port.postMessage.mock.calls.filter(([message]) => message.type === "arm").at(-1)?.[0];
+    node.port.message({ type: "stream-armed", generation: second?.generation }); await Promise.resolve();
+    expect(context.createBufferSource).toHaveBeenCalledTimes(1);
+    node.port.message({ type: "stream-armed", generation: latest?.generation });
+    await vi.waitFor(() => { expect(controller.getState()).toMatchObject({ playing: true, position: .7 }); });
+    expect(context.createBufferSource).toHaveBeenCalledTimes(2); controller.dispose();
+  });
+  it("does not restart after Pause while the final context resume is pending", async () => {
+    const { contexts } = graphHarness(); const controller = createLivePlayback(source(), createDefaultAdvancedParams()); const playing = controller.play();
+    const context = contexts[0]; if (!context) throw new Error("Missing context");
+    let resume: (() => void) | undefined;
+    context.resume.mockResolvedValueOnce(undefined).mockImplementationOnce(() => new Promise<void>((resolve) => { resume = resolve; }));
+    await vi.waitFor(() => { expect(context.resume).toHaveBeenCalledTimes(3); });
+    controller.pause(); resume?.(); await playing;
+    expect(context.createBufferSource).not.toHaveBeenCalled(); expect(controller.getState()).toMatchObject({ playing: false, loading: false }); controller.dispose();
+  });
   it("connects before readiness and disposes pending initialization without stale callbacks", async () => {
     const { contexts, nodes, worker } = graphHarness(false);
     const states = vi.fn(), errors = vi.fn();

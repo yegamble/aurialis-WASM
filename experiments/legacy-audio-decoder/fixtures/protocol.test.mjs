@@ -1,9 +1,9 @@
-/* Source-only protocol units. They do not execute FFmpeg, Go CDR or a browser. */
+/* Synthetic protocol units. They do not execute FFmpeg, Go CDR or a browser. */
 import assert from "node:assert/strict";
 import { afterEach, beforeEach, test } from "node:test";
 import { recoverCompressedFixture, recoveryPeakBytes } from "../client.mjs";
 
-const originalWorker = globalThis.Worker, originalFetch = globalThis.fetch;
+const originalWorker = globalThis.Worker, originalFetch = globalThis.fetch, originalBlob = globalThis.Blob;
 const workerName = "decoder.worker." + "a".repeat(64) + ".mjs";
 const file = () => new File([new Uint8Array(32)], "fixture-source.mp3", { lastModified: 0 });
 let workers, owners, budget, validateCalls;
@@ -18,8 +18,9 @@ class FixtureWorker {
   }
 }
 function reserve(bytes) {
-  const owner = { held: 0, disposed: false,
+  const owner = { held: 0, disposed: false, updates: [],
     update(next) {
+      this.updates.push(next);
       if (this.disposed || next > budget) throw new Error("Synthetic admission refused.");
       this.held = next;
     },
@@ -61,7 +62,7 @@ beforeEach(() => {
     abi: 1, status: "private-unqualified", distributionApproved: false, worker: workerName, assetBytes: 1024,
   }), { headers: { "Content-Type": "application/json" } });
 });
-afterEach(() => { globalThis.Worker = originalWorker; globalThis.fetch = originalFetch; });
+afterEach(() => { globalThis.Worker = originalWorker; globalThis.fetch = originalFetch; globalThis.Blob = originalBlob; });
 
 test("rejects invalid admission geometry and includes later Go allocation peak", () => {
   for (const frames of [0, -1, 16777217, Number.NaN]) assert.throws(() => recoveryPeakBytes(32, frames, 1024));
@@ -129,4 +130,53 @@ test("ignores queued Worker chunks after terminal EOF before CDR settles", async
   assert.equal(validateCalls, 1); assert.equal(result.measurement.frames, 1);
   assert.equal(worker.sent.filter((message) => message.kind === "ack").length, 1);
   result.dispose(); assert.equal(owners[0].disposed, true);
+});
+
+test("copies many one-frame messages into at most two Blob parts", async () => {
+  const partsSeen = [];
+  globalThis.Blob = class extends originalBlob {
+    constructor(parts, options) { partsSeen.push(parts.length); super(parts, options); }
+  };
+  const promise = recoverCompressedFixture(file(), { signal: new AbortController().signal, reserve, validate, maxFrames: 2048 });
+  const worker = await started();
+  for (let sequence = 1; sequence <= 1024; sequence++) {
+    const data = chunk(); data.sequence = sequence; worker.emit(data);
+  }
+  worker.emit({ kind: "end", sequence: 1024, frames: 1024, rate: 48000, channels: 2 });
+  const result = await promise;
+  try {
+    assert.equal(result.canonical.size, 44 + 1024 * 8);
+    assert.equal(partsSeen[0], 2);
+    assert.equal(worker.sent.filter((message) => message.kind === "ack").length, 1024);
+  } finally { result.dispose(); }
+});
+test("rejects zero-length manifest chunks before consulting another read", async () => {
+  let reads = 0, canceled = 0;
+  globalThis.fetch = async () => ({ ok: true, body: { getReader: () => ({
+    async read() {
+      if (++reads === 1) return { done: false, value: new Uint8Array(0) };
+      throw new Error("An unbounded manifest reader was consulted.");
+    },
+    async cancel() { canceled++; },
+    releaseLock() {},
+  }) } });
+  await assert.rejects(recoverCompressedFixture(file(), {
+    signal: new AbortController().signal, reserve, validate, maxFrames: 2,
+  }), /empty.*chunk|chunk.*empty/i);
+  assert.equal(reads, 1); assert.equal(canceled, 1);
+  assert.equal(workers.length, 0); assert.equal(owners[0].disposed, true);
+});
+test("admits the exact largest frame ceiling with at most 25 atomic probes", async () => {
+  budget = recoveryPeakBytes(32, 10000, 32 * 1024 * 1024);
+  const controller = new AbortController();
+  const promise = recoverCompressedFixture(file(), { signal: controller.signal, reserve, validate, maxFrames: 30000 });
+  const rejected = assert.rejects(promise, /Invalid bounded/);
+  const worker = await started();
+  const selected = worker.sent[0].maxFrames;
+  const probes = owners[0].updates.length - 1;
+  // Settle the operation even when the capacity assertion exposes a regression.
+  const data = chunk(selected + 1); worker.emit(data); await rejected;
+  assert.equal(selected, 10000); assert.ok(probes <= 25);
+  assert.ok(owners[0].updates.some((bytes) => bytes > budget));
+  assert.equal(owners[0].disposed, true); assert.equal(validateCalls, 0);
 });

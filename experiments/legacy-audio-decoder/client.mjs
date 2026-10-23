@@ -1,4 +1,5 @@
 /* Private harness client. There is no public route, import UI or raw WAV return. */
+import { readBoundedResponse } from "./bounded-read.mjs";
 const ABI = 1, MIB = 1024 * 1024, MAX_FRAMES = 16777216, DEADLINE = 130000;
 let active = false;
 const frozen = (value) => Object.freeze(value);
@@ -27,7 +28,8 @@ function wavHeader(rate, frames) {
   view.setUint16(32, 8, true); view.setUint16(34, 32, true); view.setUint32(40, frames * 8, true);
   return data;
 }
-/** reserve(bytes) must be the actual shared resident owner helper.
+/** reserve(bytes) must be the actual shared resident owner helper whose failed
+ * update leaves its previous reservation unchanged.
  * validate(file, signal) MUST invoke existing Go CDR and return its canonical
  * source/measurement. No raw decoded candidate escapes this function.
  * Returned dispose() holds the clean artifact until save/rollback settlement.
@@ -38,47 +40,46 @@ export async function recoverCompressedFixture(file, { signal, reserve, validate
   if (!(file instanceof File) || !integer(maxFrames, 1, MAX_FRAMES) || typeof reserve !== "function" || typeof validate !== "function")
     throw new Error("Invalid private recovery invocation.");
   active = true;
-  let owner, worker, timer, retained = false, pieces = [], total = 0, sequence = 0, geometry;
+  let owner, worker, timer, retained = false, output = null, total = 0, sequence = 0, geometry;
   const controller = new AbortController(), id = crypto.randomUUID();
   const abort = () => { controller.abort(signal.reason); worker?.terminate(); };
   const deadline = () => { controller.abort(new Error("Private recovery exceeded its overall time limit.")); worker?.terminate(); };
   try {
-    owner = reserve(file.size);
+    owner = reserve(file.size + MIB);
     signal.addEventListener("abort", abort, { once: true });
     timer = setTimeout(deadline, DEADLINE);
     const localSignal = controller.signal;
     if (signal.aborted) abort();
     localSignal.throwIfAborted();
     const response = await fetch(new URL("./assets.json", import.meta.url), { cache: "no-store", signal: localSignal });
-    if (!response.ok) throw new Error("Private decoder assets unavailable.");
-    if (!response.body) throw new Error("Private decoder manifest unavailable.");
-    const reader = response.body.getReader(); let bytes = 0; const text = [];
-    for (;;) {
-      const { done, value } = await reader.read(); if (done) break;
-      if ((bytes += value.byteLength) > 16384) { await reader.cancel(); throw new Error("Private decoder manifest exceeds its bound."); }
-      text.push(value);
-    }
-    const joined = new Uint8Array(bytes); let offset = 0;
-    for (const piece of text) { joined.set(piece, offset); offset += piece.byteLength; }
-    const manifest = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(joined));
+    const manifestBytes = await readBoundedResponse(response, {
+      maxBytes: 16384, maxReads: 1024, check: () => { localSignal.throwIfAborted(); },
+    });
+    const manifest = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(manifestBytes));
     if (manifest.abi !== ABI || manifest.status !== "private-unqualified" || manifest.distributionApproved !== false ||
         !integer(manifest.assetBytes, 1, 32 * MIB) || typeof manifest.worker !== "string" ||
         !/^decoder\.worker\.[a-f0-9]{64}\.mjs$/.test(manifest.worker)) throw new Error("Invalid private decoder manifest.");
     // Admission uses the fixed maximum asset allowance, never a size claimed
     // by fetched metadata. One quota is chosen before decoding; never trim.
-    for (;;) {
-      try { owner.update(recoveryPeakBytes(file.size, maxFrames, 32 * MIB)); break; }
-      catch (cause) {
-        if (maxFrames === 1) throw cause;
-        maxFrames = Math.max(1, Math.floor(maxFrames / 2));
-      }
+    // The shared resident owner rejects before mutation. A failed probe leaves
+    // the last successful reservation intact; the peak is monotonic in frames.
+    let low = 1, high = maxFrames, admitted = 0, refusal;
+    while (low <= high) {
+      const middle = low + Math.floor((high - low) / 2);
+      try {
+        owner.update(recoveryPeakBytes(file.size, middle, 32 * MIB));
+        admitted = middle; low = middle + 1;
+      } catch (cause) { refusal = cause; high = middle - 1; }
     }
+    if (!admitted) throw refusal;
+    maxFrames = admitted;
     localSignal.throwIfAborted();
+    output = new Uint8Array(maxFrames * 8);
     const candidate = await new Promise((resolve, reject) => {
       let ended = false;
       const fail = (cause) => {
         if (ended) return;
-        ended = true; worker?.terminate(); pieces = [];
+        ended = true; worker?.terminate(); output = null;
         localSignal.removeEventListener("abort", canceled);
         reject(cause);
       };
@@ -95,9 +96,11 @@ export async function recoverCompressedFixture(file, { signal, reserve, validate
           if (data.kind === "end") {
             if (!total || !geometry || data.frames !== total || data.sequence !== sequence ||
                 data.rate !== geometry.rate || data.channels !== geometry.channels) throw new Error("Incomplete private PCM result.");
-            ended = true; worker.terminate(); localSignal.removeEventListener("abort", canceled);
-            const result = new Blob([wavHeader(geometry.rate, total), ...pieces], { type: "audio/wav" });
-            pieces = []; resolve(result); return;
+            worker.terminate();
+            const result = new Blob([wavHeader(geometry.rate, total), output.subarray(0, total * 8)], { type: "audio/wav" });
+            output = null;
+            ended = true; localSignal.removeEventListener("abort", canceled);
+            resolve(result); return;
           }
           if (data.kind !== "chunk" || data.sequence !== sequence + 1 || !integer(data.frames, 1, 4096) ||
               !integer(data.rate, 8000, 192000) || ![1, 2].includes(data.channels) ||
@@ -106,7 +109,8 @@ export async function recoverCompressedFixture(file, { signal, reserve, validate
             throw new Error("Invalid bounded private PCM chunk.");
           const view = new DataView(data.audio);
           for (let offset = 0; offset < view.byteLength; offset += 4) if (!Number.isFinite(view.getFloat32(offset, true))) throw new Error("Nonfinite decoded PCM.");
-          geometry = { rate: data.rate, channels: data.channels }; sequence++; total += data.frames; pieces.push(data.audio);
+          output.set(new Uint8Array(data.audio), total * 8);
+          geometry = { rate: data.rate, channels: data.channels }; sequence++; total += data.frames;
           worker.postMessage({ kind: "ack", abi: ABI, id, sequence });
         } catch (cause) { fail(cause); }
       };
@@ -126,7 +130,7 @@ export async function recoverCompressedFixture(file, { signal, reserve, validate
     retained = true;
     return frozen({ ...clean, dispose: owner.dispose });
   } finally {
-    worker?.terminate(); pieces = [];
+    worker?.terminate(); output = null;
     clearTimeout(timer); signal.removeEventListener("abort", abort);
     if (!retained) owner?.dispose();
     active = false;

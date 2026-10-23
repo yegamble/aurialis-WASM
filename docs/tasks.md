@@ -5,7 +5,11 @@ The blanket “all slices verified” claim at `ade7736` is withdrawn. The earli
 
 ## README and reader guides — 2026-10-23
 
-Status: **open — awaiting merge**, documentation branch `docs/readme-and-reader-guides`, [PR #10](https://github.com/yegamble/aurialis-WASM/pull/10). Reworked the README around the local mastering workflow and added [first-use guidance](getting-started.md), a [task-based documentation index](README.md) and [developer instructions](development.md). Technical writer and independent source-review agents checked claims against the integrated source through main `f9ae077`, including measured Deep diagnostics, Library source recovery and measured Reference proposals. A separate QA agent checked the source-build quickstart with the pinned tools. [Research, claim sources and current-session verification](reviews/2026-10-23-readme-review.md) distinguish this docs-only review from historical product evidence. No application behavior or prior feature acceptance status changed.
+Documentation branch: `docs/readme-and-reader-guides`; [PR #10](https://github.com/yegamble/aurialis-WASM/pull/10) records the live merge state, merge commit and CI results. Reworked the README around the local mastering workflow and added [first-use guidance](getting-started.md), a [task-based documentation index](README.md) and [developer instructions](development.md). Technical writer and independent source-review agents checked claims against the integrated source through main `f9ae077`, including measured Deep diagnostics, Library source recovery and measured Reference proposals. A separate QA agent checked the source-build quickstart with the pinned tools. [Research, claim sources and current-session verification](reviews/2026-10-23-readme-review.md) distinguish this docs-only review from historical product evidence. No application behavior or prior feature acceptance status changed.
+
+## Measured Reference merge record
+
+[PR #9](https://github.com/yegamble/aurialis-WASM/pull/9) merged at `f9ae07753ccd76b3f45121f6782498d5854874e8`. This supersedes the awaiting-merge statements in the historical Reference checkpoints below. Their failures and scoped verification evidence remain part of the record; this merge note adds no new product certification or test result.
 
 ## Delegated continuation — October 23, 2026
 

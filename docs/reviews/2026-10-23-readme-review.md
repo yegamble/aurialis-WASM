@@ -1,6 +1,6 @@
 # README research and accuracy review
 
-Scope: rewrite the project introduction for readers with different technical backgrounds, add a first-use guide and developer reference, and verify claims against this checkout. No application behavior changed. Documentation branch: `docs/readme-and-reader-guides`; status: **open — awaiting merge**.
+Scope: rewrite the project introduction for readers with different technical backgrounds, add a first-use guide and developer reference, and verify claims against this checkout. No application behavior changed. Documentation branch: `docs/readme-and-reader-guides`. [PR #10](https://github.com/yegamble/aurialis-WASM/pull/10) records the live merge state, merge commit and CI results.
 
 Final source baseline: main `f9ae07753ccd76b3f45121f6782498d5854874e8`, integrated into the documentation branch. The final claim review and refreshed build checks include measured Deep diagnostics, Library source recovery, ScriptV2 foundations and measured Reference proposals. Production files match that baseline.
 

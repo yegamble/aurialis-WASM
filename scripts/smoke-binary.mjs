@@ -52,6 +52,7 @@ try {
       if (route.endsWith("aurialis-wasi-host.js")) assert.ok(source.includes("createAurialisWasiHost"), "embedded initialization host is missing");
     }
   }
+  assert.equal((await fetch(`${host}/__qa/actual-output-tap.js`)).status, 404, "production binary must exclude QA instrumentation");
   console.log("Compiled binary serves embedded UI, both WASM targets, worklet and initialization host from an empty directory.");
 } finally {
   child.kill("SIGTERM");

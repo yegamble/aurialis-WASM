@@ -83,6 +83,9 @@ func New(cfg Config) *Server {
 	mux.HandleFunc("POST /analyze/deep", s.handleAnalyzeDeep)
 	mux.HandleFunc("POST /api/analyze/deep", s.handleAnalyzeDeep)
 
+	mux.HandleFunc("POST /analyze/features", s.handleAnalyzeFeatures)
+	mux.HandleFunc("POST /api/analyze/features", s.handleAnalyzeFeatures)
+
 	mux.HandleFunc("POST /api/master/render", s.handleMasterRender)
 	mux.HandleFunc("POST /master/render", s.handleMasterRender)
 
@@ -242,6 +245,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"models":                     []string{"deterministic-frequency-split"},
 		"separationMethod":           "deterministic-frequency-split",
 		"analysisMethod":             "deterministic-energy-heuristics",
+		"featureAnalysisMethod":      "normalized-hann-spectrum-and-novelty",
+		"featureAnalysisVersion":     "1.0",
 		"maxUploadBytes":             s.cfg.MaxUploadBytes,
 		"maxDecodedFrames":           audio.MaxDecodedFrames,
 		"maxAudioFileBytes":          min(MaxAudioFileBytes, s.cfg.MaxUploadBytes),
@@ -718,5 +723,38 @@ func setStaticContentType(w http.ResponseWriter, filePath string) {
 		if ct := mime.TypeByExtension(ext); ct != "" {
 			w.Header().Set("Content-Type", ct)
 		}
+	}
+}
+
+func (s *Server) handleAnalyzeFeatures(w http.ResponseWriter, r *http.Request) {
+	if r.URL.RawQuery != "" {
+		writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "Measured analysis accepts a file only")
+		return
+	}
+	buf, ok := s.readAndDisarmUpload(w, r)
+	if !ok {
+		return
+	}
+	if len(r.Form) != 0 {
+		writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "Measured analysis accepts a file only")
+		return
+	}
+	if r.Context().Err() != nil {
+		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio analysis request canceled or timed out")
+		return
+	}
+	job, err := s.jobs.SubmitAnalyzeFeatures(buf)
+	if err != nil {
+		writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", err.Error())
+		return
+	}
+	if r.Context().Err() != nil {
+		s.jobs.Cancel(job.ID)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(http.StatusAccepted)
+	if err := json.NewEncoder(w).Encode(job); err != nil {
+		s.jobs.Cancel(job.ID)
 	}
 }

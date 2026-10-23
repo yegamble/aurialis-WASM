@@ -41,6 +41,8 @@ const (
 	KindSeparate Kind = "separate"
 	// KindAnalyzeDeep is a MasteringScript v1 deep analysis job.
 	KindAnalyzeDeep Kind = "analyze_deep"
+	// KindAnalyzeFeatures measures spectra and neutral change points without proposing processing.
+	KindAnalyzeFeatures Kind = "analyze_features"
 )
 
 // ErrQueueFull indicates the bounded job queue is at capacity.
@@ -59,20 +61,21 @@ type StemDescriptor struct {
 
 // Job holds the state and result artifacts of an asynchronous audio processing task.
 type Job struct {
-	ID        string            `json:"jobId"`
-	JobID     string            `json:"job_id"`
-	Kind      Kind              `json:"kind"`
-	Status    Status            `json:"status"`
-	Progress  int               `json:"progress"`
-	Stage     string            `json:"stage"`
-	Profile   string            `json:"profile,omitempty"`
-	StemCount int               `json:"stemCount,omitempty"`
-	Error     string            `json:"error,omitempty"`
-	Detail    string            `json:"detail,omitempty"`
-	CreatedAt time.Time         `json:"createdAt"`
-	UpdatedAt time.Time         `json:"updatedAt"`
-	Script    *mastering.Script `json:"script,omitempty"`
-	Stems     []StemDescriptor  `json:"stems,omitempty"`
+	ID        string                      `json:"jobId"`
+	JobID     string                      `json:"job_id"`
+	Kind      Kind                        `json:"kind"`
+	Status    Status                      `json:"status"`
+	Progress  int                         `json:"progress"`
+	Stage     string                      `json:"stage"`
+	Profile   string                      `json:"profile,omitempty"`
+	StemCount int                         `json:"stemCount,omitempty"`
+	Error     string                      `json:"error,omitempty"`
+	Detail    string                      `json:"detail,omitempty"`
+	CreatedAt time.Time                   `json:"createdAt"`
+	UpdatedAt time.Time                   `json:"updatedAt"`
+	Script    *mastering.Script           `json:"script,omitempty"`
+	Features  *mastering.AnalysisFeatures `json:"features,omitempty"`
+	Stems     []StemDescriptor            `json:"stems,omitempty"`
 
 	stemWAVs      map[string][]byte
 	cancel        context.CancelFunc
@@ -199,9 +202,7 @@ func (m *Manager) reapLoop() {
 func (m *Manager) pruneLocked(now time.Time) {
 	for id, j := range m.jobs {
 		if j.reservedBytes == 0 && now.Sub(j.UpdatedAt) >= Retention {
-			for _, wav := range j.stemWAVs {
-				m.usedBytes -= int64(len(wav))
-			}
+			m.usedBytes -= retainedBytes(j)
 			delete(m.jobs, id)
 		}
 	}
@@ -213,9 +214,7 @@ func (m *Manager) releaseReservation(id string) {
 	if j, ok := m.jobs[id]; ok && j.reservedBytes > 0 {
 		m.usedBytes -= j.reservedBytes
 		j.reservedBytes = 0
-		for _, wav := range j.stemWAVs {
-			m.usedBytes += int64(len(wav))
-		}
+		m.usedBytes += retainedBytes(j)
 		j.cancel = nil
 	}
 }
@@ -232,6 +231,9 @@ func (m *Manager) admitLocked(job *Job, buf *audio.Buffer, stemCount int) error 
 	// buffers and encoded 16-bit artifacts. Deep rendering also needs a stereo
 	// float output. Scratch/headroom covers metering history and small objects.
 	bytesPerFrame := int64(16)
+	if job.Kind == KindAnalyzeFeatures {
+		bytesPerFrame = 8 // Input only; features and FFT scratch fit the reserved headroom.
+	}
 	if stemCount > 0 {
 		bytesPerFrame = 8 + int64(stemCount)*12
 	}
@@ -490,15 +492,14 @@ func (m *Manager) Cancel(id string) (*Job, bool) {
 	cancelFn := j.cancel
 	if j.Status != StatusCanceled {
 		if j.reservedBytes == 0 {
-			for _, wav := range j.stemWAVs {
-				m.usedBytes -= int64(len(wav))
-			}
+			m.usedBytes -= retainedBytes(j)
 		}
 		j.Status = StatusCanceled
 		j.Stage = "Canceled"
 		j.stemWAVs = nil
 		j.Stems = nil
 		j.Script = nil
+		j.Features = nil
 		j.UpdatedAt = time.Now().UTC()
 	}
 	snapshot := m.cloneJob(j)
@@ -516,5 +517,65 @@ func (m *Manager) cloneJob(j *Job) *Job {
 		cp.Stems = make([]StemDescriptor, len(j.Stems))
 		copy(cp.Stems, j.Stems)
 	}
+	if j.Features != nil {
+		features := *j.Features
+		features.Frames = append([]mastering.FeatureFrame(nil), j.Features.Frames...)
+		features.Sections = append([]mastering.FeatureSection(nil), j.Features.Sections...)
+		features.Warnings = append([]string{}, j.Features.Warnings...)
+		cp.Features = &features
+	}
 	return &cp
+}
+
+func retainedBytes(job *Job) int64 {
+	var bytes int64
+	for _, wav := range job.stemWAVs {
+		bytes += int64(len(wav))
+	}
+	return bytes + job.Features.StorageBytes()
+}
+
+// SubmitAnalyzeFeatures enqueues bounded measured analysis without rendering audio.
+func (m *Manager) SubmitAnalyzeFeatures(buf *audio.Buffer) (*Job, error) {
+	id := newJobID()
+	now := time.Now().UTC()
+	job := &Job{ID: id, JobID: id, Kind: KindAnalyzeFeatures, Status: StatusQueued, Stage: "Queued for measured feature analysis", CreatedAt: now, UpdatedAt: now}
+	m.mu.Lock()
+	if err := m.admitLocked(job, buf, 0); err != nil {
+		m.mu.Unlock()
+		return nil, err
+	}
+	snapshot := m.cloneJob(job)
+	work := workItem{jobID: id, run: func(ctx context.Context) {
+		features, err := mastering.AnalyzeFeaturesContext(ctx, buf, func(pct int, stage string) { m.updateProgress(id, pct, stage) })
+		if err != nil {
+			if ctx.Err() != nil {
+				m.markCanceled(id)
+			} else {
+				m.markFailed(id, err)
+			}
+			return
+		}
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		current, ok := m.jobs[id]
+		if !ok || current.Status == StatusCanceled {
+			return
+		}
+		current.Features = features
+		current.Status = StatusDone
+		current.Progress = 100
+		current.Stage = "Measured features ready"
+		current.UpdatedAt = time.Now().UTC()
+	}}
+	select {
+	case m.queue <- work:
+		m.mu.Unlock()
+		return snapshot, nil
+	default:
+		m.usedBytes -= job.reservedBytes
+		delete(m.jobs, id)
+		m.mu.Unlock()
+		return nil, ErrQueueFull
+	}
 }

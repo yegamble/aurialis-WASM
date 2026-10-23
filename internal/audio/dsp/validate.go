@@ -13,6 +13,9 @@ import (
 // ValidateParams rejects non-finite and unsupported settings before they reach
 // persistent DSP state. Disabled stages must still carry valid settings.
 func ValidateParams(p Params) error {
+	if !supportsAlgorithm(p.AlgorithmVersion) {
+		return errors.New("unsupported DSP algorithm version")
+	}
 	values := []struct {
 		name            string
 		value, min, max float64

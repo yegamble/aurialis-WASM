@@ -11,6 +11,28 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Whole-product loop — 2026-10-22, current session
+
+**Status: bounded wave locally verified; open — awaiting merge. Product incomplete.** Baseline `f5ec9ad` is clean main, including merged PRs #3/#4/#5. MUB-0 is resolved; its earlier blocking ruling below is historical. The [whole-product review](../../docs/reviews/2026-10-22-war-room-completion.md) records surviving requirements and the supplied Gemini conversation’s stale claims.
+
+Round A councils: DSP/audio/target audience; frontend/design/Devil’s Advocate; backend/security/QA. Round B challenges narrowed the compatibility claim to implemented algorithm 1 and required high-pass-specific control semantics and refined change-point localization. Round C accepted those revisions. Round D accepts isolated MUB-2A compatibility/capability foundation, MUB-3A measured features/neutral sections and MUB-4A supported EQ/limiter controls. Sonic v2, automation, trained stems, measured reference/album consistency and platform acceptance remain open. Existing passing gates cannot close them.
+
+| Item | Decision | Current status |
+| --- | --- | --- |
+| MUB-0 | Prerequisite resolved by merged PR #3 | verified merge ancestor `97964fc` |
+| MUB-2A | Implement version/capability foundation; advertise algorithm 1 only, latency 0/drain 0 | locally verified; open — awaiting merge (`codex/product-completion`) |
+| MUB-3A | Implement bounded measured source features and neutral sections; no invented moves | locally verified; open — awaiting merge (`codex/product-completion`) |
+| MUB-4A | Expose supported band enable/type and limiter release; prove live/export effects | locally verified; open — awaiting merge (`codex/product-completion`) |
+| Whole product | Original full planned scope retained | open — acoustic and product requirements remain |
+
+Final local acceptance: TypeScript/configured lint/knip, 302 units across 20 files, full Go format/module/vet/exact lint 2.15/identifier/vulnerability/race, both WASM target lints, 333 exact compiled fixtures (legacy and negotiated ABI 2), 15 FFmpeg meter comparisons, production build/empty-directory smoke, Newman 22 requests/27 assertions and raw probes passed. Final full Chromium suite exited 0: **61/61 in 3.1 minutes** on binary `8552941fc6e8b3d9b95fe2ecd378c539f3fe24b7fecf2521741fc1582b410171`, runtime source `fd782c9`; subsequent changes are tests/comments/docs. Final spelling checked 146 files, zero issues.
+
+Retained failed checkpoints: noise bandwidth bias, 192 kHz low-band resolution, Hann impulse loss from windows without overlap, initial measured UI status mismatch (0/2), delayed held-admission cancellation, overlapping mobile targets, stale-copy full suite (60/61), and phase-sensitive Tape snapshot full suite (60/61). The coverage fix passed independent impulse/edge/extreme/DC probes; full-period live observations retained the >0.08 dB activation threshold and passed two predetermined shortcut sets (8/8), followed by the final 61/61 suite. Independent Cancel/retry/late-response cleanup completed with controls restored in 60 ms and the new result preserved. The review records exact scope and failures.
+
+QA/Devil’s Advocate accepted the bounded corrections with no remaining in-scope must-fix; Technical Writer/Product Engineer accepted synchronized contracts and atomic commits, subject to recording final evidence. Four loop iterations are recorded; the default owner merge gate remains. Remote checks are tracked in the PR and must pass before owner merge. The whole product, sonic v2 and Waves equivalence remain open; no merge or all-product completion is claimed.
+
+Remote checkpoint: [Remote PR run 39836685651](https://github.com/yegamble/aurialis-WASM/actions/runs/39836685651) passed every verification job except the browser job, which finished 60/61. Its measured-analysis case passed all diagnostics and six-width accessibility assertions, then failed writing a screenshot to macOS-only `/private/tmp` on Linux. The test now uses Playwright’s per-test output directory; no application code, assertion or threshold changed. Strict typing/spelling and the corrected two-case browser run passed (2/2 in 6.1 seconds). Corrected remote acceptance remains pending in PR checks; the earlier local 61/61 checkpoint is retained separately.
+
 ## Current ruling — 2026-10-21 product recovery
 
 The latest whole-product review audited local and remote `main` at `ade7736` (the only live branch). The blanket verification claims in the historical activation record are withdrawn. The corrected design archive matches the canonical checked-in Figma source exactly.

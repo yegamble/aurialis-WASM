@@ -78,7 +78,7 @@ type StoreAction =
       type: "UPDATE_EQ_BAND";
       trackId: string;
       bandId: EQBandId;
-      patch: Partial<Omit<EQBandParams, "id" | "label" | "type">>;
+      patch: Partial<Omit<EQBandParams, "id" | "label">>;
     }
   | { type: "TOGGLE_EQ_ENABLED"; trackId: string; enabled: boolean }
   | {

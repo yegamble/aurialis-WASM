@@ -56,7 +56,7 @@ function equal(left: unknown, right: unknown): boolean {
   });
 }
 
-/** Only the server's bounded EQ gains and opt-in width may differ from the exact submitted baseline. */
+/** Only the audio engine's bounded EQ gains and opt-in width may differ from the exact submitted baseline. */
 function proposedAdvanced(value: unknown, baseline: AdvancedParams, options: ReferenceOptions): AdvancedParams {
   const candidate = object(value), expected = engineParams(baseline);
   if (!Array.isArray(candidate.bands) || candidate.bands.length !== 5) throw failure();

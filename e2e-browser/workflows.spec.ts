@@ -1,3 +1,5 @@
+/* Test-owned Playwright download/artifact paths never come from audio filenames. */
+/* eslint-disable security/detect-non-literal-fs-filename */
 // cspell:words spinbutton
 import { expect, test, type BrowserContext, type Page, type TestInfo } from "@playwright/test";
 import { execFileSync } from "node:child_process";
@@ -147,7 +149,7 @@ test("Deep analysis compilation live apply and source-bound export keep every au
   const native = await nativeRender(info, source, accepted.advanced, 32, applied), pcm = decode(native.audio);
   let maximumLiveError = 0;
   for (let frame = 0; frame < 16384; frame++) {
-    maximumLiveError = Math.max(maximumLiveError, Math.abs((pcm.left[frame] ?? Infinity) - (capture.outputLeft[frame] ?? 0)), Math.abs((pcm.right[frame] ?? Infinity) - (capture.outputRight[frame] ?? 0)));
+    maximumLiveError = Math.max(maximumLiveError, Math.abs((pcm.left.at(frame) ?? Infinity) - (capture.outputLeft.at(frame) ?? 0)), Math.abs((pcm.right.at(frame) ?? Infinity) - (capture.outputRight.at(frame) ?? 0)));
   }
   expect(maximumLiveError).toBeLessThan(1e-6);
   await page.getByRole("button", { name: "Export", exact: true }).click();

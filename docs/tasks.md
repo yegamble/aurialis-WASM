@@ -8,6 +8,14 @@ PR #6 is verified and merged at `388653635a4911b66786c672b2551cde235f7b4a`. Its 
 
 The owner authorized continued whole-product work with delegated merges until all planned features and remaining Waves acceptance work pass. The default four-iteration stop no longer applies to this continuation. Work resumes from clean main `3886536` on isolated `codex/waves-completion`; the next councils cover DSP topologies/latency, source-bound automation and Library/import/recovery. Broad product and acoustic requirements remain open.
 
+### Current implementation wave
+
+- MUB-2B: private compressor primitives with independent topology/ballistics tests. Public algorithm 2 remains unavailable until the complete studio graph, latency and migration contract pass.
+- MUB-3B: source-bound ScriptV2 validation, bounded common Go schedule evaluation, native render contract and separate live schedule ABI. Unsupported repair targets remain excluded.
+- LIB-1: bounded multi-import and complete Library source lifecycle, including real preview, independent settings duplicates and recoverable identity-based relink.
+
+These items are in progress in isolated branches. Their acceptance criteria and the dense-automation/storage safeguards are recorded in the ledger. They are not verified features yet.
+
 ## Whole-product completion loop — October 22, 2026
 
 **Status: bounded wave locally verified; open — awaiting merge. Product incomplete.** The reviewed baseline `f5ec9ad` includes owner-merged PR #5. The older pending-merge entries below retain their historical status. The [current completion review](reviews/2026-10-22-war-room-completion.md) lists outstanding planned features and Round D rulings.

@@ -88,6 +88,22 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
 const silent = (output: Float32Array[]) => output.every(channel => channel.every(sample => sample === 0));
 
 describe("direct Go worklet lifecycle", () => {
+  it.each(["revision", "loop"] as const)("fails closed when %s verification fails after commit", (failure) => {
+    const f = workletFixture(false, 2);
+    f.message({ type: "bind-source", token: 1, source: new Float64Array([1, 48000, 48000, 1, 2, 3, 4, 5, 6, 7, 8]) });
+    f.message({ type: "reset", generation: 1, startTime: 0, sourceFrame: 0 });
+    const controls = new Float64Array(82); controls[3] = 3; controls[81] = 1;
+    const gate = new SharedArrayBuffer(4); new Int32Array(gate)[0] = 1;
+    f.message({ type: "schedule", token: 2, revision: 7, moveCount: 0, moves: new Float64Array(0), controls, gate, deviceRate: 48000, version: 2 });
+    f.render();
+    if (failure === "revision") f.kernel.aurialis_schedule_revision.mockReturnValueOnce(99);
+    else f.kernel.aurialis_schedule_set_looping.mockReturnValueOnce(0);
+    f.message({ type: "schedule-commit", token: 2 }); expect(silent(f.render())).toBe(true);
+    expect(f.kernel.aurialis_schedule_commit).toHaveBeenCalledOnce();
+    expect(f.processor.failed).toBe(true);
+    expect(f.processor.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
+    expect(f.processor.port.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "automation-error" }));
+  });
   it("paces one move per quantum and preserves the old chain until main-thread commit approval", () => {
     const f = workletFixture(false, 2);
     f.message({ type: "bind-source", token: 1, source: new Float64Array([1, 48000, 48000, 1, 2, 3, 4, 5, 6, 7, 8]) });

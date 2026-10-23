@@ -242,6 +242,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         this.port.postMessage({ type: "automation-staged", token: pending.token });
       }
       if (pending.commit) {
+        pending.commitStarted = true;
         if (this.kernel.aurialis_schedule_commit() !== 1 || this.kernel.aurialis_schedule_revision() !== pending.revision) throw new Error("The audio engine did not acknowledge the complete schedule.");
         this.scheduleAttached = true;
         if (this.kernel.aurialis_schedule_set_looping(1) !== 1) throw new Error("The automation loop clock could not be enabled.");
@@ -251,7 +252,8 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       }
     } catch (error) {
       this.pendingSchedule = null;
-      this.port.postMessage({ type: "automation-error", token: pending.token, message: error instanceof Error ? error.message : "Automation publication failed." });
+      if (pending.commitStarted) this.fail(error);
+      else this.port.postMessage({ type: "automation-error", token: pending.token, message: error instanceof Error ? error.message : "Automation publication failed." });
     }
   }
   resetKernel() {

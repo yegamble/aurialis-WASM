@@ -44,7 +44,14 @@ test("duplicated settings own playable audio after deleting the original and use
   await page.addInitScript(() => {
     const native = AudioContext.prototype.close;
     (window as Window & { closedAudioContexts?: number }).closedAudioContexts = 0;
-    AudioContext.prototype.close = function () { (window as Window & { closedAudioContexts?: number }).closedAudioContexts = ((window as Window & { closedAudioContexts?: number }).closedAudioContexts ?? 0) + 1; return native.call(this); };
+    const owned: { context: AudioContext; stoppedAt: number }[] = [];
+    (window as Window & { closedContextEvidence?: typeof owned }).closedContextEvidence = owned;
+    AudioContext.prototype.close = function () {
+      return native.call(this).then(() => {
+        owned.push({ context: this, stoppedAt: this.currentTime });
+        (window as Window & { closedAudioContexts?: number }).closedAudioContexts = owned.length;
+      });
+    };
   });
   const id = await uploadProject(page, "independent-source.wav", 16);
   await page.getByRole("slider", { name: "Input gain", exact: true }).fill("3");
@@ -75,8 +82,10 @@ test("duplicated settings own playable audio after deleting the original and use
   const generation = (await outputLevel(page))?.generation;
   await page.keyboard.press("Escape"); await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => (window as Window & { closedAudioContexts?: number }).closedAudioContexts)).toBe(1);
-  const stoppedFrames = (await outputLevel(page))?.frames;
-  await page.waitForTimeout(250); expect((await outputLevel(page))?.frames).toBe(stoppedFrames);
+  // A previously queued ScriptProcessor callback can be delivered after close.
+  // The fulfilled native close and stopped render clock establish disposal.
+  await page.waitForTimeout(250);
+  expect(await page.evaluate(() => (window as Window & { closedContextEvidence?: { context: AudioContext; stoppedAt: number }[] }).closedContextEvidence?.every(({ context, stoppedAt }) => context.state === "closed" && context.currentTime === stoppedAt))).toBe(true);
   await openActions(page, "independent source copy"); await page.getByRole("button", { name: "Preview independent source copy", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Play", exact: true }).click();
   await expect.poll(async () => (await outputLevel(page))?.generation).toBe((generation ?? 0) + 1);

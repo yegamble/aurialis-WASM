@@ -13,6 +13,19 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ## Delegated continuation — 2026-10-23
 
+### Simple styles and measured Elevated checkpoint
+
+| Item | Current status |
+| --- | --- |
+| Simple styles, Metal/Jazz, Depth/Presence | implemented and locally exercised; open pending complete integrated regression/CI/merge |
+| Elevated source-bound render review | implemented and locally exercised; upper-bound diagnostics, not normalization/certification |
+| Reference dependency | corrected local 72/72; exact corrected remote CI/merge pending |
+| Whole product, studio DSP, trained stems and Waves acceptance | open |
+
+Runtime `79ddeb6`/`db74b8b`/`555a740` and tests `f1861b8` add original creative priors with explicit metadata version 2. Fresh recipe composition preserves current Input trim and LUFS/ceiling; zero intensity removes direction shaping while retaining explicit gain/limiter, and Depth/Presence combine once in either order. Manual controls clear active badges while remembering the last style/modifiers. Hydration does not remap saved processing; API mappings remain unchanged. Elevated requires known actual canonical-Blob identity, verifies receipts before/after native candidate measurement and checks returned layout, then rejects sample/reconstructed peak above ceiling +0.02/+0.05 dB or loudness above target +0.5 LU. Full-record ownership, cancellation and errors prevent stale publication; explicit Input correction survives retry. Attached Deep requires Detach.
+
+Chair-observed static/build/binary smoke, 342/342 units in 29 files and configured 209-file spelling passed. Actual focused browser evidence is 9/9 in 1.7 minutes: seven independent live/native/export changes, hot-candidate rejection and explicit −18 dB retry/reload, plus six-width axe/44 px/keyboard. Independent writer reran 25 focused units and found no source must-fix. Retain the mistaken mock measurement-identity assumption and old test expectation of Input 6→0; final behavior preserves explicit gain. The complete integrated 81-case suite after Reference observer integration and exact remote CI remain pending. Status: **open — awaiting merge**. No Waves coefficients, learned song adaptation, target attainment, true-peak certification or whole-product completion is implied.
+
 ### Measured Reference implementation and review checkpoint
 
 | Item | Current status |

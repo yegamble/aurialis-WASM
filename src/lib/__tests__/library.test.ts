@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { testStore } from "./fixtures";
 import { audioKey, duplicateProject, replacementProject, sameSource, sortedTracks } from "../library";
+import { reduceStoreState } from "../store";
 import type { prepareProjectFile } from "../project-import";
-const storage = vi.hoisted(() => ({ getAudio: vi.fn(), saveAudio: vi.fn(), discardStagedAudio: vi.fn() }));
+const storage = vi.hoisted(() => ({ getAudio: vi.fn(), saveAudio: vi.fn(), discardStagedAudio: vi.fn(), newAudioAssetId: (prefix: string) => `${prefix}-${crypto.randomUUID()}` }));
 vi.mock("../db", () => storage);
 afterEach(() => { vi.clearAllMocks(); });
 const track = testStore.tracks[0];
@@ -40,6 +41,14 @@ describe("Library project lifecycle", () => {
     storage.getAudio.mockResolvedValue(undefined); await expect(duplicateProject(track, new AbortController().signal)).rejects.toThrow("missing");
     storage.getAudio.mockResolvedValue(new Blob(["audio"])); storage.saveAudio.mockRejectedValue(new Error("full"));
     await expect(duplicateProject(track, new AbortController().signal)).rejects.toThrow("full");
+  });
+  it("commits a complete source record, removes stale artifacts and rejects a stale source revision", () => {
+    const stale = { ...track, releaseScore: 99, masteringScript: { version: "2.0" }, script: { version: "1" } };
+    const clean = { ...track, sourceAudioId: "source-new", sourceRevision: 1 };
+    const committed = reduceStoreState({ ...testStore, tracks: [stale] }, { type: "COMMIT_TRACK_SOURCE", id: track.id, expectedRevision: 0, expectedAudioKey: track.id, track: clean });
+    expect(committed.tracks[0]).not.toHaveProperty("releaseScore"); expect(committed.tracks[0]).not.toHaveProperty("masteringScript"); expect(committed.tracks[0]).not.toHaveProperty("script");
+    const rejected = reduceStoreState(committed, { type: "COMMIT_TRACK_SOURCE", id: track.id, expectedRevision: 0, expectedAudioKey: track.id, track });
+    expect(rejected.tracks[0]).toBe(committed.tracks[0]);
   });
   it("explicit replacement preserves project identity, validates new bandwidth and invalidates results", () => {
     const measurement = { sampleRate: 8000, frames: 8000, duration: 1, sourceIdentity: { ...identity, sampleRate: 8000, frames: 8000 }, beforeMetrics: { integratedLufs: -20, truePeakDbtp: -3, dynamicRangeDb: 10, correlation: 0.5 }, afterMetrics: { integratedLufs: -20, truePeakDbtp: -3, dynamicRangeDb: 10, correlation: 0.5 } };

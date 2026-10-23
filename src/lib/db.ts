@@ -1,4 +1,11 @@
 const memoryAudio = new Map<string, Blob>();
+const freshAssets = new Set<string>();
+/** Audio assets are immutable: only this factory can issue a writable new ID. */
+export function newAudioAssetId(prefix: "track" | "source"): string {
+  const id = `${prefix}-${crypto.randomUUID()}`;
+  freshAssets.add(id);
+  return id;
+}
 // Fits one maximum canonical source; denied storage cannot retain an unbounded queue.
 const MAX_SESSION_BYTES = 128 * 1024 * 1024 + 44;
 type AudioSaveResult = { durable: true } | { durable: false; warning: string };
@@ -48,19 +55,21 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 export async function saveAudio(id: string, file: Blob, allowSession = true): Promise<AudioSaveResult> {
+  if (!freshAssets.delete(id)) throw new Error("Audio assets are immutable. Create a fresh asset ID before saving.");
   try {
     const db = await openDb();
     try {
       await new Promise<void>((resolve, reject) => {
         const transaction = db.transaction(AUDIO_STORE, "readwrite");
-        transaction.objectStore(AUDIO_STORE).put(file, id);
+        const request = transaction.objectStore(AUDIO_STORE).add(file, id);
         transaction.oncomplete = () => { resolve(); };
-        transaction.onerror = transaction.onabort = () => { reject(transaction.error ?? new Error("Audio storage failed.")); };
+        transaction.onerror = transaction.onabort = () => { reject(request.error ?? transaction.error ?? new Error("Audio storage failed.")); };
       });
       memoryAudio.delete(id);
       return { durable: true };
     } finally { db.close(); }
   } catch (cause) {
+    if (typeof cause === "object" && cause !== null && "name" in cause && cause.name === "ConstraintError") throw new Error("This audio asset already exists. Create a fresh asset ID.", { cause });
     const retained = Array.from(memoryAudio.entries()).reduce((total, [key, blob]) => key === id ? total : total + blob.size, 0);
     if (!allowSession || retained + file.size > MAX_SESSION_BYTES)
       throw new Error(allowSession ? "Browser storage is unavailable and the bounded session audio cache is full. Free storage or export and remove a session project before importing more audio." : "Source replacement requires browser storage. Free storage or allow access, then retry.", { cause });

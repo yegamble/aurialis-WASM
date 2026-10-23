@@ -80,6 +80,13 @@ describe("one canonical mastering snapshot", () => {
     expect(trackOf(reduceStoreState(edited, { type: "APPLY_NORMALIZED_GAIN", id: source().id, expected, input: 4 }))).toBe(trackOf(edited));
   });
 
+  it("ignores corrupt optional source metadata without losing legacy mastering settings", () => {
+    const original = source();
+    const corrupted = { ...testStore, tracks: [{ ...original, sourceAudioId: 42, retiredSourceAudioIds: {}, sourceRevision: "bad", sourceIdentity: { pcmHash: "wrong", sampleRate: 1, frames: -1 } }] };
+    const restored = normalizeHydratedState(corrupted)?.tracks[0];
+    expect(restored?.advanced).toEqual(original.advanced); expect(restored?.sourceAudioId).toBeUndefined(); expect(restored?.retiredSourceAudioIds).toBeUndefined(); expect(restored?.sourceRevision).toBeUndefined(); expect(restored?.sourceIdentity).toBeUndefined(); expect(restored?.persistenceWarning).toContain("metadata was invalid");
+  });
+
   it("restores legacy settings as Custom and retains only explicitly saved preset association", () => {
     expect(normalizeHydratedState(testStore)?.tracks[0]?.simpleCustom).toBe(true);
     expect(normalizeHydratedState(selected())?.tracks[0]?.simpleCustom).toBe(false);

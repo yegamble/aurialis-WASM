@@ -1,6 +1,9 @@
 import { engineParams, type StereoPCM } from "./browser-engine";
-import { createLiveControls } from "./live-controls";
-import type { AdvancedParams } from "./types";
+import { prepareLiveAutomation, verifiedSourceVector } from "./live-automation";
+import { sameSource } from "./library";
+import type { ScriptV2 } from "./deep-mastering";
+import { packLiveControls, createLiveControls } from "./live-controls";
+import type { AdvancedParams, SourceIdentity } from "./types";
 
 export type LivePlaybackState = {
   position: number;
@@ -44,6 +47,8 @@ export type LivePlaybackController = {
   pause: () => void;
   seek: (seconds: number) => void;
   setParams: (settings: AdvancedParams) => void;
+  applyScript: (script: ScriptV2, signal: AbortSignal, canCommit?: () => boolean) => Promise<ScriptV2>;
+  detachScript: (settings: AdvancedParams, signal: AbortSignal, canCommit?: () => boolean) => Promise<void>;
   setBypass: (original: boolean) => void;
   setVolume: (volume: number) => void;
   setRepeat: (enabled: boolean) => void;
@@ -71,6 +76,7 @@ export function createLivePlayback(
   source: StereoPCM,
   settings: AdvancedParams,
   callbacks: LivePlaybackCallbacks = {},
+  binding?: { blob: Blob; identity: SourceIdentity; applied?: ScriptV2 },
 ): LivePlaybackController {
   if (!Number.isInteger(source.sampleRate) || source.sampleRate < 8000 || source.sampleRate > 192000
     || source.left.length === 0 || source.left.length !== source.right.length
@@ -78,6 +84,12 @@ export function createLivePlayback(
     throw new Error("Live playback requires bounded stereo PCM at 8–192 kHz.");
   if (!source.left.every(Number.isFinite) || !source.right.every(Number.isFinite))
     throw new Error("Live playback requires finite PCM samples.");
+  let installedScript: ScriptV2 | undefined;
+  let desiredScript: ScriptV2 | undefined = binding?.applied;
+  let scheduleRevision = 0;
+  let publicationToken = 0;
+  let activePublication: AbortController | undefined;
+  const publications = new Map<number, { resolve: (revision: number) => void; reject: (error: Error) => void; canCommit: () => boolean }>();
   let currentParams = engineParams(settings);
   let serializedSettings = JSON.stringify(currentParams);
   let state: LivePlaybackState = {
@@ -142,6 +154,9 @@ export function createLivePlayback(
     sourceNode = undefined;
   }
   function tearDown(): void {
+    activePublication?.abort();
+    for (const pending of publications.values()) pending.reject(new Error("The audio graph was closed before publication."));
+    publications.clear();
     cancelAnimationFrame(spectrumFrame);
     if (bootTimeout) clearTimeout(bootTimeout);
     bootTimeout = undefined;
@@ -155,6 +170,7 @@ export function createLivePlayback(
     loadingAbort?.abort();
     loadingAbort = undefined;
     if (audio && audio.state !== "closed") void audio.close().catch(() => undefined);
+    installedScript = undefined; scheduleRevision = 0;
     audio = undefined; worklet = undefined; header = undefined; controls = undefined;
     buffer = undefined; splitter = undefined; merger = undefined;
     leftAnalyser = undefined; rightAnalyser = undefined;
@@ -173,12 +189,12 @@ export function createLivePlayback(
     emitSilence();
     callbacks.onError?.(failure);
   }
-  function resetStream(): void {
+  function resetStream(startTime: number, sourceFrame: number): void {
     if (!header || !worklet) return;
     const generation = Atomics.add(header, GENERATION, 1) + 1;
     Atomics.store(header, WRITE, 0); Atomics.store(header, READ, 0);
     Atomics.store(header, WAKE, 0); Atomics.store(header, APPLIED_VERSION, 0);
-    worklet.port.postMessage({ type: "reset", generation });
+    worklet.port.postMessage({ type: "reset", generation, startTime, sourceFrame });
   }
   function emitSilence(): void {
     callbacks.onMeter?.({ peakDbfs: -120, rmsDbfs: -120, crestDb: 0,
@@ -188,6 +204,7 @@ export function createLivePlayback(
     playTicket++;
     const position = positionAt();
     stopSource();
+    worklet?.port.postMessage({ type: "hold" });
     state = { ...state, position, playing: false, loading: false };
     cancelAnimationFrame(spectrumFrame);
     const context = audio;
@@ -200,18 +217,19 @@ export function createLivePlayback(
   function startSource(offset: number): void {
     if (!audio || !worklet || !buffer) throw new Error("The live audio graph is not ready.");
     stopSource();
-    resetStream();
     sourceNode = audio.createBufferSource();
     sourceNode.buffer = buffer;
     // Keep the input continuous even during the final buffered tail. Repeat can
     // then be enabled without resurrecting an already-ended native source.
     sourceNode.loop = true;
     sourceNode.connect(worklet);
-    sourceOffset = offset;
-    sourceStart = audio.currentTime + 0.01;
+    const sourceFrame = Math.min(source.left.length - 1, Math.max(0, Math.floor(offset * source.sampleRate)));
+    sourceOffset = sourceFrame / source.sampleRate;
+    sourceStart = Math.ceil((audio.currentTime + 0.01) * audio.sampleRate / QUANTUM) * QUANTUM / audio.sampleRate;
+    resetStream(sourceStart, sourceFrame);
     setSourceEnd(state.repeat ? Infinity : state.duration);
-    sourceNode.start(sourceStart, offset);
-    state = { ...state, position: offset, playing: true, loading: false, error: null };
+    sourceNode.start(sourceStart, sourceOffset);
+    state = { ...state, position: sourceOffset, playing: true, loading: false, error: null };
   }
   function spectrum(time: number): void {
     if (disposed || !state.playing || !audio || !leftAnalyser || !rightAnalyser) return;
@@ -235,7 +253,15 @@ export function createLivePlayback(
   function onWorkletMessage(event: MessageEvent<unknown>): void {
     if (disposed || !isRecord(event.data)) return;
     const message = event.data;
-    if (message.type === "error") {
+    if (message.type === "automation-staged" && typeof message.token === "number") {
+      const pending = publications.get(message.token);
+      if (!pending || !pending.canCommit()) { worklet?.port.postMessage({ type: "schedule-cancel", token: message.token }); pending?.reject(new DOMException("The processing request changed.", "AbortError")); }
+      else worklet?.port.postMessage({ type: "schedule-commit", token: message.token });
+    } else if (message.type === "automation-ack" && typeof message.token === "number" && typeof message.revision === "number") {
+      publications.get(message.token)?.resolve(message.revision);
+    } else if (message.type === "automation-error" && typeof message.token === "number") {
+      publications.get(message.token)?.reject(new Error(typeof message.message === "string" ? message.message : "The processing revision was rejected."));
+    } else if (message.type === "error") {
       fail(typeof message.message === "string" ? message.message : "Live playback failed.");
     } else if (message.type === "meter" && state.playing && header
       && message.generation === Atomics.load(header, GENERATION)) {
@@ -273,7 +299,7 @@ export function createLivePlayback(
     header = new Int32Array(sharedHeader);
     Atomics.store(header, GENERATION, 1);
     Atomics.store(header, PARAMETER_VERSION, state.parameterVersion);
-    controls = createLiveControls(currentParams, state.parameterVersion);
+    controls = createLiveControls(currentParams, state.parameterVersion, 2);
     const sharedControls = controls.buffer;
     const requestAbort = new AbortController();
     loadingAbort = requestAbort;
@@ -297,7 +323,7 @@ export function createLivePlayback(
       const node = new AudioWorkletNode(context, "aurialis-live", { numberOfInputs: 1, numberOfOutputs: 1,
         channelCount: 2, channelCountMode: "explicit", outputChannelCount: [2],
         processorOptions: { header: sharedHeader, tags: sharedTags, samples: sharedSamples, delayBlocks,
-          module: compiledModule, controls: sharedControls, entropy: crypto.getRandomValues(new Uint8Array(256)),
+          module: compiledModule, controls: sharedControls, controlAbiVersion: 2, entropy: crypto.getRandomValues(new Uint8Array(256)),
           clockOriginMs: Math.max(1, performance.now()) } });
       worklet = node;
       node.port.onmessage = (event: MessageEvent<unknown>) => {
@@ -330,6 +356,11 @@ export function createLivePlayback(
     await Promise.all([ready, loaded, resumed]);
     if (isDisposed() || audio !== context) return;
     if (!worklet) throw new Error("The live audio processor could not initialize.");
+    if (binding) {
+      const vector = await verifiedSourceVector(binding.blob, binding.identity, requestAbort.signal);
+      if (isDisposed() || audio !== context) return;
+      await requestPublication({ type: "bind-source", source: vector }, requestAbort.signal);
+    }
     loadingAbort = undefined;
     buffer = context.createBuffer(2, source.left.length, source.sampleRate);
     buffer.copyToChannel(source.left, 0); buffer.copyToChannel(source.right, 1);
@@ -337,7 +368,74 @@ export function createLivePlayback(
     emit();
   }
 
+  async function ensureInitialized(): Promise<void> {
+    if (disposed) throw new Error("This audio graph has been closed.");
+    if (!initialization) {
+      const attempt = initialize(); initialization = attempt;
+      void attempt.catch((error: unknown) => { if (!isDisposed() && initialization === attempt) fail(error); });
+    }
+    await initialization;
+    if (isDisposed() || !audio || !worklet) throw new Error("The audio graph is no longer available.");
+  }
+  function requestPublication(message: Record<string, unknown>, signal: AbortSignal, canCommit: () => boolean = () => true): Promise<number> {
+    signal.throwIfAborted();
+    if (!worklet || disposed) return Promise.reject(new Error("The audio graph is not ready."));
+    const token = ++publicationToken;
+    return new Promise<number>((resolve, reject) => {
+      const gate = new Int32Array(new SharedArrayBuffer(4)); Atomics.store(gate, 0, 1);
+      const deadline = setTimeout(() => { finish(new Error("The audio engine did not acknowledge this processing revision. The previous revision remains selected.")); }, 15_000);
+      const abort = () => { worklet?.port.postMessage({ type: "schedule-cancel", token }); finish(new DOMException("Processing publication canceled.", "AbortError")); };
+      function finish(error?: Error, revision?: number) { Atomics.store(gate, 0, 0); clearTimeout(deadline); signal.removeEventListener("abort", abort); publications.delete(token); if (error) reject(error); else resolve(revision ?? 0); }
+      publications.set(token, { resolve: (revision) => { finish(undefined, revision); }, reject: (error) => { finish(error); }, canCommit: () => !disposed && !signal.aborted && canCommit() });
+      signal.addEventListener("abort", abort, { once: true });
+      const transfer: ArrayBuffer[] = [];
+      for (const value of Object.values(message)) if (value instanceof Float64Array && value.buffer instanceof ArrayBuffer) transfer.push(value.buffer);
+      worklet?.port.postMessage({ ...message, token, gate: gate.buffer }, transfer);
+    });
+  }
+  async function applyScript(script: ScriptV2, signal: AbortSignal, canCommit: () => boolean = () => true): Promise<ScriptV2> {
+    if (!binding || !sameSource(binding.identity, script.source)) throw new Error("Restore the matching canonical source before applying this script.");
+    activePublication?.abort(); const operation = new AbortController(); activePublication = operation;
+    const combined = AbortSignal.any([signal, operation.signal]);
+    // Establish the context synchronously in this user gesture before hashing/compilation.
+    const ready = ensureInitialized();
+    await ready; combined.throwIfAborted();
+    const context = audio; if (!context) throw new Error("The audio graph is unavailable.");
+    await context.resume();
+    const revision = Math.max(scheduleRevision + 1, script.revision);
+    if (!Number.isSafeInteger(revision)) throw new Error("The schedule revision limit has been reached. Reload this project.");
+    const installed = { ...script, revision };
+    try {
+      const packet = await prepareLiveAutomation(installed, binding.blob, context.sampleRate, combined);
+      combined.throwIfAborted(); if (!canCommit()) throw new DOMException("The source or settings changed.", "AbortError");
+      scheduleRevision = revision;
+      const version = state.parameterVersion + 1;
+      const accepted = await requestPublication({ type: "schedule", ...packet, version }, combined, canCommit);
+      if (accepted !== revision) throw new Error("The audio engine acknowledged a different schedule revision.");
+      installedScript = installed; desiredScript = installed;
+      state = { ...state, parameterVersion: version }; emit();
+      return installed;
+    } finally {
+      if (activePublication === operation) { activePublication = undefined; if (!state.playing && audio === context) await context.suspend(); }
+    }
+  }
+
   return {
+    applyScript,
+    async detachScript(next, signal, canCommit = () => true) {
+      activePublication?.abort();
+      if (!canCommit()) throw new DOMException("The source or settings changed.", "AbortError");
+      if (!installedScript) { currentParams = engineParams(next); serializedSettings = JSON.stringify(currentParams); controls?.publish(currentParams, ++state.parameterVersion); return; }
+      await ensureInitialized(); const context = audio; if (!context) throw new Error("The audio graph is unavailable.");
+      await context.resume();
+      try {
+        const params = engineParams(next), version = state.parameterVersion + 1;
+        controls?.publish(params, version);
+        await requestPublication({ type: "detach", controls: packLiveControls(params, 2), version }, signal, canCommit);
+        installedScript = undefined; desiredScript = undefined; currentParams = params; serializedSettings = JSON.stringify(params); controls?.publish(params, version);
+        state = { ...state, parameterVersion: version }; emit();
+      } finally { if (!state.playing && audio === context) await context.suspend(); }
+    },
     async play() {
       if (disposed) return;
       if (state.playing) return;
@@ -362,6 +460,9 @@ export function createLivePlayback(
         if (isDisposed() || ticket !== playTicket || !audio) return;
         await audio.resume();
         if (isDisposed() || ticket !== playTicket) return;
+        if (desiredScript && !installedScript) await applyScript(desiredScript, new AbortController().signal);
+        if (isDisposed() || ticket !== playTicket) return;
+        await audio.resume();
         startSource(state.position >= state.duration ? 0 : state.position);
         spectrumFrame = requestAnimationFrame(spectrum);
         emit();
@@ -382,6 +483,7 @@ export function createLivePlayback(
     },
     setParams(next) {
       if (disposed) return;
+      if (installedScript) throw new Error("Attached automation requires a complete baseline and schedule transaction.");
       const params = engineParams(next);
       const serialized = JSON.stringify(params);
       if (serialized === serializedSettings) return;

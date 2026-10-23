@@ -1,5 +1,7 @@
 # Aurialis-WASM API reference
 <!-- cspell:words Hann steganography -->
+Library relink consumes the existing canonical import source identity; it adds no HTTP endpoint. Exact PCM identity is independent of filenames and does not acknowledge durable browser metadata storage. Source replacement uses a fresh local asset key and retained recovery audio as described in [architecture](architecture.md#library-source-lifecycle).
+
 
 Current routes are implemented by `internal/server`; exact DSP structs are in `internal/audio/dsp/engine.go` and the experimental script schema is in `internal/mastering/mastering.go`. No API presence alone establishes a verified product workflow. See [tasks](tasks.md) for evidence and open requirements.
 

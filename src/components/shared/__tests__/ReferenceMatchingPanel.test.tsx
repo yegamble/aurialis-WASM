@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { Profiler } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StoreProvider, useStore, reduceStoreState } from "@/lib/store";
@@ -17,8 +18,9 @@ function result(baseline: Parameters<typeof matchReference>[2], options: Paramet
   const advanced = { ...baseline, eqBands: baseline.eqBands.map((band, i) => ({ ...band, gainDb: band.gainDb + (i === 2 ? options.amount : 0) })) as typeof baseline.eqBands };
   return { version: "1.0", sourceSpectrum: "baseline_rendered", source: { pcmHash: "a".repeat(64), sampleRate: 48000, frames: 48000 }, reference: { pcmHash: "b".repeat(64), sampleRate: 48000, frames: 48000 }, options, advanced, bands: [], beforeOutputResidualDb: 2, afterOutputResidualDb: 1, beforeResidualDb: 1, fitResidualDb: .1, maxPredictedBoostDb: .6, maxProtectedDeltaDb: .01, remeasuredProtectedDeltaDb: .01, protectionVerified: true, warnings: [] };
 }
-async function open() {
-  render(<StoreProvider><Probe /><ReferenceMatchingPanel trackId="demo-1" /></StoreProvider>);
+async function open(onCommit?: () => void) {
+  const panel = <StoreProvider><Probe /><ReferenceMatchingPanel trackId="demo-1" /></StoreProvider>;
+  render(onCommit ? <Profiler id="reference-review" onRender={onCommit}>{panel}</Profiler> : panel);
   await screen.findByRole("button", { name: "Analyze reference audio" });
   fireEvent.change(screen.getByRole("combobox", { name: "Reference track" }), { target: { value: "test-2" } });
 }
@@ -30,6 +32,81 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); localStorage.clear(); current = undefined; vi.clearAllMocks(); vi.unstubAllGlobals(); });
 describe("measured Reference review", () => {
+  it.each([false, true])("retains Revert when Apply precedes passive effects (replacement: %s)", async (replacement) => {
+    let applyOnCommit = false;
+    // Exercise the DOM-commit/passive-effect interval without a timing delay.
+    await open(() => {
+      if (!applyOnCommit || !screen.queryByText(/Measured proposal ready/u)) return;
+      const button = screen.getByRole<HTMLButtonElement>("button", { name: "Apply measured proposal" });
+      if (button.disabled) return;
+      applyOnCommit = false;
+      button.click();
+    });
+    const original = track().advanced;
+    if (replacement) {
+      fireEvent.click(screen.getByRole("button", { name: "Analyze reference audio" }));
+      await screen.findByText(/Measured proposal ready/u);
+      fireEvent.click(screen.getByRole("button", { name: "Apply measured proposal" }));
+      await waitFor(() => { expect(screen.getByRole("button", { name: "Revert Reference" })).toBeEnabled(); });
+      fireEvent.change(screen.getByRole("slider", { name: "Match amount" }), { target: { value: "100" } });
+    }
+    applyOnCommit = true;
+    fireEvent.click(screen.getByRole("button", { name: "Analyze reference audio" }));
+    await waitFor(() => { expect(track().advanced.eqBands[2].gainDb).toBe(replacement ? 1 : .62); });
+    await waitFor(() => { expect(screen.getByRole("button", { name: "Revert Reference" })).toBeEnabled(); });
+    fireEvent.click(screen.getByRole("button", { name: "Revert Reference" }));
+    await waitFor(() => { expect(track().advanced).toBe(original); });
+  });
+  it("preserves a competing manual edit before the reviewed Apply commits", async () => {
+    let editAndApplyOnCommit = false;
+    await open(() => {
+      if (!editAndApplyOnCommit || !screen.queryByText(/Measured proposal ready/u)) return;
+      const button = screen.getByRole<HTMLButtonElement>("button", { name: "Apply measured proposal" });
+      if (button.disabled) return;
+      editAndApplyOnCommit = false;
+      current?.dispatch({ type: "UPDATE_INPUT_GAIN", trackId: "demo-1", input: 3 });
+      button.click();
+    });
+    editAndApplyOnCommit = true;
+    fireEvent.click(screen.getByRole("button", { name: "Analyze reference audio" }));
+    await waitFor(() => { expect(track().advanced.input).toBe(3); });
+    expect(track().advanced.eqBands[2].gainDb).toBe(0);
+    expect(screen.getByRole("button", { name: "Apply measured proposal" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Revert Reference" })).toBeDisabled();
+    expect(screen.getByText(/Source or processing changed/u)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Your newer settings were preserved/u);
+  });
+  it.each([false, true])("rejects a reference-only competing edit and permits fresh analysis (repeated: %s)", async (repeated) => {
+    let editAndApplyOnCommit = false;
+    let expectedSource: ReturnType<typeof track> | undefined;
+    await open(() => {
+      if (!editAndApplyOnCommit || !screen.queryByText(repeated ? /Measured proposal applied/u : /Measured proposal ready/u)) return;
+      const button = screen.getByRole<HTMLButtonElement>("button", { name: "Apply measured proposal" });
+      if (button.disabled) return;
+      editAndApplyOnCommit = false;
+      expectedSource = track();
+      current?.dispatch({ type: "UPDATE_INPUT_GAIN", trackId: "test-2", input: 3 });
+      button.click();
+    });
+    editAndApplyOnCommit = true;
+    fireEvent.click(screen.getByRole("button", { name: "Analyze reference audio" }));
+    if (repeated) {
+      await screen.findByText(/Measured proposal ready/u);
+      fireEvent.click(screen.getByRole("button", { name: "Apply measured proposal" }));
+    }
+    await waitFor(() => { expect(current?.state.tracks.find((item) => item.id === "test-2")?.advanced.input).toBe(3); });
+    expect(expectedSource).toBeDefined(); expect(track()).toBe(expectedSource);
+    await waitFor(() => { expect(screen.getByRole("button", { name: "Analyze reference audio" })).toBeEnabled(); });
+    expect(screen.getByRole("button", { name: "Apply measured proposal" })).toBeDisabled();
+    if (repeated) expect(screen.getByRole("button", { name: "Revert Reference" })).toBeEnabled();
+    else expect(screen.getByRole("button", { name: "Revert Reference" })).toBeDisabled();
+    expect(screen.getByRole("alert")).toHaveTextContent(/Your newer settings were preserved/u);
+    fireEvent.click(screen.getByRole("button", { name: "Analyze reference audio" }));
+    await screen.findByText(/Measured proposal ready/u);
+    fireEvent.click(screen.getByRole("button", { name: "Apply measured proposal" }));
+    await waitFor(() => { expect(screen.getByRole("button", { name: "Revert Reference" })).toBeEnabled(); });
+    expect(track().advanced.eqBands[2].gainDb).toBe(.62);
+  });
   it("keeps analysis separate, reapplies from one baseline and restores the complete original settings", async () => {
     await open(); const original = track().advanced;
     fireEvent.click(screen.getByRole("button", { name: "Analyze reference audio" }));

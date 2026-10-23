@@ -31,7 +31,8 @@ function secure(response: Response, method: string, path: string): Response {
   headers.set("X-Frame-Options", "DENY");
   headers.set("Referrer-Policy", "no-referrer");
   headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-  headers.set("Cache-Control", "no-store");
+  // Keep edge injection from modifying the app's pinned HTML and request boundary.
+  headers.set("Cache-Control", "no-store, no-transform");
   if (path.endsWith(".wasm") && response.ok) headers.set("Content-Type", "application/wasm");
   return new Response(method === "HEAD" ? null : response.body, { status: response.status, statusText: response.statusText, headers });
 }

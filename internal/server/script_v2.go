@@ -9,6 +9,10 @@ import (
 )
 
 func readRenderScriptV2(w http.ResponseWriter, r *http.Request) (*mastering.ScriptV2, bool) {
+	if r.URL.Query().Has("script") {
+		writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "script must be a bounded multipart field")
+		return nil, false
+	}
 	raw, hasScript := r.Form["script"]
 	if !hasScript {
 		return nil, true

@@ -123,3 +123,33 @@ func TestScriptV2AnalysisAPIAndFailedDeliveryCancellation(t *testing.T) {
 		t.Fatal("delivery failure orphaned admitted v2 job")
 	}
 }
+
+func TestScriptV2CompileAPIProducesUnverifiedNumericPacket(t *testing.T) {
+	srv := server.New(server.Config{Workers: 1})
+	defer srv.Close()
+	wav := buildTestWAV(t, 8000, .25)
+	script := apiScript(t, wav)
+	script.Moves = []automation.Move{{ID: "gain", SectionID: "section-1", Reason: "fixture", Target: "inputGainDb", Operation: "add", Points: []automation.Point{{Frame: 0, Value: 0}, {Frame: script.Source.Frames, Value: 1}}}}
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/automation/compile?deviceRate=44100", strings.NewReader(encodedScript(t, script)))
+	request.Host = "127.0.0.1:8080"
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatal(recorder.Code, recorder.Body.String())
+	}
+	var packet struct {
+		Version        string                   `json:"version"`
+		Source         mastering.SourceIdentity `json:"source"`
+		DeviceRate     int                      `json:"deviceRate"`
+		QuantumFrames  int                      `json:"quantumFrames"`
+		SourceVerified bool                     `json:"sourceVerified"`
+		Moves          []automation.NumericMove `json:"moves"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &packet); err != nil {
+		t.Fatal(err)
+	}
+	if packet.Version != "1.0" || packet.Source != script.Source || packet.DeviceRate != 44100 || packet.QuantumFrames != 44 || packet.SourceVerified || len(packet.Moves) != 1 || packet.Moves[0].Target != automation.InputGain {
+		t.Fatal("compile packet contract mismatch", recorder.Body.String())
+	}
+}

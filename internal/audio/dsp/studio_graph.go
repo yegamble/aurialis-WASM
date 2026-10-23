@@ -28,6 +28,7 @@ type studioGraph struct {
 	down                                                       studioLimiterDownsampler
 	gain                                                       studioLimiterGain4x
 	guard                                                      studioPostGuardLimiter
+	audible                                                    *studioAudibleLimiterPath
 	original                                                   [2][studioGraphDelayCapacity]float32
 	saturationDry                                              [2][128]float64
 	limiterDry                                                 [2][1024]float64
@@ -122,6 +123,9 @@ func (g *studioGraph) resetAt(sourceFrame int64) error {
 	g.gain.resetHistory()
 	g.guard.resetHistory()
 	g.up, g.down = studioLimiterUpsampler{}, studioLimiterDownsampler{}
+	if g.audible != nil {
+		g.audible.resetHistory()
+	}
 	g.original = [2][studioGraphDelayCapacity]float32{}
 	g.saturationDry = [2][128]float64{}
 	g.limiterDry = [2][1024]float64{}
@@ -186,12 +190,16 @@ func (g *studioGraph) processFrame(left, right float32) (float32, float32) {
 	dl, dr = g.limiterDry[0][coreDelayed], g.limiterDry[1][coreDelayed]
 	g.limiterDry[0][coreIndex], g.limiterDry[1][coreIndex] = l, r
 	if g.params.Limiter.Enabled {
-		subs := g.up.process(&g.kernel, l, r)
-		for phase, pair := range subs {
-			a, b, _, _ := g.gain.process(pair[0], pair[1])
-			subs[phase] = [2]float64{a, b}
+		if g.audible == nil {
+			subs := g.up.process(&g.kernel, l, r)
+			for phase, pair := range subs {
+				a, b, _, _ := g.gain.process(pair[0], pair[1])
+				subs[phase] = [2]float64{a, b}
+			}
+			l, r = g.down.process(&g.kernel, subs)
+		} else {
+			l, r = g.audible.process(&g.gain, l, r)
 		}
-		l, r = g.down.process(&g.kernel, subs)
 	} else {
 		l, r = dl, dr
 	}

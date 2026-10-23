@@ -6,7 +6,7 @@ This experiment prepares one on-device decoder step before existing Go CDR. It d
 
 ## Exact inputs and build
 
-`sources.lock.json` pins official FFmpeg n9.0.1 tag object, commit and Git source tree, plus the official Emscripten 6.0.13 linux/amd64 image manifest digest. GitHub reported the release tag signature valid. Docker Hub's multi-platform index digest is recorded separately. No source archive or image layer has been downloaded.
+`sources.lock.json` pins official FFmpeg n9.0.1 tag object, commit and Git source tree, plus the official Emscripten 6.0.13 linux/amd64 image manifest digest. GitHub reported the release tag signature valid. Docker Hub's multi-platform index digest is recorded separately. The exact FFmpeg Git commit and signed tag object have now been fetched into a private setup directory and verified pristine with the pinned source tree and strict Git fsck. No source archive or image layer has been downloaded. Official OCI manifest/configuration hashes and all four layer sizes have been verified; the engine is currently stopped. This setup evidence is separate from a successful build.
 
 An archive SHA-256 is deliberately null: inspected official metadata did not supply one. Do not invent or accept an unverified archive digest. The recipe accepts only a pristine Git checkout at the pinned commit/tree; a later approved setup must preserve its verified corresponding source and record any archive independently.
 
@@ -16,7 +16,7 @@ After the Chair releases the build slot and sources/image are separately verifie
 bash experiments/legacy-audio-decoder/build.sh /absolute/pristine/FFmpeg /absolute/new/private-output
 ```
 
-The script refuses an existing output folder and never fetches sources or implicitly pulls an image. It runs the pinned container with no network, read-only source/recipe mounts and a new output directory. The private build uses one compiler process. Configuration and compiler output, static libraries and the wrapper object remain available for review/relinking. No runtime host filesystem or process-execution interface is added.
+The script refuses an existing output folder and never fetches sources or implicitly pulls an image. It runs the pinned container with no network, read-only source/recipe mounts and a new output directory. The private build uses make -j1 inside a 2-CPU, 4 GiB memory (no extra swap), 256-process container with a 512 MiB temporary filesystem. A host watchdog kills the owned container after 1,800 seconds, at a 2 GiB output limit or below 6 GiB free host disk. Docker setup and cleanup commands have separate bounded timeouts. Actual container configuration/state, OOM flags, build logs and resource failures are saved before cleanup; an OOM or watchdog failure cannot become a successful build. The Docker image must already be present by its exact digest; the recipe never pulls implicitly. Configuration and compiler output, static libraries and the wrapper object remain available for review/relinking. No runtime host filesystem or process-execution interface is added.
 
 `package-assets.py` rejects components outside the closed profile and GPL/nonfree/version3/network/thread settings. Its result stays `private-unqualified` with `distributionApproved: false`; packaging cannot grant qualification. Actual import inspection, ABI compilation and fixed-memory enforcement remain required.
 
@@ -58,13 +58,13 @@ The Wasm asset is limited to 16 MiB, below the 25 MiB static-file ceiling; JS gl
 
 With Node 26.12.0 on PATH, `node --test experiments/legacy-audio-decoder/fixtures/*.test.mjs` passed 24/24 synthetic units in 139 ms during this source review. These exercise only envelope parsing, inert Worker/client protocol adapters, fixed-buffer stream reads and admission logic. No FFmpeg Wasm, real compressed decoder, browser or actual Go CDR ran.
 
-The retained prior source failed the new one-frame chunk-retention, empty-manifest-read, exact-capacity and both late-initialization regressions before correction. The current tests cover 1,024 one-frame messages, bounded tiny/zero fetch chunks, exact frame admission, cancellation and late module settlement. This evidence does not establish real browser memory use or codec support.
+Three additional inert Python units verify OOM/watchdog/disk failure status handling; these passed without contacting Docker. They do not verify kernel enforcement. The retained prior source failed the new one-frame chunk-retention, empty-manifest-read, exact-capacity and both late-initialization regressions before correction. The current tests cover 1,024 one-frame messages, bounded tiny/zero fetch chunks, exact frame admission, cancellation and late module settlement. This evidence does not establish real browser memory use or codec support.
 
 ## Qualification and license gates
 
 Before any public integration:
 
-1. Verify pristine official source/toolchain inputs; compile twice in clean fixed environments; inspect exact component lists, ABI/imports and fixed-memory behavior.
+1. Retain verified pristine official source/toolchain inputs and their provenance/hash receipts; enforce and inspect actual container resource limits; compile twice in clean fixed environments; inspect exact component lists, ABI/imports and fixed-memory behavior.
 2. Compare every admitted format/profile/rate/channel against the same pinned native decoder, including FLAC/ALAC integer-to-Float32 conversion and lossy decode tolerances chosen before results.
 3. Test MP3 delay/padding, Opus pre-skip/end trim, AAC SBR/PS first-frame geometry, MP4 edit lists, EOF tails, malformed metadata, packet bombs, CRC failures, encryption, chaining and parameter changes.
 4. Exercise hard cancellation while C is busy, deadline, quota boundaries, memory ownership through actual termination/Go settlement, stale source and durable-save rollback. No partial result may publish.

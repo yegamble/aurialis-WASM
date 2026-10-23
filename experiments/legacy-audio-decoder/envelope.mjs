@@ -27,8 +27,23 @@ export function selectedInput(file) {
   }
   return Object.freeze({ read, size: file.size });
 }
+function oggIdentification(packet) {
+  const magic = String.fromCharCode(...packet.subarray(0, 8));
+  if (packet.byteLength === 30 && magic.startsWith("\u0001vorbis")) {
+    const view = new DataView(packet.buffer, packet.byteOffset, packet.byteLength);
+    const small = packet[28] & 15, large = packet[28] >>> 4;
+    if (view.getUint32(7, true) !== 0 || ![1, 2].includes(packet[11]) ||
+        view.getUint32(12, true) < 8000 || view.getUint32(12, true) > 192000 ||
+        small < 6 || large > 13 || small > large || packet[29] !== 1)
+      throw new Error("Unsupported Vorbis identification geometry.");
+    return;
+  }
+  if (packet.byteLength === 19 && magic === "OpusHead" && packet[8] === 1 &&
+      [1, 2].includes(packet[9]) && packet[18] === 0) return;
+  throw new Error("This Ogg identification codec or profile is unsupported.");
+}
 function ogg(input) {
-  let offset = 0, serial, sequence = 0, pages = 0, ended = false;
+  let offset = 0, serial, sequence = 0, pages = 0, ended = false, pending = false, packetBytes = 0;
   while (offset < input.size) {
     if (ended || ++pages > MAX_CALLS || input.size - offset < 27) throw new Error("Chained or incomplete Ogg is unsupported.");
     const header = input.read(offset, 27), view = new DataView(header.buffer);
@@ -39,7 +54,9 @@ function ogg(input) {
       serial = currentSerial;
     } else if ((flags & 2) || currentSerial !== serial) throw new Error("Chained or multiplexed Ogg is unsupported.");
     if (currentSequence !== sequence++) throw new Error("Discontinuous Ogg page sequence.");
+    if (!!(flags & 1) !== pending) throw new Error("Invalid Ogg packet continuation.");
     const segments = input.read(offset + 27, header[26]);
+    if (!segments.length) throw new Error("Empty Ogg page lacing is unsupported.");
     let body = 0; for (const length of segments) body += length;
     const length = 27 + segments.length + body;
     if (length > input.size - offset) throw new Error("Truncated Ogg page.");
@@ -50,7 +67,20 @@ function ogg(input) {
       checksum = ((checksum << 8) ^ CRC[((checksum >>> 24) ^ value) & 255]) >>> 0;
     }
     if (checksum !== view.getUint32(22, true)) throw new Error("Invalid Ogg page checksum.");
-    ended = !!(flags & 4); offset += length;
+    if (pages === 1) {
+      if (flags !== 2 || view.getBigUint64(6, true) !== 0n || segments.length !== 1 || segments[0] === 255)
+        throw new Error("The Ogg BOS page must contain one complete identification packet only.");
+      oggIdentification(page.subarray(27 + segments.length));
+    }
+    for (const segment of segments) {
+      packetBytes += segment;
+      if (packetBytes > 8 * 1024 * 1024) throw new Error("Ogg packet byte quota exceeded.");
+      if (segment < 255) packetBytes = 0;
+    }
+    pending = segments[segments.length - 1] === 255;
+    ended = !!(flags & 4);
+    if (ended && pending) throw new Error("Ogg EOS contains an unfinished packet.");
+    offset += length;
   }
   if (!ended) throw new Error("Ogg stream has no terminal page.");
 }

@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { inspectEnvelope } from "../envelope.mjs";
+import { oggPage, oggStream, vorbisIdentification, opusIdentification, alternateIdentifications } from "./ogg-fixtures.mjs";
 
 const encode = (text) => new TextEncoder().encode(text);
 function concat(...parts) {
@@ -25,19 +26,7 @@ function box(name, ...parts) {
 const ftyp = () => box("ftyp", encode("M4A "), new Uint8Array(4));
 const track = () => box("trak", box("mdia", box("minf", box("stbl"))));
 const mp4 = (...tracks) => concat(ftyp(), box("moov", ...tracks), box("mdat", new Uint8Array(16)));
-function oggPage({ flags = 6, serial = 7, sequence = 0, body = new Uint8Array([1, 2, 3]) } = {}) {
-  const output = new Uint8Array(28 + body.byteLength), view = new DataView(output.buffer);
-  output.set(encode("OggS")); output[5] = flags; output[26] = 1; output[27] = body.byteLength;
-  view.setUint32(14, serial, true); view.setUint32(18, sequence, true); output.set(body, 28);
-  let crc = 0;
-  for (const value of output) {
-    crc ^= value << 24;
-    for (let bit = 0; bit < 8; bit++) crc = (crc << 1) ^ (crc < 0 ? 0x04c11db7 : 0);
-    crc >>>= 0;
-  }
-  view.setUint32(22, crc, true);
-  return output;
-}
+
 
 test("recognizes normal big-endian MP4 box lengths without decoding its opaque payload", () => {
   assert.equal(inspectEnvelope(input(mp4(track()))), 5);
@@ -60,17 +49,17 @@ test("refuses multiple MP4 tracks, fragmentation, compressed metadata and absent
   assert.throws(() => inspectEnvelope(input(concat(ftyp(), box("mdat")))), /Missing unique/);
 });
 test("checks one complete Ogg logical stream and the terminal page CRC", () => {
-  assert.equal(inspectEnvelope(input(oggPage())), 3);
-  const corrupt = oggPage(); corrupt[corrupt.length - 1] ^= 1;
+  assert.equal(inspectEnvelope(input(oggStream())), 3);
+  const corrupt = oggStream(); corrupt[corrupt.length - 1] ^= 1;
   assert.throws(() => inspectEnvelope(input(corrupt)), /checksum/);
   assert.throws(() => inspectEnvelope(input(oggPage({ flags: 2 }))), /no terminal/);
 });
 test("refuses chained, multiplexed, discontinuous and truncated Ogg before decoder startup", () => {
-  assert.throws(() => inspectEnvelope(input(concat(oggPage(), oggPage({ serial: 8 })))), /Chained/);
+  assert.throws(() => inspectEnvelope(input(concat(oggStream(), oggStream()))), /Chained/);
   const initial = oggPage({ flags: 2 });
-  assert.throws(() => inspectEnvelope(input(concat(initial, oggPage({ flags: 4, serial: 8, sequence: 1 })))), /multiplexed/);
-  assert.throws(() => inspectEnvelope(input(concat(initial, oggPage({ flags: 4, sequence: 2 })))), /sequence/);
-  const truncated = oggPage().slice(0, -1);
+  assert.throws(() => inspectEnvelope(input(concat(initial, oggPage({ flags: 4, serial: 8, sequence: 1, body: new Uint8Array([0]) })))), /multiplexed/);
+  assert.throws(() => inspectEnvelope(input(concat(initial, oggPage({ flags: 4, sequence: 2, body: new Uint8Array([0]) })))), /sequence/);
+  const truncated = oggStream().slice(0, -1);
   assert.throws(() => inspectEnvelope(input(truncated)), /Truncated/);
 });
 test("bounds ID3 extents and rejects unsupported magic without trusting filenames", () => {
@@ -78,4 +67,36 @@ test("bounds ID3 extents and rejects unsupported magic without trusting filename
   tagged.set([0x7f, 0x7f, 0x7f, 0x7f], 6);
   assert.throws(() => inspectEnvelope(input(tagged)), /metadata quota/);
   assert.throws(() => inspectEnvelope(input(new Uint8Array(12))), /outside the private/);
+});
+
+test("allows only a complete Vorbis or Opus identification packet on the first BOS page", () => {
+  assert.equal(inspectEnvelope(input(oggStream(vorbisIdentification()))), 3);
+  assert.equal(inspectEnvelope(input(oggStream(opusIdentification()))), 3);
+  for (const body of alternateIdentifications()) {
+    assert.throws(() => inspectEnvelope(input(oggStream(body))), /identification|codec/);
+  }
+});
+test("refuses malformed identification geometry and additional BOS packets", () => {
+  const cases = [];
+  const wrongVersion = vorbisIdentification(); wrongVersion[7] = 1; cases.push(wrongVersion);
+  const wrongChannels = vorbisIdentification(); wrongChannels[11] = 3; cases.push(wrongChannels);
+  const wrongBlocks = vorbisIdentification(); wrongBlocks[28] = 0x55; cases.push(wrongBlocks);
+  const wrongFraming = vorbisIdentification(); wrongFraming[29] = 0; cases.push(wrongFraming);
+  const wrongRate = vorbisIdentification(); new DataView(wrongRate.buffer).setUint32(12, 0, true); cases.push(wrongRate);
+  const opusVersion = opusIdentification(); opusVersion[8] = 2; cases.push(opusVersion);
+  const opusMapping = opusIdentification(); opusMapping[18] = 1; cases.push(opusMapping);
+  const opusChannels = opusIdentification(); opusChannels[9] = 3; cases.push(opusChannels);
+  cases.push(concat(opusIdentification(), new Uint8Array([0])));
+  for (const body of cases) assert.throws(() => inspectEnvelope(input(oggStream(body))), /identification/);
+  const extraPacket = oggPage({ body: concat(vorbisIdentification(), new Uint8Array([0])), segments: [30, 1] });
+  assert.throws(() => inspectEnvelope(input(concat(extraPacket, oggPage({ flags: 4, sequence: 1, body: new Uint8Array([0]) })))), /identification/);
+  assert.throws(() => inspectEnvelope(input(concat(oggPage({ granule: 1n }), oggPage({ flags: 4, sequence: 1, body: new Uint8Array([0]) })))), /identification/);
+});
+test("checks packet continuation and refuses incomplete EOS packets", () => {
+  const first = oggPage();
+  assert.throws(() => inspectEnvelope(input(concat(first, oggPage({ flags: 5, sequence: 1, body: new Uint8Array([0]) })))), /continuation/);
+  const partial = oggPage({ flags: 0, sequence: 1, body: new Uint8Array(255), segments: [255] });
+  assert.throws(() => inspectEnvelope(input(concat(first, partial, oggPage({ flags: 4, sequence: 2, body: new Uint8Array([0]) })))), /continuation/);
+  assert.throws(() => inspectEnvelope(input(concat(first, oggPage({ flags: 4, sequence: 1, body: new Uint8Array(255), segments: [255] })))), /unfinished/);
+  assert.equal(inspectEnvelope(input(concat(first, partial, oggPage({ flags: 5, sequence: 2, body: new Uint8Array([0]) })))), 3);
 });

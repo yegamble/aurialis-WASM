@@ -402,6 +402,14 @@ describe("actual audio measurement and explicit Simple normalization", () => {
 });
 
 describe("source bandwidth constraints", () => {
+  it("retains valid disabled zero-valued modules from accepted script baselines", () => {
+    const settings = createDefaultAdvancedParams();
+    settings.deHarsh = { enabled: false, frequencyHz: 0, thresholdDb: 0, rangeDb: 0 };
+    settings.multiband = { enabled: false, lowMidHz: 0, midHighHz: 0, bands: [0, 1, 2].map(() => ({ thresholdDb: 0, ratio: 0, attackMs: 0, releaseMs: 0, makeupDb: 0 })) as typeof settings.multiband.bands };
+    const next = clampAdvancedToSampleRate(settings, 48000);
+    expect(engineParams(next)).toEqual(engineParams(settings));
+    expect(settings.deHarsh.frequencyHz).toBe(0);
+  });
   for (const rate of [8000, 16000, 44100, 48000, 96000, 192000]) {
     it(`keeps ${String(rate)} Hz controls within the visible source bandwidth without altering other settings`, () => {
       const settings = createDefaultAdvancedParams();

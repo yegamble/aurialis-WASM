@@ -15,6 +15,7 @@ import { normalizeShortcutUndo, pruneShortcutUndo, toggleMasteringShortcut, type
 import { masteringTargets } from "./mastering-targets";
 import { restoredSimpleDirection, type SimpleChange } from "./simple-directions";
 import { hasAppliedDeep } from "./reference-matching";
+import { deepSourceMatches, readDeepMasteringState, type DeepMasteringState, type DeepSettingsSnapshot, type ScriptV2 } from "./deep-mastering";
 import type {
   Album,
   AdvancedParams,
@@ -108,6 +109,9 @@ type StoreAction =
   | { type: "ADD_ALBUM"; album: Album }
   | { type: "UPDATE_ALBUM"; id: string; patch: Partial<Album> }
   | { type: "DELETE_ALBUM"; id: string }
+  | { type: "SAVE_DEEP_PROPOSAL"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedProposalRevision: number | null; expectedAdvanced?: AdvancedParams; deep: Pick<DeepMasteringState, "sourceRevision" | "proposal" | "targets"> }
+  | { type: "COMMIT_DEEP_APPLIED"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedAppliedRevision: number | null; expectedAdvanced: AdvancedParams; script: ScriptV2; advanced: AdvancedParams; before: DeepSettingsSnapshot }
+  | { type: "DETACH_DEEP_APPLIED"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedAppliedRevision: number; expectedAdvanced: AdvancedParams; snapshot: DeepSettingsSnapshot }
   | { type: "HYDRATE_STATE"; state: StoreState }
   | { type: "RESET_WORKSPACE" };
 
@@ -150,6 +154,24 @@ export function reduceStoreState(
       return { ...state, tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({ ...track, ...toggleMasteringShortcut(track, action.shortcut), simpleCustom: true, updatedAt: new Date().toISOString() })) };
     case "ADD_TRACK":
       return { ...state, tracks: [{ ...action.track, simpleCustom: action.track.simpleCustom ?? true }, ...state.tracks] };
+
+    case "SAVE_DEEP_PROPOSAL":
+      return { ...state, tracks: updateTrackInList(state.tracks, action.id, (track) => {
+        if (action.deep.sourceRevision !== action.expectedSourceRevision || !deepSourceMatches(track, action.deep.proposal, action.expectedSourceRevision) || (track.sourceAudioId ?? track.id) !== action.expectedAudioKey || (track.deepMastering?.proposal.revision ?? null) !== action.expectedProposalRevision || (action.expectedAdvanced && track.advanced !== action.expectedAdvanced)) return track;
+        return { ...track, deepMastering: { ...track.deepMastering, sourceRevision: action.deep.sourceRevision, proposal: action.deep.proposal, targets: action.deep.targets }, updatedAt: new Date().toISOString() };
+      }) };
+
+    case "COMMIT_DEEP_APPLIED":
+      return { ...state, tracks: updateTrackInList(state.tracks, action.id, (track) => {
+        if (action.script.revision <= (action.expectedAppliedRevision ?? 0) || !track.deepMastering || !deepSourceMatches(track, action.script, action.expectedSourceRevision) || (track.sourceAudioId ?? track.id) !== action.expectedAudioKey || track.advanced !== action.expectedAdvanced || (track.deepMastering.applied?.revision ?? null) !== action.expectedAppliedRevision) return track;
+        return { ...track, advanced: action.advanced, simpleCustom: true, shortcutUndo: {}, deepMastering: { ...track.deepMastering, applied: action.script, before: track.deepMastering.before ?? action.before }, updatedAt: new Date().toISOString() };
+      }) };
+    case "DETACH_DEEP_APPLIED":
+      return { ...state, tracks: updateTrackInList(state.tracks, action.id, (track) => {
+        if (!track.deepMastering?.applied || !deepSourceMatches(track, track.deepMastering.applied, action.expectedSourceRevision) || (track.sourceAudioId ?? track.id) !== action.expectedAudioKey || track.advanced !== action.expectedAdvanced || track.deepMastering.applied.revision !== action.expectedAppliedRevision) return track;
+        const { applied: _applied, before: _before, ...draft } = track.deepMastering;
+        return { ...track, ...action.snapshot, deepMastering: draft, updatedAt: new Date().toISOString() };
+      }) };
 
     case "COMMIT_TRACK_SOURCE":
       return { ...state, tracks: updateTrackInList(state.tracks, action.id, (track) => (track.sourceRevision ?? 0) === action.expectedRevision && (track.sourceAudioId ?? track.id) === action.expectedAudioKey ? { ...action.track, updatedAt: new Date().toISOString() } : track) };
@@ -346,12 +368,19 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => {
           const advanced = { ...track.advanced };
-          if (action.type === "UPDATE_DE_HARSH") advanced.deHarsh = { ...advanced.deHarsh, ...action.patch };
-          else if (action.type === "UPDATE_MULTIBAND") advanced.multiband = { ...advanced.multiband, ...action.patch };
+          // Canonical script baselines can retain fully zero disabled modules.
+          // The first explicit module edit chooses usable control defaults.
+          const defaults = createDefaultAdvancedParams();
+          const deHarsh = advanced.deHarsh;
+          const deHarshBase = !deHarsh.enabled && deHarsh.frequencyHz === 0 && deHarsh.thresholdDb === 0 && deHarsh.rangeDb === 0 ? defaults.deHarsh : deHarsh;
+          const multiband = advanced.multiband;
+          const multibandBase = !multiband.enabled && multiband.lowMidHz === 0 && multiband.midHighHz === 0 && multiband.bands.every((band) => Object.values(band).every((value) => value === 0)) ? defaults.multiband : multiband;
+          if (action.type === "UPDATE_DE_HARSH") advanced.deHarsh = { ...deHarshBase, ...action.patch };
+          else if (action.type === "UPDATE_MULTIBAND") advanced.multiband = { ...multibandBase, ...action.patch };
           else {
-            const bands: MultibandParams["bands"] = [...advanced.multiband.bands];
+            const bands: MultibandParams["bands"] = [...multibandBase.bands];
             bands[action.index] = { ...bands[action.index], ...action.patch };
-            advanced.multiband = { ...advanced.multiband, bands };
+            advanced.multiband = { ...multibandBase, bands };
           }
           return { ...track, advanced: clampAdvancedToSampleRate(advanced, track.sampleRate), simpleCustom: true, updatedAt: new Date().toISOString() };
         }),
@@ -414,6 +443,10 @@ function normalizeSourceMetadata<T extends Omit<Track, "advanced">>(track: T): T
   if (restored.retiredSourceAudioIds !== undefined && (!Array.isArray(restored.retiredSourceAudioIds) || restored.retiredSourceAudioIds.length > 64 || !restored.retiredSourceAudioIds.every(asset))) { delete restored.retiredSourceAudioIds; invalid = true; }
   const identity: unknown = restored.sourceIdentity;
   if (identity !== undefined && (typeof identity !== "object" || identity === null || !("pcmHash" in identity) || !("sampleRate" in identity) || !("frames" in identity) || typeof identity.pcmHash !== "string" || !/^[a-f0-9]{64}$/u.test(identity.pcmHash) || typeof identity.sampleRate !== "number" || !Number.isSafeInteger(identity.sampleRate) || identity.sampleRate < 8000 || identity.sampleRate > 192000 || identity.sampleRate !== track.sampleRate || typeof identity.frames !== "number" || !Number.isSafeInteger(identity.frames) || identity.frames < 1 || identity.frames > 16_777_216 || Math.abs(identity.frames / track.sampleRate - track.duration) > 0.001)) { delete restored.sourceIdentity; invalid = true; }
+  if (restored.deepMastering !== undefined) {
+    try { restored.deepMastering = readDeepMasteringState(restored.deepMastering, restored.sourceIdentity, restored.sourceRevision ?? 0); }
+    catch { delete restored.deepMastering; invalid = true; }
+  }
   if (invalid) restored.persistenceWarning = "Some source recovery metadata was invalid and was ignored. Restore the source if playback is unavailable; your mastering settings were preserved.";
   return restored;
 }
@@ -449,7 +482,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
       ...restored,
       shortcutUndo: normalizeShortcutUndo(track.shortcutUndo),
       simpleCustom: restored.simpleCustom !== false,
-      mode: track.mode === "deep" ? "advanced" : track.mode,
+      mode: track.mode,
       advanced: clampAdvancedToSampleRate({
         ...baseAdv,
         ...track.advanced,

@@ -454,7 +454,7 @@ export function clampAdvancedToSampleRate(settings: AdvancedParams, sampleRate: 
   return {
     ...settings,
     eqBands: [band(settings.eqBands[0]), band(settings.eqBands[1]), band(settings.eqBands[2]), band(settings.eqBands[3]), band(settings.eqBands[4])],
-    deHarsh: { ...settings.deHarsh, frequencyHz: Math.max(1000, Math.min(maximum, settings.deHarsh.frequencyHz)) },
-    multiband: { ...settings.multiband, midHighHz: Math.max(1500, Math.min(maximum, settings.multiband.midHighHz)) },
+    deHarsh: { ...settings.deHarsh, frequencyHz: !settings.deHarsh.enabled && settings.deHarsh.frequencyHz === 0 ? 0 : Math.max(1000, Math.min(maximum, settings.deHarsh.frequencyHz)) },
+    multiband: { ...settings.multiband, midHighHz: !settings.multiband.enabled && settings.multiband.midHighHz === 0 ? 0 : Math.max(1500, Math.min(maximum, settings.multiband.midHighHz)) },
   };
 }

@@ -21,6 +21,43 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ## Delegated continuation — 2026-10-23
 
+### Integrated Deep editor and live schedule checkpoint
+
+| Item | Current status |
+| --- | --- |
+| MUB-3B browser editor/publication | locally verified, corrected full 102/102 and 382 units; exact final-head CI/merge pending |
+| Reference dependency PR #9 | verified and merged at `f9ae077`; all six jobs in CI 39939937259 passed, prior red checkpoints retained |
+| ScriptV2 foundation PR #8 | verified and merged, `d999f4e` |
+| Whole product, studio DSP, trained stems and Waves acceptance | open |
+
+Runtime `f766dfb`, tests `341a426`/`dc3f7aa`, adds measured proposals, ten closed targets, exact source-frame editing, mute/explicit solo Apply, fixed-slot live publication and acknowledged native export/preview/release. Drafts stay inaudible. Pending baseline changes retain the accepted audio until complete acknowledgment and source/key/baseline/revision compare-and-swap. Postcommit uncertainty stops/rebuilds playback. Detach restores the accepted static baseline and Revert restores the complete first-Apply settings snapshot; both retain drafts. Full JSON persistence reports quota/corruption honestly; exact relink preserves source-bound state and replacement invalidates it. Static loudness/album normalization require Detach.
+
+Chair-observed evidence: 360/360 units in 29 files, frontend static/build/binary smoke and focused 18/18 actual Chromium cases in 1.1 minutes on binary `7f7c160570af4a8c0eeb253f9969ed7842ff44b86a9e61c3b20513f556b706e5`. Four actual source/device-rate captured-input/native comparisons plus nonzero seeks passed, including all 128×256 compiled points at 192 kHz; maximum observed wet error ≈7.451e−9, zero observed missed quanta. Independent writer reran 61 focused units and inspected the four JSON/seek evidence pairs and 320/1440 px states. Captured-input `sourceVerified: false` remains distinct from separately verified actual canonical-Blob identity. These finite observations do not certify every browser deadline or acoustic equivalence.
+
+Retain the server unsupported-flag, 41.25 px target, first-Apply clock, delayed arm/source-prefix, seek/pause, disabled-zero-module, Detach and uncertain-commit failures. Earlier 11/14 and 13/15 browser checkpoints and the loaded main-thread collector’s ten missed quanta remain evidence; bounded Worker capture and the corrected solo label passed unchanged audio thresholds before the final 18/18 focused integration. Product review required confirmation before reanalysis discards manually edited moves. Correction `5a76b79` now confirms every existing-draft replacement and rejects stale track/proposal/profile ownership; Keep/Escape performs no POST. Body portal `b18ad55` corrects the six sticky audio controls that had received pointer input behind the modal, with actual six-width focus/axe/touch/pointer checks. [Reference CI 39928617362](https://github.com/yegamble/aurialis-WASM/actions/runs/39928617362) is red after 70/72 browser cases (late Library callback and Reference RMS 0.2503 dB versus 0.05 dB); its prior local pass is not remote acceptance. Status: **open**, pending complete regression, exact green CI and delegated merge. No whole-product/Waves acceptance follows.
+
+Finite-source correction `56853d9` binds native/Go loop policy per epoch and publishes a 24-byte integer start/end device-frame buffer guarded by an odd/even sequence. Finite conversion uses zero exterior and drains every valid aligned output sample before silence; finite→Repeat prepares a fresh epoch after the full pass, with a possible Preparing gap. Periodic→finite preserves that epoch’s conversion/history until the next input-cycle deadline; off→on removes the stop. This does not invent an IIR tail or seamless-loop guarantee.
+
+The old 129-frame 8001→44100 finite source reproduced error 1.593142867. Actual corrected `9647a15` finite proof passed 6/6 in 22.0 seconds across four finite fixtures with zero/nonzero seeks plus two Repeat/latest-intent cases; observed dry/native-wet/speaker error was below about 2.974e−8, including delayed tail and post-end silence. A temporary isolated QA binary embeds a bounded static audio-thread speaker tap under normal handlers/CSP, while production binary/modules remain unchanged and the QA URL returns 404. Staged asset removal and trap cleanup, including build failure exit 23, were exercised. Retain rejected 404/Blob-CSP observers, polluted offline interception and 512 skipped ScriptProcessor frames after 13,184 matching samples; no raw wet substitute or threshold relaxation closes speaker acceptance.
+
+Latest frontend static/build/smoke checkpoint passed all 372 units. The earlier loaded 371/372 timeout at 20.257 seconds remains; the quiet complete run passed 372/372 in 27.58 seconds (first case 6.845 seconds). The original combined run was interrupted after eight observed passes; no final result was claimed. A resumed attempt failed before testing because pnpm resolved to an incompatible runtime fallback. Explicit Node 26/pnpm 10.33.0 then passed **26/26 in 2.0 minutes**, exit 0 observed on clean `2c196ce`. Stable ignored stdout/artifacts are `test-results/deep-reference-finite-2c196ce-pinned.log` and `test-results/deep-reference-finite-2c196ce/`. Eight finite zero/sought captures reached worst dry 7.450580596923828e−9 and native-wet/speaker 2.9737091011838857e−8. Both 4001-frame/full-source and nonzero-seek cases delivered their final 3528 device samples, with 2139/237 silent samples afterward; stopped periodic dry/speaker error was zero.
+
+Production binary `dc99844f2f487ccb0a74531cd3c24ef6add257a2c9342d297bccb8a9d27759b2` excluded the QA path (404 smoke). Separate test binary `47fd022322336f7841e353374f903c997b3fb18d861d68516d744f8fa05be8c0` served only the extra bounded observer; source/WASM/CSP remained unchanged and staging/temp binary cleanup was observed.
+
+#### Full combined verification and main rebase
+
+The combined Simple/Deep source at `1d21ccc` passed strict TypeScript, lint, Knip, configured spelling, strict browser-fixture typing and **382/382 units in 32 files (13.04 seconds)**. Go formatting/module/vet, lint 2.15, identifier/vulnerability checks and the full race suite passed; mastering race tests took 83.264 seconds. The fresh binary build, empty-directory smoke, independent meter checks, **333 exact static native/JS/direct/WASI fixtures plus 45 schedules**, Newman **34 requests/39 assertions** and raw cURL probes all exited 0.
+
+The first complete combined browser run retained **101/102 in 7.0 minutes**, exit 1: an older control-isolation case still asserted that timeline automation was unavailable. Test-only correction `ecc9eff` checks the actual supported Analyze/automation disclosure while retaining musical-role/AI-repair unavailability and every profile-processing/separation rejection assertion. Its complete targeted case passed 1/1 in 3.0 seconds. The corrected full suite then passed **102/102 in 6.7 minutes**, exit 0, with zero skipped, unexpected or flaky cases (403140.75 ms). No audio threshold or production behavior changed for this correction.
+
+All four delayed-epoch/static-prefix native PCM captures, six finite/tail/Repeat cases, source/storage/publication recovery, all nine Simple cases, both Reference device rates, shared controls, six-width accessibility and the complete export matrix passed. Finite dry maximum error was 7.450580596923828e−9; native wet and actual post-merger speaker maximum error were both 2.9737091011838857e−8. The 4001-frame fixture at zero/nonzero seek retained the final 3528 device samples (80 ms) and verified silence afterward. These remain finite software observations, not physical output, arbitrary-host timing, trained mastering or Waves certification.
+
+Stable ignored evidence is under `artifacts/deep-simple-final/`: `frontend.log`, `go.log`, individual quality logs, `build-verify.log`, `browser.log`/`browser.json`/`browser-results/` for the failed original, `profile-corrected.*` for the targeted correction, and `browser-corrected.log`/`browser-corrected.json`/`browser-corrected-results/` for the complete pass. Production SHA-256: `9649c6f85605432b9485a9c70d0b73f5309bc08108db7bacd17c03c152ab1253`; separate QA SHA-256: `9197f52c5a1b0d6f00a5d78cff7e3321a563b6f5d1d8346a34a22e6164119046`. Production QA-path 404, unchanged production bytes and removed staged observer were observed. Temporary QA binaries are cleaned; no continued availability of their former paths is claimed.
+
+The exact accepted local source is preserved as `codex/deep-proof-ecc9eff`. Deep was then rebased onto protected merged Simple main `4d0c745`; only the README conflicted, and the new reader-focused README and guides were retained. A mechanical comparison found **no differences in application source, browser tests, scripts, DSP, build configuration or dependencies** against the 102-case proof. The documentation sync adds the actual Deep workflow. **Open — awaiting independent final documentation review, exact final-head CI and delegated merge.** Browser-worker integration/deployment, whole-product, studio DSP, trained stems, album consistency and Waves acceptance remain separate open work.
+
+
+
 ### Authorized repository protection and deployment work
 
 | Item | Decision/current status |
@@ -33,11 +70,13 @@ Browser workers/WASM must provide local import/CDR, analysis, mastering, separat
 
 ### Simple styles and measured Elevated checkpoint
 
+**Verified and merged.** [PR #11](https://github.com/yegamble/aurialis-WASM/pull/11) merged at `4d0c745202c2192ebed918907a32704cb2d6c542`, from exact head `bf6b673`. All six checks in [CI run 39990817286](https://github.com/yegamble/aurialis-WASM/actions/runs/39990817286) and app-bound GitGuardian passed. The Chair observed 82 Linux browser cases in 7.7 minutes; an independent PR read confirmed the merge, exact head and successful checks. Earlier Simple failures and pending checkpoints below remain historical.
+
 **Latest: locally verified — open, awaiting exact CI and delegated merge.** Clean `adf0032` passed the full 82/82 Chromium cases in 5.4 minutes, 342/342 units in 29 files (8.34 s), TypeScript/lint/Knip, production build/smoke and corrected 212-file spelling. Chair-observed full Go format/module/vet/lint 2.15/identifier/vulnerability/race gates passed; signal gates passed 333 exact static fixtures across native/JS/direct/WASI plus 45 schedules. Newman passed 34 requests/39 assertions and cURL probes. Independent writer checked `browser.log`/`browser.json`: 82 expected, no unexpected/flaky/skipped cases, exit-0 stdout. Binary SHA-256: `4eccb86c5928bfa782d69d78bd7dea8b2e78649fad60ebb48ca3301d7b2073f4`. Stable ignored evidence is under `artifacts/simple-final/`. Historical 79/81 and the inherited three-word spelling failure remain below; the new Deep union, device-local worker deployment and whole-product/Waves gates are separate and open.
 
 | Item | Current status |
 | --- | --- |
-| Simple styles, Metal/Jazz, Depth/Presence | locally verified, 82/82; open awaiting exact CI and merge |
+| Simple styles, Metal/Jazz, Depth/Presence | verified and merged, PR #11 / `4d0c745`; six CI checks plus GitGuardian passed |
 | Elevated source-bound render review | implemented and locally exercised; upper-bound diagnostics, not normalization/certification |
 | Reference dependency | verified and merged, PR #9 / `f9ae077`; all six exact CI jobs green, 73 Linux browser cases |
 | Whole product, studio DSP, trained stems and Waves acceptance | open |

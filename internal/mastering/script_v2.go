@@ -162,6 +162,9 @@ func ValidateScriptV2Context(ctx context.Context, script *ScriptV2, deviceRate i
 	if err != nil || profile != script.Profile {
 		return nil, errors.New("canonical profile required")
 	}
+	if script.ChainParams.Repair.Enabled || (script.ChainParams.Limiter.Enabled && script.ChainParams.Limiter.TruePeak) {
+		return nil, errors.New("ScriptV2 requires the supported sample-peak limiter and disabled repair")
+	}
 	if err := dsp.ValidateParams(script.ChainParams); err != nil {
 		return nil, err
 	}

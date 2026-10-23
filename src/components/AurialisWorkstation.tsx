@@ -4,11 +4,14 @@ import { WorkspaceLink as Link } from "./shared/WorkspaceLink";
 import {
   engineParams,
   measureAudio,
+  measureScriptAudio,
   trackMetrics,
   normalizeSimpleAudio,
   processPreview,
   previewWAV,
   serverRender,
+  serverRenderScript,
+  readCanonicalWAV,
   sourcePeaks,
   type StereoPCM,
 } from "@/lib/browser-engine";
@@ -70,6 +73,8 @@ import { audioKey } from "@/lib/library";
 import { FeatureAnalysisPanel } from "./shared/FeatureAnalysisPanel";
 import { ReferenceMatchingPanel } from "./shared/ReferenceMatchingPanel";
 import { DeepProposalPanel } from "./shared/DeepProposalPanel";
+import { useDeepPlayback } from "@/lib/use-deep-playback";
+import type { ScriptV2 } from "@/lib/deep-mastering";
 import { DeepTimeline } from "./shared/DeepTimeline";
 
 const stemNames = new Map<number, string[]>([
@@ -579,6 +584,7 @@ function MasterView({ trackId }: { trackId: string }) {
   const [preview, setPreview] = useState<StereoPCM | null>(null);
   const [renderedKey, setRenderedKey] = useState("");
   const live = useRef<LivePlaybackController | null>(null);
+  const deepPlayback = useDeepPlayback(track, live);
   const playbackControls = useRef<ReturnType<typeof bindPlaybackControls> | null>(null);
   const { session: scrub, stopScrub, onScrub } = useTransportScrub(live, { available: () => !handoverActive.current, resume: () => { void play(); }, advance: (next) => { playbackControls.current?.update(next, true); } });
   const [playback, setPlayback] = useState<LivePlaybackState | null>(null);
@@ -609,7 +615,7 @@ function MasterView({ trackId }: { trackId: string }) {
     },
     [],
   );
-  const settingsKey = track ? masteringSettingsKey(track.advanced) : "";
+  const settingsKey = track?.deepMastering?.applied ? JSON.stringify(track.deepMastering.applied) : track ? masteringSettingsKey(track.advanced) : "";
   const fresh = renderedKey === settingsKey && preview !== null;
   useEffect(() => {
     if (renderAbort.current && !renderAbort.current.signal.aborted && renderSettings.current !== settingsKey) {
@@ -640,7 +646,7 @@ function MasterView({ trackId }: { trackId: string }) {
         onMeter: (next) => { if (active && live.current?.getState().playing) setMeter(next); },
         onSpectrum: (next) => { if (active && live.current?.getState().playing) setSpectrum(next); },
         onError: (error) => { if (active) setLiveError(error.message); },
-      });
+      }, sourceBlob && track?.sourceIdentity ? { blob: sourceBlob, identity: track.sourceIdentity, ...(track.deepMastering?.applied ? { applied: track.deepMastering.applied } : {}) } : undefined);
       live.current = controller;
       setPlayback(controller.getState());
       setLiveError("");
@@ -665,12 +671,13 @@ function MasterView({ trackId }: { trackId: string }) {
       setLiveError(error instanceof Error ? error.message : "Playback could not be initialized. Retry the source.");
       return undefined;
     }
-  }, [source, trackId]);
+  }, [source, sourceBlob, trackId]);
 
   useEffect(() => {
+    if (track?.deepMastering?.applied) return;
     try { live.current?.setParams(liveSettings); }
     catch (error) { setLiveError(error instanceof Error ? error.message : "The audio settings could not be applied."); }
-  }, [liveSettings]);
+  }, [liveSettings, track?.deepMastering?.applied]);
 
   async function play() {
     const controller = live.current;
@@ -762,22 +769,20 @@ function MasterView({ trackId }: { trackId: string }) {
     if (!pending) renderAbort.current?.abort();
     const controller = pending ?? new AbortController();
     renderAbort.current = controller;
-    renderSettings.current = masteringSettingsKey(params);
+    renderSettings.current = track.deepMastering?.applied ? JSON.stringify(track.deepMastering.applied) : masteringSettingsKey(params);
     setProcessing(true);
     setMessage(
-      "Rendering the uploaded audio with the shared Go WebAssembly engine…",
+      track.deepMastering?.applied ? "Rendering the applied script with the common native Go engine…" : "Rendering the uploaded audio with the shared Go WebAssembly engine…",
     );
     try {
-      const pcm = await processPreview(
-        source,
-        params,
-        controller.signal,
-      );
+      const pcm = track.deepMastering?.applied && sourceBlob
+        ? await readCanonicalWAV(await serverRenderScript(sourceBlob, track.deepMastering.applied, 32, controller.signal))
+        : await processPreview(source, params, controller.signal);
       if (controller.signal.aborted) return;
       setPreview(pcm);
-      setRenderedKey(masteringSettingsKey(params));
+      setRenderedKey(track.deepMastering?.applied ? JSON.stringify(track.deepMastering.applied) : masteringSettingsKey(params));
       live.current?.setBypass(false);
-      setMessage("Preview ready. Playback uses the shared Go DSP engine.");
+      setMessage(track.deepMastering?.applied ? "Preview ready. The applied script uses the common Go DSP engine." : "Preview ready. Playback uses the shared Go DSP engine.");
       dispatch({
         type: "UPDATE_TRACK",
         id: track.id,
@@ -796,6 +801,7 @@ function MasterView({ trackId }: { trackId: string }) {
   }
   async function applySimpleDirection() {
     if (!track || !sourceBlob) return;
+    if (track.deepMastering?.applied) { setMessage("Detach Deep automation before applying static target-loudness normalization. Your applied script remains active."); return; }
     renderAbort.current?.abort();
     const controller = new AbortController();
     renderAbort.current = controller;
@@ -826,12 +832,9 @@ function MasterView({ trackId }: { trackId: string }) {
     renderSettings.current = settingsKey;
     setMessage("Rendering WAV from the uploaded source…");
     try {
-      const blob = await serverRender(
-        sourceBlob,
-        engineParams(track.advanced),
-        bitDepth,
-        controller.signal,
-      );
+      const blob = track.deepMastering?.applied
+        ? await serverRenderScript(sourceBlob, track.deepMastering.applied, bitDepth, controller.signal)
+        : await serverRender(sourceBlob, engineParams(track.advanced), bitDepth, controller.signal);
       if (controller.signal.aborted || renderAbort.current !== controller) return;
       const url = URL.createObjectURL(blob),
         anchor = document.createElement("a");
@@ -842,7 +845,7 @@ function MasterView({ trackId }: { trackId: string }) {
         URL.revokeObjectURL(url);
       }, 1000);
       setMessage(
-        `Exported ${bitDepth === 32 ? "32-bit float" : `${String(bitDepth)}-bit PCM`} WAV at the source rate using the same Go DSP parameters.`,
+        `Exported ${bitDepth === 32 ? "32-bit float" : `${String(bitDepth)}-bit PCM`} WAV at the source rate ${track.deepMastering?.applied ? "from applied revision " + String(track.deepMastering.applied.revision) : "using the same Go DSP parameters"}.`,
       );
     } catch (error) {
       if (!controller.signal.aborted) setMessage(
@@ -972,13 +975,13 @@ function MasterView({ trackId }: { trackId: string }) {
             {...(nextTrack ? { nextTrackTitle: nextTrack.title || "Untitled track" } : {})}
             handover={handover}
           />
-          <LiveSpectrumChart frame={spectrum} playing={playback?.playing ?? false} />
           {track.mode === "deep" && track.deepMastering && <DeepTimeline script={track.deepMastering.proposal} selectedId={deepMoveId} onSelect={selectDeepMove} playheadRatio={playheadRatio} />}
+          <LiveSpectrumChart frame={spectrum} playing={playback?.playing ?? false} />
           {sourceError && <div className="flex flex-wrap items-center gap-3" role="alert">
             <p className="disclosure">{sourceError}</p>
             <Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry source</Button><Button variant="secondary" onClick={() => { setRestoreOpen(true); }}>Restore source</Button>
           </div>}
-          {liveError && <div className="flex flex-wrap items-center gap-3" role="alert"><p className="disclosure">{liveError}</p><Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry playback</Button></div>}
+          {liveError && <div className="flex flex-wrap items-center gap-3" role="alert"><p className="disclosure">{liveError}</p><Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry playback</Button><Button variant="secondary" onClick={() => { setRestoreOpen(true); }}>Restore source</Button></div>}
           <div className="render-actions">
             <Button
               disabled={!source || processing}
@@ -993,11 +996,13 @@ function MasterView({ trackId }: { trackId: string }) {
               setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
             }}>Download offline preview</Button>}
             <span className="disclosure">
-              {fresh
-                ? "Offline preview matches your settings. Live playback updates independently."
-                : track.mode === "simple"
-                  ? "Simple and Advanced share these settings. Set target loudness to measure the requested level; export uses the current settings."
-                  : "Playback responds to your controls immediately. Render an offline preview for a full-track check; export always uses current settings."}
+              {track.deepMastering?.applied
+                ? "Playback and export use the acknowledged applied revision. Draft edits wait for Apply; pending baseline edits wait for acknowledgment."
+                : fresh
+                  ? "Offline preview matches your settings. Live playback updates independently."
+                  : track.mode === "simple"
+                    ? "Simple and Advanced share these settings. Set target loudness to measure the requested level; export uses the current settings."
+                    : "Playback responds to your controls immediately. Render an offline preview for a full-track check; export always uses current settings."}
             </span>
           </div>
           <p className="disclosure" role="status">
@@ -1018,6 +1023,8 @@ function MasterView({ trackId }: { trackId: string }) {
                 ? "Deep mastering"
                 : "Master controls"}
           </span>
+          {(deepPlayback.busy || deepPlayback.message || deepPlayback.error) && <section className="space-y-2" aria-label="Applied automation status"><p className="disclosure" role="status">{deepPlayback.message}</p>{deepPlayback.error && <><p role="alert" className="disclosure text-danger">{deepPlayback.error}</p><div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={deepPlayback.retry}>Retry processing request</Button><Button variant="secondary" onClick={deepPlayback.restoreAppliedSettings}>Restore applied settings</Button></div></>}{deepPlayback.busy && <Button variant="secondary" onClick={deepPlayback.cancel}>Cancel processing publication</Button>}</section>}
+          {track.deepMastering?.applied && <section className="space-y-2" aria-label="Applied Deep recovery"><p className="disclosure">Detach returns to the static baseline of the applied revision. Revert restores the complete settings saved before the first Apply.</p><div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={deepPlayback.detach}>Detach automation</Button><Button variant="secondary" onClick={deepPlayback.revert}>Revert before first Apply</Button></div></section>}
           {track.mode === "simple" && (
             <SimpleControls
               track={track}
@@ -1033,6 +1040,7 @@ function MasterView({ trackId }: { trackId: string }) {
               sourceReady={source !== null}
               selectedMoveId={deepMoveId}
               onSelectMove={selectDeepMove}
+              onApplyScript={deepPlayback.apply}
               editorOpen={deepEditorOpen}
               onCloseEditor={() => { setDeepEditorOpen(false); }}
               onApply={(next) => {
@@ -1564,7 +1572,7 @@ function SimpleControls({
   );
 }
 
-function DeepControls({ track, processing, sourceReady, onApply, selectedMoveId, onSelectMove, editorOpen, onCloseEditor }: {
+function DeepControls({ track, processing, sourceReady, onApply, selectedMoveId, onSelectMove, editorOpen, onCloseEditor, onApplyScript }: {
   track: Track;
   processing: boolean;
   sourceReady: boolean;
@@ -1572,13 +1580,14 @@ function DeepControls({ track, processing, sourceReady, onApply, selectedMoveId,
   selectedMoveId: string;
   editorOpen: boolean;
   onCloseEditor: () => void;
+  onApplyScript: (script: ScriptV2) => Promise<void>;
   onSelectMove: (id: string) => void;
 }) {
   const { dispatch } = useStore();
   const [selectedProfile, setSelectedProfile] = useState<ProfileId>(track.profile);
   return (
     <div className="control-stack deep-controls">
-      <DeepProposalPanel track={track} sourceReady={sourceReady} selectedMoveId={selectedMoveId} onSelectMove={onSelectMove} editorOpen={editorOpen} onCloseEditor={onCloseEditor} />
+      <DeepProposalPanel track={track} sourceReady={sourceReady} selectedMoveId={selectedMoveId} onSelectMove={onSelectMove} editorOpen={editorOpen} onCloseEditor={onCloseEditor} onApply={onApplyScript} />
       <div>
         <h2>Engineer profiles</h2>
         <p>Apply a static tonal starting point, then refine it in Advanced mode.</p>
@@ -1595,7 +1604,7 @@ function DeepControls({ track, processing, sourceReady, onApply, selectedMoveId,
           ))}
         </div>
       </ControlGroup>
-      <p className="disclosure">Musical role detection, timeline automation and AI repair are not available. These profiles apply the same settings throughout your track.</p>
+      <p className="disclosure">These legacy static profiles apply the same settings throughout your track. Deep proposals above use source-frame automation. Musical role detection and AI repair remain unavailable.</p>
       <Button className="full-button" disabled={processing || !sourceReady} icon={<Icon name="sparkles" />}
         onClick={() => {
           const params = clampAdvancedToSampleRate(mapProfileToDSP(selectedProfile), track.sampleRate);
@@ -1718,7 +1727,7 @@ function AlbumView({ albumId }: { albumId: string }) {
   const albumTracks = (album?.trackIds ?? [])
     .map((id) => state.tracks.find((track) => track.id === id))
     .filter((track): track is Track => track !== undefined);
-  const artifactKey = JSON.stringify(albumTracks.map((track) => [track.id, track.sourceRevision, engineParams(track.advanced)]));
+  const artifactKey = JSON.stringify(albumTracks.map((track) => [track.id, track.sourceRevision, track.deepMastering?.applied ?? engineParams(track.advanced)]));
   useEffect(() => {
     setRendered((previous) => previous && previous.key !== artifactKey ? null : previous);
   }, [artifactKey]);
@@ -1776,6 +1785,7 @@ function AlbumView({ albumId }: { albumId: string }) {
               });
             }}
           />
+          {albumTracks.some((track) => track.deepMastering?.applied) && <p className="disclosure">Detach Deep automation in each master before applying album normalization. Individual live playback and export keep the applied script.</p>}
           <div className="album-meta">
             <span>{albumTracks.length} tracks</span>
             <span>{album.target}</span>
@@ -1784,7 +1794,7 @@ function AlbumView({ albumId }: { albumId: string }) {
         </div>
         <Button
           icon={<Icon name="sparkles" />}
-          disabled={working || albumTracks.length === 0}
+          disabled={working || albumTracks.length === 0 || albumTracks.some((track) => track.deepMastering?.applied)}
           onClick={() => void (async () => {
             const controller = new AbortController();
             operation.current?.abort();
@@ -1797,6 +1807,7 @@ function AlbumView({ albumId }: { albumId: string }) {
               const files: { id: string; title: string; blob: Blob }[] = [];
               let totalBytes = 0;
               for (const track of albumTracks) {
+                if (track.deepMastering?.applied) throw new Error("Detach Deep automation in the master before applying album normalization. Your applied script is preserved.");
                 const file = await getAudio(audioKey(track));
                 if (!file) throw new Error(`The source for “${track.title}” is missing. Import it again.`);
                 const advanced = await normalizeSimpleAudio(file, track.advanced, -14, controller.signal);
@@ -1995,7 +2006,7 @@ function ReleaseView({ trackId }: { trackId: string }) {
   const pending = useRef<AbortController | null>(null);
   useEffect(() => () => { pending.current?.abort(); }, []);
   if (!track) return <div className="page"><PageTitle eyebrow="Release check" title="Choose your audio first" copy="Import a track to measure its rendered audio." /><Link className={buttonClassName("primary")} href="/">Import audio</Link></div>;
-  const key = JSON.stringify([track.id, track.sourceRevision, engineParams(track.advanced)]);
+  const key = JSON.stringify([track.id, track.sourceRevision, track.deepMastering?.applied ?? engineParams(track.advanced)]);
   const metrics = scan?.key === key ? scan.metrics : null;
   const targetLufs = platform === "Dynamic" || platform === "Spoken word" ? -16 : -14;
   const maxPeak = -1;
@@ -2016,7 +2027,7 @@ function ReleaseView({ trackId }: { trackId: string }) {
     try {
       const file = await getAudio(audioKey(track));
       if (!file) throw new Error("The source audio is missing. Import the track again.");
-      const result = await measureAudio(file, engineParams(track.advanced), controller.signal);
+      const result = track.deepMastering?.applied ? await measureScriptAudio(file, track.deepMastering.applied, controller.signal) : await measureAudio(file, engineParams(track.advanced), controller.signal);
       if (!controller.signal.aborted) setScan({ key, metrics: result.afterMetrics });
     } catch (cause) {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Measurement failed. Please retry.");
@@ -2044,7 +2055,7 @@ function ReleaseView({ trackId }: { trackId: string }) {
           <strong>{name} ({status === "pass" ? "Pass" : "Review"})</strong><span>{value}</span><p>{note}</p>
         </div>)}
         <div className="report-actions"><Button variant="secondary" icon={<Icon name="arrow-down-to-line" />} onClick={() => {
-          const url = URL.createObjectURL(new Blob([JSON.stringify({ track: track.title, target: platform, targetLufs, score, metrics, checks, settings: engineParams(track.advanced) }, null, 2)], { type: "application/json" }));
+          const url = URL.createObjectURL(new Blob([JSON.stringify({ track: track.title, target: platform, targetLufs, score, metrics, checks, settings: track.deepMastering?.applied ?? engineParams(track.advanced) }, null, 2)], { type: "application/json" }));
           const anchor = document.createElement("a"); anchor.href = url; anchor.download = "aurialis-audio-review.json"; anchor.click();
           setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
         }}>Download JSON report</Button></div>

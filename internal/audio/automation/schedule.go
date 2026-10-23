@@ -324,28 +324,36 @@ func (schedule *Schedule) ValueAt(target Target, sourceFrame float64) float64 {
 // Cursor retains an exact rational source clock and absolute device-time update lattice.
 type Cursor struct {
 	schedule    *Schedule
+	sourceRate  int
+	deviceRate  int
+	frames      int64
 	numerator   int64
 	deviceFrame int64
 	looping     bool
 }
 
 // NewCursor prepares a cursor at source frame zero.
-func NewCursor(schedule *Schedule) *Cursor { return &Cursor{schedule: schedule} }
+func NewCursor(schedule *Schedule) *Cursor {
+	if schedule == nil {
+		return &Cursor{}
+	}
+	return &Cursor{schedule: schedule, sourceRate: schedule.sourceRate, deviceRate: schedule.deviceRate, frames: schedule.frames}
+}
 
 // SeekSourceFrame reconstructs envelopes; invalid requests leave the prior clock unchanged.
 func (cursor *Cursor) SeekSourceFrame(sourceFrame int64) error {
-	if cursor.schedule == nil || sourceFrame < 0 || sourceFrame > cursor.schedule.Frames() {
+	if !cursor.validClockLayout() || sourceFrame < 0 || sourceFrame > cursor.frames {
 		return errors.New("seek exceeds bound source")
 	}
-	cursor.numerator = sourceFrame * int64(cursor.schedule.DeviceRate())
-	cursor.deviceFrame = cursor.numerator / int64(cursor.schedule.SourceRate())
+	cursor.numerator = sourceFrame * int64(cursor.deviceRate)
+	cursor.deviceFrame = cursor.numerator / int64(cursor.sourceRate)
 	return nil
 }
 
 // Fill returns a span ending at the absolute coefficient lattice, never at dense knots.
 // Gain/width destinations have fixed caller-owned capacity; only used targets are filled.
 func (cursor *Cursor) Fill(gain, width []float64, limit int) (int, Values) {
-	if cursor == nil || cursor.schedule == nil || limit < 1 {
+	if cursor == nil || cursor.schedule == nil || !cursor.validClockLayout() || limit < 1 {
 		return 0, Values{}
 	}
 	schedule := cursor.schedule
@@ -404,17 +412,17 @@ func (schedule *Schedule) Quantum() int { return schedule.quantum }
 
 // AdvanceFrames advances the rational source clock without evaluating inactive controls.
 func (cursor *Cursor) AdvanceFrames(count int) {
-	if cursor == nil || cursor.schedule == nil || count <= 0 {
+	if cursor == nil || !cursor.validClockLayout() || count <= 0 {
 		return
 	}
-	cursor.numerator += int64(count) * int64(cursor.schedule.SourceRate())
+	cursor.numerator += int64(count) * int64(cursor.sourceRate)
 	cursor.deviceFrame += int64(count)
 	cursor.normalizeLoop()
 }
 
 // CopyPosition transfers exact fractional source phase between compatible revisions.
 func (cursor *Cursor) CopyPosition(previous *Cursor) bool {
-	if cursor == nil || previous == nil || cursor.schedule == nil || previous.schedule == nil || cursor.schedule.SourceRate() != previous.schedule.SourceRate() || cursor.schedule.DeviceRate() != previous.schedule.DeviceRate() || cursor.schedule.Frames() != previous.schedule.Frames() {
+	if cursor == nil || previous == nil || !cursor.validClockLayout() || !previous.validClockLayout() || cursor.sourceRate != previous.sourceRate || cursor.deviceRate != previous.deviceRate || cursor.frames != previous.frames {
 		return false
 	}
 	cursor.numerator, cursor.deviceFrame, cursor.looping = previous.numerator, previous.deviceFrame, previous.looping
@@ -425,11 +433,11 @@ func (cursor *Cursor) CopyPosition(previous *Cursor) bool {
 // Export/native rendering defaults to false. DSP history is not reset at loop seams.
 func (cursor *Cursor) SetLooping(enabled bool) { cursor.looping = enabled; cursor.normalizeLoop() }
 func (cursor *Cursor) normalizeLoop() {
-	if cursor.looping && cursor.schedule != nil {
-		period := cursor.schedule.Frames() * int64(cursor.schedule.DeviceRate())
+	if cursor.looping && cursor.validClockLayout() {
+		period := cursor.frames * int64(cursor.deviceRate)
 		if cursor.numerator >= period {
 			cursor.numerator %= period
-			cursor.deviceFrame = cursor.numerator / int64(cursor.schedule.SourceRate())
+			cursor.deviceFrame = cursor.numerator / int64(cursor.sourceRate)
 		}
 	}
 }

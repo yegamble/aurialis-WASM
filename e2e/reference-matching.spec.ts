@@ -51,6 +51,7 @@ test("measured Reference changes real live and downloaded PCM from one immutable
   expect(await settings(page, sourceId), "analysis must not change settings").toEqual(before);
   expect(job.referenceProposal.fitResidualDb).toBeLessThan(job.referenceProposal.beforeResidualDb);
   expect(job.referenceProposal.afterOutputResidualDb).toBeLessThan(job.referenceProposal.beforeOutputResidualDb);
+  await expect(page.getByText(`Rendered spectral mismatch: ${job.referenceProposal.beforeOutputResidualDb.toFixed(2)} → ${job.referenceProposal.afterOutputResidualDb.toFixed(2)} dB`, { exact: false })).toBeVisible();
   expect(job.referenceProposal.maxProtectedDeltaDb).toBeLessThanOrEqual(.25);
   expect(Math.abs(job.referenceProposal.remeasuredProtectedDeltaDb)).toBeLessThanOrEqual(.25);
   await page.getByRole("button", { name: "Apply measured proposal", exact: true }).click();

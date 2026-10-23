@@ -68,9 +68,10 @@ func syntheticNormInput(rows int, kind string) []float32 {
 			}
 		case "quotient-underflow":
 			value = 0
-			if index%256 == 0 {
+			switch index % 256 {
+			case 0:
 				value = float32(math.Ldexp(1, -103))
-			} else if index%256 == 1 {
+			case 1:
 				value = float32(3 * math.Ldexp(1, 30))
 			}
 		case "reassociation-underflow":
@@ -80,9 +81,10 @@ func syntheticNormInput(rows int, kind string) []float32 {
 			}
 		case "scale-reassociation-underflow":
 			value = 0
-			if index%256 == 0 {
+			switch index % 256 {
+			case 0:
 				value = 0.125
-			} else if index%256 == 1 {
+			case 1:
 				value = 1
 			}
 		case "overflow-reject":

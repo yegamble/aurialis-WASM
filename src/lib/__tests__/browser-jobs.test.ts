@@ -12,7 +12,7 @@ class TestWorker {
   constructor(readonly url: string) { TestWorker.all.push(this); }
   postMessage(message: { id: string; metadata: string; source: ArrayBuffer; reference: ArrayBuffer }, transfer: Transferable[]) { this.message = message; this.transfer = transfer; }
   terminate() { this.terminated = true; }
-  reply(json = "{}", id = this.message?.id) { this.onmessage?.({ data: { kind: "result", id, json, audio: new ArrayBuffer(0) } } as MessageEvent<unknown>); }
+  reply(json = "{}", id = this.message?.id) { this.onmessage?.({ data: { abi: "1.0", kind: "result", id, json, audio: new ArrayBuffer(0) } } as MessageEvent<unknown>); }
 }
 
 function source() {
@@ -111,4 +111,21 @@ describe("device-local browser audio transport", () => {
     expect(await rejected).toMatchObject({ message: "Invalid local audio worker identity." });
     expect(TestWorker.all[0]?.terminated).toBe(true);
   });
+  it("rejects an incompatible worker ABI and creates a fresh worker on explicit retry", async () => {
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    const first = deviceAudioRequest("/api/analyze/features", { method: "POST", body: body() });
+    const failure = first.then(() => undefined, (error: unknown) => error);
+    await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
+    const stale = TestWorker.all[0];
+    stale?.onmessage?.({ data: { abi: "0.0", kind: "result", id: stale.message?.id, json: "{}", audio: new ArrayBuffer(0) } } as MessageEvent<unknown>);
+    expect(await failure).toMatchObject({ message: "The local audio engine version is incompatible. Reload Aurialis to retry." });
+    expect(stale?.terminated).toBe(true);
+    const retry = deviceAudioRequest("/api/analyze/features", { method: "POST", body: body() });
+    await waitFor(() => { expect(TestWorker.all[1]?.message).toBeDefined(); });
+    TestWorker.all[1]?.reply();
+    await retry;
+    expect(TestWorker.all[1]?.terminated).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
 });

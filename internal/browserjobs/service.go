@@ -17,6 +17,9 @@ import (
 	"github.com/yegamble/Aurialis-WASM/internal/mastering"
 )
 
+// ABIVersion changes whenever the closed worker request/result contract is incompatible.
+const ABIVersion = "1.0"
+
 // MaxInputBytes bounds the combined binary inputs independently of metadata.
 const MaxInputBytes = 129 * 1024 * 1024
 

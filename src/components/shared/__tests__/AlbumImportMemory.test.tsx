@@ -72,7 +72,7 @@ describe("direct album import memory", () => {
     allReleased();
   });
   it.each(["cancel", "unmount"] as const)("keeps a pending save and rollback charged after %s and rejects its late project", async (action) => {
-    const saving = deferred<Awaited<ReturnType<typeof saveAudio>>>(), rollback = deferred<void>();
+    const saving = deferred<Awaited<ReturnType<typeof saveAudio>>>(), rollback = deferred<undefined>();
     vi.mocked(saveAudio).mockReturnValueOnce(saving.promise); vi.mocked(discardStagedAudio).mockReturnValueOnce(rollback.promise);
     const view = await open(); start(); await waitFor(() => { expect(saveAudio).toHaveBeenCalledOnce(); });
     remainsCharged();
@@ -82,7 +82,7 @@ describe("direct album import memory", () => {
     await waitFor(() => { expect(discardStagedAudio).toHaveBeenCalledOnce(); });
     expect(discardStagedAudio).toHaveBeenCalledWith(vi.mocked(saveAudio).mock.calls[0]?.[0], true);
     remainsCharged();
-    await act(async () => { rollback.resolve(); await rollback.promise; });
+    await act(async () => { rollback.resolve(undefined); await rollback.promise; });
     if (action === "cancel") { await settled(); expect(state().tracks).toEqual([]); }
     allReleased();
   });

@@ -19,6 +19,8 @@ type studioCompressor struct {
 	variableMuCoeffs                  studioMuCoeffs
 	vca                               studioVCAState
 	vcaCoeffs                         studioVCACoeffs
+	fet                               studioFETState
+	fetCoeffs                         studioFETCoeffs
 	gainDB, reductionDB               float64
 	transitionFromDB                  float64
 	transitionFromReductionDB         float64
@@ -42,7 +44,9 @@ func prepareStudioCompressor(rate float64, params CompressorParams) (studioCompr
 		}
 	case CompVariableMu, CompVCA:
 	case CompFET:
-		return studioCompressor{}, errors.New("studio compressor topology is not implemented")
+		if params.KneeDB > 6 {
+			return studioCompressor{}, errors.New("studio FET knee must not exceed 6 dB")
+		}
 	default:
 		return studioCompressor{}, errors.New("unsupported studio compressor topology")
 	}
@@ -50,6 +54,7 @@ func prepareStudioCompressor(rate float64, params CompressorParams) (studioCompr
 	c.opticalCoeffs = prepareStudioOptical(rate, params)
 	c.variableMuCoeffs = prepareStudioMu(rate, params)
 	c.vcaCoeffs = prepareStudioVCA(rate, params)
+	c.fetCoeffs = prepareStudioFET(rate, params)
 	c.resetHistory()
 	return c, nil
 }
@@ -68,6 +73,7 @@ func (c *studioCompressor) setParams(params CompressorParams) error {
 		next.optical = c.optical
 		next.variableMu = c.variableMu
 		next.vca = c.vca
+		next.fet = c.fet
 		if params.SidechainHPFHz == c.params.SidechainHPFHz {
 			next.sidechainState = c.sidechainState
 		}
@@ -85,6 +91,7 @@ func (c *studioCompressor) resetHistory() {
 	c.optical = studioOpticalState{}
 	c.variableMu = studioMuState{}
 	c.vca = studioVCAState{}
+	c.fet = studioFETState{}
 	c.reductionDB = 0
 	c.gainDB = 0
 	if c.params.Enabled {
@@ -135,7 +142,7 @@ func (c *studioCompressor) process(left, right float64) (float64, float64) {
 		case CompVCA:
 			gr = c.vca.process(scLeft, scRight, c.params, c.vcaCoeffs)
 		case CompFET:
-			// Preparation rejects these until their distinct algorithms land.
+			gr = c.fet.process(scLeft, scRight, c.params, c.fetCoeffs)
 		}
 		if c.params.Ratio == 1 {
 			gr = 0

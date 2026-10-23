@@ -14,7 +14,7 @@ import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP 
 import { normalizeShortcutUndo, pruneShortcutUndo, toggleMasteringShortcut, type MasteringShortcut } from "./mastering-shortcuts";
 import { masteringTargets } from "./mastering-targets";
 import { hasAppliedDeep } from "./reference-matching";
-import { deepSourceMatches, readDeepMasteringState, type DeepMasteringState } from "./deep-mastering";
+import { deepSourceMatches, readDeepMasteringState, type DeepMasteringState, type DeepSettingsSnapshot, type ScriptV2 } from "./deep-mastering";
 import type {
   Album,
   AdvancedParams,
@@ -108,6 +108,8 @@ type StoreAction =
   | { type: "UPDATE_ALBUM"; id: string; patch: Partial<Album> }
   | { type: "DELETE_ALBUM"; id: string }
   | { type: "SAVE_DEEP_PROPOSAL"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedProposalRevision: number | null; expectedAdvanced?: AdvancedParams; deep: Pick<DeepMasteringState, "sourceRevision" | "proposal" | "targets"> }
+  | { type: "COMMIT_DEEP_APPLIED"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedAppliedRevision: number | null; expectedAdvanced: AdvancedParams; script: ScriptV2; advanced: AdvancedParams; before: DeepSettingsSnapshot }
+  | { type: "DETACH_DEEP_APPLIED"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedAppliedRevision: number; expectedAdvanced: AdvancedParams; snapshot: DeepSettingsSnapshot }
   | { type: "HYDRATE_STATE"; state: StoreState }
   | { type: "RESET_WORKSPACE" };
 
@@ -150,6 +152,18 @@ export function reduceStoreState(
       return { ...state, tracks: updateTrackInList(state.tracks, action.id, (track) => {
         if (action.deep.sourceRevision !== action.expectedSourceRevision || !deepSourceMatches(track, action.deep.proposal, action.expectedSourceRevision) || (track.sourceAudioId ?? track.id) !== action.expectedAudioKey || (track.deepMastering?.proposal.revision ?? null) !== action.expectedProposalRevision || (action.expectedAdvanced && track.advanced !== action.expectedAdvanced)) return track;
         return { ...track, deepMastering: { ...track.deepMastering, sourceRevision: action.deep.sourceRevision, proposal: action.deep.proposal, targets: action.deep.targets }, updatedAt: new Date().toISOString() };
+      }) };
+
+    case "COMMIT_DEEP_APPLIED":
+      return { ...state, tracks: updateTrackInList(state.tracks, action.id, (track) => {
+        if (action.script.revision <= (action.expectedAppliedRevision ?? 0) || !track.deepMastering || !deepSourceMatches(track, action.script, action.expectedSourceRevision) || (track.sourceAudioId ?? track.id) !== action.expectedAudioKey || track.advanced !== action.expectedAdvanced || (track.deepMastering.applied?.revision ?? null) !== action.expectedAppliedRevision) return track;
+        return { ...track, advanced: action.advanced, simpleCustom: true, shortcutUndo: {}, deepMastering: { ...track.deepMastering, applied: action.script, before: track.deepMastering.before ?? action.before }, updatedAt: new Date().toISOString() };
+      }) };
+    case "DETACH_DEEP_APPLIED":
+      return { ...state, tracks: updateTrackInList(state.tracks, action.id, (track) => {
+        if (!track.deepMastering?.applied || !deepSourceMatches(track, track.deepMastering.applied, action.expectedSourceRevision) || (track.sourceAudioId ?? track.id) !== action.expectedAudioKey || track.advanced !== action.expectedAdvanced || track.deepMastering.applied.revision !== action.expectedAppliedRevision) return track;
+        const { applied: _applied, before: _before, ...draft } = track.deepMastering;
+        return { ...track, ...action.snapshot, deepMastering: draft, updatedAt: new Date().toISOString() };
       }) };
 
     case "COMMIT_TRACK_SOURCE":

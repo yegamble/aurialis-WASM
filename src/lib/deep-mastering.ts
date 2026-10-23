@@ -182,3 +182,26 @@ export function readDeepMasteringState(value: unknown, identity: SourceIdentity 
 export function deepSourceMatches(track: Pick<Track, "sourceRevision" | "sourceIdentity">, script: ScriptV2, revision: number): boolean {
   return (track.sourceRevision ?? 0) === revision && sameSource(track.sourceIdentity, script.source);
 }
+
+/** Adapt the supported static controls for display; automation stays in the Go schedule. */
+export function advancedFromScript(script: ScriptV2): AdvancedParams {
+  const params = script.chainParams; const base = createDefaultAdvancedParams();
+  const types = { high_pass: "highpass", low_shelf: "lowshelf", peaking: "peaking", high_shelf: "highshelf" } as const;
+  return { ...base, input: params.inputGainDb, threshold: params.compressor.thresholdDb, ratio: params.compressor.ratio, attack: params.compressor.attackMs, release: params.compressor.releaseMs, width: params.stereo.widthPct, saturation: params.saturation.amount,
+    eqEnabled: params.eqEnabled,
+    eqBands: base.eqBands.map((band, index) => { const item = params.bands.at(index); if (!item) throw failure(); const type = Object.entries(types).find(([name]) => name === item.type)?.[1]; if (!type) throw failure(); return { ...band, enabled: item.enabled, type, freqHz: item.freqHz, gainDb: item.gainDb, q: item.q }; }) as AdvancedParams["eqBands"],
+    compressor: { enabled: params.compressor.enabled, threshold: params.compressor.thresholdDb, ratio: params.compressor.ratio, attack: params.compressor.attackMs, release: params.compressor.releaseMs, knee: params.compressor.kneeDb, makeup: params.compressor.makeupDb, sidechainHpfHz: params.compressor.sidechainHpfHz, autoRelease: params.compressor.autoRelease },
+    saturationModule: { enabled: params.saturation.enabled, drive: params.saturation.amount, character: params.saturation.character },
+    stereo: { enabled: params.stereo.enabled, width: params.stereo.widthPct, monoBass: params.stereo.monoBass, crossoverHz: params.stereo.crossoverHz, midGainDb: params.stereo.midGainDb, sideGainDb: params.stereo.sideGainDb },
+    limiter: { enabled: params.limiter.enabled, ceiling: params.limiter.ceilingDbtp, targetLufs: params.limiter.targetLufs, release: params.limiter.releaseMs, truePeak: params.limiter.truePeak },
+    deHarsh: params.deHarsh, multiband: params.multiband,
+  };
+}
+
+export function deepSettingsSnapshot(track: Track): DeepSettingsSnapshot {
+  return { advanced: track.advanced, profile: track.profile, genre: track.genre, tone: track.tone, intensity: track.intensity, target: track.target, simpleCustom: track.simpleCustom ?? true, shortcutUndo: track.shortcutUndo ?? {} };
+}
+
+export function advancedMatchesScript(advanced: AdvancedParams, script: ScriptV2): boolean {
+  return sameJSON(engineParams(advanced), engineParams(advancedFromScript(script)));
+}

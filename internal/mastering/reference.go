@@ -51,8 +51,8 @@ type ReferenceProposal struct {
 // MatchReferenceContext measures common-band spectra and fits the actual summed TPT response.
 // It preserves every non-EQ field, band frequency/Q/type/enable and disabled-module state.
 func MatchReferenceContext(ctx context.Context, source, reference *audio.Buffer, baseline dsp.Params, options ReferenceOptions, onProgress func(int, string)) (*ReferenceProposal, error) {
-	if !isFinite(options.Amount) || options.Amount < 0 || options.Amount > 1 || !isFinite(options.ProtectBelowHz) || (options.ProtectBelowHz != 0 && options.ProtectBelowHz != 120) {
-		return nil, errors.New("amount must be 0..1 and protectBelowHz must be 0 or 120")
+	if err := ValidateReferenceOptions(options); err != nil {
+		return nil, err
 	}
 	if err := dsp.ValidateParams(baseline); err != nil {
 		return nil, err
@@ -339,21 +339,20 @@ func protectRenderedReferenceBass(ctx context.Context, source *audio.Buffer, res
 	return result.Baseline, 0, nil
 }
 
-func renderedReferenceBassPower(ctx context.Context, source *audio.Buffer, params dsp.Params, edges [6]float64) (float64, error) {
-	rendered := *source
-	rendered.Left, rendered.Right = make([]float32, len(source.Left)), make([]float32, len(source.Right))
-	engine := dsp.NewEngine(float64(source.SampleRate))
-	engine.SetParams(params)
-	for start := 0; start < len(source.Left); start += 4096 {
-		if err := ctx.Err(); err != nil {
-			return 0, err
-		}
-		end := min(start+4096, len(source.Left))
-		engine.ProcessBlock(source.Left[start:end], source.Right[start:end], rendered.Left[start:end], rendered.Right[start:end])
+// ValidateReferenceOptions accepts only the current bounded EQ-only contract.
+func ValidateReferenceOptions(options ReferenceOptions) error {
+	if !isFinite(options.Amount) || options.Amount < 0 || options.Amount > 1 || !isFinite(options.ProtectBelowHz) || (options.ProtectBelowHz != 0 && options.ProtectBelowHz != 120) {
+		return errors.New("amount must be 0..1 and protectBelowHz must be 0 or 120")
 	}
-	if err := validateStereoBuffer(ctx, &rendered); err != nil {
-		return 0, err
+	return nil
+}
+
+// Clone returns an independent editable snapshot; all parameter and band arrays are values.
+func (proposal *ReferenceProposal) Clone() *ReferenceProposal {
+	if proposal == nil {
+		return nil
 	}
-	powers, err := referenceSpectrum(ctx, &rendered, edges)
-	return powers[0], err
+	copyProposal := *proposal
+	copyProposal.Warnings = append([]string{}, proposal.Warnings...)
+	return &copyProposal
 }

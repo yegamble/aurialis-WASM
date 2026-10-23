@@ -164,7 +164,11 @@ export class AlbumBatch {
   private async verifiedSource(track: Track, signal: AbortSignal, check: () => void): Promise<Blob> {
     const blob = await getAudio(audioKey(track)); check();
     if (!blob) { this.dispose(); throw new Error(`The source for “${track.title}” is missing. Restore it in Library.`); }
-    try { await verifyCanonicalSource(blob, identity(track), signal); }
+    const expected = identity(track);
+    if (blob.size !== 44 + expected.frames * 8) {
+      this.dispose(); throw new Error(`The stored source for “${track.title}” has an unexpected length. Restore the matching source in Library.`);
+    }
+    try { await verifyCanonicalSource(blob, expected, signal); }
     catch (cause) { if (!signal.aborted) this.dispose(); throw cause; }
     check(); return blob;
   }

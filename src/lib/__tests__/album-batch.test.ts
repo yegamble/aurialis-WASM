@@ -183,6 +183,14 @@ describe("album batch ownership and final encoded measurement", () => {
     paths.set(tracks[0]?.id ?? "", previewWAV({ sampleRate: rate, left: new Float32Array(frames), right: new Float32Array(frames) }));
     await expect(second.run(() => true, () => undefined)).rejects.toThrow(/PCM differs/u); expect(second.getFiles()).toHaveLength(0); expect(second.getReport()).toBeNull();
   });
+  it("rejects an unexpectedly sized stored source before allocating its hash buffer", async () => {
+    const { album, tracks } = await fixture(), source = new Blob([new Uint8Array(44 + frames * 8 + 8)]), owners = memory();
+    const read = vi.spyOn(source, "arrayBuffer"); paths.set(tracks[0]?.id ?? "", source);
+    const batch = new AlbumBatch(album, tracks, owners.reserve);
+    await expect(batch.run(() => true, () => undefined)).rejects.toThrow(/unexpected length/u);
+    expect(read).not.toHaveBeenCalled(); expect(measureAudio).not.toHaveBeenCalled(); expect(serverRender).not.toHaveBeenCalled();
+    expect(owners.total()).toBe(0); expect(batch.canResume()).toBe(false); expect(batch.getFiles()).toHaveLength(0);
+  });
   it("discards every completed output if any source changes between cohort planning and its render", async () => {
     const { album, tracks } = await fixture(), owners = memory(), batch = new AlbumBatch(album, tracks, owners.reserve);
     await expect(batch.run(() => true, (value) => {

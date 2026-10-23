@@ -29,7 +29,7 @@ export async function observeRenderOutput(page: Page) {
   });
 }
 
-export async function renderOutputLevel(page: Page) {
+async function renderOutputLevel(page: Page) {
   return page.evaluate(() => {
     const probe = (window as ProbeWindow).qaRenderOutput, last = probe?.packets.at(-1);
     return probe && last ? { ...last, sampleRate: probe.sampleRate } : null;

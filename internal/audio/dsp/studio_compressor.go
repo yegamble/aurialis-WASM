@@ -17,6 +17,8 @@ type studioCompressor struct {
 	opticalCoeffs                     studioOpticalCoeffs
 	variableMu                        studioMuState
 	variableMuCoeffs                  studioMuCoeffs
+	vca                               studioVCAState
+	vcaCoeffs                         studioVCACoeffs
 	gainDB, reductionDB               float64
 	transitionFromDB                  float64
 	transitionFromReductionDB         float64
@@ -38,8 +40,8 @@ func prepareStudioCompressor(rate float64, params CompressorParams) (studioCompr
 		if params.KneeDB < 6 {
 			return studioCompressor{}, errors.New("studio optical knee must be at least 6 dB")
 		}
-	case CompVariableMu:
-	case CompFET, CompVCA:
+	case CompVariableMu, CompVCA:
+	case CompFET:
 		return studioCompressor{}, errors.New("studio compressor topology is not implemented")
 	default:
 		return studioCompressor{}, errors.New("unsupported studio compressor topology")
@@ -47,6 +49,7 @@ func prepareStudioCompressor(rate float64, params CompressorParams) (studioCompr
 	c := studioCompressor{sampleRate: rate, params: params, sidechain: computeButterworthSVF(rate, params.SidechainHPFHz)}
 	c.opticalCoeffs = prepareStudioOptical(rate, params)
 	c.variableMuCoeffs = prepareStudioMu(rate, params)
+	c.vcaCoeffs = prepareStudioVCA(rate, params)
 	c.resetHistory()
 	return c, nil
 }
@@ -64,6 +67,7 @@ func (c *studioCompressor) setParams(params CompressorParams) error {
 	if params.Enabled && c.params.Enabled && params.Ratio > 1 && c.params.Ratio > 1 && params.Topology == c.params.Topology {
 		next.optical = c.optical
 		next.variableMu = c.variableMu
+		next.vca = c.vca
 		if params.SidechainHPFHz == c.params.SidechainHPFHz {
 			next.sidechainState = c.sidechainState
 		}
@@ -80,6 +84,7 @@ func (c *studioCompressor) resetHistory() {
 	c.sidechainState = [2][2]svfState{}
 	c.optical = studioOpticalState{}
 	c.variableMu = studioMuState{}
+	c.vca = studioVCAState{}
 	c.reductionDB = 0
 	c.gainDB = 0
 	if c.params.Enabled {
@@ -127,7 +132,9 @@ func (c *studioCompressor) process(left, right float64) (float64, float64) {
 			gr = c.optical.process(scLeft, scRight, c.params, c.opticalCoeffs)
 		case CompVariableMu:
 			gr = c.variableMu.process(scLeft, scRight, c.params, c.variableMuCoeffs)
-		case CompFET, CompVCA:
+		case CompVCA:
+			gr = c.vca.process(scLeft, scRight, c.params, c.vcaCoeffs)
+		case CompFET:
 			// Preparation rejects these until their distinct algorithms land.
 		}
 		if c.params.Ratio == 1 {

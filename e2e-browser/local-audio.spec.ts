@@ -1,3 +1,5 @@
+/* Test-owned Playwright download/artifact paths never come from audio filenames. */
+/* eslint-disable security/detect-non-literal-fs-filename */
 import { expect, test } from "@playwright/test";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";

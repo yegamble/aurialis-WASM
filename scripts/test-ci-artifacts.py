@@ -64,6 +64,15 @@ class ArtifactBoundaryTests(unittest.TestCase):
             artifacts.restore(self.root, self.bundle)
         self.assertFalse((self.root / artifacts.RECEIPT).exists())
 
+    def test_symbolic_receipt_is_rejected_before_reading_it(self):
+        artifacts.restore(self.root, self.bundle)
+        receipt = self.root / artifacts.RECEIPT
+        saved = self.bundle / "saved-receipt.json"
+        receipt.replace(saved)
+        receipt.symlink_to(saved)
+        with self.assertRaises(ValueError):
+            artifacts.verify(self.root)
+
     def test_archive_and_manifest_tampering_rejected_before_restore(self):
         for name in ("runtime.tar", "manifest.json"):
             path = self.bundle / name

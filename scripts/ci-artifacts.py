@@ -102,7 +102,7 @@ def checked_file(root, name):
 
 
 def verify(root, binary=None):
-    manifest = checked_manifest(load_json(root / RECEIPT), provenance(root))
+    manifest = checked_manifest(load_json(checked_file(root, RECEIPT)), provenance(root))
     if binary is not None and Path(binary).absolute() not in (root / "aurialis", root / "artifacts/ci-runtime/aurialis-e2e"):
         raise ValueError("Prebuilt executable must be a verified CI runtime member")
     for name, entry in manifest["files"].items():

@@ -348,12 +348,19 @@ export function reduceStoreState(
         ...state,
         tracks: updateTrackInList(state.tracks, action.trackId, (track) => {
           const advanced = { ...track.advanced };
-          if (action.type === "UPDATE_DE_HARSH") advanced.deHarsh = { ...advanced.deHarsh, ...action.patch };
-          else if (action.type === "UPDATE_MULTIBAND") advanced.multiband = { ...advanced.multiband, ...action.patch };
+          // Canonical script baselines can retain fully zero disabled modules.
+          // The first explicit module edit chooses usable control defaults.
+          const defaults = createDefaultAdvancedParams();
+          const deHarsh = advanced.deHarsh;
+          const deHarshBase = !deHarsh.enabled && deHarsh.frequencyHz === 0 && deHarsh.thresholdDb === 0 && deHarsh.rangeDb === 0 ? defaults.deHarsh : deHarsh;
+          const multiband = advanced.multiband;
+          const multibandBase = !multiband.enabled && multiband.lowMidHz === 0 && multiband.midHighHz === 0 && multiband.bands.every((band) => Object.values(band).every((value) => value === 0)) ? defaults.multiband : multiband;
+          if (action.type === "UPDATE_DE_HARSH") advanced.deHarsh = { ...deHarshBase, ...action.patch };
+          else if (action.type === "UPDATE_MULTIBAND") advanced.multiband = { ...multibandBase, ...action.patch };
           else {
-            const bands: MultibandParams["bands"] = [...advanced.multiband.bands];
+            const bands: MultibandParams["bands"] = [...multibandBase.bands];
             bands[action.index] = { ...bands[action.index], ...action.patch };
-            advanced.multiband = { ...advanced.multiband, bands };
+            advanced.multiband = { ...multibandBase, bands };
           }
           return { ...track, advanced: clampAdvancedToSampleRate(advanced, track.sampleRate), simpleCustom: true, updatedAt: new Date().toISOString() };
         }),

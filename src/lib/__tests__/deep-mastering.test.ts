@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createDefaultAdvancedParams } from "../audio-dsp";
+import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "../audio-dsp";
 import { engineParams } from "../browser-engine";
 import { analyzeDeep, appliedRevisionKey, automationTargets, compileScript, readDeepMasteringState, readScriptV2, type DeepMasteringState, type ScriptV2, type TargetMetadata } from "../deep-mastering";
 import { normalizeHydratedState, reduceStoreState } from "../store";
@@ -16,6 +16,23 @@ const queued = { jobId: "deep-job-1", kind: "analyze_deep_v2", status: "queued",
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("source-bound Deep DTO and jobs", () => {
+  it("initializes disabled zero modules only on their first explicit Advanced edit", () => {
+    const original = testStore.tracks[0]; if (!original) throw new Error("Missing source");
+    const advanced = createDefaultAdvancedParams();
+    advanced.deHarsh = { enabled: false, frequencyHz: 0, thresholdDb: 0, rangeDb: 0 };
+    advanced.multiband = { enabled: false, lowMidHz: 0, midHighHz: 0, bands: advanced.multiband.bands.map(() => ({ thresholdDb: 0, ratio: 0, attackMs: 0, releaseMs: 0, makeupDb: 0 })) as typeof advanced.multiband.bands };
+    const initial = { ...testStore, tracks: [{ ...original, sampleRate: 8000, advanced }] };
+    const enabled = reduceStoreState(initial, { type: "UPDATE_MULTIBAND", trackId: original.id, patch: { enabled: true } }).tracks[0];
+    const defaults = clampAdvancedToSampleRate(createDefaultAdvancedParams(), 8000);
+    expect(enabled?.advanced.multiband).toEqual({ ...defaults.multiband, enabled: true });
+    expect(enabled?.advanced.deHarsh).toEqual(advanced.deHarsh);
+    const edited = reduceStoreState(initial, { type: "UPDATE_DE_HARSH", trackId: original.id, patch: { rangeDb: 5 } }).tracks[0];
+    expect(edited?.advanced.deHarsh).toEqual({ ...defaults.deHarsh, rangeDb: 5 });
+    expect(edited?.advanced.multiband).toEqual(advanced.multiband);
+    const band = reduceStoreState(initial, { type: "UPDATE_MULTIBAND_BAND", trackId: original.id, index: 1, patch: { thresholdDb: -30 } }).tracks[0];
+    expect(band?.advanced.multiband.bands[1]).toEqual({ ...defaults.multiband.bands[1], thresholdDb: -30 });
+    expect(initial.tracks[0]?.advanced).toBe(advanced);
+  });
   it("retains the explicit baseline and authored additive moves without evaluating them", () => {
     const authored = script(); const decoded = readScriptV2(authored, identity);
     expect(decoded).toEqual(authored); expect(decoded.moves[0]?.operation).toBe("add"); expect(decoded.chainParams.inputGainDb).toBe(0);

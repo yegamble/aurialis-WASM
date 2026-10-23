@@ -99,11 +99,22 @@ func (processor *Processor) Configure(engine *dsp.Engine, baseline dsp.Params, s
 // ConfigureAt publishes a baseline and compatible exact source clock together.
 // Invalid input leaves engine and destination processor untouched.
 func (processor *Processor) ConfigureAt(engine *dsp.Engine, baseline dsp.Params, schedule *automation.Schedule, previous *Processor) bool {
+	var clock *automation.Cursor
+	if previous != nil {
+		clock = &previous.cursor
+	}
+	return processor.ConfigureAtClock(engine, baseline, schedule, clock)
+}
+
+// ConfigureAtClock installs an explicit baseline and compatible bound source phase together.
+// The clock may have advanced during static playback without any schedule. Validation
+// finishes before changing either engine history or the inactive processor.
+func (processor *Processor) ConfigureAtClock(engine *dsp.Engine, baseline dsp.Params, schedule *automation.Schedule, clock *automation.Cursor) bool {
 	if engine == nil || schedule == nil || dsp.ValidateParams(baseline) != nil || ValuesOf(baseline) != schedule.Baseline() || engine.SampleRate() != float64(schedule.DeviceRate()) {
 		return false
 	}
 	cursor := *automation.NewCursor(schedule)
-	if previous != nil && !cursor.CopyPosition(&previous.cursor) {
+	if clock != nil && !cursor.CopyPosition(clock) {
 		return false
 	}
 	processor.engine, processor.schedule, processor.cursor = engine, schedule, cursor
@@ -113,6 +124,11 @@ func (processor *Processor) ConfigureAt(engine *dsp.Engine, baseline dsp.Params,
 	}
 	engine.SetParams(baseline)
 	return true
+}
+
+// CopyPositionTo copies exact fractional phase into a compatible bound source clock.
+func (processor *Processor) CopyPositionTo(clock *automation.Cursor) bool {
+	return clock.CopyPosition(&processor.cursor)
 }
 
 // SetLooping aligns envelopes with a looping source without resetting DSP history.

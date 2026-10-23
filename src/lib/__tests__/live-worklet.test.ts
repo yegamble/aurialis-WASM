@@ -18,7 +18,8 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
   let Constructor: (new (options: unknown) => Processor) | undefined;
   const header = new Int32Array(new SharedArrayBuffer(8 * 4));
   const tags = new Int32Array(new SharedArrayBuffer(256 * 5 * 4));
-  const epoch = new SharedArrayBuffer(16); const epochHeader = new Int32Array(epoch, 0, 2); const epochTime = new Float64Array(epoch, 8, 1);
+  const epoch = new SharedArrayBuffer(24); const epochHeader = new Int32Array(epoch, 0, 2); const epochTime = new Float64Array(epoch, 8, 2);
+  epochTime[1] = Infinity;
   const samples = new Float32Array(new SharedArrayBuffer(128 * 256 * 4 * 4));
   const controlHeader = new Int32Array(new SharedArrayBuffer(16 + (abiVersion === 1 ? 81 : 82) * 8), 0, 4);
   const values = new Float64Array(controlHeader.buffer, 16, abiVersion === 1 ? 81 : 82);
@@ -88,16 +89,40 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
 const silent = (output: Float32Array[]) => output.every(channel => channel.every(sample => sample === 0));
 
 describe("direct Go worklet lifecycle", () => {
-  it.each(["revision", "loop"] as const)("fails closed when %s verification fails after commit", (failure) => {
+  it.each([false, true])("binds the actual epoch looping=%s once, preserving it across schedule commits", (looping) => {
+    const f = workletFixture(false, 2);
+    f.message({ type: "bind-source", token: 1, source: new Float64Array([1, 8001, 129, 1, 2, 3, 4, 5, 6, 7, 8]) });
+    expect(f.kernel.aurialis_schedule_set_looping).not.toHaveBeenCalled();
+    f.message({ type: "arm", generation: 1, sourceFrame: 0, looping });
+    expect(f.kernel.aurialis_schedule_set_looping).toHaveBeenCalledExactlyOnceWith(Number(looping));
+    const gate = new SharedArrayBuffer(4); new Int32Array(gate)[0] = 1;
+    f.message({ type: "schedule", token: 2, revision: 7, moveCount: 0, moves: new Float64Array(0), controls: new Float64Array(82), gate, deviceRate: 48000, version: 2 });
+    f.render(); f.message({ type: "schedule-commit", token: 2 }); f.render();
+    expect(f.kernel.aurialis_schedule_commit).toHaveBeenCalledOnce();
+    expect(f.kernel.aurialis_schedule_set_looping).toHaveBeenCalledOnce();
+  });
+  it("uses an atomic shared audible deadline and accepts deadline updates after the epoch starts", () => {
+    const f = workletFixture(false, 2, null, true);
+    f.message({ type: "arm", generation: 1, sourceFrame: 0, looping: false });
+    f.epochTime[0] = 0; f.epochTime[1] = 128 + 37; f.epochHeader[1] = 1; f.epochHeader[0] = 2;
+    expect(silent(f.render())).toBe(true); const finite = f.render()[0];
+    expect(finite?.slice(0, 37).every(value => value === .5)).toBe(true); expect(finite?.slice(37).every(value => value === 0)).toBe(true);
+    f.epochTime[1] = Infinity; f.epochHeader[0] = 4;
+    expect(f.render()[0]?.every(value => value === .5)).toBe(true); expect(f.processor.failed).toBe(false);
+    f.epochTime[1] = 3 * 128 + 19; f.epochHeader[0] = 6;
+    const stopped = f.render()[0]; expect(stopped?.slice(0, 19).every(value => value === .5)).toBe(true); expect(stopped?.slice(19).every(value => value === 0)).toBe(true);
+  });
+
+  it.each(["revision", "commit"] as const)("fails closed when %s verification fails after commit", (failure) => {
     const f = workletFixture(false, 2);
     f.message({ type: "bind-source", token: 1, source: new Float64Array([1, 48000, 48000, 1, 2, 3, 4, 5, 6, 7, 8]) });
-    f.message({ type: "reset", generation: 1, startTime: 0, sourceFrame: 0 });
+    f.message({ type: "reset", generation: 1, startTime: 0, sourceFrame: 0, looping: true });
     const controls = new Float64Array(82); controls[3] = 3; controls[81] = 1;
     const gate = new SharedArrayBuffer(4); new Int32Array(gate)[0] = 1;
     f.message({ type: "schedule", token: 2, revision: 7, moveCount: 0, moves: new Float64Array(0), controls, gate, deviceRate: 48000, version: 2 });
     f.render();
     if (failure === "revision") f.kernel.aurialis_schedule_revision.mockReturnValueOnce(99);
-    else f.kernel.aurialis_schedule_set_looping.mockReturnValueOnce(0);
+    else f.kernel.aurialis_schedule_commit.mockReturnValueOnce(0);
     f.message({ type: "schedule-commit", token: 2 }); expect(silent(f.render())).toBe(true);
     expect(f.kernel.aurialis_schedule_commit).toHaveBeenCalledOnce();
     expect(f.processor.failed).toBe(true);
@@ -107,7 +132,7 @@ describe("direct Go worklet lifecycle", () => {
   it("paces one move per quantum and preserves the old chain until main-thread commit approval", () => {
     const f = workletFixture(false, 2);
     f.message({ type: "bind-source", token: 1, source: new Float64Array([1, 48000, 48000, 1, 2, 3, 4, 5, 6, 7, 8]) });
-    f.message({ type: "reset", generation: 1, startTime: 0, sourceFrame: 0 });
+    f.message({ type: "reset", generation: 1, startTime: 0, sourceFrame: 0, looping: true });
     const controls = new Float64Array(82); controls[3] = 3; controls[81] = 1;
     const gate = new SharedArrayBuffer(4); new Int32Array(gate)[0] = 1;
     const moves = new Float64Array(3 * 516);

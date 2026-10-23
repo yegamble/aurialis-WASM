@@ -3,6 +3,7 @@ set -euo pipefail
 
 # Run from any directory; all release assets are rebuilt from this checkout.
 cd "$(dirname "$0")/.."
+node scripts/sync-licenses.mjs
 mkdir -p public/wasm
 GOOS=js GOARCH=wasm go build -trimpath -o public/wasm/aurialis-dsp.wasm ./wasm/dsp
 GOOS=wasip1 GOARCH=wasm go build -buildmode=c-shared -trimpath -o public/wasm/aurialis-realtime.wasm ./wasm/dsp

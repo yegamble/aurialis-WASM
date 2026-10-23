@@ -210,6 +210,7 @@ func TestWriteAutomationParityFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// #nosec G703 -- Test-only artifact path supplied by the local parity harness, never an upload or HTTP request.
 	if err := os.WriteFile(path, data, 0600); err != nil {
 		t.Fatal(err)
 	}

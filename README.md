@@ -1,14 +1,31 @@
-<p align="center"><img src="public/favicon.svg" width="48" height="48" alt="Aurialis record mark"></p>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/aurialis-logo-dark.svg">
+    <img src="docs/assets/aurialis-logo.svg" width="480" alt="Aurialis">
+  </picture>
+</h1>
 
-# Aurialis-WASM
+<p align="center">
+  <a href="https://github.com/yegamble/aurialis-WASM/actions/workflows/ci.yml"><img src="https://github.com/yegamble/aurialis-WASM/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI status on main"></a>
+  <a href="go.mod"><img src="https://img.shields.io/badge/Go-1.26.10-00ADD8?logo=go&amp;logoColor=white" alt="Go 1.26.10"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&amp;logoColor=white" alt="Next.js 16"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/React-19-149ECA?logo=react&amp;logoColor=white" alt="React 19"></a>
+  <a href="docs/architecture.md#browser-audio-paths"><img src="https://img.shields.io/badge/WebAssembly-654FF0?logo=webassembly&amp;logoColor=white" alt="WebAssembly audio processing"></a>
+  <a href="package.json"><img src="https://img.shields.io/badge/pnpm-10.33.0-F69220?logo=pnpm&amp;logoColor=white" alt="pnpm 10.33.0"></a>
+</p>
 
-**Bring a mix. Shape its sound. Keep it local.**
+<p align="center"><strong>Bring a mix. Shape its sound. Keep it local.</strong></p>
 
 Aurialis is an audio mastering workstation that runs on your computer and opens in your browser. Start with a WAV file, adjust its tone, dynamics and stereo image, listen against the original, then export a new WAV. Mastering is the final shaping of a finished mix before you share it.
 
-[Get started](#run-the-studio) · [Your first master](docs/getting-started.md) · [Documentation](docs/README.md) · [Developer guide](docs/development.md)
+<p align="center">
+  <a href="#run-the-studio">Get started</a> ·
+  <a href="docs/getting-started.md">Your first master</a> ·
+  <a href="docs/README.md">Documentation</a> ·
+  <a href="docs/development.md">Developer guide</a>
+</p>
 
-> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. AI repair, validated instrument separation and certified hardware/true-peak behavior remain open work. The Deep integration is locally verified and awaiting exact final CI and merge. See [current limits](#know-the-current-limits).
+> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. AI repair, validated instrument separation and certified hardware/true-peak behavior remain open work. See [current limits](#know-the-current-limits).
 
 ## A small studio, one clear path
 

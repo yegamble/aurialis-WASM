@@ -7,6 +7,7 @@
     "out/**",
     "test-results/**",
     "playwright-report/**",
+    "artifacts/**",
     "internal/webui/embedded/**",
     "internal/webui/dist/**",
     "public/wasm/**",

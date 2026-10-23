@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdvancedParams } from "../audio-dsp";
 import { engineParams } from "../browser-engine";
-import { analyzeDeep, automationTargets, compileScript, readDeepMasteringState, readScriptV2, type DeepMasteringState, type ScriptV2, type TargetMetadata } from "../deep-mastering";
+import { analyzeDeep, appliedRevisionKey, automationTargets, compileScript, readDeepMasteringState, readScriptV2, type DeepMasteringState, type ScriptV2, type TargetMetadata } from "../deep-mastering";
 import { normalizeHydratedState, reduceStoreState } from "../store";
 import { testStore } from "./fixtures";
 
@@ -25,6 +25,15 @@ describe("source-bound Deep DTO and jobs", () => {
     const authored = script();
     for (const value of [undefined, { ...authored, extra: true }, { ...authored, revision: 0 }, { ...authored, profile: "indie_warmth" }, { ...authored, source: { ...identity, frames: 0 } }, { ...authored, sections: [{ ...authored.sections[0], roleHint: "chorus" }] }, { ...authored, moves: [{ ...authored.moves[0], target: "__proto__.gain" }] }, { ...authored, chainParams: { ...authored.chainParams, repair: { ...authored.chainParams.repair, enabled: true } } }, { ...authored, chainParams: { ...authored.chainParams, limiter: { ...authored.chainParams.limiter, enabled: true, truePeak: true } } }]) expect(() => readScriptV2(value)).toThrow("script");
     expect(authored.chainParams.repair.enabled).toBe(false);
+  });
+  it("keys accepted processing independently of draft size and pending static settings", () => {
+    const original = testStore.tracks[0]; if (!original) throw new Error("Missing source");
+    const track = { ...original, sourceIdentity: identity, sourceRevision: 0, deepMastering: { ...state(), applied: script() } };
+    const key = appliedRevisionKey(track);
+    expect(appliedRevisionKey({ ...track, advanced: { ...track.advanced, input: 4 }, deepMastering: { ...track.deepMastering, proposal: { ...script(), revision: 2, summary: "Edited draft" } } })).toBe(key);
+    expect(appliedRevisionKey({ ...track, sourceRevision: 1 })).not.toBe(key);
+    expect(appliedRevisionKey({ ...track, deepMastering: { ...track.deepMastering, applied: { ...script(), revision: 2 } } })).not.toBe(key);
+    expect(appliedRevisionKey(original)).toBeNull();
   });
   it("receives and deletes an admitted ScriptV2 job after cancellation", async () => {
     let accept: ((response: Response) => void) | undefined;

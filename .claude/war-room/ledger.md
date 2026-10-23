@@ -1,5 +1,5 @@
 # Aurialis-WASM War-Room Ledger
-<!-- cspell:words Embedder automator Turbopack -->
+<!-- cspell:words Embedder automator Turbopack yyosefgamble -->
 
 Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-room-loop` iterations. The Chair updates this file after every Round D ruling and every Round E verification pass. One row per item; never delete a row — move completed items to **Verified & Merged** with commit/PR and test evidence, or to **Declined** with the reason.
 
@@ -13,25 +13,41 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ## Delegated continuation — 2026-10-23
 
+### Authorized repository protection and deployment work
+
+| Item | Decision/current status |
+| --- | --- |
+| GitHub branch protection | explicitly authorized; open, inventory and verified applied configuration pending |
+| Replace existing Aurialis deployment with WASM repository on Workers | explicitly authorized; open, resource inventory/runtime architecture/verification/cutover pending |
+| Hostname | requested `aurialis.yyosefgamble.com`; spelling and DNS/account match unverified |
+
+The Chair is using GitHub API and Cloudflare inventory. Existing Aurialis/R2/Workers resources must be identified before replacement; no resource deletion or cutover is claimed. The deployed Go API/jobs/CDR/native-rendering path must be real and verified with browser WASM/static assets; a frontend-only Workers upload cannot close the full-workstation requirement. Architecture/runtime constraints remain unresolved.
+
 ### Simple styles and measured Elevated checkpoint
 
 | Item | Current status |
 | --- | --- |
 | Simple styles, Metal/Jazz, Depth/Presence | implemented and locally exercised; open pending complete integrated regression/CI/merge |
 | Elevated source-bound render review | implemented and locally exercised; upper-bound diagnostics, not normalization/certification |
-| Reference dependency | two-rate focused proof passed; full 73-case regression and exact corrected remote CI/merge pending |
+| Reference dependency | verified and merged, PR #9 / `f9ae077`; all six exact CI jobs green, 73 Linux browser cases |
 | Whole product, studio DSP, trained stems and Waves acceptance | open |
 
 Runtime `79ddeb6`/`db74b8b`/`555a740` and tests `f1861b8` add original creative priors with explicit metadata version 2. Fresh recipe composition preserves current Input trim and LUFS/ceiling; zero intensity removes direction shaping while retaining explicit gain/limiter, and Depth/Presence combine once in either order. Manual controls clear active badges while remembering the last style/modifiers. Hydration does not remap saved processing; API mappings remain unchanged. Elevated requires known actual canonical-Blob identity, verifies receipts before/after native candidate measurement and checks returned layout, then rejects sample/reconstructed peak above ceiling +0.02/+0.05 dB or loudness above target +0.5 LU. Full-record ownership, cancellation and errors prevent stale publication; explicit Input correction survives retry. Attached Deep requires Detach.
 
 Chair-observed static/build/binary smoke, 342/342 units in 29 files and configured 209-file spelling passed. Actual focused browser evidence is 9/9 in 1.7 minutes: seven independent live/native/export changes, hot-candidate rejection and explicit −18 dB retry/reload, plus six-width axe/44 px/keyboard. Independent writer reran 25 focused units and found no source must-fix. Retain the mistaken mock measurement-identity assumption and old test expectation of Input 6→0; final behavior preserves explicit gain. After rebase through Reference `e31114a`, the complete integrated run at `50fd265` failed 79/81 in 11.1 minutes: an actual 44.1 kHz Reference signal was compared with its 48 kHz export, and a Simple case expected explicit Input reset despite the approved preservation contract. Controlled two-rate captured-input/native Reference proof later matched both channels exactly and explains that integrated comparator error; the first Linux discrepancy remains unverified. The test’s obsolete Input 6→0 and later 4→0 assertions now preserve 6/4, but corrected execution is pending. The current 342-unit checkpoint remains historical; a fresh build, expanded 82-case integrated suite and exact remote CI are required. Status: **open — awaiting merge**. No Waves coefficients, learned song adaptation, target attainment, true-peak certification or whole-product completion is implied.
 
-### Measured Reference implementation and review checkpoint
+### Measured Reference verified merge
+
+PR #9 is verified and merged at `f9ae07753ccd76b3f45121f6782498d5854874e8`, from exact reviewed head `557442a`. All six jobs in [CI run 39939937259](https://github.com/yegamble/aurialis-WASM/actions/runs/39939937259) passed, including 73 Linux browser cases in 6.1 minutes (job `120370227089`, Chair-observed logs). Reviewed and merged tracked trees were identical; the primary checkout was fast-forwarded and both local/remote feature branches deleted. The earlier pending/failure checkpoints below remain history. Bounded implementation acceptance does not establish perceptual or Waves equivalence.
+
+Simple rebased onto that merge with an identical tree (`e0488ef`→`be67c04`, exit 0). Its expanded 82-case regression, exact CI and merge remain open. Branch protection/deployment are separately authorized open work; Deep/studio/stems and whole-product acceptance remain open.
+
+### Measured Reference implementation and review history
 
 | Item | Current status |
 | --- | --- |
-| MUB-3C measured Reference endpoint | locally verified; open — awaiting exact green CI and delegated merge |
-| Reference review, source binding, Apply/Revert | locally verified within the bounded static-chain scope; open — awaiting merge |
+| MUB-3C measured Reference endpoint | verified and merged, PR #9 / `f9ae077` |
+| Reference review, source binding, Apply/Revert | verified and merged within the bounded static-chain scope, PR #9 |
 | ScriptV2 foundation PR #8 | verified and merged at `d999f4e`; exact source `f29bc8c`, all six CI jobs green |
 | Whole product, studio DSP, trained stems and Waves acceptance | open |
 

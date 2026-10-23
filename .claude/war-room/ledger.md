@@ -19,7 +19,7 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 | --- | --- |
 | MUB-3C measured Reference endpoint | locally verified; open — awaiting exact green CI and delegated merge |
 | Reference review, source binding, Apply/Revert | locally verified within the bounded static-chain scope; open — awaiting merge |
-| ScriptV2 foundation PR #8 | locally verified at `f29bc8c`; exact remote CI/merge pending at this checkpoint |
+| ScriptV2 foundation PR #8 | verified and merged at `d999f4e`; exact source `f29bc8c`, all six CI jobs green |
 | Whole product, studio DSP, trained stems and Waves acceptance | open |
 
 Reference runtime `47b856e` and UI assertions `2f97b27` compare complete baseline-rendered source against raw reference audio, using normalized common-band spectra. The bounded EQ/opt-in-width proposal preserves unrelated chain fields and disabled stages, verifies actual output residual/protected bass, and falls back to the exact baseline. Full-output and contour-fit diagnostics remain separately labeled. Client canonical-Blob receipts, exact baseline/options/delta validation, complete-record Apply and one session baseline/Revert close the former saved-settings blend workflow. Attached Deep automation requires Detach.
@@ -28,7 +28,7 @@ Independent review retained and corrected the raw-source/zero-residual defect fo
 
 Final local evidence at source `2f97b27`: full frontend static/unit and configured 203-file spelling, rebuilt binary/smoke, all 333 frozen PCM and 45 automation fixtures, independent meters, Newman 34 requests/39 assertions plus raw probes, and the complete browser suite **72/72 in 3.8 minutes** passed. The earlier full Go quality/security/race checkpoint precedes the final erased-energy follow-up; changed mastering/jobs/server packages separately passed final race/lint. Three actual browser workflows passed in 13.2 seconds, including native/export equality, live RMS agreement and six-width accessibility. Independent writer review passed 11 client/receipt/panel units and hostile API/non-neutral/erased-energy tests; DSP passed six final high-Q/dense-frequency/settled-tone/energy/width/mono/correlation regressions with no remaining in-scope must-fix.
 
-Retain the initial isolated-worktree Newman missing-asset failure and symlinked-dependency Turbopack failure; rebuilt assets/local frozen installation corrected those setup conditions. Independent QA/Devil's Advocate/Technical Writer/Product review accepts the measured static-chain Reference implementation and synchronized documentation, conditional on exact green CI and delegated merge. PR #8 remains a separate pending foundation checkpoint. Status: **locally verified; open — awaiting merge**. Whole-product and Waves acceptance remain open.
+Retain the initial isolated-worktree Newman missing-asset failure and symlinked-dependency Turbopack failure; rebuilt assets/local frozen installation corrected those setup conditions. Independent QA/Devil's Advocate/Technical Writer/Product review accepts the measured static-chain Reference implementation and synchronized documentation, conditional on its own exact green CI and delegated merge. The PR #8 foundation is verified and merged as recorded below. Status: **locally verified; open — awaiting merge**. Whole-product and Waves acceptance remain open.
 
 The owner authorized merging PR #6 and continuing the whole-product loop with `merge=delegated` until all planned features and remaining Waves acceptance work are tested. This explicit continuation supersedes the default four-iteration stop. Verified branches may now merge after the existing QA, Devil’s Advocate, Technical Writer, Product Engineer and green-CI gates without another owner merge question.
 
@@ -64,14 +64,16 @@ Integrated TypeScript/lint/knip/spelling passed; 321 unit/component cases in 23 
 
 Independent QA/Devil's Advocate/Product/Writer review found no surviving in-scope source must-fix; 58 targeted units and native identity/import tests passed, all 65 local documentation links resolve, and a real 320 px footer scroll/focus/click probe passed. Library 3 dB fixture measured +2.9999999208 dB live / +3.0000000435 dB exported, held-scrub resumption and two closed contexts. These are bounded application observations, not acoustic equivalence or hard deadlines. Final exact documentation review and green remote CI are still required before delegated merge. Partial deletion and unswept orphan limitations remain explicit in tasks/architecture.
 
-### LIB-1 merged and MUB-3B foundation checkpoint
+### LIB-1 and MUB-3B foundation merged
 
 LIB-1 is verified and merged in PR #7 at `25d5653280585198df510215a58c3c07b92193ea`. All six jobs in [CI run 39906520601](https://github.com/yegamble/aurialis-WASM/actions/runs/39906520601) passed, including 70 Linux browser cases in 4.9 minutes. The primary checkout was fast-forwarded and the merged branch deleted. Earlier local/pending statuses above are historical.
+
+MUB-3B's bounded API/native/numeric-WASI foundation is verified and merged in PR #8 at `d999f4e7b430ed33cf315c388ac8b3531d434642`, from exact reviewed source `f29bc8cfbcf18d73b3785720ae4d88e798961cae`. All six jobs in [CI run 39926912858](https://github.com/yegamble/aurialis-WASM/actions/runs/39926912858) passed, including 70 Linux browser cases in 5.3 minutes. The primary checkout was fast-forwarded and the local feature branch deleted; remote branch deletion was underway at this checkpoint. Subsequent local/pending statements retain their earlier checkpoints.
 
 | Item | Current status |
 | --- | --- |
 | LIB-1 Library/source lifecycle | verified and merged, PR #7 / `25d5653` |
-| MUB-3B ScriptV2/common schedule foundation | locally verified on `codex/deep-schedule-foundation`; open — awaiting exact green remote CI and delegated merge |
+| MUB-3B ScriptV2/common schedule foundation | verified and merged, PR #8 / `d999f4e` |
 | Deep editor and actual browser schedule transport | open; not delivered by the kernel/API foundation |
 | Whole product and Waves acoustic acceptance | open |
 

@@ -29,7 +29,7 @@ Both WASM modules export `aurialis_control_count(abi)` (81 for 1, 82 for 2, zero
 
 Script schema `2.0`, schedule ABI `1` and sonic algorithm `1` are independent versions. These interfaces do not enable an editable Deep workflow or certify browser render deadlines.
 
-The bounded foundation passed local native/API/compiled-WASI verification and the complete existing-UI browser regression. Exact remote CI and delegated merge remain required; [tasks](tasks.md#pr-7-merged-scriptv2-foundation-locally-verified) records source checkpoints and retained failures.
+The bounded foundation passed local native/API/compiled-WASI verification and the complete existing-UI browser regression. PR #8 merged at `d999f4e` after all six jobs in [CI run 39926912858](https://github.com/yegamble/aurialis-WASM/actions/runs/39926912858) passed on exact source `f29bc8c`, including 70 Linux browser cases. [Tasks](tasks.md#pr-7-and-pr-8-merged-scriptv2-foundation-verified) records source checkpoints and retained failures.
 
 `POST /api/analyze/deep` and `/analyze/deep` accept multipart `file`, optional `profile` and `scriptVersion=2.0`. Omitting the version retains the legacy job. Version 2 returns a 202 job with `kind: "analyze_deep_v2"`; a successful snapshot contains `scriptV2`. Existing polling, DELETE, timeout, admission and source-upload limits apply. Failed admission-response delivery cancels the admitted job. The job reserves decoded input plus 32 MiB headroom; retained scripts are charged at 2 MiB and snapshots deep-copy editable arrays.
 

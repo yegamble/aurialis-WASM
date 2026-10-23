@@ -11,6 +11,12 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     super();
     const config = options.processorOptions;
     this.header = new Int32Array(config.header);
+    if (config.stream !== undefined) {
+      if (!(config.stream instanceof SharedArrayBuffer) || config.stream.byteLength !== 16) throw new Error("The source epoch buffer is invalid.");
+      this.streamHeader = new Int32Array(config.stream, 0, 2);
+      this.streamTime = new Float64Array(config.stream, 8, 1);
+      this.streamSequence = 0;
+    }
     this.tags = new Int32Array(config.tags);
     this.samples = new Float32Array(config.samples);
     this.delay = config.delayBlocks;
@@ -41,20 +47,21 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.port.onmessage = (event) => {
       try {
       const message = event.data;
-      if (message.type === "reset") {
+      if (message.type === "reset" || message.type === "arm") {
         if (message.generation !== Atomics.load(this.header, GENERATION)) return;
         if (message.startTime !== undefined && (!Number.isFinite(message.startTime) || message.startTime < 0 || currentTime > message.startTime + 0.5 / sampleRate)) throw new Error("The source start deadline was missed. Retry playback.");
-        if (this.active && this.generation === message.generation) return;
+        if (this.active && this.generation === message.generation && message.type !== "arm") return;
         if (this.generation !== message.generation || !this.active) this.resetKernel();
         this.generation = message.generation;
         this.sourceFrame = Number.isSafeInteger(message.sourceFrame) && message.sourceFrame >= 0 ? message.sourceFrame : 0;
         this.startTime = Number.isFinite(message.startTime) && message.startTime >= 0 ? message.startTime : 0;
         if (this.sourceBound && this.kernel.aurialis_schedule_seek(this.sourceFrame) !== 1) throw new Error("The automation clock could not seek.");
-        this.active = true;
+        this.active = message.type !== "arm";
         this.sequence = 0;
         this.endTime = Infinity;
         this.missing = 0;
         this.sum = this.peak = this.ll = this.rr = this.lr = this.frames = 0;
+        if (message.type === "arm") this.port.postMessage({ type: "stream-armed", generation: this.generation });
       } else if (message.type === "hold") {
         this.active = false;
       } else if (message.type === "bind-source") {
@@ -190,6 +197,16 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.controlVersion = version;
     return true;
   }
+  synchronizeStart() {
+    if (!this.streamHeader) return;
+    const sequence = Atomics.load(this.streamHeader, 0);
+    if (!sequence || sequence % 2 || sequence === this.streamSequence) return;
+    const generation = Atomics.load(this.streamHeader, 1), frame = this.streamTime[0];
+    if (sequence !== Atomics.load(this.streamHeader, 0)) return;
+    if (generation !== this.generation || generation !== Atomics.load(this.header, GENERATION)) return;
+    if (!Number.isSafeInteger(frame) || frame < 0 || currentTime * sampleRate > frame + 0.5) throw new Error("The source start deadline was missed. Retry playback.");
+    this.startTime = frame / sampleRate; this.streamSequence = sequence; this.active = true;
+  }
   advanceSchedule() {
     const detach = this.pendingDetach;
     if (detach && Atomics.load(detach.gate, 0) !== 1) this.pendingDetach = null;
@@ -263,7 +280,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       try { this.tryReady(); } catch (error) { this.fail(error); }
     }
     if (this.ready && !this.failed) {
-      try { this.advanceSchedule(); } catch (error) { this.fail(error); }
+      try { this.synchronizeStart(); this.advanceSchedule(); } catch (error) { this.fail(error); }
     }
     // Connecting a graph is not a playback deadline: the controller can still
     // be allocating/copying its source. Only its explicit reset starts a stream.

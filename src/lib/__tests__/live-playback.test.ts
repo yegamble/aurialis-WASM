@@ -5,7 +5,7 @@ import { createLivePlayback } from "../live-playback";
 const source = () => ({ sampleRate: 48000, left: new Float32Array(48000), right: new Float32Array(48000) });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
-function graphHarness(autoReady = true) {
+function graphHarness(autoReady = true, autoArm = true) {
   const contexts: Context[] = [];
   const nodes: Node[] = [];
   const worker = vi.fn();
@@ -14,12 +14,13 @@ function graphHarness(autoReady = true) {
   vi.spyOn(WebAssembly, "compile").mockResolvedValue(compiledModule);
   class Port {
     onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
-    postMessage = vi.fn();
+    postMessage = vi.fn((message: { type?: string; generation?: number }) => { if (message.type === "arm" && autoArm) queueMicrotask(() => { this.message({ type: "stream-armed", generation: message.generation }); }); });
     close = vi.fn();
     message(data: unknown) { this.onmessage?.(new MessageEvent("message", { data })); }
   }
   type ProcessorOptions = {
     controls: SharedArrayBuffer;
+    stream: SharedArrayBuffer;
     header: SharedArrayBuffer;
     module: WebAssembly.Module;
     entropy: Uint8Array;
@@ -75,6 +76,26 @@ describe("per-track live audio lifecycle", () => {
     expect(contexts).toHaveLength(0);
     expect(fetchModule).not.toHaveBeenCalled();
     expect(worker).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+  it("waits for a delayed arm ACK before creating a native source and publishes a fresh shared quantum epoch", async () => {
+    const { contexts, nodes } = graphHarness(true, false);
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams()); controller.seek(0.1234567);
+    const playing = controller.play();
+    await vi.waitFor(() => { expect(nodes[0]?.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "arm" })); });
+    const context = contexts[0], node = nodes[0]; if (!context || !node) throw new Error("Missing graph");
+    expect(context.createBufferSource).not.toHaveBeenCalled();
+    context.currentTime = 4 * 128 / context.sampleRate;
+    const arm = node.port.postMessage.mock.calls.find(([message]) => message.type === "arm")?.[0];
+    node.port.message({ type: "stream-armed", generation: arm?.generation });
+    await playing;
+    const created = context.createBufferSource.mock.results[0]?.value as ReturnType<typeof context.createBufferSource> | undefined;
+    const start = created?.start.mock.calls[0] as unknown as [number, number];
+    expect(start[0]).toBeGreaterThan(context.currentTime);
+    expect(start[0] * context.sampleRate / 128).toBeCloseTo(Math.round(start[0] * context.sampleRate / 128), 9);
+    expect(start[1]).toBe(Math.floor(0.1234567 * 48000) / 48000);
+    const epoch = new Float64Array(node.options.processorOptions.stream, 8, 1);
+    expect(epoch[0]).toBe(Math.round(start[0] * context.sampleRate));
     controller.dispose();
   });
   it("connects before readiness and disposes pending initialization without stale callbacks", async () => {

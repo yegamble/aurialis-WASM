@@ -1,0 +1,15 @@
+Inference implementation derives architecture and signal conventions from:
+- Lloyd Chan, stemyla, MIT, commit fa41c9fd18cbc0d26b31e4f7fdad7bafd0a4e96a
+  https://github.com/lloydmeta/stemyla
+- Roman Solovyev (ZFTurbo), Music-Source-Separation-Training, MIT
+  https://github.com/ZFTurbo/Music-Source-Separation-Training
+  Python oracle source pinned at 6fdad13686bb7e84d029ec66f9dbe76e65c93ebf
+
+Mega53 pretrained weight grant (MIT, including commercial bundling/conversion):
+https://github.com/ZFTurbo/Music-Source-Separation-Training/issues/245#issuecomment-5834608838
+
+Original checkpoint SHA256 c62820893bbf86d4e734f966bd142d9157cfc8bb8e79e9d8f9ea553f3ff3519f
+Exact five-head existing-F16 subset SHA256 2e551e9e50a0be1adf0d955492523f019eea913c79697c73b362aee086af8384
+Head mapping: vocal49, drums15, bass4, guitar20, piano33. Other is a residual; the overlapping53-head taxonomy is never summed.
+
+This package is private implementation work. It establishes no separation-quality claim or public capability. Model weights are not included here.

@@ -4,6 +4,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { decode } from "./audio-fixture";
 import { meanOutputLevel, observeOutput, outputLevel } from "./live-output";
+import { meanRenderOutput, observeRenderOutput } from "./render-output";
 import type { AdvancedParams } from "../src/lib/types";
 
 /** Independent physical-band tones; no application EQ is used to make the reference. */
@@ -38,8 +39,30 @@ async function settings(page: Page, id: string) {
   }, id);
 }
 
+/** Delay delivery after the real node connects, preserving actual WASI processing. */
+async function delayReady(page: Page) {
+  await page.addInitScript(() => {
+    const NativeNode = AudioWorkletNode;
+    window.AudioWorkletNode = class extends NativeNode {
+      constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
+        super(context, name, options);
+        if (name !== "aurialis-live") return;
+        const port = this.port;
+        let handler: ((event: MessageEvent<unknown>) => void) | null = null;
+        Object.defineProperty(port, "onmessage", { configurable: true, get: () => handler, set: (next: typeof handler) => { handler = next; } });
+        port.addEventListener("message", (event: MessageEvent<unknown>) => {
+          const data = event.data as { type?: string };
+          if (data.type === "ready") setTimeout(() => { handler?.call(port, event); }, 1500);
+          else handler?.call(port, event);
+        });
+        port.start();
+      }
+    };
+  });
+}
+
 test("measured Reference changes real live and downloaded PCM from one immutable baseline", async ({ page, request }, info) => {
-  test.setTimeout(120_000); await observeOutput(page);
+  test.setTimeout(120_000); await observeOutput(page); await observeRenderOutput(page); await delayReady(page);
   const { source, sourceId } = await setup(page), before = await settings(page, sourceId);
   const measured = page.waitForResponse(async (response) => {
     if (!response.url().includes("/api/jobs/") || response.request().method() !== "GET") return false;
@@ -72,9 +95,15 @@ test("measured Reference changes real live and downloaded PCM from one immutable
   await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");
   await page.getByRole("button", { name: "Repeat track", exact: true }).click(); await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect.poll(async () => (await outputLevel(page))?.frames ?? 0).toBeGreaterThan(48000);
-  const live = await meanOutputLevel(page);
+  const callbackLevel = await meanOutputLevel(page);
+  const live = await meanRenderOutput(page);
+  const callbackWindows = [callbackLevel, await meanOutputLevel(page), await meanOutputLevel(page)];
+  const callbackMedian = [...callbackWindows].sort((left, right) => left - right)[1];
   const expectedDb = 10 * Math.log10((expected.left.reduce((sum, sample) => sum + sample * sample, 0) + expected.right.reduce((sum, sample) => sum + sample * sample, 0)) / (expected.left.length * 2));
-  expect(Math.abs(live - expectedDb), "actual speaker-feed RMS must match the independently rendered proposal").toBeLessThan(.05);
+  await info.attach("reference-rms-window", { body: JSON.stringify({ live, callbackWindows, callbackMedian, expectedDb, output: await outputLevel(page) }), contentType: "application/json" });
+  expect(Math.abs(live - expectedDb), "timestamped worklet output energy must match the independently rendered proposal").toBeLessThan(.05);
+  expect(callbackMedian).toBeDefined();
+  expect(Math.abs((callbackMedian ?? Infinity) - expectedDb), "fixed three-window speaker-feed median must match native output").toBeLessThan(.05);
   await info.attach("measured-reference-output", { body: JSON.stringify({ before: before.eqBands, applied: applied.eqBands, liveDbfs: live, nativeDbfs: expectedDb, ...job.referenceProposal }, null, 2), contentType: "application/json" });
 });
 

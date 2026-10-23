@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+type studioAudibleGraphTestFactory func(testing.TB, float64, Params, int, bool) *studioGraph
+
 func mustStudioAudibleGraph(t testing.TB, rate float64, params Params, frames int, repeat bool) *studioGraph {
 	t.Helper()
 	g, err := prepareStudioAudibleGraph(rate, params, int64(frames), repeat)
@@ -24,8 +26,12 @@ func studioAudibleGraphActiveParams() Params {
 }
 
 func TestStudioAudibleGraphDelayIdentityAndActualWetImpulse(t *testing.T) {
+	testStudioAudibleGraphDelayIdentityAndActualWetImpulse(t, mustStudioAudibleGraph, 0)
+}
+
+func testStudioAudibleGraphDelayIdentityAndActualWetImpulse(t *testing.T, factory studioAudibleGraphTestFactory, extraDelay int) {
 	for rateIndex, rate := range []float64{8000, 44100, 48000, 96000, 192000} {
-		want := []int{1829, 1447, 1397, 1531, 1909}[rateIndex]
+		want := []int{1829, 1447, 1397, 1531, 1909}[rateIndex] + extraDelay
 		for mode := range 4 {
 			p := studioGraphNeutralParams()
 			if mode == 1 || mode == 2 {
@@ -46,7 +52,7 @@ func TestStudioAudibleGraphDelayIdentityAndActualWetImpulse(t *testing.T) {
 				left[1], left[2], left[3] = math.Float32frombits(1), math.Float32frombits(0x80000000), 1.5
 				left[count-1], right[count-1] = .875, -.625
 			}
-			g := mustStudioAudibleGraph(t, rate, p, count, false)
+			g := factory(t, rate, p, count, false)
 			if g.latency != want {
 				t.Fatalf("rate%g mode%d delay%d want%d", rate, mode, g.latency, want)
 			}
@@ -79,13 +85,17 @@ func TestStudioAudibleGraphDelayIdentityAndActualWetImpulse(t *testing.T) {
 }
 
 func TestStudioAudibleGraphEpochPartitionAndRepeat(t *testing.T) {
+	testStudioAudibleGraphEpochPartitionAndRepeat(t, mustStudioAudibleGraph)
+}
+
+func testStudioAudibleGraphEpochPartitionAndRepeat(t *testing.T, factory studioAudibleGraphTestFactory) {
 	for _, rate := range []float64{8000, 44100, 48000, 96000, 192000} {
 		p := studioAudibleGraphActiveParams()
 		p.DitherBits = 24
 		left, right := studioGraphSignal(513)
-		one := mustStudioAudibleGraph(t, rate, p, len(left), false)
+		one := factory(t, rate, p, len(left), false)
 		a, b := renderStudioGraph(t, one, left, right, 513)
-		many := mustStudioAudibleGraph(t, rate, p, len(left), false)
+		many := factory(t, rate, p, len(left), false)
 		c, d := renderStudioGraph(t, many, left, right, 127)
 		for i := range a {
 			if math.Float32bits(a[i]) != math.Float32bits(c[i]) || math.Float32bits(b[i]) != math.Float32bits(d[i]) {
@@ -96,15 +106,15 @@ func TestStudioAudibleGraphEpochPartitionAndRepeat(t *testing.T) {
 			t.Fatal(err)
 		}
 		a, b = renderStudioGraph(t, one, left[137:], right[137:], 129)
-		fresh := mustStudioAudibleGraph(t, rate, p, len(left)-137, false)
+		fresh := factory(t, rate, p, len(left)-137, false)
 		c, d = renderStudioGraph(t, fresh, left[137:], right[137:], 127)
 		for i := range a {
 			if math.Float32bits(a[i]) != math.Float32bits(c[i]) || math.Float32bits(b[i]) != math.Float32bits(d[i]) {
 				t.Fatalf("rate%g frame%d seek retained retired history", rate, i)
 			}
 		}
-		one = mustStudioAudibleGraph(t, rate, p, 129, true)
-		many = mustStudioAudibleGraph(t, rate, p, 129, true)
+		one = factory(t, rate, p, 129, true)
+		many = factory(t, rate, p, 129, true)
 		for block := range 40 {
 			a, b, c, d = make([]float32, 129), make([]float32, 129), make([]float32, 129), make([]float32, 129)
 			one.processBlock(left[:129], right[:129], a, b)
@@ -184,6 +194,10 @@ func BenchmarkStudioAudibleGraphAllActive(b *testing.B) {
 }
 
 func TestStudioAudibleGraphQuietPassbandAndNecessaryReduction(t *testing.T) {
+	testStudioAudibleGraphQuietPassbandAndNecessaryReduction(t, mustStudioAudibleGraph)
+}
+
+func testStudioAudibleGraphQuietPassbandAndNecessaryReduction(t *testing.T, factory studioAudibleGraphTestFactory) {
 	for _, rate := range []float64{8000, 44100, 48000, 96000, 192000} {
 		for _, truePeak := range []bool{false, true} {
 			p := studioGraphNeutralParams()
@@ -195,7 +209,7 @@ func TestStudioAudibleGraphQuietPassbandAndNecessaryReduction(t *testing.T) {
 				left[i] = float32(.01 * math.Sin(2*math.Pi*frequency*float64(i)/rate))
 				right[i] = left[i]
 			}
-			g := mustStudioAudibleGraph(t, rate, p, count, false)
+			g := factory(t, rate, p, count, false)
 			a, _ := renderStudioGraph(t, g, left, right, 129)
 			margin := g.audible.kernel.pairLatency + 64
 			before, after := 0.0, 0.0

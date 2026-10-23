@@ -21,7 +21,7 @@ func BenchmarkStudioAudibleGraphStageCosts(b *testing.B) {
 func benchmarkStudioGraphStageCosts(b *testing.B, audible bool) {
 	for _, rate := range []float64{48000, 192000} {
 		b.Run(fmt.Sprintf("rate%.0f", rate), func(b *testing.B) {
-			for _, name := range []string{"prefix", "compressor", "saturation", "stereo", "filters4x", "gain4x", "postDetector", "postDetectorRing", "postGuard", "quantize24"} {
+			for _, name := range []string{"prefix", "compressor", "saturation", "stereo", "filters4x", "gain4x", "postDetector", "postDetectorRing", "postGuard", "postPartitionedDetector", "postPartitionedGuard", "quantize24"} {
 				b.Run(name, func(b *testing.B) {
 					p := studioGraphActiveParams()
 					p.Compressor.MakeupDB, p.DitherBits = 12, 24
@@ -31,6 +31,10 @@ func benchmarkStudioGraphStageCosts(b *testing.B, audible bool) {
 						g = mustStudioAudibleGraph(b, rate, p, 128, true)
 					} else {
 						g = mustStudioGraph(b, rate, p, 128, true)
+					}
+					if name == "postPartitionedDetector" || name == "postPartitionedGuard" {
+						g.partitionedGuard = prepareStudioPartitionedPostGuardPath(&g.guard)
+						g.latency = g.preGuardLatency + g.guard.latency
 					}
 					left, right := studioGraphSignal(128)
 					for i := range left {
@@ -79,7 +83,13 @@ func benchmarkStudioGraphStageCosts(b *testing.B, audible bool) {
 						save("postDetector")
 						save("postDetectorRing")
 						save("postGuard")
-						l, r = g.guard.process(l, r)
+						save("postPartitionedDetector")
+						save("postPartitionedGuard")
+						if g.partitionedGuard == nil {
+							l, r = g.guard.process(l, r)
+						} else {
+							l, r = g.partitionedGuard.process(&g.guard, l, r)
+						}
 						save("quantize24")
 					}
 					process := func() {
@@ -110,6 +120,10 @@ func benchmarkStudioGraphStageCosts(b *testing.B, audible bool) {
 								_, l = ring.process(&g.guard.kernel, l, r)
 							case "postGuard":
 								l, r = g.guard.process(l, r)
+							case "postPartitionedDetector":
+								_, l = g.partitionedGuard.detector.process(g.partitionedGuard.kernel, l, r)
+							case "postPartitionedGuard":
+								l, r = g.partitionedGuard.process(&g.guard, l, r)
 							case "quantize24":
 								l, r = g.front.applyTPDFDither(l, 24), g.front.applyTPDFDither(r, 24)
 							}

@@ -29,6 +29,7 @@ type studioGraph struct {
 	gain                                                       studioLimiterGain4x
 	guard                                                      studioPostGuardLimiter
 	audible                                                    *studioAudibleLimiterPath
+	partitionedGuard                                           *studioPartitionedPostGuardPath
 	original                                                   [2][studioGraphDelayCapacity]float32
 	saturationDry                                              [2][128]float64
 	limiterDry                                                 [2][1024]float64
@@ -122,6 +123,9 @@ func (g *studioGraph) resetAt(sourceFrame int64) error {
 	g.stereo.resetHistory()
 	g.gain.resetHistory()
 	g.guard.resetHistory()
+	if g.partitionedGuard != nil {
+		g.partitionedGuard.resetHistory()
+	}
 	g.up, g.down = studioLimiterUpsampler{}, studioLimiterDownsampler{}
 	if g.audible != nil {
 		g.audible.resetHistory()
@@ -209,7 +213,11 @@ func (g *studioGraph) processFrame(left, right float32) (float32, float32) {
 	if coreSource < g.origin || (!g.repeat && coreSource >= g.frames) {
 		l, r = 0, 0
 	}
-	l, r = g.guard.process(l, r)
+	if g.partitionedGuard == nil {
+		l, r = g.guard.process(l, r)
+	} else {
+		l, r = g.partitionedGuard.process(&g.guard, l, r)
+	}
 	outputSource := source - int64(g.latency)
 	g.elapsed++
 	if outputSource < g.origin || (!g.repeat && outputSource >= g.frames) {

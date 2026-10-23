@@ -11,6 +11,10 @@ import (
 // passband. The old graph's exact-Nyquist and full-frequency failures remain intact.
 // The oracle still measures exactly N exported float32 samples with zero exterior.
 func TestStudioAudibleGraphFiniteNyquistFinalOutput(t *testing.T) {
+	testStudioAudibleGraphFiniteNyquistFinalOutput(t, mustStudioAudibleGraph)
+}
+
+func testStudioAudibleGraphFiniteNyquistFinalOutput(t *testing.T, factory studioAudibleGraphTestFactory) {
 	for _, count := range []int{2048, 8192} {
 		for _, bits := range []int{0, 16, 24} {
 			source := make([]float32, count)
@@ -22,7 +26,7 @@ func TestStudioAudibleGraphFiniteNyquistFinalOutput(t *testing.T) {
 			}
 			p := studioGraphNeutralParams()
 			p.Limiter.Enabled, p.Limiter.TruePeak, p.DitherBits = true, true, bits
-			g := mustStudioAudibleGraph(t, 48000, p, count, false)
+			g := factory(t, 48000, p, count, false)
 			a, _ := renderStudioGraph(t, g, source, source, 129)
 			final := make([]float64, count)
 			for i := range final {
@@ -44,6 +48,10 @@ func TestStudioAudibleGraphFiniteNyquistFinalOutput(t *testing.T) {
 }
 
 func TestStudioAudibleGraphFiniteOutputStressCorpus(t *testing.T) {
+	testStudioAudibleGraphFiniteOutputStressCorpus(t, mustStudioAudibleGraph)
+}
+
+func testStudioAudibleGraphFiniteOutputStressCorpus(t *testing.T, factory studioAudibleGraphTestFactory) {
 	worst := -1000.0
 	for _, rate := range []float64{8000, 44100, 48000, 96000, 192000} {
 		local := -1000.0
@@ -71,7 +79,7 @@ func TestStudioAudibleGraphFiniteOutputStressCorpus(t *testing.T) {
 			}
 			p := studioGraphNeutralParams()
 			p.Limiter.Enabled, p.Limiter.TruePeak = true, true
-			g := mustStudioAudibleGraph(t, rate, p, len(source), false)
+			g := factory(t, rate, p, len(source), false)
 			a, _ := renderStudioGraph(t, g, source, source, 129)
 			final := make([]float64, len(source))
 			for i := range final {

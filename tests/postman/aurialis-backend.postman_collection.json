@@ -965,6 +965,156 @@
         "header": [],
         "url": "{{baseUrl}}/api/jobs/{{deepV2JobId}}"
       }
+    },
+    {
+      "name": "TS-028 Admit Measured Reference Audio",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Measured Reference admission is bounded and identified', function () { pm.response.to.have.status(202); const body=pm.response.json(); pm.expect(body.kind).to.eql('analyze_reference'); pm.expect(body.jobId).to.be.a('string'); pm.collectionVariables.set('referenceJobId', body.jobId); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/analyze/reference",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "source",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "reference",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "options",
+              "type": "text",
+              "value": "{\"amount\":1,\"protectBelowHz\":120,\"includeWidth\":false}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "TS-029 Verify Actual Reference Identity and Proposal",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Same reconstructed PCM retains the complete baseline', function () { pm.response.to.have.status(200); const body=pm.response.json(); pm.expect(body.status).to.eql('done'); const result=body.referenceProposal; pm.expect(result.version).to.eql('1.0'); pm.expect(result.source.pcmHash).to.eql(result.reference.pcmHash); pm.expect(result.bands).to.have.lengthOf(5); pm.expect(result.params).to.deep.eql(result.baseline); pm.expect(result.width).to.eql(undefined); pm.expect(result.warnings.length).to.be.above(0); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/jobs/{{referenceJobId}}?wait=1"
+      }
+    },
+    {
+      "name": "TS-030 Release Retained Reference Result",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Cancel clears the retained Reference proposal', function () { pm.response.to.have.status(200); const body=pm.response.json(); pm.expect(body.status).to.eql('cancelled'); pm.expect(body.referenceProposal).to.eql(undefined); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": "{{baseUrl}}/api/jobs/{{referenceJobId}}"
+      }
+    },
+    {
+      "name": "TS-031 Reject Duplicate Reference Options",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Duplicate options are rejected', function () { pm.response.to.have.status(400); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/analyze/reference",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "source",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "reference",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "options",
+              "type": "text",
+              "value": "{\"amount\":1,\"amount\":0,\"protectBelowHz\":120}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "TS-032 Disarm Spoofed Reference Audio",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Spoofed Reference PDF is rejected before admission', function () { pm.response.to.have.status(400); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/analyze/reference",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "source",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "reference",
+              "type": "file",
+              "src": "{{spoofPdfPath}}"
+            }
+          ]
+        }
+      }
     }
   ]
 }

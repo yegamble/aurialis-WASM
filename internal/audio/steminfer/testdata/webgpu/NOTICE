@@ -1,0 +1,8 @@
+Private WebGPU fixture research derives the exact WGSL sources in upstream/ from:
+Lloyd Chan, stemyla, copyright 2026, MIT (full notice in LICENSE).
+https://github.com/lloydmeta/stemyla/tree/fa41c9fd18cbc0d26b31e4f7fdad7bafd0a4e96a/roformer-gpu
+
+source-manifest.json pins every copied source byte and the Rust generator hash.
+Unmodified upstream kernels include extra semantics; the initial fixture ABI only permits
+scalar s64 GEMM with flags=0, alpha=1, inner=1 and closed contiguous layouts.
+This development directory has no product import, model assets or public activation.

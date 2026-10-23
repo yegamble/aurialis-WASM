@@ -1,0 +1,77 @@
+{
+  "format": "aurialis-private-webgpu-sources-v1",
+  "publicActivation": false,
+  "repository": "https://github.com/lloydmeta/stemyla",
+  "commit": "fa41c9fd18cbc0d26b31e4f7fdad7bafd0a4e96a",
+  "license": {
+    "file": "LICENSE",
+    "sha256": "221443471233a7b165c76a707eb9cc76b58f0c52a55fd0f15a3ac746f1bec054"
+  },
+  "generator": {
+    "upstreamPath": "roformer-gpu/src/lib.rs",
+    "sha256": "dc75c244b0b3e606b199d5b903849a5ea833ebba90b2cf99cc1911ccc4c036c3"
+  },
+  "files": {
+    "upstream/attention_tiled.wgsl": {
+      "sha256": "d77374330e140a3cd042412d32da8003345af23836996df66c7a91edf1a75237",
+      "bytes": 3599,
+      "upstreamPath": "roformer-gpu/src/shaders/attention_tiled.wgsl"
+    },
+    "upstream/elementwise.wgsl": {
+      "sha256": "9ee04d5b7e1ee100c29798c14eb00ecb91a4a9cb75e997242d30855d826b9dbc",
+      "bytes": 2748,
+      "upstreamPath": "roformer-gpu/src/shaders/elementwise.wgsl"
+    },
+    "upstream/matmul.wgsl": {
+      "sha256": "a4f41fc6513f6141879ef0a7df1b8e689c32acb55cdbf654ec7019efbcc9657d",
+      "bytes": 4779,
+      "upstreamPath": "roformer-gpu/src/shaders/matmul.wgsl"
+    },
+    "upstream/matmul_interleaved.wgsl": {
+      "sha256": "f039ec2595f819021c610e7fbcb686401917243ddad9c24d5f11f4666e9b272e",
+      "bytes": 5578,
+      "upstreamPath": "roformer-gpu/src/shaders/matmul_interleaved.wgsl"
+    },
+    "upstream/matmul_vec4.wgsl": {
+      "sha256": "567474b1cfa8e6bf9a021c5738d6a90b46d4e1bc0118e8d92bf44324e5b33c52",
+      "bytes": 5012,
+      "upstreamPath": "roformer-gpu/src/shaders/matmul_vec4.wgsl"
+    },
+    "upstream/rmsnorm.wgsl": {
+      "sha256": "711424a915238f3cd97c7f4a6b7b1a10faa0d8fd949a26a545d7f5ccc05449ba",
+      "bytes": 907,
+      "upstreamPath": "roformer-gpu/src/shaders/rmsnorm.wgsl"
+    },
+    "upstream/softmax.wgsl": {
+      "sha256": "193b56307d95576de987a1c92c4874f648774ddce5fc3e559fb7c8e1c79a06be",
+      "bytes": 1325,
+      "upstreamPath": "roformer-gpu/src/shaders/softmax.wgsl"
+    }
+  },
+  "generatedModules": [
+    "i64",
+    "i128x64",
+    "s64",
+    "v64",
+    "attention",
+    "rmsnorm",
+    "softmax",
+    "elementwise"
+  ],
+  "entrypointCount": 11,
+  "initialFixtureABI": {
+    "kernel": "s64",
+    "entrypoint": "main",
+    "flags": 0,
+    "alpha": 1,
+    "inner": 1,
+    "aLayout": "[m,k] contiguous",
+    "bLayout": "[n,k] contiguous; transposed access",
+    "cLayout": "[m,n] contiguous"
+  },
+  "limits": [
+    "Seven exact source/template files produce eight Rust shader modules and eleven compute entrypoints; there are not seventeen standalone WGSL files.",
+    "Only s64 matrix multiplication is eligible for the initial private fixture bridge.",
+    "No bias, accumulation, activation, half arithmetic, normalization, attention, model loading or public capability is qualified."
+  ]
+}

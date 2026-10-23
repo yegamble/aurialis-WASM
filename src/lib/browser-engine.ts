@@ -215,7 +215,8 @@ export function processPreview(
     return { left, right, sampleRate: source.sampleRate };
   };
   const result = engineQueue.then(run, run);
-  engineQueue = result.catch(() => undefined);
+  // Serialize work without retaining the last completed song-length PCM.
+  engineQueue = result.then(() => undefined, () => undefined);
   return result;
 }
 export async function serverRender(

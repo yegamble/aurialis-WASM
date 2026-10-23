@@ -1,26 +1,15 @@
 import type { EncodedInspection } from "./release-policy";
-
-function label(view: DataView, offset: number): string {
-  return String.fromCharCode(view.getUint8(offset), view.getUint8(offset + 1), view.getUint8(offset + 2), view.getUint8(offset + 3));
-}
+import { assertEncodedWAVLayout, encodedWAVBytes, type EncodedLayout } from "./encoded-layout";
 
 /** Inspect the exact canonical encoder artifact, including integer quantization. */
 export async function inspectEncodedWAV(blob: Blob, bits: unknown, source: { sampleRate: number; frames: number }, signal: AbortSignal): Promise<{ sha256: string; encoding: EncodedInspection }> {
   signal.throwIfAborted();
   if (bits !== 16 && bits !== 24 && bits !== 32) throw new Error("Choose 16-bit, 24-bit or 32-bit output.");
-  const bytes = bits / 8, align = bytes * 2, expectedSize = 44 + source.frames * align;
-  if (!Number.isSafeInteger(source.frames) || source.frames < 1 || source.frames > 16_777_216
-    || !Number.isSafeInteger(source.sampleRate) || source.sampleRate < 8000 || source.sampleRate > 192000
-    || blob.size !== expectedSize) throw new Error("The encoded master has an unexpected source layout or length.");
+  const bytes = bits / 8, align = bytes * 2, layout: EncodedLayout = { ...source, bitDepth: bits }, expectedSize = encodedWAVBytes(layout);
+  if (blob.size !== expectedSize) throw new Error("The encoded master has an unexpected source layout or length.");
   const buffer = await blob.arrayBuffer();
-  signal.throwIfAborted();
+  signal.throwIfAborted(); assertEncodedWAVLayout(buffer, layout);
   const view = new DataView(buffer);
-  if (view.byteLength !== expectedSize || label(view, 0) !== "RIFF" || label(view, 8) !== "WAVE"
-    || label(view, 12) !== "fmt " || view.getUint32(16, true) !== 16 || view.getUint16(20, true) !== (bits === 32 ? 3 : 1)
-    || view.getUint16(22, true) !== 2 || view.getUint32(24, true) !== source.sampleRate
-    || view.getUint32(28, true) !== source.sampleRate * align || view.getUint16(32, true) !== align
-    || view.getUint16(34, true) !== bits || label(view, 36) !== "data" || view.getUint32(40, true) !== expectedSize - 44
-    || view.getUint32(4, true) !== expectedSize - 8) throw new Error("The encoded master is not the expected clean WAV artifact.");
   const sample = (offset: number): number => {
     if (bits === 32) return view.getFloat32(offset, true);
     if (bits === 16) return view.getInt16(offset, true) / 32768;

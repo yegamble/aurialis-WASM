@@ -225,6 +225,19 @@ The private storage foundation uses `aurialis-album-spool-v1` with separate boun
 
 The private build scripts compute a canonical versioned descriptor after both actual WASM modules and Go runtime are built, before Next. It hashes those bytes, effective production Go/TypeScript/worker contracts, configuration, locks and pinned toolchain facts, with the execution target. Generated outputs, absolute paths, clocks and Git revisions do not affect it. The compact identity is injected into Next; native production and QA binaries receive the same validated linker value after embedded-module comparison. This is a build-input digest, not a hash of the native executable. Missing development identity cannot qualify continuation. Qualified browser jobs hash the bounded actual offline-module response before instantiation and require an exact identity echo; they add no health or localhost probe. Complete rebuilt-target and durable-consumer qualification remain pending.
 
+The private owned binary seam reuses the same request parser, queue and worker execution. With encoded output size `E`, the unchanged active job estimate remains live while the transferred ArrayBuffer and immutable Blob copy coexist (`2*E`). Owned worker-event audio and `JobResult` audio/JSON references are explicitly cleared. A matching internal job owner is exchanged synchronously for resident `E` before execution settles or the next queued job can begin. The exchange reads device facts first, then validates the latest resident total plus `E` and the unchanged 64 MiB baseline; it cannot overwrite a later job owner. The caller adopts this same owner before another phase. This describes reachable ownership and admission, not immediate physical garbage collection or an RSS guarantee.
+
+```mermaid
+flowchart LR
+  A["Active job: transferred bytes E"] --> B["Active job: bytes E plus Blob E"]
+  B --> C["Clear event and result byte references"]
+  C --> D["Atomic matching-owner exchange"]
+  D --> E["Resident owner E and Blob"]
+  E --> F["Caller adopts the same owner"]
+```
+
+The native owned path admits `3*E` before fetch for one response chunk, the exact destination buffer and Blob copy. It checks Content-Length when present, rejects oversized/truncated bodies even without that header, and reuses the exact encoder-header validator. Reader acquisition, abort-listener setup and destination allocation share one protected cleanup scope. Even an allocation failure cancels the locked reader and awaits its actual settlement before releasing the reservation; an acquisition-time abort is checked before the first read. The reservation persists through actual reader/cancellation settlement and explicit temporary-reference release, then shrinks to the returned Blob’s size. Late cancellation disposes the output rather than losing its owner. The shared header validator also serves final encoded inspection; finite-sample scanning and SHA-256 remain unchanged. The owned path is not yet connected to Album, so no caller reservation or current cache limit is reduced.
+
 Direct imports claim the selected file before reconstruction and source plus two canonical copies before storage. Cancellation and unmount retain that owner through actual save/rollback settlement; failed staged cleanup reports an error without publishing a track.
 
 The album branch now uses merged browser-local baseline `85aa7cd`. Accepted-script measurement reuses the shared render JSON adapter; no transport or DSP implementation is duplicated. Complete album browser/audio acceptance remains open.

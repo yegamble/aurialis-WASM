@@ -1,3 +1,4 @@
+import { assertEncodedWAVLayout, encodedWAVBytes, type EncodedLayout } from "./encoded-layout";
 import { injectedProcessingIdentity } from "./processing-identity";
 
 const OFFLINE_ABI = "1.0";
@@ -36,19 +37,26 @@ function memoryBudget(): number {
 
 let reservedResidentBytes = 0;
 let activeJobBytes = 0;
+let activeJobOwner: symbol | null = null;
 
 /** Own the exact bytes retained outside a job, such as an album prefix or reviewed WAV. */
 export function reserveBrowserAudioMemory(initialBytes = 0): Readonly<{ update: (bytes: number) => void; dispose: () => void }> {
+  return residentAudioMemory(initialBytes);
+}
+function residentAudioMemory(initialBytes: number, replacing?: symbol): ReturnType<typeof reserveBrowserAudioMemory> {
   let held = 0;
   let disposed = false;
-  const update = (bytes: number) => {
+  const update = (bytes: number, jobOwner?: symbol) => {
+    const budget = memoryBudget(); // Read external device facts before taking the latest accounting snapshot.
     if (disposed) throw new Error("This audio memory reservation has been released.");
     if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error("Audio memory reservations require nonnegative safe byte counts.");
     const total = reservedResidentBytes - held + bytes;
     if (!Number.isSafeInteger(total) || total < 0) throw new Error("Audio memory reservations exceed the safe byte limit.");
-    if (total + Math.max(64 * MIB, activeJobBytes) > memoryBudget()) throw new Error("Retained audio exceeds the browser's conservative memory budget. " + LOCAL_FALLBACK);
+    if (jobOwner !== undefined && jobOwner !== activeJobOwner) throw new Error("The audio job ownership changed before output handoff.");
+    if (total + (jobOwner !== undefined ? 64 * MIB : Math.max(64 * MIB, activeJobBytes)) > budget) throw new Error("Retained audio exceeds the browser's conservative memory budget. " + LOCAL_FALLBACK);
     reservedResidentBytes = total;
     held = bytes;
+    if (jobOwner !== undefined) { activeJobOwner = null; activeJobBytes = 0; }
   };
   const dispose = () => {
     if (disposed) return;
@@ -56,8 +64,9 @@ export function reserveBrowserAudioMemory(initialBytes = 0): Readonly<{ update: 
     reservedResidentBytes -= held;
     held = 0;
   };
-  update(initialBytes);
-  return Object.freeze({ update, dispose });
+  const owner = Object.freeze({ update: (bytes: number) => { update(bytes); }, dispose });
+  update(initialBytes, replacing);
+  return owner;
 }
 
 async function decodedBytes(blob: Blob): Promise<number> {
@@ -82,7 +91,7 @@ async function decodedBytes(blob: Blob): Promise<number> {
   return fallback;
 }
 
-async function preflight(request: JobRequest, source: Blob, reference: Blob, signal: AbortSignal): Promise<void> {
+async function preflight(request: JobRequest, source: Blob, reference: Blob, signal: AbortSignal, jobOwner: symbol): Promise<void> {
   signal.throwIfAborted();
   const input = source.size + reference.size;
   if (input > MAX_INPUT_BYTES) throw new Error("The combined audio exceeds the 129 MiB local job limit. " + LOCAL_FALLBACK);
@@ -92,14 +101,16 @@ async function preflight(request: JobRequest, source: Blob, reference: Blob, sig
   // transfer input, Go raw/decoded/render/encode and returned buffer/Blob.
   // Reference streams its output measurements and does not encode song-length WAVs.
   const estimate = 64 * MIB + input * 4 + decoded * (request.operation === "render" ? 7 : 4);
-  if (estimate + reservedResidentBytes > memoryBudget()) throw new Error("This job exceeds the browser's conservative audio memory budget. " + LOCAL_FALLBACK);
-  activeJobBytes = estimate;
+  const budget = memoryBudget();
+  if (activeJobOwner !== null) throw new Error("The local audio processor already owns an active job.");
+  if (estimate + reservedResidentBytes > budget) throw new Error("This job exceeds the browser's conservative audio memory budget. " + LOCAL_FALLBACK);
+  activeJobBytes = estimate; activeJobOwner = jobOwner;
 }
 
 let queue: Promise<void> = Promise.resolve();
 let pending = 0;
 
-function startWorker(request: JobRequest, source: ArrayBuffer, reference: ArrayBuffer, signal: AbortSignal, onProgress?: (progress: number, stage: string) => void): Promise<JobResult> {
+function startWorker(request: JobRequest, source: ArrayBuffer, reference: ArrayBuffer, signal: AbortSignal, onProgress?: (progress: number, stage: string) => void, owned = false): Promise<JobResult> {
   return new Promise<JobResult>((resolve, reject) => {
     signal.throwIfAborted();
     const identity = injectedProcessingIdentity();
@@ -125,6 +136,7 @@ function startWorker(request: JobRequest, source: ArrayBuffer, reference: ArrayB
     worker.onerror = () => { finish(undefined, new Error("Audio processing stopped unexpectedly in this browser. " + LOCAL_FALLBACK)); };
     worker.onmessageerror = () => { finish(undefined, new Error("The local audio result was unreadable.")); };
     worker.onmessage = (event: MessageEvent<unknown>) => {
+      if (settled) return;
       const data = event.data;
       if (typeof data !== "object" || data === null || !("id" in data) || data.id !== id || !("kind" in data)) { finish(undefined, new Error("Invalid local audio worker identity.")); return; }
       if (!("abi" in data) || data.abi !== OFFLINE_ABI) { finish(undefined, new Error("The local audio engine version is incompatible. Reload Aurialis to retry.")); return; }
@@ -137,7 +149,9 @@ function startWorker(request: JobRequest, source: ArrayBuffer, reference: ArrayB
       }
       if (data.kind === "error") { finish(undefined, new Error("error" in data && typeof data.error === "string" ? data.error.slice(0, 1024) : "Local audio processing failed.")); return; }
       if (data.kind !== "result" || !("json" in data) || typeof data.json !== "string" || new TextEncoder().encode(data.json).byteLength > MAX_METADATA_BYTES || !("audio" in data) || !(data.audio instanceof ArrayBuffer) || data.audio.byteLength > MAX_INPUT_BYTES) { finish(undefined, new Error("Invalid local audio result.")); return; }
-      finish({ json: data.json, audio: data.audio });
+      const result = { json: data.json, audio: data.audio };
+      if (owned) { data.audio = new ArrayBuffer(0); data.json = ""; }
+      finish(result);
     };
     const metadata = JSON.stringify(request);
     if (new TextEncoder().encode(metadata).byteLength > MAX_METADATA_BYTES) { finish(undefined, new Error("Local audio metadata exceeds its limit.")); return; }
@@ -156,29 +170,56 @@ function awaitCancellation<T>(promise: Promise<T>, signal: AbortSignal): Promise
   });
 }
 
-async function execute(request: JobRequest, source = new Blob(), reference = new Blob(), signal = new AbortController().signal, onProgress?: (progress: number, stage: string) => void): Promise<JobResult> {
+export interface OwnedAudioResult { readonly blob: Blob; readonly owner: ReturnType<typeof reserveBrowserAudioMemory>; readonly dispose: () => void }
+function renderMetadata(json: string): void {
+  if (new TextEncoder().encode(json).byteLength > MAX_METADATA_BYTES) throw new Error("The local render metadata exceeds its limit.");
+  const value: unknown = JSON.parse(json);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("The local render metadata is invalid.");
+}
+function ownedJobResult(result: JobResult, layout: EncodedLayout, jobOwner: symbol, signal: AbortSignal): OwnedAudioResult {
+  let audio: ArrayBuffer | null = result.audio;
+  try {
+    signal.throwIfAborted(); renderMetadata(result.json); assertEncodedWAVLayout(audio, layout);
+    // The unchanged worker estimate covers the transferred buffer and immutable Blob copy together.
+    const blob = new Blob([audio], { type: "audio/wav" });
+    audio = null; result.audio = new ArrayBuffer(0); result.json = ""; signal.throwIfAborted();
+    const owner = residentAudioMemory(blob.size, jobOwner);
+    return Object.freeze({ blob, owner, dispose: owner.dispose });
+  } finally { audio = null; result.audio = new ArrayBuffer(0); result.json = ""; }
+}
+function execute(request: JobRequest, source: Blob, reference: Blob, signal: AbortSignal, onProgress: ((progress: number, stage: string) => void) | undefined, layout: EncodedLayout): Promise<OwnedAudioResult>;
+function execute(request: JobRequest, source?: Blob, reference?: Blob, signal?: AbortSignal, onProgress?: (progress: number, stage: string) => void): Promise<JobResult>;
+async function execute(request: JobRequest, source = new Blob(), reference = new Blob(), signal = new AbortController().signal, onProgress?: (progress: number, stage: string) => void, layout?: EncodedLayout): Promise<JobResult | OwnedAudioResult> {
   signal.throwIfAborted();
   if (pending >= 2) throw new Error("Local audio processing is busy. Cancel the current job or try again shortly.");
   const inputBytes = source.size + reference.size;
   if (inputBytes > MAX_INPUT_BYTES) throw new Error("The combined audio exceeds the 129 MiB local job limit. " + LOCAL_FALLBACK);
-  // A waiting request already retains these Blobs, before its full preflight.
-  // Keep the raw input charged through actual settlement, even if its caller
-  // cancels early. This conservatively overlaps the active job's estimate.
-  const inputMemory = reserveBrowserAudioMemory(inputBytes);
+  const inputMemory = reserveBrowserAudioMemory(inputBytes), jobOwner = Symbol("audio job");
   pending++;
   const run = async () => {
     signal.throwIfAborted();
+    let input: ArrayBuffer | null = null, comparison: ArrayBuffer | null = null, result: JobResult | null = null;
     try {
-      await preflight(request, source, reference, signal);
+      await preflight(request, source, reference, signal, jobOwner);
       onProgress?.(0, "Preparing local audio processing…");
-      const input = await source.arrayBuffer(), comparison = await reference.arrayBuffer();
-      signal.throwIfAborted();
-      return await startWorker(request, input, comparison, signal, onProgress);
-    } finally { activeJobBytes = 0; }
+      input = await source.arrayBuffer(); comparison = await reference.arrayBuffer(); signal.throwIfAborted();
+      result = await startWorker(request, input, comparison, signal, onProgress, layout !== undefined);
+      input = null; comparison = null;
+      if (layout) return ownedJobResult(result, layout, jobOwner, signal);
+      return result;
+    } finally {
+      input = null; comparison = null;
+      if (layout && result) { result.audio = new ArrayBuffer(0); result.json = ""; result = null; }
+      if (activeJobOwner === jobOwner) { activeJobOwner = null; activeJobBytes = 0; }
+    }
   };
   const result = queue.then(run, run).finally(() => { pending--; inputMemory.dispose(); });
   queue = result.then(() => undefined, () => undefined);
-  return awaitCancellation(result, signal);
+  if (!layout) return awaitCancellation(result, signal);
+  // Owned callers wait for actual queue/read settlement; late cancellation cannot orphan an output lease.
+  const completed = await result;
+  if (signal.aborted) { if ("owner" in completed) completed.dispose(); signal.throwIfAborted(); }
+  return completed;
 }
 
 function formRequest(path: string, form: FormData): { request: JobRequest; source: Blob; reference: Blob } {
@@ -238,4 +279,54 @@ export async function deviceAudioRequest(path: string, init: RequestInit, onProg
   const headers = new Headers({ "Content-Type": result.audio.byteLength ? "audio/wav" : "application/json", "Cache-Control": "no-store" });
   if (result.audio.byteLength) headers.set("X-Aurialis-Source-Metrics", result.json);
   return new Response(result.audio.byteLength ? new Blob([result.audio], { type: "audio/wav" }) : result.json, { status: 200, headers });
+}
+
+/** Internal owned binary path. Callers adopt this same owner before another audio phase. */
+export async function deviceOwnedAudioRequest(path: string, init: RequestInit, layout: EncodedLayout): Promise<OwnedAudioResult> {
+  const expectedBytes = encodedWAVBytes(layout), signal = init.signal ?? new AbortController().signal;
+  signal.throwIfAborted();
+  const url = new URL(path, typeof location === "undefined" ? "https://local.invalid" : location.origin);
+  if (url.pathname !== "/api/master/render" || url.search || path.startsWith("//") || !path.startsWith("/api/")
+    || url.origin !== (typeof location === "undefined" ? "https://local.invalid" : location.origin) || init.method !== "POST" || !(init.body instanceof FormData)) throw new Error("Owned audio requests must render on this device.");
+  const { request, source, reference } = formRequest(path, init.body);
+  if (request.bitDepth !== layout.bitDepth || request.format === "json" || new Headers(init.headers).get("Accept")?.includes("application/json")) throw new Error("The owned render does not match its requested encoded layout.");
+  if (usesBrowserAudio()) return execute(request, source, reference, signal, undefined, layout);
+  const nativeSignal = AbortSignal.any([signal, AbortSignal.timeout(65_000)]);
+  const owner = reserveBrowserAudioMemory(expectedBytes * 3);
+  let response: Response | null = null, bytes: Uint8Array<ArrayBuffer> | null = null;
+  try {
+    response = await fetch(path, { ...init, signal: nativeSignal }); nativeSignal.throwIfAborted();
+    const length = response.headers.get("Content-Length"), metadata = response.headers.get("X-Aurialis-Source-Metrics");
+    if (!response.ok || !response.body || !response.headers.get("Content-Type")?.startsWith("audio/wav")
+      || length !== null && (!/^\d+$/u.test(length) || Number(length) !== expectedBytes)) {
+      await response.body?.cancel(); throw new Error("The native render has an unexpected response type or length.");
+    }
+    if (metadata !== null) renderMetadata(metadata);
+    const cancellation: { pending: Promise<void> | null } = { pending: null };
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    const cancel = () => { if (reader) { cancellation.pending ??= reader.cancel(nativeSignal.reason); void cancellation.pending.catch(() => undefined); } };
+    try {
+      reader = response.body.getReader();
+      nativeSignal.addEventListener("abort", cancel, { once: true });
+      nativeSignal.throwIfAborted();
+      bytes = new Uint8Array(expectedBytes); let received = 0;
+      for (;;) {
+        const chunk = await reader.read(); nativeSignal.throwIfAborted();
+        if (chunk.done) break;
+        if (chunk.value.byteLength === 0 || received + chunk.value.byteLength > expectedBytes) throw new Error("The native render has an unexpected length.");
+        bytes.set(chunk.value, received); received += chunk.value.byteLength;
+      }
+      if (received !== expectedBytes) throw new Error("The native render has an unexpected length.");
+    } finally {
+      nativeSignal.removeEventListener("abort", cancel);
+      if (reader) { try { await (cancellation.pending ?? reader.cancel()); } finally { reader.releaseLock(); } }
+    }
+    nativeSignal.throwIfAborted(); assertEncodedWAVLayout(bytes.buffer, layout);
+    const blob = new Blob([bytes], { type: "audio/wav" });
+    bytes = null; response = null; nativeSignal.throwIfAborted(); owner.update(blob.size); nativeSignal.throwIfAborted();
+    return Object.freeze({ blob, owner, dispose: owner.dispose });
+  } catch (cause) {
+    if (response?.body && !response.body.locked) await response.body.cancel().catch(() => undefined);
+    bytes = null; response = null; owner.dispose(); throw cause;
+  }
 }

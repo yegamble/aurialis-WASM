@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"math"
 	"testing"
 )
@@ -164,6 +165,41 @@ func TestStudioFinalPCMRejectsInvalidAndCanceledRecords(t *testing.T) {
 		a, b, _, err := prepareStudioFinalPCM(tc.ctx, tc.left, tc.right, tc.bits, tc.ceiling)
 		if err == nil || a != nil || b != nil {
 			t.Fatal("invalid or canceled final record returned certified output")
+		}
+	}
+}
+
+func TestStudioFinalIndependentVerifierControlsCorrectionAndFailure(t *testing.T) {
+	// This unit callback checks control flow only; it is not an audio oracle.
+	probe := studioFinalIndependentVerifier{name: "unit-double-sample-peak", measure: func(_ context.Context, left, right []float32) (float64, error) {
+		peak := 0.0
+		for i := range left {
+			peak = math.Max(peak, 2*math.Max(math.Abs(float64(left[i])), math.Abs(float64(right[i]))))
+		}
+		return peak, nil
+	}}
+	a, b, report, err := prepareStudioFinalPCMChecked(context.Background(), []float32{.7}, []float32{-.2}, 0, -1, probe)
+	if err != nil || report.IndependentEstimator != probe.name || report.BeforeIndependentPeak <= dbToLin(-1) || report.BeforePeak >= dbToLin(-1) || report.AfterIndependentPeak > dbToLin(-1) || report.CorrectionDB >= 0 || len(a) != 1 || len(b) != 1 {
+		t.Fatalf("independent correction metadata/control failed: %+v err%v", report, err)
+	}
+	for _, value := range []float64{math.NaN(), math.Inf(1), -1} {
+		invalid := studioFinalIndependentVerifier{name: "invalid-unit-probe", measure: func(context.Context, []float32, []float32) (float64, error) { return value, nil }}
+		a, b, _, err := prepareStudioFinalPCMChecked(context.Background(), []float32{.1}, []float32{0}, 0, -1, invalid)
+		if err == nil || a != nil || b != nil {
+			t.Fatal("invalid independent result returned output")
+		}
+	}
+	for _, bad := range []studioFinalIndependentVerifier{
+		{name: "missing-measurement"},
+		{measure: probe.measure},
+		{name: "measurement-error", measure: func(context.Context, []float32, []float32) (float64, error) {
+			return 0, errors.New("bounded verifier scratch limit")
+		}},
+		{name: "cannot-verify", measure: func(context.Context, []float32, []float32) (float64, error) { return 2, nil }},
+	} {
+		a, b, _, err := prepareStudioFinalPCMChecked(context.Background(), []float32{.1}, []float32{0}, 0, -1, bad)
+		if err == nil || a != nil || b != nil {
+			t.Fatal("failed or inconsistent verifier returned output")
 		}
 	}
 }

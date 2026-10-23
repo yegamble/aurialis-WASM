@@ -2,14 +2,14 @@ import type { FeatureMeasurements } from "./feature-analysis";
 import type { MeasuredAudioMetrics } from "./types";
 
 export const albumTargets = [-23, -18, -16, -14, -12, -9] as const;
-export type AlbumGainMode = "relationships" | "normalize";
+export type AlbumGainMode = "relationships" | "normalize" | "manual";
 type GainLimit = "peak" | "gain-range" | null;
 export interface AlbumReading {
   id: string; title: string; duration: number; metrics: MeasuredAudioMetrics;
   bands: FeatureMeasurements["bands"];
 }
 export interface AlbumGainPlan {
-  medianTrackLufs: number; commonGainDb: number | null;
+  medianTrackLufs: number | null; commonGainDb: number | null;
   tracks: { id: string; gainDb: number; requestedLufs: number | null; limitedBy: GainLimit; measurable: boolean }[];
 }
 const peakCeiling = -1;
@@ -39,24 +39,26 @@ function validate(readings: readonly AlbumReading[]): void {
 /** Explicit post-chain gain only. A median of tracks is not album-integrated loudness. */
 export function planAlbumGain(readings: readonly AlbumReading[], target: number, mode: AlbumGainMode, offsets: readonly number[]): AlbumGainPlan {
   validate(readings);
-  if (!albumTargets.some((value) => value === target) || !["relationships", "normalize"].includes(mode)
+  if (!albumTargets.some((value) => value === target) || !["relationships", "normalize", "manual"].includes(mode)
     || offsets.length !== readings.length || !offsets.every((value) => Number.isFinite(value) && Math.abs(value) <= 6))
     throw new Error("Choose a supported album target, gain mode and offsets within six dB.");
-  const center = median(readings.filter(measurable).map((item) => item.metrics.integratedLufs));
+  const audible = readings.filter(measurable);
+  if (!audible.length && mode !== "manual") throw new Error("No measurable tracks are available. Choose manual gain to render this sequence without loudness normalization.");
+  const center = audible.length ? median(audible.map((item) => item.metrics.integratedLufs)) : null;
   const headroom = readings.map((item) => peakCeiling - encodingMargin - item.metrics.truePeakDbtp);
   let common: number | null = null;
   let commonLimit: GainLimit = null;
   if (mode === "relationships") {
     const peakCap = Math.min(...headroom.map((available, index) => available - (offsets.at(index) ?? 0)));
     const rangeCap = Math.min(...offsets.map((offset) => 36 - offset));
-    common = Math.min(target - center, peakCap, rangeCap);
-    if (common < target - center - 1e-8) commonLimit = peakCap <= rangeCap ? "peak" : "gain-range";
+    common = Math.min(target - (center ?? target), peakCap, rangeCap);
+    if (common < target - (center ?? target) - 1e-8) commonLimit = peakCap <= rangeCap ? "peak" : "gain-range";
     if (offsets.some((offset) => (common ?? 0) + offset < -36))
       throw new Error("This sequence requires more attenuation than the gain stage supports.");
   }
   const tracks = readings.map((item, index) => {
     const offset = offsets.at(index) ?? 0, available = headroom.at(index) ?? 0;
-    const valid = measurable(item), wanted = valid ? target + offset : null;
+    const valid = measurable(item), wanted = valid && mode !== "manual" ? target + offset : null;
     const requestedGain = wanted === null ? offset : wanted - item.metrics.integratedLufs;
     const gain = common === null ? Math.min(36, requestedGain, available) : common + offset;
     if (gain < -36) throw new Error("A track requires more attenuation than the gain stage supports.");

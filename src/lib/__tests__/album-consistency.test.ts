@@ -26,6 +26,12 @@ describe("album post-chain gain and measured consistency", () => {
     expect(plan.tracks.slice(2).map((item) => item.gainDb)).toEqual([6, 4.99]);
     expect(plan.tracks[2]?.requestedLufs).toBeNull();
   });
+  it("allows explicit manual-only gain for an all-silent sequence without inventing a loudness median", () => {
+    const plan = planAlbumGain([reading("silent", -70, -120)], -14, "manual", [3]);
+    expect(plan.medianTrackLufs).toBeNull(); expect(plan.commonGainDb).toBeNull();
+    expect(plan.tracks[0]).toMatchObject({ gainDb: 3, requestedLufs: null, measurable: false, limitedBy: null });
+    expect(() => planAlbumGain([reading("silent", -70)], -14, "normalize", [0])).toThrow(/manual/u);
+  });
   it("distinguishes the bounded gain range from a peak-headroom constraint", () => {
     const tracks = [reading("quiet", -68, -58)];
     expect(planAlbumGain(tracks, -9, "normalize", [0]).tracks[0]).toMatchObject({ gainDb: 36, limitedBy: "gain-range" });

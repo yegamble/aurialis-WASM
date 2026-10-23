@@ -67,7 +67,7 @@ func Targets() [TargetCount]Metadata {
 	}
 }
 
-// ParseTarget rejects unsupported fields, including every unvalidated repair target.
+// ParseTarget rejects unsupported fields, including every unverified repair target.
 func ParseTarget(name string) (Target, error) {
 	for index, target := range Targets() {
 		if target.Name == name {
@@ -208,13 +208,20 @@ func CompileContext(ctx context.Context, sourceRate, deviceRate int, frames int6
 }
 
 func validateBandwidth(move *compiledMove, base, cellWidth float64, metadata Metadata) error {
+	if !withinBandwidth(move, base, cellWidth, metadata) {
+		return bandwidthError(metadata)
+	}
+	return nil
+}
+
+func withinBandwidth(move *compiledMove, base, cellWidth float64, metadata Metadata) bool {
 	// A globally continuous envelope with this derivative bound cannot vary by
 	// more than tolerance inside any device cell, even across multiple knots.
-	// Nonneutral discontinuities require a fade rather than an ambiguous hold.
+	// Non-neutral discontinuities require a fade rather than an ambiguous hold.
 	budget := metadata.CellTolerance
 	start, end := float64(move.points[0].Frame), float64(move.points[move.count-1].Frame)
 	if move.fade == 0 && (math.Abs(move.points[0].Value-base) > 1e-12 || math.Abs(move.points[move.count-1].Value-base) > 1e-12) {
-		return bandwidthError(metadata)
+		return false
 	}
 	var cuts [MaxPoints + 2]float64
 	count := move.count
@@ -247,10 +254,10 @@ func validateBandwidth(move *compiledMove, base, cellWidth float64, metadata Met
 		curvature := 2 * weightSlope * slope
 		maximum := math.Max(math.Abs(derivative+curvature*(left-middle)), math.Abs(derivative+curvature*(right-middle)))
 		if maximum*cellWidth > budget+1e-12 {
-			return bandwidthError(metadata)
+			return false
 		}
 	}
-	return nil
+	return true
 }
 
 func bandwidthError(metadata Metadata) error {
@@ -268,7 +275,11 @@ func (move *compiledMove) envelope(frame float64) (float64, float64) {
 	}
 	left, right := move.points[index-1], move.points[index]
 	slope := (right.Value - left.Value) / float64(right.Frame-left.Frame)
-	return left.Value + (frame-float64(left.Frame))*slope, slope
+	if frame == float64(right.Frame) {
+		return right.Value, slope
+	}
+	value := left.Value + (frame-float64(left.Frame))*slope
+	return math.Max(math.Min(left.Value, right.Value), math.Min(math.Max(left.Value, right.Value), value)), slope
 }
 
 // Used reports whether an unmuted target needs automation lanes or periodic updates.
@@ -300,7 +311,14 @@ func (schedule *Schedule) ValueAt(target Target, sourceFrame float64) float64 {
 	if move.fade > 0 {
 		weight = math.Min(1, math.Min((sourceFrame-start)/move.fade, (end-sourceFrame)/move.fade))
 	}
-	return base + (value-base)*weight
+	if weight >= 1 {
+		return value
+	}
+	if weight <= 0 {
+		return base
+	}
+	blended := base + (value-base)*weight
+	return math.Max(math.Min(base, value), math.Min(math.Max(base, value), blended))
 }
 
 // Cursor retains an exact rational source clock and absolute device-time update lattice.
@@ -308,6 +326,7 @@ type Cursor struct {
 	schedule    *Schedule
 	numerator   int64
 	deviceFrame int64
+	looping     bool
 }
 
 // NewCursor prepares a cursor at source frame zero.
@@ -330,12 +349,18 @@ func (cursor *Cursor) Fill(gain, width []float64, limit int) (int, Values) {
 		return 0, Values{}
 	}
 	schedule := cursor.schedule
+	cursor.normalizeLoop()
 	span := min(limit, schedule.Quantum()-int(cursor.deviceFrame%int64(schedule.Quantum())))
 	if schedule.Used(InputGain) {
 		span = min(span, len(gain))
 	}
 	if schedule.Used(Width) {
 		span = min(span, len(width))
+	}
+	if cursor.looping {
+		remaining := schedule.Frames()*int64(schedule.DeviceRate()) - cursor.numerator
+		untilWrap := (remaining + int64(schedule.SourceRate()) - 1) / int64(schedule.SourceRate())
+		span = min(span, int(untilWrap))
 	}
 	cellStart := cursor.deviceFrame / int64(schedule.Quantum()) * int64(schedule.Quantum())
 	heavyTime := float64(cellStart*int64(schedule.SourceRate())) / float64(schedule.DeviceRate())
@@ -384,6 +409,7 @@ func (cursor *Cursor) AdvanceFrames(count int) {
 	}
 	cursor.numerator += int64(count) * int64(cursor.schedule.SourceRate())
 	cursor.deviceFrame += int64(count)
+	cursor.normalizeLoop()
 }
 
 // CopyPosition transfers exact fractional source phase between compatible revisions.
@@ -391,6 +417,19 @@ func (cursor *Cursor) CopyPosition(previous *Cursor) bool {
 	if cursor == nil || previous == nil || cursor.schedule == nil || previous.schedule == nil || cursor.schedule.SourceRate() != previous.schedule.SourceRate() || cursor.schedule.DeviceRate() != previous.schedule.DeviceRate() || cursor.schedule.Frames() != previous.schedule.Frames() {
 		return false
 	}
-	cursor.numerator, cursor.deviceFrame = previous.numerator, previous.deviceFrame
+	cursor.numerator, cursor.deviceFrame, cursor.looping = previous.numerator, previous.deviceFrame, previous.looping
 	return true
+}
+
+// SetLooping follows an actual looping source transport while retaining fractional overshoot.
+// Export/native rendering defaults to false. DSP history is not reset at loop seams.
+func (cursor *Cursor) SetLooping(enabled bool) { cursor.looping = enabled; cursor.normalizeLoop() }
+func (cursor *Cursor) normalizeLoop() {
+	if cursor.looping && cursor.schedule != nil {
+		period := cursor.schedule.Frames() * int64(cursor.schedule.DeviceRate())
+		if cursor.numerator >= period {
+			cursor.numerator %= period
+			cursor.deviceFrame = cursor.numerator / int64(cursor.schedule.SourceRate())
+		}
+	}
 }

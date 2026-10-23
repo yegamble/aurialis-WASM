@@ -1,3 +1,5 @@
+// cspell:words automator
+
 package automator
 
 import (
@@ -150,6 +152,72 @@ func TestMutedRevisionRetainsExactFractionalPosition(t *testing.T) {
 		expected := active.schedule.ValueAt(automation.InputGain, expectedSource)
 		if math.Abs(gain[0]-expected) > 1e-12 {
 			t.Fatalf("muted revision reset clock rate %d got %g expected %g", rate, gain[0], expected)
+		}
+	}
+}
+
+func TestClosedCompiledRangesNeverRejectDSPSafeguards(t *testing.T) {
+	params := dsp.DefaultParams()
+	values := ValuesOf(params)
+	metadata := automation.Targets()
+	moves := make([]automation.Move, automation.TargetCount)
+	for target, field := range metadata {
+		moves[target] = automation.Move{ID: field.Name, Target: field.Name, Operation: "absolute", Points: []automation.Point{{Frame: 0, Value: values[target]}, {Frame: 96000, Value: field.Maximum}, {Frame: 192000, Value: field.Minimum}, {Frame: 288000, Value: values[target]}}}
+	}
+	for _, rate := range []int{8000, 8001, 44100, 48000, 192000} {
+		schedule, err := automation.CompileContext(context.Background(), 8000, rate, 288000, 1, values, moves)
+		if err != nil {
+			t.Fatal(err)
+		}
+		processor, err := New(dsp.NewEngine(float64(rate)), params, schedule)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var left, right, outL, outR [128]float32
+		for _, frame := range []int64{0, 1, 95999, 96000, 96001, 191999, 192000, 192001, 287999} {
+			if err := processor.SeekSourceFrame(frame); err != nil {
+				t.Fatal(err)
+			}
+			if !processor.ProcessBlock(left[:], right[:], outL[:], outR[:]) {
+				t.Fatalf("valid compiled ranges failed safeguard rate %d frame %d", rate, frame)
+			}
+		}
+	}
+}
+
+func TestLoopSeamsPreserveDSPHistoryAndMatchIndependentGainOracle(t *testing.T) {
+	params := dsp.DefaultParams()
+	params.Bands[2].GainDB = 3
+	for _, pair := range []struct{ source, device int }{{8001, 44100}, {48000, 44100}, {48000, 192000}} {
+		for _, frames := range []int64{1, 127, 129} {
+			move := automation.Move{ID: "loop", Target: "inputGainDb", Operation: "absolute", Points: []automation.Point{{Frame: 0, Value: 0}, {Frame: frames, Value: 3}}}
+			schedule, err := automation.CompileContext(context.Background(), pair.source, pair.device, frames, 1, ValuesOf(params), []automation.Move{move})
+			if err != nil {
+				t.Fatal(err)
+			}
+			processor, err := New(dsp.NewEngine(float64(pair.device)), params, schedule)
+			if err != nil {
+				t.Fatal(err)
+			}
+			processor.SetLooping(true)
+			reference := dsp.NewEngine(float64(pair.device))
+			reference.SetParams(params)
+			var left, right, actualL, actualR, expectedL, expectedR [128]float32
+			var gain [128]float64
+			for block := 0; block < 32; block++ {
+				for i := range left {
+					left[i] = .2
+					right[i] = -.1
+					numerator := int64(block*128+i) * int64(pair.source) % (frames * int64(pair.device))
+					gain[i] = schedule.ValueAt(automation.InputGain, float64(numerator)/float64(pair.device))
+				}
+				if !processor.ProcessBlock(left[:], right[:], actualL[:], actualR[:]) || !reference.ProcessAutomationBlock(left[:], right[:], expectedL[:], expectedR[:], gain[:], nil) {
+					t.Fatal("loop processing rejected")
+				}
+				if actualL != expectedL || actualR != expectedR {
+					t.Fatal("loop seam reset DSP history or lost exact source phase")
+				}
+			}
 		}
 	}
 }

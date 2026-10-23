@@ -35,11 +35,12 @@ const MaxAudioFileBytes int64 = int64(audio.MaxDecodedFrames)*8 + 44
 const maxSourceMetricsHeaderBytes = 4096
 
 type sourceMeasurement struct {
-	SampleRate    int         `json:"sampleRate"`
-	Frames        int         `json:"frames"`
-	Duration      float64     `json:"duration"`
-	BeforeMetrics dsp.Metrics `json:"beforeMetrics"`
-	AfterMetrics  dsp.Metrics `json:"afterMetrics"`
+	SourceIdentity mastering.SourceIdentity `json:"sourceIdentity"`
+	SampleRate     int                      `json:"sampleRate"`
+	Frames         int                      `json:"frames"`
+	Duration       float64                  `json:"duration"`
+	BeforeMetrics  dsp.Metrics              `json:"beforeMetrics"`
+	AfterMetrics   dsp.Metrics              `json:"afterMetrics"`
 }
 
 // Config configures the Aurialis HTTP server.
@@ -527,9 +528,15 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 
 	var sourceMetricsJSON []byte
 	if params.Bypass && bitDepth == 32 {
+		identity, identityErr := mastering.SourceIdentityContext(r.Context(), buf)
+		if identityErr != nil {
+			writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio source identity canceled or timed out")
+			return
+		}
 		var metadataErr error
 		sourceMetricsJSON, metadataErr = json.Marshal(sourceMeasurement{
-			SampleRate: buf.SampleRate, Frames: buf.Frames, Duration: buf.Duration,
+			SourceIdentity: identity,
+			SampleRate:     buf.SampleRate, Frames: buf.Frames, Duration: buf.Duration,
 			BeforeMetrics: beforeMetrics, AfterMetrics: beforeMetrics,
 		})
 		if metadataErr != nil || len(sourceMetricsJSON) > maxSourceMetricsHeaderBytes {

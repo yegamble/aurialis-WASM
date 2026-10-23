@@ -1,10 +1,12 @@
 import { Blob as NodeBlob } from "node:buffer";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ScriptV2 } from "../deep-mastering";
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "../audio-dsp";
 import {
   engineParams,
   importAudio,
   measureAudio,
+  measureScriptAudio,
   normalizeSimpleAudio,
   trackMetrics,
   previewWAV,
@@ -319,6 +321,22 @@ describe("actual audio measurement and explicit Simple normalization", () => {
     expect(request.headers).toEqual({ Accept: "application/json" });
     expect(request.body.get("format")).toBe("json");
     expect(request.body.get("params")).toBe('{"inputGainDb":2}');
+  });
+  it("measures the complete accepted script through the shared JSON adapter without requesting a float artifact", async () => {
+    const binary = vi.fn(), fetch = vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(measurementResponse()), blob: binary });
+    vi.stubGlobal("fetch", fetch);
+    const script: ScriptV2 = { version: "2.0", source: { pcmHash: "a".repeat(64), sampleRate: 48000, frames: 48000 }, revision: 1,
+      profile: "Warm Analog", summary: "Accepted plan", chainParams: engineParams(createDefaultAdvancedParams()),
+      sections: [{ id: "all", name: "All", roleHint: "unknown", startFrame: 0, endFrame: 48000, confidence: 0 }], moves: [], findings: [], beforeMetrics: measured };
+    const controller = new AbortController();
+    expect((await measureScriptAudio(new Blob(["source"]), script, controller.signal)).afterMetrics).toEqual(measured);
+    const request = fetch.mock.calls[0]?.[1] as { body: FormData; headers: object; signal: AbortSignal };
+    expect(request.headers).toEqual({ Accept: "application/json" }); expect(request.signal).toBe(controller.signal);
+    expect(request.body.get("script")).toBe(JSON.stringify(script)); expect(request.body.get("format")).toBe("json");
+    expect(request.body.get("params")).toBeNull(); expect(request.body.get("bitDepth")).toBeNull(); expect(binary).not.toHaveBeenCalled();
+    controller.abort(); fetch.mockClear();
+    await expect(measureScriptAudio(new Blob(["source"]), script, controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    expect(fetch).not.toHaveBeenCalled();
   });
   it("rejects incomplete, non-finite and inconsistent measurements instead of creating zero metrics", async () => {
     const bodies = [

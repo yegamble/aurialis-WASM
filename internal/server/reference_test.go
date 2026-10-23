@@ -87,7 +87,7 @@ func TestReferenceAPIRejectsUntrustedPartsAndAmbiguousOptions(t *testing.T) {
 	defer srv.Close()
 	wav := buildTestWAV(t, 8000, .25)
 	base := []referencePart{{"source", "source.wav", wav}, {"reference", "reference.wav", wav}}
-	for _, extra := range []referencePart{{name: "options", data: []byte(`{"amount":1,"amount":0,"protectBelowHz":120}`)}, {name: "options", data: []byte(`{"amount":1,"protectBelowHz":80}`)}, {name: "options", data: []byte(`{"amount":1,"protectBelowHz":120,"includeWidth":true}`)}, {name: "params", data: []byte(`{"unknown":true}`)}, {"source", "duplicate.wav", wav}, {name: "profile", data: []byte("warm")}} {
+	for _, extra := range []referencePart{{name: "options", data: []byte(`{"amount":1,"amount":0,"protectBelowHz":120}`)}, {name: "options", data: []byte(`{"amount":1,"protectBelowHz":80}`)}, {name: "options", data: []byte(`{"amount":1,"protectBelowHz":120,"includeWidth":"true"}`)}, {name: "params", data: []byte(`{"unknown":true}`)}, {"source", "duplicate.wav", wav}, {name: "profile", data: []byte("warm")}} {
 		parts := append(append([]referencePart{}, base...), extra)
 		recorder := httptest.NewRecorder()
 		srv.Handler().ServeHTTP(recorder, referenceUpload(t, parts))

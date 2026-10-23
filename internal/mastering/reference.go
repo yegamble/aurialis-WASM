@@ -12,10 +12,11 @@ import (
 )
 
 // ReferenceOptions bounds the measured tonal proposal. Amount is a fraction, not percent.
-// Width is intentionally absent until its independent audible-output guard is implemented.
+// Width changes require an explicit opt-in and measured mono-compatibility checks.
 type ReferenceOptions struct {
 	Amount         float64 `json:"amount"`
 	ProtectBelowHz float64 `json:"protectBelowHz"`
+	IncludeWidth   bool    `json:"includeWidth,omitempty"`
 }
 
 // ReferenceBand describes identical physical bandwidth in both reconstructed sources.
@@ -29,7 +30,7 @@ type ReferenceBand struct {
 	Included           bool    `json:"included"`
 }
 
-// ReferenceProposal is an EQ-only estimate, not a perceptual match or headroom guarantee.
+// ReferenceProposal is a tonal and optional width estimate, not a perceptual match or headroom guarantee.
 // Callers must apply from Baseline, never repeatedly compound Params onto the last proposal.
 type ReferenceProposal struct {
 	Version                    string           `json:"version"`
@@ -45,11 +46,13 @@ type ReferenceProposal struct {
 	MaxProtectedDeltaDB        float64          `json:"maxProtectedDeltaDb"`
 	RemeasuredProtectedDeltaDB float64          `json:"remeasuredProtectedDeltaDb"`
 	ProtectionVerified         bool             `json:"protectionVerified"`
+	Width                      *ReferenceWidth  `json:"width,omitempty"`
 	Warnings                   []string         `json:"warnings"`
 }
 
 // MatchReferenceContext measures common-band spectra and fits the actual summed TPT response.
-// It preserves every non-EQ field, band frequency/Q/type/enable and disabled-module state.
+// It preserves band frequency/Q/type/enable and disabled-module state; only explicit
+// width opt-in can also change the stereo width field.
 func MatchReferenceContext(ctx context.Context, source, reference *audio.Buffer, baseline dsp.Params, options ReferenceOptions, onProgress func(int, string)) (*ReferenceProposal, error) {
 	if err := ValidateReferenceOptions(options); err != nil {
 		return nil, err
@@ -65,7 +68,7 @@ func MatchReferenceContext(ctx context.Context, source, reference *audio.Buffer,
 	if err != nil {
 		return nil, err
 	}
-	result := &ReferenceProposal{Version: "1.0", Source: sourceID, Reference: referenceID, Baseline: baseline, Params: baseline, Options: options, Warnings: []string{"A five-band EQ estimate cannot establish a perceptual match. Nonlinear dynamics, phase, width and final rendered headroom are not predicted."}}
+	result := &ReferenceProposal{Version: "1.0", Source: sourceID, Reference: referenceID, Baseline: baseline, Params: baseline, Options: options, Warnings: []string{"A five-band tonal and optional width estimate cannot establish a perceptual match. Final loudness and reconstructed-peak headroom require separate output verification."}}
 	edges := spectrumEdges
 	commonNyquist := float64(min(source.SampleRate, reference.SampleRate)) / 2
 	for i := range edges {
@@ -103,29 +106,42 @@ func MatchReferenceContext(ctx context.Context, source, reference *audio.Buffer,
 	}
 	if count < 3 {
 		result.Warnings = append(result.Warnings, "Fewer than three audible common bands: no tonal correction proposed.")
-		return result, nil
+		if !options.IncludeWidth {
+			return result, nil
+		}
 	}
 	levelDifference := powerDB(referencePower) - powerDB(sourcePower)
 	for i := range result.Bands {
 		band := &result.Bands[i]
-		if band.Included {
+		if band.Included && count >= 3 {
 			band.TargetDeltaDB = options.Amount * math.Max(-6, math.Min(6, band.ReferenceDensityDB-band.SourceDensityDB-levelDifference))
 		}
 	}
 	result.BeforeResidualDB = referenceResidual(result, baseline, float64(source.SampleRate))
 	result.FitResidualDB = result.BeforeResidualDB
-	if options.Amount == 0 || baseline.Bypass || baseline.ABOriginal || !baseline.EQEnabled {
+	if options.Amount == 0 || baseline.Bypass || baseline.ABOriginal {
 		if options.Amount > 0 {
-			result.Warnings = append(result.Warnings, "EQ or processing is bypassed; its state was preserved and no correction applied.")
+			result.Warnings = append(result.Warnings, "Processing is bypassed; its state was preserved and no correction applied.")
 		}
 		return result, nil
 	}
 	if onProgress != nil {
 		onProgress(65, "Fitting a bounded EQ contour with response protection...")
 	}
-	fitted, err := fitReferenceContext(ctx, result, float64(source.SampleRate))
-	if err != nil {
-		return nil, err
+	fitted := baseline
+	if baseline.EQEnabled && count >= 3 {
+		fitted, err = fitReferenceContext(ctx, result, float64(source.SampleRate))
+		if err != nil {
+			return nil, err
+		}
+	} else if !baseline.EQEnabled {
+		result.Warnings = append(result.Warnings, "EQ is disabled and remains disabled.")
+	}
+	if options.IncludeWidth {
+		fitted, result.Width, err = proposeReferenceWidth(ctx, source, reference, result, fitted)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if options.ProtectBelowHz > 0 && fitted != baseline {
 		fitted, result.RemeasuredProtectedDeltaDB, err = protectRenderedReferenceBass(ctx, source, result, fitted, edges)
@@ -133,6 +149,12 @@ func MatchReferenceContext(ctx context.Context, source, reference *audio.Buffer,
 			return nil, err
 		}
 		result.ProtectionVerified = true
+	}
+	if result.Width != nil {
+		fitted, err = finalizeReferenceWidth(ctx, source, result, fitted)
+		if err != nil {
+			return nil, err
+		}
 	}
 	result.Params = fitted
 	result.FitResidualDB = referenceResidual(result, fitted, float64(source.SampleRate))
@@ -334,12 +356,13 @@ func protectRenderedReferenceBass(ctx context.Context, source *audio.Buffer, res
 		for i := range candidate.Bands {
 			candidate.Bands[i].GainDB = result.Baseline.Bands[i].GainDB + .5*(candidate.Bands[i].GainDB-result.Baseline.Bands[i].GainDB)
 		}
+		candidate.Stereo.WidthPct = result.Baseline.Stereo.WidthPct + .5*(candidate.Stereo.WidthPct-result.Baseline.Stereo.WidthPct)
 	}
 	result.Warnings = append(result.Warnings, "The nonlinear chain prevented verified bass protection; the original chain was retained.")
 	return result.Baseline, 0, nil
 }
 
-// ValidateReferenceOptions accepts only the current bounded EQ-only contract.
+// ValidateReferenceOptions accepts only the current bounded tonal and opt-in width contract.
 func ValidateReferenceOptions(options ReferenceOptions) error {
 	if !isFinite(options.Amount) || options.Amount < 0 || options.Amount > 1 || !isFinite(options.ProtectBelowHz) || (options.ProtectBelowHz != 0 && options.ProtectBelowHz != 120) {
 		return errors.New("amount must be 0..1 and protectBelowHz must be 0 or 120")
@@ -354,5 +377,9 @@ func (proposal *ReferenceProposal) Clone() *ReferenceProposal {
 	}
 	copyProposal := *proposal
 	copyProposal.Warnings = append([]string{}, proposal.Warnings...)
+	if proposal.Width != nil {
+		width := *proposal.Width
+		copyProposal.Width = &width
+	}
 	return &copyProposal
 }

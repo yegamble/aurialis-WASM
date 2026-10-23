@@ -20,6 +20,6 @@ APT
 # Azure archive endpoint, including both mirror-list and direct-source layouts.
 for source_file in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
   if [[ -f "$source_file" ]]; then
-    sudo sed -i -E 's|https?://azure\.archive\.ubuntu\.com/ubuntu([[:space:]/]|$)|https://archive.ubuntu.com/ubuntu\1|g' "$source_file"
+    sudo sed -i -E 's#https?://azure\.archive\.ubuntu\.com/ubuntu([[:space:]/]|$)#https://archive.ubuntu.com/ubuntu\1#g' "$source_file"
   fi
 done

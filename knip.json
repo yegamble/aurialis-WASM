@@ -13,7 +13,6 @@
     "scripts/*.mjs"
   ],
   "ignoreDependencies": [
-    "@testing-library/jest-dom",
     "newman",
     "tailwindcss"
   ],

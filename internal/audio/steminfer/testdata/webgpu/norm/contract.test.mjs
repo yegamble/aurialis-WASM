@@ -15,9 +15,10 @@ test("nonfinite/overflow and unbounded gamma fail before any device", () => {
   for (const value of [NaN, Infinity, 33]) { const f = fixture(); f.gamma[0] = value; assert.throws(() => validateOperands(f)); }
 });
 test("all needed workgroup/storage and readback limits fail closed", () => {
-  const limits = { maxComputeInvocationsPerWorkgroup: 256, maxComputeWorkgroupSizeX: 256, maxComputeWorkgroupSizeY: 1, maxComputeWorkgroupSizeZ: 1, maxComputeWorkgroupStorageSize: 1028,
+  const limits = { maxComputeInvocationsPerWorkgroup: 256, maxComputeWorkgroupSizeX: 256, maxComputeWorkgroupSizeY: 1, maxComputeWorkgroupSizeZ: 1, maxComputeWorkgroupStorageSize: 1040,
     maxComputeWorkgroupsPerDimension: 64, maxStorageBuffersPerShaderStage: 5, maxBindingsPerBindGroup: 6, maxBufferSize: 2 ** 24, maxStorageBufferBindingSize: 2 ** 24 };
   validateDevice(shapePlan(257), limits);
+  assert.throws(() => validateDevice(shapePlan(257), { ...limits, maxComputeWorkgroupStorageSize: 1028 }), /Device/, "each workgroup variable needs16-byte rounded storage");
   for (const field of Object.keys(limits)) assert.throws(() => validateDevice(shapePlan(257), { ...limits, [field]: 0 }));
   assert.throws(() => validateDevice(shapePlan(257), {}));
 });

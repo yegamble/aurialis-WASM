@@ -61,8 +61,9 @@ export function validateDevice(plan, limits) {
   for (const field of ["maxComputeInvocationsPerWorkgroup", "maxComputeWorkgroupSizeX", "maxComputeWorkgroupSizeY", "maxComputeWorkgroupSizeZ", "maxComputeWorkgroupStorageSize", "maxComputeWorkgroupsPerDimension", "maxStorageBuffersPerShaderStage", "maxBindingsPerBindGroup", "maxBufferSize", "maxStorageBufferBindingSize"]) {
     if (!Number.isSafeInteger(limits?.[field]) || limits[field] < 1) throw new Error("Missing normalization device limit");
   }
+  // WebGPU rounds each workgroup variable to16 bytes: red1024 + divisor16.
   if (limits.maxComputeInvocationsPerWorkgroup < WIDTH || limits.maxComputeWorkgroupSizeX < WIDTH || limits.maxComputeWorkgroupSizeY < 1 || limits.maxComputeWorkgroupSizeZ < 1
-    || limits.maxComputeWorkgroupStorageSize < WIDTH * 4 + 4 || limits.maxComputeWorkgroupsPerDimension < Math.max(plan.x, plan.y)
+    || limits.maxComputeWorkgroupStorageSize < WIDTH * 4 + 16 || limits.maxComputeWorkgroupsPerDimension < Math.max(plan.x, plan.y)
     || limits.maxStorageBuffersPerShaderStage < 5 || limits.maxBindingsPerBindGroup < 6
     || Math.max(plan.xBytes + 8, plan.resultBytes + 24) > limits.maxBufferSize
     || plan.xBytes + 8 > limits.maxStorageBufferBindingSize) throw new Error("Device does not support normalization fixture");

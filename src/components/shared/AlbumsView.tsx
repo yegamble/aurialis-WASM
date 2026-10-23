@@ -166,7 +166,7 @@ function AlbumWorkspace({ album, tracks }: { album: Album; tracks: Track[] }) {
       })}</div>
       <div className="add-tracks"><span className="eyebrow">Add from library</span>{state.tracks.filter((track) => !album.trackIds.includes(track.id)).map((track) => <button type="button" key={track.id} className="max-w-full whitespace-normal [overflow-wrap:anywhere]" disabled={active || album.trackIds.length >= 64} onClick={() => { patch({ trackIds: [...album.trackIds, track.id] }); }}><Icon name="plus" />{track.title}</button>)}
         <input ref={fileInput} type="file" hidden accept="audio/wav,.wav" aria-label="Import album audio" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void importFiles(files); }} /><Button variant="secondary" disabled={active || album.trackIds.length >= 64} onClick={() => { fileInput.current?.click(); }}>Import a WAV to this album</Button>
-      </div><p className="disclosure">Drag tracks to reorder on desktop, or use the move buttons with keyboard or touch. Up to 64 tracks and 128 MiB of retained 24-bit masters. Rendering runs one track at a time; device memory can require a smaller cohort.</p>
+      </div><p className="disclosure">Drag tracks to reorder on desktop, or use the move buttons with keyboard or touch. Up to 64 tracks and 128 MiB of retained 24-bit masters (about 7.8 minutes total at 48 kHz stereo). For longer releases, export smaller sequences or individual tracks. Rendering runs one track at a time; device memory can require a smaller cohort.</p>
     </section><AlbumConsistencyChart readings={report?.tracks ?? []} /></div>
   </div>;
 }

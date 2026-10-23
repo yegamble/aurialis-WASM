@@ -49,6 +49,7 @@ jobs:
           python3 -m py_compile scripts/sync-agents.py .claude/hooks/scrutinise.py
           python3 scripts/sync-agents.py --check
           python3 scripts/test-ci-artifacts.py
+          python3 scripts/test-e2e-build.py
 
       - name: Smoke-test Stop hook (Claude Code & Gemini Argon payloads)
         run: |
@@ -68,8 +69,8 @@ jobs:
           bash <(curl https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash) 1.7.7 /tmp
           /tmp/actionlint -color
 
-  native-go-quality:
-    name: Native Go Static, Security & Race
+  go-static-quality:
+    name: Go Static & Security
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -98,6 +99,17 @@ jobs:
         run: |
           go run github.com/alexkohler/identypo/cmd/identypo@latest ./...
           go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  go-race-meters:
+    name: Go Race & Independent Meters
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.10"
+          cache-dependency-path: go.mod
       - name: Run Go unit & concurrency race tests
         run: go test -race -count=1 -timeout 10m ./...
       - name: Install FFmpeg for independent meter verification
@@ -205,14 +217,15 @@ jobs:
   go-wasm:
     name: Go 1.26 & WASM Quality Gate
     if: always()
-    needs: [native-go-quality, wasm-parity]
+    needs: [go-static-quality, go-race-meters, wasm-parity]
     runs-on: ubuntu-latest
     steps:
-      - name: Require both native quality and actual compiled parity
+      - name: Require static, race, meter and actual compiled parity
         env:
-          NATIVE_RESULT: ${{ needs.native-go-quality.result }}
+          STATIC_RESULT: ${{ needs.go-static-quality.result }}
+          RACE_RESULT: ${{ needs.go-race-meters.result }}
           WASM_RESULT: ${{ needs.wasm-parity.result }}
-        run: test "$NATIVE_RESULT" = success && test "$WASM_RESULT" = success
+        run: test "$STATIC_RESULT" = success && test "$RACE_RESULT" = success && test "$WASM_RESULT" = success
 
   backend-newman:
     env:

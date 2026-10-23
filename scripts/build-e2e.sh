@@ -9,6 +9,18 @@ cleanup() {
   if [ "$staged_asset" = true ]; then rm -f "$asset"; rmdir internal/webui/embedded/__qa 2>/dev/null || true; fi
 }
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+if [ -L "$binary" ] || [ "$binary" -ef "$PWD/aurialis" ]; then
+  printf 'QA output must be separate from production.\n' >&2
+  exit 1
+fi
+mkdir -p "$(dirname "$binary")"
+output_directory="$(cd "$(dirname "$binary")" && pwd -P)"
+if [ "$output_directory/$(basename "$binary")" = "$(pwd -P)/aurialis" ]; then
+  printf 'QA output must be separate from production.\n' >&2
+  exit 1
+fi
 if [ -e "$asset" ]; then printf 'A QA observer asset is already staged; refusing to replace it.\n' >&2; exit 1; fi
 test -s internal/webui/embedded/wasm/aurialis-realtime.wasm
 mkdir -p "$(dirname "$binary")" internal/webui/embedded/__qa

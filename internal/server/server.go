@@ -318,12 +318,16 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request) (*a
 				writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Audio file exceeds the decoded-frame storage limit")
 				return nil, false
 			}
-		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "format") && disposition["filename"] == "" && values[name] == nil:
+		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "format" || name == "script" || name == "scriptVersion") && disposition["filename"] == "" && values[name] == nil:
 			var value []byte
-			value, err = io.ReadAll(io.LimitReader(part, 64*1024+1))
-			if len(value) > 64*1024 {
+			fieldLimit := 64 * 1024
+			if name == "script" {
+				fieldLimit = mastering.MaxScriptV2Bytes
+			}
+			value, err = io.ReadAll(io.LimitReader(part, int64(fieldLimit)+1))
+			if len(value) > fieldLimit {
 				_ = part.Close()
-				writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Multipart field exceeds 64 KiB")
+				writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Multipart field exceeds its bounded size limit")
 				return nil, false
 			}
 			values[name] = []string{string(value)}
@@ -440,6 +444,30 @@ func (s *Server) handleAnalyzeDeep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	version := r.FormValue("scriptVersion")
+	if version != "" && version != "2.0" {
+		writeErrorJSON(w, http.StatusBadRequest, "invalid_script_version", "scriptVersion must be 2.0 or omitted for legacy v1")
+		return
+	}
+	if r.Context().Err() != nil {
+		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Analysis request canceled")
+		return
+	}
+	if version == "2.0" {
+		for key := range r.Form {
+			if key != "profile" && key != "scriptVersion" {
+				writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "ScriptV2 analysis accepts only profile and scriptVersion")
+				return
+			}
+		}
+		job, submitErr := s.jobs.SubmitAnalyzeDeepV2(buf, profile)
+		if submitErr != nil {
+			writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", submitErr.Error())
+			return
+		}
+		s.writeAdmittedJob(w, r, job)
+		return
+	}
 	job, err := s.jobs.SubmitAnalyzeDeep(buf, profile)
 	if err != nil {
 		writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", err.Error())
@@ -455,6 +483,13 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := dsp.DefaultParams()
+	script, accepted := readRenderScriptV2(w, r)
+	if !accepted {
+		return
+	}
+	if script != nil {
+		params = script.ChainParams
+	}
 	if rawProf := strings.TrimSpace(r.FormValue("profile")); rawProf != "" {
 		prof, err := mastering.NormalizeProfile(rawProf)
 		if err != nil {
@@ -489,6 +524,9 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 	if bitDepth == 16 || bitDepth == 24 {
 		params.DitherBits = bitDepth
 	}
+	if script != nil {
+		script.ChainParams = params
+	}
 
 	beforeMetrics, measureErr := dsp.MeasureStereoContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate))
 	if measureErr != nil {
@@ -499,11 +537,19 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 	// headroom. Reuse it and its measurement instead of copying/measuring the
 	// entire song again. Enabled DSP still follows the existing render path.
 	outL, outR, afterMetrics := buf.Left, buf.Right, beforeMetrics
-	if !params.Bypass {
+	if script != nil || !params.Bypass {
 		var renderErr error
-		outL, outR, afterMetrics, renderErr = dsp.RenderBufferContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate), params)
+		if script != nil {
+			outL, outR, afterMetrics, renderErr = mastering.RenderScriptV2Context(r.Context(), buf, script)
+		} else {
+			outL, outR, afterMetrics, renderErr = dsp.RenderBufferContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate), params)
+		}
 		if renderErr != nil {
-			writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio rendering canceled or timed out")
+			if r.Context().Err() != nil {
+				writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio rendering canceled or timed out")
+			} else {
+				writeErrorJSON(w, http.StatusBadRequest, "invalid_script", renderErr.Error())
+			}
 			return
 		}
 	}

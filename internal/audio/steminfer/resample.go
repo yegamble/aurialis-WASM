@@ -124,32 +124,62 @@ func (plan *resamplePlan) into(ctx context.Context, destination, input []float32
 		copy(destination, input[first:first+len(destination)])
 		return ctx.Err()
 	}
-	taps := 2 * plan.radius
 	for i := range destination {
 		if i%128 == 0 {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 		}
-		position := int64(first+i) * int64(plan.fromRate)
-		center := int(position / int64(plan.toRate))
-		phaseNumerator := (position % int64(plan.toRate)) * resamplePhases
-		phase := int(phaseNumerator / int64(plan.toRate))
-		fraction := float64(phaseNumerator%int64(plan.toRate)) / float64(plan.toRate)
-		a, b := plan.coefficients[phase*taps:(phase+1)*taps], plan.coefficients[(phase+1)*taps:(phase+2)*taps]
-		var sum float64
-		for tap := range taps {
-			value := input[repeatedReflection(center+tap-plan.radius+1, len(input))]
-			if !finite32(value) {
-				return errors.New("non-finite resampling source")
-			}
-			coefficient := float64(a[tap]) + (float64(b[tap])-float64(a[tap]))*fraction
-			sum += float64(value) * coefficient
+		value, err := plan.at(first+i, len(input), 0, input, nil)
+		if err != nil {
+			return err
 		}
-		destination[i] = float32(sum)
-		if !finite32(destination[i]) {
-			return errors.New("resampling output exceeds finite range")
-		}
+		destination[i] = value
 	}
 	return nil
+}
+
+// at reads a continuous source through the current span and its retained tail.
+// Source positions remain absolute; only the storage backing them is streamed.
+func (plan *resamplePlan) at(outputIndex, inputFrames, first int, current, previous []float32) (float32, error) {
+	position := int64(outputIndex) * int64(plan.fromRate)
+	center := int(position / int64(plan.toRate))
+	if plan.fromRate == plan.toRate {
+		if center >= first && center-first < len(current) {
+			value := current[center-first]
+			if !finite32(value) {
+				return 0, errors.New("non-finite resampling source")
+			}
+			return value, nil
+		}
+		return 0, errors.New("continuous identity source unavailable")
+	}
+	phaseNumerator := (position % int64(plan.toRate)) * resamplePhases
+	phase := int(phaseNumerator / int64(plan.toRate))
+	fraction := float64(phaseNumerator%int64(plan.toRate)) / float64(plan.toRate)
+	taps := 2 * plan.radius
+	a, b := plan.coefficients[phase*taps:(phase+1)*taps], plan.coefficients[(phase+1)*taps:(phase+2)*taps]
+	var sum float64
+	for tap := range taps {
+		index := repeatedReflection(center+tap-plan.radius+1, inputFrames)
+		var value float32
+		switch {
+		case index >= first && index-first < len(current):
+			value = current[index-first]
+		case index < first && index >= first-len(previous):
+			value = previous[index-first+len(previous)]
+		default:
+			return 0, errors.New("continuous resampling source unavailable")
+		}
+		if !finite32(value) {
+			return 0, errors.New("non-finite resampling source")
+		}
+		coefficient := float64(a[tap]) + (float64(b[tap])-float64(a[tap]))*fraction
+		sum += float64(value) * coefficient
+	}
+	result := float32(sum)
+	if !finite32(result) {
+		return 0, errors.New("resampling output exceeds finite range")
+	}
+	return result, nil
 }

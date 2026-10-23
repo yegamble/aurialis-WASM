@@ -55,8 +55,8 @@ type studioUp2 struct {
 func (s *studioUp2) process(c *studioHalfBandCoeffs, input float64) (float64, float64) {
 	s.history[s.cursor] = input
 	even, odd := s.history[(s.cursor-32)&63], 0.0
-	for k, coefficient := range c.odd {
-		odd += 2 * coefficient * s.history[(s.cursor-k)&63]
+	for k, coefficient := range c.odd[:32] {
+		odd += 2 * coefficient * (s.history[(s.cursor-k)&63] + s.history[(s.cursor-63+k)&63])
 	}
 	s.cursor = (s.cursor + 1) & 63
 	return even, odd
@@ -70,8 +70,8 @@ type studioDown2 struct {
 func (s *studioDown2) process(c *studioHalfBandCoeffs, even, odd float64) float64 {
 	s.history[s.cursor] = even
 	output := .5 * s.history[(s.cursor-64)&127]
-	for k, coefficient := range c.odd {
-		output += coefficient * s.history[(s.cursor-2*k-1)&127]
+	for k, coefficient := range c.odd[:32] {
+		output += coefficient * (s.history[(s.cursor-2*k-1)&127] + s.history[(s.cursor-127+2*k)&127])
 	}
 	s.history[(s.cursor+1)&127] = odd
 	s.cursor = (s.cursor + 2) & 127

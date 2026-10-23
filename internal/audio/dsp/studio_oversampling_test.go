@@ -15,6 +15,11 @@ func studioHalfBandResponse(c studioHalfBandCoeffs, frequency float64) float64 {
 
 func TestStudioHalfBandMeasuredPassbandAndStopband(t *testing.T) {
 	c := prepareStudioHalfBand()
+	for k, coefficient := range c.odd {
+		if coefficient != c.odd[63-k] {
+			t.Fatal("odd taps are not symmetric for pair folding")
+		}
+	}
 	passMinimum, passMaximum, stopMaximum := 1.0, 1.0, 0.0
 	for bin := range 16385 {
 		frequency := float64(bin) / 32768

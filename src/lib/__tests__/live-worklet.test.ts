@@ -14,10 +14,11 @@ type Processor = {
 
 // This VM kernel only tests protocol/lifecycle behavior. Compiled Go signal
 // parity is covered independently by the native/WASI verification script.
-function workletFixture(initialOdd = false, abiVersion: number | null = 1, capability: "count" | "algorithm" | "latency" | "missing" | null = null) {
+function workletFixture(initialOdd = false, abiVersion: number | null = 1, capability: "count" | "algorithm" | "latency" | "missing" | null = null, sharedEpoch = false) {
   let Constructor: (new (options: unknown) => Processor) | undefined;
   const header = new Int32Array(new SharedArrayBuffer(8 * 4));
   const tags = new Int32Array(new SharedArrayBuffer(256 * 5 * 4));
+  const epoch = new SharedArrayBuffer(16); const epochHeader = new Int32Array(epoch, 0, 2); const epochTime = new Float64Array(epoch, 8, 1);
   const samples = new Float32Array(new SharedArrayBuffer(128 * 256 * 4 * 4));
   const controlHeader = new Int32Array(new SharedArrayBuffer(16 + (abiVersion === 1 ? 81 : 82) * 8), 0, 4);
   const values = new Float64Array(controlHeader.buffer, 16, abiVersion === 1 ? 81 : 82);
@@ -71,7 +72,7 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
   runInNewContext(code, context);
   if (!Constructor) throw new Error("Audio worklet was not installed");
   const processor = new Constructor({ processorOptions: { header: header.buffer, tags: tags.buffer,
-    samples: samples.buffer, controls: controlHeader.buffer, delayBlocks: 1, module: {},
+    ...(sharedEpoch ? { stream: epoch } : {}), samples: samples.buffer, controls: controlHeader.buffer, delayBlocks: 1, module: {},
     entropy: new Uint8Array(256), clockOriginMs: 1, controlAbiVersion: abiVersion } });
   const message = (data: unknown) => { processor.port.onmessage({ data }); };
   const render = (left = 0.25, right = 0.5) => {
@@ -80,7 +81,7 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
     context.currentTime += 128 / context.sampleRate;
     return output;
   };
-  return { context, header, tags, samples, controlHeader, values, memory, kernel, host, processor,
+  return { context, header, tags, samples, epochHeader, epochTime, controlHeader, values, memory, kernel, host, processor,
     load, wait, processGo, applyGo, message, render };
 }
 
@@ -135,6 +136,20 @@ describe("direct Go worklet lifecycle", () => {
     expect(f.kernel.aurialis_live_process).toHaveBeenCalledTimes(warmed);
     expect(f.header[0]).toBe(0);
     expect(f.processor.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "error", message: "The source start deadline was missed. Retry playback." }));
+  });
+  it("arms without consuming a delayed source prefix, then starts from a shared quantum epoch", () => {
+    const f = workletFixture(false, 2, null, true); const warmed = f.kernel.aurialis_live_process.mock.calls.length;
+    f.message({ type: "bind-source", token: 1, source: new Float64Array([1, 48000, 48000, 1, 2, 3, 4, 5, 6, 7, 8]) });
+    for (let index = 0; index < 4; index++) f.render();
+    f.message({ type: "arm", generation: 1, sourceFrame: 123 });
+    expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "stream-armed", generation: 1 });
+    expect(f.kernel.aurialis_schedule_seek).toHaveBeenCalledWith(123);
+    for (let index = 0; index < 4; index++) expect(silent(f.render())).toBe(true);
+    expect(f.kernel.aurialis_live_process).toHaveBeenCalledTimes(warmed);
+    f.epochTime[0] = 10 * 128; f.epochHeader[1] = 1; f.epochHeader[0] = 2;
+    expect(silent(f.render())).toBe(true); expect(silent(f.render())).toBe(true);
+    expect(f.kernel.aurialis_live_process).toHaveBeenCalledTimes(warmed);
+    f.render(); expect(f.kernel.aurialis_live_process).toHaveBeenCalledTimes(warmed + 1); expect(f.header[0]).toBe(1);
   });
   it.each([0, 3, 1.5, null])("rejects explicit unsupported packet ABI %s", (abi) => {
     const f = workletFixture(false, abi);

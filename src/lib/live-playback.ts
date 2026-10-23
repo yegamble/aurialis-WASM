@@ -100,6 +100,10 @@ export function createLivePlayback(
   let audio: AudioContext | undefined;
   let worklet: AudioWorkletNode | undefined;
   let header: Int32Array<SharedArrayBuffer> | undefined;
+  let streamHeader: Int32Array<SharedArrayBuffer> | undefined;
+  let streamTime: Float64Array<SharedArrayBuffer> | undefined;
+  let sourceTicket = 0;
+  const arms = new Map<number, { resolve: () => void; reject: (error: Error) => void }>();
   let controls: ReturnType<typeof createLiveControls> | undefined;
   let loadingAbort: AbortController | undefined;
   let buffer: AudioBuffer | undefined;
@@ -155,6 +159,7 @@ export function createLivePlayback(
   }
   function tearDown(): void {
     activePublication?.abort();
+    sourceTicket++; for (const arm of arms.values()) arm.reject(new Error("The source graph closed before arming.")); arms.clear();
     for (const pending of publications.values()) pending.reject(new Error("The audio graph was closed before publication."));
     publications.clear();
     cancelAnimationFrame(spectrumFrame);
@@ -171,7 +176,7 @@ export function createLivePlayback(
     loadingAbort = undefined;
     if (audio && audio.state !== "closed") void audio.close().catch(() => undefined);
     installedScript = undefined; scheduleRevision = 0;
-    audio = undefined; worklet = undefined; header = undefined; controls = undefined;
+    audio = undefined; worklet = undefined; header = undefined; streamHeader = undefined; streamTime = undefined; controls = undefined;
     buffer = undefined; splitter = undefined; merger = undefined;
     leftAnalyser = undefined; rightAnalyser = undefined;
     initialization = undefined;
@@ -189,19 +194,24 @@ export function createLivePlayback(
     emitSilence();
     callbacks.onError?.(failure);
   }
-  function resetStream(startTime: number, sourceFrame: number): void {
-    if (!header || !worklet) return;
+  function armStream(sourceFrame: number): Promise<number> {
+    if (!header || !worklet) return Promise.reject(new Error("The source graph is not ready."));
     const generation = Atomics.add(header, GENERATION, 1) + 1;
     Atomics.store(header, WRITE, 0); Atomics.store(header, READ, 0);
     Atomics.store(header, WAKE, 0); Atomics.store(header, APPLIED_VERSION, 0);
-    worklet.port.postMessage({ type: "reset", generation, startTime, sourceFrame });
+    return new Promise<number>((resolve, reject) => {
+      const timeout = setTimeout(() => { finish(new Error("The audio engine did not arm the source. Retry playback.")); }, 5000);
+      function finish(error?: Error) { clearTimeout(timeout); arms.delete(generation); if (error) reject(error); else resolve(generation); }
+      arms.set(generation, { resolve: () => { finish(); }, reject: finish });
+      worklet?.port.postMessage({ type: "arm", generation, sourceFrame });
+    });
   }
   function emitSilence(): void {
     callbacks.onMeter?.({ peakDbfs: -120, rmsDbfs: -120, crestDb: 0,
       correlation: 1, position: state.position, underruns: state.underruns });
   }
   function pause(): void {
-    playTicket++;
+    playTicket++; sourceTicket++;
     const position = positionAt();
     stopSource();
     worklet?.port.postMessage({ type: "hold" });
@@ -214,21 +224,30 @@ export function createLivePlayback(
     emit();
     if (!disposed) emitSilence();
   }
-  function startSource(offset: number): void {
-    if (!audio || !worklet || !buffer) throw new Error("The live audio graph is not ready.");
+  async function startSource(offset: number): Promise<void> {
+    const context = audio, processor = worklet, input = buffer;
+    if (!context || !processor || !input || !streamHeader || !streamTime) throw new Error("The live audio graph is not ready.");
+    const ticket = ++sourceTicket;
     stopSource();
-    sourceNode = audio.createBufferSource();
-    sourceNode.buffer = buffer;
-    // Keep the input continuous even during the final buffered tail. Repeat can
-    // then be enabled without resurrecting an already-ended native source.
-    sourceNode.loop = true;
-    sourceNode.connect(worklet);
     const sourceFrame = Math.min(source.left.length - 1, Math.max(0, Math.floor(offset * source.sampleRate)));
     sourceOffset = sourceFrame / source.sampleRate;
-    sourceStart = Math.ceil((audio.currentTime + 0.01) * audio.sampleRate / QUANTUM) * QUANTUM / audio.sampleRate;
-    resetStream(sourceStart, sourceFrame);
+    state = { ...state, position: sourceOffset, playing: false, loading: true };
+    emit();
+    // No native source exists before the worklet has reset and sought its Go clock.
+    const generation = await armStream(sourceFrame);
+    if (isDisposed() || ticket !== sourceTicket || audio !== context || worklet !== processor) return;
+    const node = context.createBufferSource(); sourceNode = node;
+    node.buffer = input; node.loop = true; node.connect(processor);
+    sourceStart = Math.ceil((context.currentTime + 0.02) * context.sampleRate / QUANTUM) * QUANTUM / context.sampleRate;
+    node.start(sourceStart, sourceOffset);
+    // A stalled main thread must never publish an epoch after its native deadline.
+    if (context.currentTime >= sourceStart) { stopSource(); throw new Error("The source start deadline was missed. Retry playback."); }
+    const sequence = Atomics.load(streamHeader, 0);
+    Atomics.store(streamHeader, 0, sequence + 1);
+    streamTime[0] = Math.round(sourceStart * context.sampleRate);
+    Atomics.store(streamHeader, 1, generation);
+    Atomics.store(streamHeader, 0, sequence + 2);
     setSourceEnd(state.repeat ? Infinity : state.duration);
-    sourceNode.start(sourceStart, sourceOffset);
     state = { ...state, position: sourceOffset, playing: true, loading: false, error: null };
   }
   function spectrum(time: number): void {
@@ -253,7 +272,9 @@ export function createLivePlayback(
   function onWorkletMessage(event: MessageEvent<unknown>): void {
     if (disposed || !isRecord(event.data)) return;
     const message = event.data;
-    if (message.type === "automation-staged" && typeof message.token === "number") {
+    if (message.type === "stream-armed" && typeof message.generation === "number") {
+      arms.get(message.generation)?.resolve();
+    } else if (message.type === "automation-staged" && typeof message.token === "number") {
       const pending = publications.get(message.token);
       if (!pending || !pending.canCommit()) { worklet?.port.postMessage({ type: "schedule-cancel", token: message.token }); pending?.reject(new DOMException("The processing request changed.", "AbortError")); }
       else worklet?.port.postMessage({ type: "schedule-commit", token: message.token });
@@ -294,6 +315,8 @@ export function createLivePlayback(
     audio = context;
     const resumed = context.resume();
     const sharedHeader = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 8);
+    const sharedStream = new SharedArrayBuffer(16);
+    streamHeader = new Int32Array(sharedStream, 0, 2); streamTime = new Float64Array(sharedStream, 8, 1);
     const sharedTags = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * SLOTS * 5);
     const sharedSamples = new SharedArrayBuffer(Float32Array.BYTES_PER_ELEMENT * QUANTUM * SLOTS * 4);
     header = new Int32Array(sharedHeader);
@@ -322,7 +345,7 @@ export function createLivePlayback(
       delaySeconds = delayBlocks * QUANTUM / context.sampleRate;
       const node = new AudioWorkletNode(context, "aurialis-live", { numberOfInputs: 1, numberOfOutputs: 1,
         channelCount: 2, channelCountMode: "explicit", outputChannelCount: [2],
-        processorOptions: { header: sharedHeader, tags: sharedTags, samples: sharedSamples, delayBlocks,
+        processorOptions: { header: sharedHeader, stream: sharedStream, tags: sharedTags, samples: sharedSamples, delayBlocks,
           module: compiledModule, controls: sharedControls, controlAbiVersion: 2, entropy: crypto.getRandomValues(new Uint8Array(256)),
           clockOriginMs: Math.max(1, performance.now()) } });
       worklet = node;
@@ -463,7 +486,7 @@ export function createLivePlayback(
         if (desiredScript && !installedScript) await applyScript(desiredScript, new AbortController().signal);
         if (isDisposed() || ticket !== playTicket) return;
         await audio.resume();
-        startSource(state.position >= state.duration ? 0 : state.position);
+        await startSource(state.position >= state.duration ? 0 : state.position);
         spectrumFrame = requestAnimationFrame(spectrum);
         emit();
       } catch (error) {
@@ -474,7 +497,7 @@ export function createLivePlayback(
     seek(seconds) {
       if (disposed || !Number.isFinite(seconds)) return;
       const offset = Math.max(0, Math.min(state.duration, seconds));
-      if (state.playing && offset < state.duration) startSource(offset);
+      if (state.playing && offset < state.duration) void startSource(offset).then(() => { emit(); }).catch(fail);
       else {
         if (state.playing) pause();
         state = { ...state, position: offset };
@@ -513,7 +536,7 @@ export function createLivePlayback(
       const wasEnded = state.playing && position >= sourceEnd;
       state = { ...state, repeat: enabled };
       if (state.playing) {
-        if (enabled && wasEnded) startSource(0);
+        if (enabled && wasEnded) void startSource(0).then(() => { emit(); }).catch(fail);
         else setSourceEnd(enabled ? Infinity : (Math.floor(position / state.duration) + 1) * state.duration);
       }
       emit();

@@ -2,6 +2,8 @@
 // (GOOS=js/wasip1 GOARCH=wasm) and exposes a stateful block-processing bridge.
 package main
 
+// cspell:words automator
+
 import (
 	"errors"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/automation"

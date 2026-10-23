@@ -55,11 +55,13 @@ func (builder *Builder) Stage(index int, target Target, fade int, muted bool, po
 	}
 	compiled := compiledMove{target: target, fade: float64(fade), muted: muted, count: len(points)}
 	metadata := Targets()[target]
+	previousFrame := int64(-1)
 	for i, point := range points {
-		if !finite(point.Value) || point.Value < metadata.Minimum || point.Value > metadata.Maximum || point.Frame < 0 || point.Frame > schedule.frames || (i > 0 && point.Frame <= points[i-1].Frame) {
+		if !finite(point.Value) || point.Value < metadata.Minimum || point.Value > metadata.Maximum || point.Frame < 0 || point.Frame > schedule.frames || point.Frame <= previousFrame {
 			return false
 		}
 		compiled.points[i] = point
+		previousFrame = point.Frame
 	}
 	duration := points[len(points)-1].Frame - points[0].Frame
 	if fade < 0 || int64(fade) > duration/2 || fade > schedule.sourceRate/10 {

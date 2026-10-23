@@ -9,10 +9,10 @@ import type { Album, MeasuredAudioMetrics, SourceIdentity, Track } from "./types
 
 const maxCacheBytes = 128 * 1024 * 1024;
 const metricKeys = ["integratedLufs", "shortTermLufs", "truePeakDbtp", "samplePeakDbfs", "dynamicRangeDb", "correlation", "lowBassCorrelation", "dcLeftDbfs", "dcRightDbfs", "clippingSamples", "gainReductionDb"] as const;
-export type AlbumMemoryOwner = Readonly<{ update: (bytes: number) => void; dispose: () => void }>;
+type AlbumMemoryOwner = Readonly<{ update: (bytes: number) => void; dispose: () => void }>;
 export type AlbumMemoryFactory = (bytes: number) => AlbumMemoryOwner;
 type GainRow = AlbumGainPlan["tracks"][number];
-export type AlbumOutputRow = AlbumReading & {
+type AlbumOutputRow = AlbumReading & {
   source: SourceIdentity; sourceRevision: number; audioKey: string;
   beforeMetrics: MeasuredAudioMetrics; processingHash: string; scriptRevision: number | null;
   gain: GainRow; output: Awaited<ReturnType<typeof inspectEncodedWAV>> & { bytes: number };
@@ -118,9 +118,7 @@ export class AlbumBatch {
           const source = identity(track), canonicalBytes = 44 + source.frames * 8;
           // Source Blob, verification arrayBuffer and WebCrypto input snapshot; workers reserve their own job/clone bytes.
           work.update(canonicalBytes * 3); progress(`Measuring accepted chain ${String(readings.length + 1)} of ${String(this.tracks.length)}: ${track.title}`);
-          const blob = await getAudio(audioKey(track)); check();
-          if (!blob) throw new Error(`The source for “${track.title}” is missing. Restore it in Library.`);
-          await verifyCanonicalSource(blob, source, signal); check();
+          const blob = await this.verifiedSource(track, signal, check);
           const applied = track.deepMastering?.applied;
           const measurement = applied ? await measureScriptAudio(blob, applied, signal) : await measureAudio(blob, engineParams(track.advanced), signal);
           check(); assertLayout(measurement, source); await verifyCanonicalSource(blob, source, signal); check();
@@ -133,11 +131,7 @@ export class AlbumBatch {
         // Resume only after re-verifying every source, including the retained completed prefix.
         for (const track of this.tracks) {
           const expected = identity(track); work.update((44 + expected.frames * 8) * 3);
-          const blob = await getAudio(audioKey(track)); check();
-          if (!blob) { this.dispose(); throw new Error(`The source for “${track.title}” is missing. Restore it in Library.`); }
-          try { await verifyCanonicalSource(blob, expected, signal); }
-          catch (cause) { if (!signal.aborted) this.dispose(); throw cause; }
-          check(); work.update(0);
+          await this.verifiedSource(track, signal, check); check(); work.update(0);
         }
       }
       const mode = this.album.gainMode ?? "relationships", target = albumTarget(this.album);
@@ -167,10 +161,15 @@ export class AlbumBatch {
       work.dispose(); if (this.active === controller) this.active = null;
     }
   }
-  private async renderTrack(track: Track, gain: GainRow, before: AlbumReading, source: SourceIdentity, signal: AbortSignal, check: () => void) {
+  private async verifiedSource(track: Track, signal: AbortSignal, check: () => void): Promise<Blob> {
     const blob = await getAudio(audioKey(track)); check();
-    if (!blob) throw new Error(`The source for “${track.title}” is missing. Restore it in Library.`);
-    await verifyCanonicalSource(blob, source, signal); check();
+    if (!blob) { this.dispose(); throw new Error(`The source for “${track.title}” is missing. Restore it in Library.`); }
+    try { await verifyCanonicalSource(blob, identity(track), signal); }
+    catch (cause) { if (!signal.aborted) this.dispose(); throw cause; }
+    check(); return blob;
+  }
+  private async renderTrack(track: Track, gain: GainRow, before: AlbumReading, source: SourceIdentity, signal: AbortSignal, check: () => void) {
+    const blob = await this.verifiedSource(track, signal, check);
     const applied = track.deepMastering?.applied, params = engineParams(track.advanced);
     const chain = applied ? await serverRenderScript(blob, applied, 32, signal) : await serverRender(blob, params, 32, signal);
     check();

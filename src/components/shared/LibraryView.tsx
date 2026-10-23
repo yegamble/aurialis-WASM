@@ -57,6 +57,7 @@ export function LibraryView() {
   const addToAlbum = (id: string) => {
     if (!albumTrack) return;
     const album = state.albums.find((item) => item.id === id);
+    if (album && album.trackIds.length >= 64 && !album.trackIds.includes(albumTrack.id)) { setAlbumTrack(null); setError("This album already has 64 tracks. Choose another sequence or remove a track first."); return; }
     if (album && !album.trackIds.includes(albumTrack.id)) dispatch({ type: "UPDATE_ALBUM", id, patch: { trackIds: [...album.trackIds, albumTrack.id] } });
     setAlbumTrack(null); setMessage("Project added to the album.");
   };
@@ -94,7 +95,7 @@ export function LibraryView() {
     {preview && <LibraryPreview track={preview} onClose={() => { setPreview(null); }} />}
     {restore && <SourceRelink track={state.tracks.find((track) => track.id === restore.id) ?? restore} open onClose={() => { setRestore(null); setStorageRevision((value) => value + 1); }} />}
     <Modal open={!!albumTrack} title="Add project to album" onClose={() => { setAlbumTrack(null); }}>
-      <div className="grid gap-2">{state.albums.map((album) => <Button key={album.id} variant="secondary" onClick={() => { addToAlbum(album.id); }}>{album.title}</Button>)}<Button onClick={() => { if (!albumTrack) return; dispatch({ type: "ADD_ALBUM", album: { id: `album-${crypto.randomUUID()}`, title: `Untitled sequence ${String(state.albums.length + 1)}`, artist: "", target: "−14 LUFS", trackIds: [albumTrack.id], mastered: false } }); setAlbumTrack(null); setMessage("Album created with this project."); }}>New album with this project</Button></div>
+      <div className="grid gap-2">{state.albums.map((album) => <Button key={album.id} variant="secondary" disabled={album.trackIds.length >= 64 && !album.trackIds.includes(albumTrack?.id ?? "")} onClick={() => { addToAlbum(album.id); }}>{album.title}</Button>)}<Button onClick={() => { if (!albumTrack) return; dispatch({ type: "ADD_ALBUM", album: { id: `album-${crypto.randomUUID()}`, title: `Untitled sequence ${String(state.albums.length + 1)}`, artist: "", target: "−14 LUFS", trackIds: [albumTrack.id], mastered: false } }); setAlbumTrack(null); setMessage("Album created with this project."); }}>New album with this project</Button></div>
     </Modal>
     <Modal open={!!pendingDelete} eyebrow="Confirm removal" title={pendingDelete ? `Delete “${pendingDelete.title}”?` : "Delete project"} onClose={() => { if (!busy) setPendingDelete(null); }} actions={<><Button variant="secondary" disabled={busy} onClick={() => { setPendingDelete(null); }}>Cancel</Button><Button variant="danger" disabled={busy} onClick={() => { if (pendingDelete) void remove(pendingDelete); }}>{busy ? "Removing audio…" : "Delete project"}</Button></>}>
       <p>This removes the project, its album links and its unshared source and recovery audio after storage confirms deletion.</p>

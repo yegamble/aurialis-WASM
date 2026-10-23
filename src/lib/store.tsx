@@ -424,12 +424,13 @@ export function reduceStoreState(
       return { ...state, albums: state.albums.map((album) => album === action.expected ? { ...album, report: action.report } : album) };
 
     case "IMPORT_ALBUM_TRACK":
-      if (!state.albums.includes(action.expected) || action.expected.trackIds.length >= 64 || state.tracks.some((track) => track.id === action.track.id)) return state;
-      return { ...state, tracks: [action.track, ...state.tracks], albums: state.albums.map((album) => album === action.expected
+      if (state.tracks.some((track) => track.id === action.track.id)) return state;
+      // An already saved import remains a visible library project if queued album edits win the attach CAS.
+      return { ...state, tracks: [action.track, ...state.tracks], albums: state.albums.map((album) => album === action.expected && album.trackIds.length < 64
         ? { ...album, trackIds: [...album.trackIds, action.track.id], mastered: false, updatedAt: new Date().toISOString() } : album) };
 
     case "ADD_ALBUM":
-      return { ...state, albums: [action.album, ...state.albums] };
+      return { ...state, albums: [{ gainMode: "relationships", offsets: {}, updatedAt: new Date().toISOString(), ...action.album }, ...state.albums] };
 
     case "UPDATE_ALBUM":
       return {

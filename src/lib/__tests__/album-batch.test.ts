@@ -183,6 +183,22 @@ describe("album batch ownership and final encoded measurement", () => {
     paths.set(tracks[0]?.id ?? "", previewWAV({ sampleRate: rate, left: new Float32Array(frames), right: new Float32Array(frames) }));
     await expect(second.run(() => true, () => undefined)).rejects.toThrow(/PCM differs/u); expect(second.getFiles()).toHaveLength(0); expect(second.getReport()).toBeNull();
   });
+  it("discards every completed output if any source changes between cohort planning and its render", async () => {
+    const { album, tracks } = await fixture(), owners = memory(), batch = new AlbumBatch(album, tracks, owners.reserve);
+    await expect(batch.run(() => true, (value) => {
+      if (value.completed === 1) paths.set(tracks[1]?.id ?? "", previewWAV({ sampleRate: rate, left: new Float32Array(frames), right: new Float32Array(frames) }));
+    })).rejects.toThrow(/PCM differs/u);
+    expect(batch.getFiles()).toHaveLength(0); expect(batch.getReport()).toBeNull(); expect(owners.total()).toBe(0); expect(batch.canResume()).toBe(false);
+  });
+  it("keeps a saved import visible in Library when a queued album change wins the full-record attach CAS", async () => {
+    const { album, tracks } = await fixture(), track = tracks[0]; if (!track) throw new Error("Missing source");
+    const newer = { ...album, title: "Changed during import" };
+    const state = { tracks: [], albums: [newer], stems: [] };
+    const result = reduceStoreState(state, { type: "IMPORT_ALBUM_TRACK", expected: album, track });
+    expect(result.tracks).toEqual([track]); expect(result.albums).toEqual([newer]);
+    const added = reduceStoreState({ ...state, albums: [] }, { type: "ADD_ALBUM", album });
+    expect(added.albums[0]).toMatchObject({ gainMode: "relationships", offsets: {} }); expect(typeof added.albums[0]?.updatedAt).toBe("string");
+  });
   it("saves metadata with a complete cohort CAS and drops malformed optional receipts while preserving legacy albums/settings", async () => {
     const { album, tracks } = await fixture(), batch = new AlbumBatch(album, tracks, memory().reserve), report = await batch.run(() => true, () => undefined);
     const state = { tracks, albums: [album], stems: [] };

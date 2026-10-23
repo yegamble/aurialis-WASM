@@ -87,6 +87,11 @@ func syntheticNormInput(rows int, kind string) []float32 {
 			case 1:
 				value = 1
 			}
+		case "square-normal-quotient-underflow":
+			value = 7e17
+			if index%256 == 0 {
+				value = float32(math.Ldexp(1, -63))
+			}
 		case "overflow-reject":
 			value = 1e30
 		}
@@ -157,7 +162,7 @@ func TestWriteOriginalNormalizationFixtures(t *testing.T) {
 				}
 			}
 		}
-		if kind == "quotient-underflow" || kind == "reassociation-underflow" || kind == "scale-reassociation-underflow" {
+		if kind == "quotient-underflow" || kind == "reassociation-underflow" || kind == "scale-reassociation-underflow" || kind == "square-normal-quotient-underflow" {
 			gainName = "synthetic-" + kind + "-gamma"
 			for index := range gain {
 				gain[index] = 32
@@ -204,7 +209,7 @@ func TestWriteOriginalNormalizationFixtures(t *testing.T) {
 	for _, rows := range []int{1, 3, 63, 64, 65, 255, 256, 257} {
 		write(rows, "pattern", syntheticNormInput(rows, "pattern"))
 	}
-	for _, kind := range []string{"zero", "constant", "alternating", "clamp-below", "clamp-above", "clamp-near-below", "clamp-near-above", "dynamic", "tiny-normal", "subnormal-input", "subnormal-gamma", "quotient-underflow", "reassociation-underflow", "scale-reassociation-underflow", "overflow-reject"} {
+	for _, kind := range []string{"zero", "constant", "alternating", "clamp-below", "clamp-above", "clamp-near-below", "clamp-near-above", "dynamic", "tiny-normal", "subnormal-input", "subnormal-gamma", "quotient-underflow", "reassociation-underflow", "scale-reassociation-underflow", "square-normal-quotient-underflow", "overflow-reject"} {
 		write(3, kind, syntheticNormInput(3, kind))
 	}
 	metadata, err := json.MarshalIndent(struct {

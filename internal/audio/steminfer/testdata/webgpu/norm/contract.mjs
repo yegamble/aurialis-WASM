@@ -126,6 +126,7 @@ export function compareFixture(fixture, result) {
       if (actual < Math.min(...options) - scaleError || actual > Math.max(...options) + scaleError) throw new Error("Normalization scale exceeds declared association/FTZ diagnostic bound");
       const ideal = (value / goD) * 16 * g;
       const ordinary = !squareUnderflow && normalOrZero(value) && normalOrZero(g) && normalOrZero(q)
+        && normalOrZero(value / d) && normalOrZero(value / goD) && (value === 0 || q !== 0)
         && [q * g, 16 * g, q * 16, q * 16 * g].every(normalOrZero);
       if (ordinary) report.ordinaryElements++; else report.underflowLimitedElements++;
       report.maximumGoDifference = Math.max(report.maximumGoDifference, Math.abs(actual - go[index]));

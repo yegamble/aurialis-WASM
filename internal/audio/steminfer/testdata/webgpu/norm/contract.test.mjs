@@ -46,3 +46,15 @@ test("pass2 reassociation/FTZ is limited even when final ideal output is normal"
   assert.ok(output[0] >= MIN_NORMAL); output[0] = 0; const report = compareFixture(f, result); assert.ok(report.underflowLimitedElements > 0); assert.ok(report.maximumGoDifference >= MIN_NORMAL);
   output[0] = 0.1; assert.throws(() => compareFixture(f, result), /scale exceeds/);
 });
+test("normal squares with a flushed subnormal quotient stay explicitly limited", () => {
+  const x = new Float32Array(256).fill(7e17); x[0] = 2 ** -63;
+  assert.equal(x[0] * x[0], MIN_NORMAL, "tiny input square is exactly the smallest normal");
+  const f = fixture(x, new Float32Array(256).fill(32)), result = stages(f), q = new Float32Array(result, 0, 256), output = new Float32Array(result, f.plan.xBytes, 256);
+  const exact = x[0] / new Float32Array(result, 2 * f.plan.xBytes, 1)[0];
+  assert.ok(exact > 0 && exact < MIN_NORMAL, "input/divisor is subnormal despite all normal squares");
+  assert.ok(output[0] >= MIN_NORMAL, "post-division scaling amplifies quotient to normal range");
+  q[0] = 0; output[0] = 0;
+  const report = compareFixture(f, result);
+  assert.equal(report.underflowLimitedElements, 1, "observed flushed zero must not manufacture ordinary conformance");
+  assert.match(report.verdict, /not whole-fixture/);
+});

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { webcrypto } from "node:crypto";
 import assert from "node:assert/strict";
 import { createAurialisWasiHost } from "../../public/worklets/aurialis-wasi-host.js";
+import { engineParams } from "../../src/lib/browser-engine.ts";
 import { packLiveControls } from "../../src/lib/live-controls.ts";
 
 const [modulePath,fixturePath]=process.argv.slice(2);
@@ -23,7 +24,16 @@ async function kernel(fixture){
  source();assert.equal(wasm.aurialis_schedule_bind_source(),1);controls();host.beginRender();
  return{wasm,source,controls,stage,render};
 }
+function assertPublicBaselineRoundTrip(params){
+ const filters={low_shelf:"lowshelf",high_shelf:"highshelf",high_pass:"highpass",peaking:"peaking"};
+ const advanced={input:params.inputGainDb,eqEnabled:params.eqEnabled,eqBands:params.bands.map((band,index)=>({...band,id:String(index),label:String(index),type:filters[band.type]})),
+ compressor:{enabled:params.compressor.enabled,threshold:params.compressor.thresholdDb,ratio:params.compressor.ratio,attack:params.compressor.attackMs,release:params.compressor.releaseMs,knee:params.compressor.kneeDb,makeup:params.compressor.makeupDb,sidechainHpfHz:params.compressor.sidechainHpfHz,autoRelease:params.compressor.autoRelease},
+ saturationModule:{enabled:params.saturation.enabled,drive:params.saturation.amount,character:params.saturation.character},stereo:{...params.stereo,width:params.stereo.widthPct},
+ limiter:{enabled:params.limiter.enabled,ceiling:params.limiter.ceilingDbtp,targetLufs:params.limiter.targetLufs,release:params.limiter.releaseMs,truePeak:params.limiter.truePeak},repair:{enabled:params.repair.enabled,declick:false,declip:false,phaseAlign:false},deHarsh:params.deHarsh,multiband:params.multiband};
+ assert.deepEqual(packLiveControls(engineParams(advanced),2),packLiveControls(params,2),"generated public v2 baseline cannot round-trip real Advanced/static controls");
+}
 for(const [index,fixture]of fixtures.entries()){
+ if(fixture.publicProfile)assertPublicBaselineRoundTrip(fixture.params);
  const current=await kernel(fixture),{wasm}=current;
  assert.equal(wasm.aurialis_schedule_begin(1,fixture.moves.length,fixture.rate),1);for(const [moveIndex,move]of fixture.moves.entries())assert.equal(current.stage(moveIndex,move),1);
  assert.equal(wasm.aurialis_schedule_commit(),1);assert.equal(wasm.aurialis_schedule_revision(),1);assert.equal(wasm.aurialis_set_controls_v2(82),0,"static packet silently replaced attached baseline");

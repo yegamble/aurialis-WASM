@@ -28,6 +28,10 @@ func AnalyzeDeepV2Context(ctx context.Context, buf *audio.Buffer, profile Profil
 		return nil, err
 	}
 	params := ProfilePreset(canonical)
+	params.AlgorithmVersion = dsp.LegacyAlgorithmVersion
+	params.Limiter.TruePeak = false
+	params.Repair = dsp.RepairParams{}
+	params.Compressor.Topology = dsp.CompOptical
 	params.Limiter.CeilingDBTP = math.Min(params.Limiter.CeilingDBTP, -1)
 	script := &ScriptV2{Version: "2.0", Source: features.Source, Revision: 1, Profile: canonical, Summary: "Measured spectral-balance proposal; review the explicit baseline before applying. No instrument or musical-role inference.", Sections: features.Sections, Moves: []automation.Move{}, Findings: []Finding{}, ChainParams: params, BeforeMetrics: metrics}
 	audible := false

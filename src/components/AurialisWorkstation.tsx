@@ -26,6 +26,7 @@ import { createLivePlayback, type LiveMeter, type LivePlaybackController, type L
 import { usePathname } from "next/navigation";
 import { navigateWorkspace, useWorkspacePath, workspaceRoute, type WorkstationRoute } from "@/lib/workspace-navigation";
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -74,6 +75,7 @@ import { audioKey } from "@/lib/library";
 import { FeatureAnalysisPanel } from "./shared/FeatureAnalysisPanel";
 import { DeepProposalPanel } from "./shared/DeepProposalPanel";
 import { useDeepPlayback } from "@/lib/use-deep-playback";
+import { appliedRevisionKey } from "@/lib/deep-mastering";
 import type { ScriptV2 } from "@/lib/deep-mastering";
 import { DeepTimeline } from "./shared/DeepTimeline";
 
@@ -602,7 +604,8 @@ function MasterView({ trackId }: { trackId: string }) {
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [deepMoveId, setDeepMoveId] = useState("");
   const [deepEditorOpen, setDeepEditorOpen] = useState(false);
-  function selectDeepMove(id: string) { setDeepMoveId(id); setDeepEditorOpen(Boolean(id)); }
+  const selectDeepMove = useCallback((id: string) => { setDeepMoveId(id); setDeepEditorOpen(Boolean(id)); }, []);
+  const closeDeepEditor = useCallback(() => { setDeepEditorOpen(false); }, []);
   const [bitDepth, setBitDepth] = useState<ExportBitDepth>(24);
   const [message, setMessage] = useState("");
   const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
@@ -616,7 +619,7 @@ function MasterView({ trackId }: { trackId: string }) {
     },
     [],
   );
-  const settingsKey = track?.deepMastering?.applied ? JSON.stringify(track.deepMastering.applied) : track ? masteringSettingsKey(track.advanced) : "";
+  const settingsKey = useMemo(() => track ? appliedRevisionKey(track) ?? masteringSettingsKey(track.advanced) : "", [track]);
   const fresh = renderedKey === settingsKey && preview !== null;
   useEffect(() => {
     if (renderAbort.current && !renderAbort.current.signal.aborted && renderSettings.current !== settingsKey) {
@@ -770,7 +773,7 @@ function MasterView({ trackId }: { trackId: string }) {
     if (!pending) renderAbort.current?.abort();
     const controller = pending ?? new AbortController();
     renderAbort.current = controller;
-    renderSettings.current = track.deepMastering?.applied ? JSON.stringify(track.deepMastering.applied) : masteringSettingsKey(params);
+    renderSettings.current = appliedRevisionKey(track) ?? masteringSettingsKey(params);
     setProcessing(true);
     setMessage(
       track.deepMastering?.applied ? "Rendering the applied script with the common native Go engine…" : "Rendering the uploaded audio with the shared Go WebAssembly engine…",
@@ -781,7 +784,7 @@ function MasterView({ trackId }: { trackId: string }) {
         : await processPreview(source, params, controller.signal);
       if (controller.signal.aborted) return;
       setPreview(pcm);
-      setRenderedKey(track.deepMastering?.applied ? JSON.stringify(track.deepMastering.applied) : masteringSettingsKey(params));
+      setRenderedKey(appliedRevisionKey(track) ?? masteringSettingsKey(params));
       live.current?.setBypass(false);
       setMessage(track.deepMastering?.applied ? "Preview ready. The applied script uses the common Go DSP engine." : "Preview ready. Playback uses the shared Go DSP engine.");
       dispatch({
@@ -1043,7 +1046,7 @@ function MasterView({ trackId }: { trackId: string }) {
               onSelectMove={selectDeepMove}
               onApplyScript={deepPlayback.apply}
               editorOpen={deepEditorOpen}
-              onCloseEditor={() => { setDeepEditorOpen(false); }}
+              onCloseEditor={closeDeepEditor}
               onApply={(next) => {
                 dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next, shortcutUndo: {} } });
                 setMessage("Profile applied to live playback. Adjust it in Advanced mode while you listen.");
@@ -1728,7 +1731,7 @@ function AlbumView({ albumId }: { albumId: string }) {
   const albumTracks = (album?.trackIds ?? [])
     .map((id) => state.tracks.find((track) => track.id === id))
     .filter((track): track is Track => track !== undefined);
-  const artifactKey = JSON.stringify(albumTracks.map((track) => [track.id, track.sourceRevision, track.deepMastering?.applied ?? engineParams(track.advanced)]));
+  const artifactKey = JSON.stringify(albumTracks.map((track) => [track.id, track.sourceRevision, appliedRevisionKey(track) ?? engineParams(track.advanced)]));
   useEffect(() => {
     setRendered((previous) => previous && previous.key !== artifactKey ? null : previous);
   }, [artifactKey]);
@@ -2189,7 +2192,7 @@ function ReleaseView({ trackId }: { trackId: string }) {
   const pending = useRef<AbortController | null>(null);
   useEffect(() => () => { pending.current?.abort(); }, []);
   if (!track) return <div className="page"><PageTitle eyebrow="Release check" title="Choose your audio first" copy="Import a track to measure its rendered audio." /><Link className={buttonClassName("primary")} href="/">Import audio</Link></div>;
-  const key = JSON.stringify([track.id, track.sourceRevision, track.deepMastering?.applied ?? engineParams(track.advanced)]);
+  const key = JSON.stringify([track.id, track.sourceRevision, appliedRevisionKey(track) ?? engineParams(track.advanced)]);
   const metrics = scan?.key === key ? scan.metrics : null;
   const targetLufs = platform === "Dynamic" || platform === "Spoken word" ? -16 : -14;
   const maxPeak = -1;

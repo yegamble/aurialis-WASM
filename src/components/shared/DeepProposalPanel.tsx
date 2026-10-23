@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { getAudio } from "@/lib/db";
 import { analyzeDeep, compileScript, deepProfiles, deepSourceMatches, readScriptV2, type AutomationMove, type DeepProfile, type ScriptV2 } from "@/lib/deep-mastering";
 import { audioKey } from "@/lib/library";
@@ -21,7 +21,7 @@ const desktopQuery = "(min-width: 1024px)";
 function subscribeDesktop(listener: () => void) { if (typeof window.matchMedia !== "function") return () => undefined; const query = window.matchMedia(desktopQuery); query.addEventListener("change", listener); return () => { query.removeEventListener("change", listener); }; }
 function isDesktop() { return typeof window.matchMedia === "function" && window.matchMedia(desktopQuery).matches; }
 
-export function DeepProposalPanel({ track, sourceReady, selectedMoveId, onSelectMove, editorOpen, onCloseEditor, onApply }: { track: Track; sourceReady: boolean; selectedMoveId: string; onSelectMove: (id: string) => void; editorOpen: boolean; onCloseEditor: () => void; onApply?: (script: ScriptV2) => Promise<void> }) {
+export const DeepProposalPanel = memo(function DeepProposalPanel({ track, sourceReady, selectedMoveId, onSelectMove, editorOpen, onCloseEditor, onApply }: { track: Track; sourceReady: boolean; selectedMoveId: string; onSelectMove: (id: string) => void; editorOpen: boolean; onCloseEditor: () => void; onApply?: (script: ScriptV2) => Promise<void> }) {
   const desktop = useSyncExternalStore(subscribeDesktop, isDesktop, () => false);
   const { state, dispatch } = useStore(); const latest = useRef(state); latest.current = state;
   const operation = useRef<AbortController | null>(null);
@@ -94,4 +94,4 @@ export function DeepProposalPanel({ track, sourceReady, selectedMoveId, onSelect
     </>}
     {desktop ? editorOpen && editor && <section className="min-w-0 space-y-3 border-t border-line pt-4" aria-label="Edit selected draft move"><div className="flex flex-wrap items-center justify-between gap-2"><h3>Edit draft move</h3><Button variant="ghost" onClick={onCloseEditor}>Close move editor</Button></div>{editor}</section> : <BottomSheet open={editorOpen && !!selected} title={selected ? "Edit draft " + automationLabel(selected.target) : "Edit automation"} onClose={onCloseEditor}>{editor}</BottomSheet>}
   </section>;
-}
+});

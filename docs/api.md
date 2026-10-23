@@ -11,9 +11,11 @@ API CI runs the complete Newman collection and raw security probes against the v
 
 ## Album orchestration — private integration checkpoint
 
+The album branch is integrated on browser-local main `85aa7cd`. The shared `measureScriptAudio` JSON adapter is restored now that the album caller needs accepted-script measurements; it uses the same device-local render transport and does not allocate a caller-side float master merely to measure. Complete album runtime acceptance remains open.
+
 The album-consistency branch adds no endpoint. It sequentially measures each complete accepted chain through the existing render JSON contract, then renders that chain as 32-bit float, calls the same Go renderer with explicit linear input gain and every other module disabled, and encodes 24-bit WAV with the existing TPDF encoder. Applied ScriptV2 is retained; no Detach or mutation of individual tracks occurs.
 
-The final encoded WAV is strictly inspected and SHA-256 hashed, bypass-measured, reconstructed as canonical float PCM and sent through the existing feature-analysis job. Geometry and source receipts are checked before publication. The metadata-only album receipt is version 1, bounded to 256 KiB and 64 ordered rows. Reloading it cannot authorize a WAV download or processing job. Full-cohort compare-and-swap saves reject source/settings/sequence races. Integration/browser acceptance remains [open](tasks.md#album-consistency--private-source-checkpoint).
+The final encoded WAV is strictly inspected and SHA-256 hashed, bypass-measured, reconstructed as canonical float PCM and sent through the existing feature-analysis job. Geometry and source receipts are checked before publication. The metadata-only album receipt is version 1, bounded to 256 KiB and 64 ordered rows. Reloading it cannot authorize a WAV download or processing job. Full-cohort compare-and-swap saves reject source/settings/sequence races. The unchanged 128 MiB cache caps the entire encoded cohort at about 7.8 minutes at 48 kHz / 24-bit stereo. Typical full-length album delivery and integration/browser acceptance remain [open](tasks.md#album-consistency--private-source-checkpoint).
 
 ## Device-local transport boundary
 

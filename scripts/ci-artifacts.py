@@ -151,6 +151,18 @@ def pack(root, destination, profile="native"):
     (destination / "SHA256SUMS").write_text("".join(digest(destination / name) + "  " + name + "\n" for name in ("manifest.json", "runtime.tar")))
 
 
+def bounded_tar_members(archive, expected):
+    # Stop before attacker-controlled header cardinality becomes an allocation.
+    entries = []
+    for entry in archive:
+        entries.append(entry)
+        if len(entries) > len(expected):
+            raise ValueError("Unexpected CI tar member count")
+    if len(entries) != len(expected) or {entry.name for entry in entries} != set(expected):
+        raise ValueError("Unexpected CI tar members")
+    return entries
+
+
 def restore(root, directory, profile="native"):
     members, receipt_name, _ = profile_members(profile)
     if (directory / "SHA256SUMS").stat().st_size > 256 or (directory / "manifest.json").stat().st_size > 65536 or (directory / "runtime.tar").stat().st_size > MAXIMUM_BYTES + 1024 * 1024:
@@ -168,9 +180,7 @@ def restore(root, directory, profile="native"):
     with tempfile.TemporaryDirectory(prefix="aurialis-ci-") as temporary:
         staging = Path(temporary)
         with tarfile.open(archive_path, "r:") as archive:
-            entries = archive.getmembers()
-            if len(entries) != len(members) or {entry.name for entry in entries} != set(members):
-                raise ValueError("Unexpected CI tar members")
+            entries = bounded_tar_members(archive, members)
             for entry in entries:
                 expected = manifest["files"][entry.name]
                 if not entry.isfile() or entry.size != expected["bytes"]:

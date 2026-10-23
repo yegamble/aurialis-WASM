@@ -134,9 +134,7 @@ def restore(root, directory):
             staging = Path(temporary) / "assets"
             staging.mkdir()
             with tarfile.open(archive_path, "r:") as archive:
-                entries = archive.getmembers()
-                if len(entries) != len(manifest["files"]) or {entry.name for entry in entries} != set(manifest["files"]):
-                    raise ValueError("Unexpected browser archive members")
+                entries = shared.bounded_tar_members(archive, manifest["files"])
                 for entry in entries:
                     expected = manifest["files"][entry.name]
                     if not entry.isfile() or entry.size != expected["bytes"] or entry.mode & 0o777 != 0o644:

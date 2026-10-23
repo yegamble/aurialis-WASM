@@ -398,7 +398,7 @@ jobs:
       CLOUDFLARE_SEND_METRICS: "false"
     needs: browser-build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-go
@@ -437,7 +437,7 @@ jobs:
           python3 scripts/ci-browser-artifacts.py restore artifacts/ci-browser-download
           AURIALIS_BROWSER_STATIC_DIR="$PWD/deploy/cloudflare" go test ./internal/browserjobs -run '^TestGeneratedStaticPolicyMatchesNative$' -count=1
       - name: Run real browser audio workflows with no audio network transfers
-        run: pnpm run test:browser
+        run: pnpm exec playwright test --config playwright.browser.config.ts --workers=1 --retries=0 --global-timeout=540000
       - name: Retain static browser outcomes, exact WAV and request inventories
         if: always()
         uses: actions/upload-artifact@v4

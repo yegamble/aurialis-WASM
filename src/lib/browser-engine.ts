@@ -1,3 +1,6 @@
+import { engineParams } from "./engine-params";
+export { engineParams } from "./engine-params";
+import { deviceAudioRequest, usesBrowserAudio } from "./browser-jobs";
 import type { ScriptV2 } from "./deep-mastering";
 import type { AdvancedParams, MeasuredAudioMetrics, SourceIdentity } from "./types";
 
@@ -24,67 +27,6 @@ declare global {
       outRight: Float32Array,
     ) => number;
   }
-}
-export function engineParams(advanced: AdvancedParams) {
-  if (advanced.limiter.enabled && advanced.limiter.truePeak)
-    throw new Error("True-peak limiting is unavailable. Use the sample-peak limiter.");
-  if (advanced.repair.enabled)
-    throw new Error("Audio repair is unavailable. Disable repair to render.");
-  return {
-    bypass: false,
-    abOriginal: false,
-    loudnessMatchAb: false,
-    inputGainDb: advanced.input,
-    eqEnabled: advanced.eqEnabled,
-    bands: advanced.eqBands.map((band) => ({
-      freqHz: band.freqHz,
-      gainDb: band.gainDb,
-      q: band.q,
-      type:
-        band.type === "lowshelf"
-          ? "low_shelf"
-          : band.type === "highshelf"
-            ? "high_shelf"
-            : band.type === "highpass" ? "high_pass" : "peaking",
-      enabled: band.enabled,
-    })),
-    compressor: {
-      enabled: advanced.compressor.enabled,
-      thresholdDb: advanced.compressor.threshold,
-      ratio: advanced.compressor.ratio,
-      attackMs: advanced.compressor.attack,
-      releaseMs: advanced.compressor.release,
-      kneeDb: advanced.compressor.knee,
-      makeupDb: advanced.compressor.makeup,
-      sidechainHpfHz: advanced.compressor.sidechainHpfHz,
-      autoRelease: advanced.compressor.autoRelease,
-      topology: "optical",
-    },
-    saturation: {
-      enabled: advanced.saturationModule.enabled,
-      amount: advanced.saturationModule.drive,
-      character: advanced.saturationModule.character,
-    },
-    stereo: {
-      enabled: advanced.stereo.enabled,
-      widthPct: advanced.stereo.width,
-      monoBass: advanced.stereo.monoBass,
-      crossoverHz: advanced.stereo.crossoverHz,
-      midGainDb: advanced.stereo.midGainDb,
-      sideGainDb: advanced.stereo.sideGainDb,
-    },
-    limiter: {
-      enabled: advanced.limiter.enabled,
-      ceilingDbtp: advanced.limiter.ceiling,
-      targetLufs: advanced.limiter.targetLufs,
-      releaseMs: advanced.limiter.release,
-      truePeak: false,
-    },
-    repair: { enabled: false, deEssDb: 0, transientDb: 0, deClip: false },
-    deHarsh: advanced.deHarsh,
-    multiband: advanced.multiband,
-    ditherBits: 0,
-  };
 }
 let loading: Promise<void> | undefined;
 async function loadEngine(): Promise<void> {
@@ -133,7 +75,7 @@ async function audioRequest(
 ): Promise<Response> {
   signal?.throwIfAborted();
   try {
-    return await fetch("/api/master/render", {
+    return await deviceAudioRequest("/api/master/render", {
       method: "POST",
       body: data,
       ...(json ? { headers: { Accept: "application/json" } } : {}),
@@ -141,6 +83,7 @@ async function audioRequest(
     });
   } catch (error: unknown) {
     signal?.throwIfAborted();
+    if (usesBrowserAudio()) throw error;
     const address = typeof location === "undefined" ? "this address" : location.origin;
     throw new Error(
       `Could not reach the local audio server at ${address}. Check that Aurialis is running, then try again. If your browser reports a blocked local connection, check this site's local-network permission.`,
@@ -171,7 +114,7 @@ async function readAudioResponse<T>(read: () => Promise<T>, signal?: AbortSignal
     return result;
   } catch (error: unknown) {
     signal?.throwIfAborted();
-    throw new Error("The local audio response was interrupted or unreadable. Check that Aurialis is still running, then try again.", { cause: error });
+    throw new Error("The local audio response was interrupted or unreadable. Try again or use the local Aurialis app on this device.", { cause: error });
   }
 }
 
@@ -213,7 +156,8 @@ export function processPreview(
     return { left, right, sampleRate: source.sampleRate };
   };
   const result = engineQueue.then(run, run);
-  engineQueue = result.catch(() => undefined);
+  // Serialize work without retaining the last completed song-length PCM.
+  engineQueue = result.then(() => undefined, () => undefined);
   return result;
 }
 export async function serverRender(
@@ -355,10 +299,10 @@ export async function importAudio(file: Blob, signal?: AbortSignal): Promise<{ c
   const header = response.headers.get("X-Aurialis-Source-Metrics");
   let measurement: AudioMeasurement;
   try {
-    if (!header || header.length > 4096) throw new Error("The local server returned incomplete source measurements. Restart Aurialis and try again.");
+    if (!header || header.length > 4096) throw new Error("The local audio engine returned incomplete source measurements. Reload Aurialis and try again.");
     let body: unknown;
     try { body = JSON.parse(header) as unknown; }
-    catch { throw new Error("The local server returned invalid source measurements."); }
+    catch { throw new Error("The local audio engine returned invalid source measurements."); }
     measurement = audioMeasurement(body);
   } catch (error) {
     await response.body?.cancel().catch(() => undefined);
@@ -372,13 +316,13 @@ export async function importAudio(file: Blob, signal?: AbortSignal): Promise<{ c
 
 function metricObject(value: unknown): MeasuredAudioMetrics {
   if (typeof value !== "object" || value === null)
-    throw new Error("The server returned invalid audio measurements.");
+    throw new Error("The audio engine returned invalid audio measurements.");
   const number = (key: keyof MeasuredAudioMetrics): number => {
     // Keys are the fixed measurement schema below, never user-provided keys.
     // eslint-disable-next-line security/detect-object-injection
     const result: unknown = (value as Record<string, unknown>)[key];
     if (typeof result !== "number" || !Number.isFinite(result))
-      throw new Error("The server returned incomplete audio measurements.");
+      throw new Error("The audio engine returned incomplete audio measurements.");
     return result;
   };
   return {
@@ -411,13 +355,6 @@ export async function measureAudio(
   return audioMeasurement(body);
 }
 
-export async function measureScriptAudio(file: Blob, script: ScriptV2, signal?: AbortSignal): Promise<AudioMeasurement> {
-  const form = new FormData(); form.append("file", file, "source.wav"); form.append("script", JSON.stringify(script)); form.append("format", "json");
-  const response = await audioRequest(form, signal, true);
-  if (!response.ok) throw await audioError(response, "The applied script could not be measured. Restore its matching source and retry.");
-  return audioMeasurement(await readAudioResponse(() => response.json() as Promise<unknown>, signal));
-}
-
 function audioMeasurement(body: unknown): AudioMeasurement {
   if (typeof body !== "object" || body === null || !("sampleRate" in body)
     || !("frames" in body) || !("duration" in body)
@@ -427,7 +364,7 @@ function audioMeasurement(body: unknown): AudioMeasurement {
     || typeof body.frames !== "number" || !Number.isSafeInteger(body.frames) || body.frames < 1
     || typeof body.duration !== "number" || !Number.isFinite(body.duration) || body.duration <= 0
     || Math.abs(body.duration - body.frames / body.sampleRate) > 0.001)
-    throw new Error("The server returned invalid audio measurements.");
+    throw new Error("The audio engine returned invalid audio measurements.");
   return {
     sampleRate: body.sampleRate,
     frames: body.frames,
@@ -440,7 +377,7 @@ function audioMeasurement(body: unknown): AudioMeasurement {
 
 function sourceIdentity(value: unknown, rate: number, frames: number): SourceIdentity {
   if (typeof value !== "object" || value === null || !("pcmHash" in value) || !("sampleRate" in value) || !("frames" in value) || typeof value.pcmHash !== "string" || !/^[a-f0-9]{64}$/u.test(value.pcmHash) || value.sampleRate !== rate || value.frames !== frames)
-    throw new Error("The server returned an invalid source identity.");
+    throw new Error("The audio engine returned an invalid source identity.");
   return { pcmHash: value.pcmHash, sampleRate: rate, frames };
 }
 

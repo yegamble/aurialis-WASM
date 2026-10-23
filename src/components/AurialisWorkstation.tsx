@@ -14,6 +14,8 @@ import {
   sourcePeaks,
   type StereoPCM,
 } from "@/lib/browser-engine";
+import { reserveBrowserAudioMemory } from "@/lib/browser-jobs";
+import { downloadLocalBlob } from "@/lib/download";
 import { clearNextPlaybackHandoff, reconcileNextPlaybackHandoff, stageNextPlaybackHandoff, takeNextPlaybackHandoff } from "@/lib/playback-handoff";
 import { bindPlaybackControls } from "@/lib/media-session";
 import { ExtendedCompressorControls, ExtendedStereoControls, FrequencyDynamicsControls, MasteringShortcuts } from "./shared/AdvancedDynamics";
@@ -200,7 +202,7 @@ export function AurialisWorkstation({
         </nav>
         <div className="nav-note">
           <span className="eyebrow">Local workspace</span>
-          <p>Audio stays on your device and local server.</p>
+          <p>Audio stays on this device.</p>
         </div>
         <button
           type="button"
@@ -292,9 +294,8 @@ export function AurialisWorkstation({
         }
       >
         <p style={{ color: "var(--ink-soft)", margin: "0 0 12px" }}>
-          Aurialis processes audio with a shared Go engine in your browser and
-          local server. Audio is stored in IndexedDB; project settings are
-          stored in this browser.
+          Aurialis processes audio on this device. Audio and project settings
+          stay in this browser. Keep your original files and project backups.
         </p>
         <div className="metric-mini">
           <span>
@@ -1612,9 +1613,11 @@ function AlbumView({ albumId }: { albumId: string }) {
   const { state, dispatch } = useStore();
   const [working, setWorking] = useState(false);
   const operation = useRef<AbortController | null>(null);
-  useEffect(() => () => { operation.current?.abort(); }, []);
+  const cacheMemory = useRef<ReturnType<typeof reserveBrowserAudioMemory> | null>(null);
+  useEffect(() => () => { operation.current?.abort(); cacheMemory.current?.dispose(); cacheMemory.current = null; }, []);
   const [message, setMessage] = useState("");
-  const [rendered, setRendered] = useState<{ key: string; files: { id: string; title: string; blob: Blob }[] } | null>(null);
+  const [rendered, setRendered] = useState<{ key: string; files: { id: string; title: string; blob: Blob }[]; memory: ReturnType<typeof reserveBrowserAudioMemory> } | null>(null);
+  useEffect(() => () => { rendered?.memory.dispose(); }, [rendered]);
   const album =
     state.albums.find((item) => item.id === albumId);
 
@@ -1623,8 +1626,11 @@ function AlbumView({ albumId }: { albumId: string }) {
     .filter((track): track is Track => track !== undefined);
   const artifactKey = JSON.stringify(albumTracks.map((track) => [track.id, track.sourceRevision, appliedRevisionKey(track) ?? engineParams(track.advanced)]));
   useEffect(() => {
-    setRendered((previous) => previous && previous.key !== artifactKey ? null : previous);
-  }, [artifactKey]);
+    if (rendered && rendered.key !== artifactKey) {
+      if (cacheMemory.current === rendered.memory) cacheMemory.current = null;
+      setRendered(null);
+    }
+  }, [artifactKey, rendered]);
 
   if (!album) {
     return (
@@ -1696,6 +1702,9 @@ function AlbumView({ albumId }: { albumId: string }) {
             setWorking(true);
             setMessage("Measuring and rendering each track in sequence…");
             setRendered(null);
+            const memory = reserveBrowserAudioMemory();
+            cacheMemory.current = memory;
+            let retained = false;
             try {
               const prepared: { track: Track; advanced: AdvancedParams; measurement: Awaited<ReturnType<typeof measureAudio>> }[] = [];
               const files: { id: string; title: string; blob: Blob }[] = [];
@@ -1706,10 +1715,15 @@ function AlbumView({ albumId }: { albumId: string }) {
                 if (!file) throw new Error(`The source for “${track.title}” is missing. Import it again.`);
                 const advanced = await normalizeSimpleAudio(file, track.advanced, -14, controller.signal);
                 const measurement = await measureAudio(file, engineParams(advanced), controller.signal);
-                if (totalBytes + measurement.frames * 6 + 44 > 128 * 1024 * 1024) throw new Error("The rendered album exceeds the 128 MiB download cache. Export a smaller sequence or render tracks individually.");
+                const expectedBytes = totalBytes + measurement.frames * 6 + 44;
+                if (expectedBytes > 128 * 1024 * 1024) throw new Error("The rendered album exceeds the 128 MiB download cache. Export a smaller sequence or render tracks individually.");
+                // Claim the final retained allocation before rendering; no gap while
+                // the worker result becomes its downloadable Blob.
+                memory.update(expectedBytes);
                 const blob = await serverRender(file, engineParams(advanced), 24, controller.signal);
                 if (controller.signal.aborted) return;
                 totalBytes += blob.size;
+                memory.update(totalBytes);
                 files.push({ id: track.id, title: track.title, blob });
                 prepared.push({ track, advanced, measurement });
               }
@@ -1723,11 +1737,15 @@ function AlbumView({ albumId }: { albumId: string }) {
                 } });
               }
               dispatch({ type: "UPDATE_ALBUM", id: album.id, patch: { mastered: true } });
-              setRendered({ key: JSON.stringify(prepared.map((item) => [item.track.id, item.track.sourceRevision, engineParams(item.advanced)])), files });
+              setRendered({ key: JSON.stringify(prepared.map((item) => [item.track.id, item.track.sourceRevision, engineParams(item.advanced)])), files, memory });
+              retained = true;
               setMessage("Rendered 24-bit WAV masters are ready below. Original source files are preserved. Downloads remain available until settings change or you leave this page.");
             } catch (error) {
               if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "The sequence could not be prepared.");
-            } finally { if (!controller.signal.aborted) setWorking(false); }
+            } finally {
+              if (!retained) { memory.dispose(); if (cacheMemory.current === memory) cacheMemory.current = null; }
+              if (!controller.signal.aborted) setWorking(false);
+            }
           })()}
         >
           {working ? "Rendering sequence…" : "Render album masters"}
@@ -1737,9 +1755,8 @@ function AlbumView({ albumId }: { albumId: string }) {
       {artifacts.length > 0 && <section className="paper-panel" aria-label="Rendered album downloads">
         <h2>Your album masters</h2>
         {artifacts.map((file) => <Button key={file.id} variant="secondary" icon={<Icon name="arrow-down-to-line" />} onClick={() => {
-          const url = URL.createObjectURL(file.blob);
-          const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${file.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-album-master.wav`; anchor.click();
-          setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
+          try { downloadLocalBlob(file.blob, `${file.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-album-master.wav`); }
+          catch (error) { setMessage(error instanceof Error ? error.message : "The album master could not be downloaded. Try again."); }
         }}>Download {file.title}</Button>)}
       </section>}
       <div className="album-layout">

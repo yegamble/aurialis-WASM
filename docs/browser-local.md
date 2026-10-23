@@ -1,0 +1,66 @@
+# Processing audio on your device
+
+The browser build keeps imported audio, measurements and mastered files on your device. Cloudflare serves the application and audio-engine files. It accepts no audio uploads.
+
+This browser execution path has passed its bounded local checks on `codex/browser-local-jobs`; exact-head remote CI and merge remain required. It has not replaced the existing public deployment. The local native executable remains available for jobs that exceed a browser's resources.
+
+## Where processing happens
+
+| Work | Browser build | Local executable |
+| --- | --- | --- |
+| Validate and reconstruct a WAV | Shared Go CDR in a dedicated Web Worker | Same Go CDR through the executable's loopback API |
+| Analyze, match a reference or render/export | Shared Go mastering code compiled to WebAssembly | Same Go mastering code compiled for the device |
+| Play the current settings | Shared Go/WASI DSP in AudioWorklet | Same browser AudioWorklet path |
+| Store projects and source audio | This browser's localStorage and IndexedDB | This browser's storage at the local app's address |
+| Trained instrument separation | Unavailable until browser inference is measured and qualified | Separate native-model qualification remains open |
+
+A public website always chooses browser processing. It never switches to a remote audio API or probes for a local server. To use native processing, open the local `aurialis` executable and its own loopback studio. Moving between origins does not move browser storage; keep original files and project backups.
+
+## Job and memory limits
+
+One expensive browser job runs at a time, with at most one waiting job. Both requests charge their raw source/reference Blobs before joining the queue. The temporary input owner lasts until the underlying queue turn settles, even if its caller cancels while waiting; the active estimate conservatively overlaps this raw-input charge. Cancel terminates the active worker. Completion, failure and cancellation release its private Go heap. Existing source and project ownership checks still prevent late results from replacing a newer selection.
+
+Binary input and output use transferable buffers, never audio encoded as JSON or base64. The shared binary-input limit is 129 MiB, including both Reference sources. The existing decoded-frame and format limits remain in effect.
+
+Before allocating a worker, the client estimates simultaneous original/canonical files, live PCM and AudioBuffer, transferred input, Go raw/decoded/render/encoding data and returned buffer/Blob. It reserves another 64 MiB for runtime overhead. The estimated budget is 256 MiB on devices reporting at most 2 GB memory, 1 GiB on devices reporting at least 8 GB, and 512 MiB otherwise. These are conservative admission estimates, not promises about browser memory availability. A browser may still stop a job; use the local native app when that happens. Aurialis does not silently shorten, resample or upload a rejected file.
+
+Callers retaining album outputs, intermediate masters or reviewed WAVs must register their exact resident bytes through `reserveBrowserAudioMemory`. Each owner updates its own count and disposes it on discard/cancel/unmount. Counts sum with the active job estimate; malformed/unsafe/over-budget changes reject synchronously. The job keeps its allocation charged through cloning and processing, including progress callbacks. The existing album cache registers its cumulative output before rendering and keeps that owner until invalidation/replacement/unmount; late completion after disposal cannot retain it. Four focused album lifecycle/error cases passed.
+
+Local downloads use a shared temporary owner through the one-second object-URL lifetime, so view disposal cannot leave a live URL uncharged. Same-Blob URLs share that temporary owner, which conservatively overlaps a retained cache. Creation/click failure cleanup and delayed final release passed three focused cases.
+
+Release reserves expected canonical-source/hash headroom before IndexedDB loading. The same owner charges three source copies plus expected output for the first source hash, source plus output during rendering and measurement, and source plus three encoded buffers during inspection. It retains the original source through final verification, then shrinks to the exact retained WAV immediately before return. Replacement overlaps old/new artifacts; stale/error/unmount paths release only their owner. An unresolved source load retains its claim after cancellation until settlement. Twenty-six focused controller/core/download cases passed; the static-browser checks below also exercised repeated 16/24/32-bit downloads and their exact encoded measurements.
+
+## Shared contracts
+
+`internal/browserjobs` exposes a closed metadata contract for render, source features, Deep analysis, measured Reference and numeric automation compilation. It calls the existing native Go container validator and DSP/mastering implementations. Source identities hash the reconstructed PCM with the same Go layout. Script rendering independently checks the actual source digest. Compilation alone continues to report `sourceVerified: false`.
+
+Each browser job has a 130-second client deadline. JSON metadata is limited to 2 MiB plus 128 KiB; source audio travels separately. The local native API retains its existing execution and reservation limits.
+
+## Static hosting
+
+The static Worker serves only GET and HEAD requests. It preserves the native CSP's exact generated inline-script hashes, COOP/COEP/CORP isolation, fixed WebAssembly MIME type and other security headers. Missing APIs and unknown files return errors rather than an HTML app shell. Dynamic workspace HTML and App Router text files resolve through known generated placeholder assets.
+
+Cloudflare's current individual static-file limit is 25 MiB. Any qualified public model package must use immutable, hash-verified shards no larger than 16 MiB. Model distribution is separate from user audio; no R2 upload bucket or remote audio Container is required. The large trained model and an efficient browser inference kernel remain separate acceptance work.
+
+## Verification status
+
+The latest local proof uses runtime/test source `cd0e404`, based on merged Release main `01c2c15`. Its ignored evidence index is `artifacts/browser-local/final-browser-cd0e404/proof-manifest.json`. Native and browser builds have separate exact-source receipts. Later documentation commits do not relabel those artifacts; remote CI must build the final PR head again.
+
+- **Quality and ownership:** strict TypeScript, configured ESLint, Knip, spelling, Worker/E2E types and official actionlint 1.7.7 passed. All 434 frontend units passed, including 12 transport cases and the 26 Release/core/download cases. Go formatting, module verification, vet, pinned 2.15.0 lint, identifier, vulnerability, race and JS-target checks passed. Go source/configuration is unchanged between that gate at `dbafc3b` and `cd0e404`.
+- **Actual static browser:** a fresh browser build produced 92 assets and 35 exact CSP hashes. After complete package/tree removal and receipt-verified restoration, all eight cases passed in 25.8 seconds, with zero skipped, unexpected or flaky results. They cover native-equivalent import/export, hostile CDR, incompatible-module retry, HTML/RSC/security routing, Reference, album, Release and Deep. Repeated 16/24/32-bit Release WAVs and five final encoded reviews matched native bytes, hashes and layouts. Their 11 measured fields were finite; maximum diagnostic error was 4.80e-14.
+- **Deep and network evidence:** one authored +3 dB move compiled locally at revision 4. All 16,384 captured 48 kHz live frames matched native exactly, as did the complete 1,152,044-byte WAV. Four saved browser/worker inventories contain 233 same-origin GET/HEAD requests and zero bodies across Reference, album, Release and Deep. No audio POST, DELETE or body-bearing fetch occurred in those workflows.
+- **Native regression and oracles:** a separate native build passed complete five-member removal/restoration, embedded binary smoke, 333 exact legacy/direct/restricted-WASI fixtures, nine history transitions, 45 compiled automation fixtures, 15 independent FFmpeg comparisons, Newman 34 requests/39 assertions and raw security probes. All 107 native-loopback browser cases passed in 6.1 minutes, without skips, retries or flaky results. Thirteen native/actual Go-WASM job oracles passed with exact WAV/dither bytes, source identity, controls, integer geometry and numeric compiler packets. Only whitelisted finite diagnostic/scoring fields permit a fixed absolute 1e-10 difference; maximum error was 1.1368683772161603e-13.
+
+Earlier seven-case proof `4e5b40b` and eight-case proof `a669729` remain separate historical checkpoints. The original whole-JSON mismatch (3.55e-15 LUFS and 1.7e-17 correlation), attachment-retention gap, strict-lint failures, unused-wrapper Knip failure, opt-in fixture-path findings and Node module-resolution failure remain recorded in [tasks](tasks.md#browser-local-processing-and-static-worker--open-awaiting-merge). Corrections were followed by fresh checks; no control, schedule or audio-byte tolerance was added.
+
+The public deployment remains unchanged. Independent final scoped QA/Devil’s Advocate review accepted `cd0e404`. Final writer/Product review also accepted the bounded local slice. Exact-head remote CI, merge and reviewed preview/domain migration remain open. Migration also requires separately qualified local recovery of selected supported WAVs through existing CDR, without executing old metadata or settings. Old records and unsupported compressed originals remain stored; raw originals are not re-exported by the new app. Separately qualified clean PCM recovery is required before permanently retiring rollback resources. No old Worker, Container or R2 resource has been removed. These finite fixtures do not certify arbitrary music, devices, deadlines, trained separation or hardware/Waves equivalence.
+
+## Browser build artifacts
+
+CI builds native and browser targets separately and once per target. The browser artifact has three fixed members containing the asset tar, exact asset manifest and generated policy. Each asset has a size, mode and SHA-256; its path must match the policy exactly. Restore checks source/head/run/producer-attempt/platform/target facts, rejects links/traversal/duplicates and enforces bounded files and metadata. A native artifact cannot stand in for browser assets. The static runner verifies its receipt again before launch and contributes to the existing protected browser gate.
+
+Ten browser and ten native artifact-boundary cases passed, including early rejection of excess tar members. Official actionlint 1.7.7 and invalid/missing-receipt launcher probes passed. Both target profiles were also packed, completely moved aside, restored and verified before the local runtime checks above. The browser profile's entire generated asset tree was removed as part of that proof. Fresh exact-head remote CI remains required.
+
+## Bundled notices
+
+The app includes unchanged license notices for its installed Instrument Sans and Newsreader fonts, React, React DOM, Next.js, Tailwind CSS and Go runtime. They are available under `/licenses/`; `provenance.json` records exact installed versions and notice digests. Both native and browser build scripts refresh these notices from their actual installed sources. These third-party notices do not assign a license to Aurialis-WASM itself. Qualified model or GPU-kernel redistribution requires its own exact upstream notices before publication.

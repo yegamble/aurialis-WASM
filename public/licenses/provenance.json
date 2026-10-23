@@ -1,0 +1,74 @@
+{
+  "scope": "Third-party notices copied unchanged from the installed sources used to build the distributed app. This does not select or grant a license for Aurialis-WASM itself. No trained model or third-party GPU kernels are distributed by this checkpoint.",
+  "components": [
+    {
+      "name": "Instrument Sans",
+      "package": "@fontsource/instrument-sans",
+      "version": "5.3.0",
+      "license": "OFL-1.1",
+      "upstream": "https://github.com/Instrument/instrument-sans",
+      "installedSource": "@fontsource/instrument-sans/LICENSE",
+      "notice": "instrument-sans-OFL.txt",
+      "sha256": "c27a3c53c3beed7f5c26853afa15991478ff7145d3754a36b0382f84e10c0d03"
+    },
+    {
+      "name": "Newsreader",
+      "package": "@fontsource/newsreader",
+      "version": "5.3.0",
+      "license": "OFL-1.1",
+      "upstream": "https://github.com/productiontype/Newsreader",
+      "installedSource": "@fontsource/newsreader/LICENSE",
+      "notice": "newsreader-OFL.txt",
+      "sha256": "26028ec4e13b650065fa525a09532176f8a668b76ff849ea01c564a7480f91e7"
+    },
+    {
+      "name": "React",
+      "package": "react",
+      "version": "19.3.1",
+      "license": "MIT",
+      "upstream": "https://github.com/facebook/react",
+      "installedSource": "react/LICENSE",
+      "notice": "react-MIT.txt",
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+    },
+    {
+      "name": "React DOM",
+      "package": "react-dom",
+      "version": "19.3.1",
+      "license": "MIT",
+      "upstream": "https://github.com/facebook/react",
+      "installedSource": "react-dom/LICENSE",
+      "notice": "react-dom-MIT.txt",
+      "sha256": "da6d3703ed11cbe42bd212c725957c98da23cbff1998c05fa4b3d976d1a58e93"
+    },
+    {
+      "name": "Next.js",
+      "package": "next",
+      "version": "16.4.2",
+      "license": "MIT",
+      "upstream": "https://github.com/vercel/next.js",
+      "installedSource": "next/license.md",
+      "notice": "next-MIT.txt",
+      "sha256": "ee765244e2d59f5234d474f62e0766fa0c8b99af967fdd4c0cb8dcb0c76ea224"
+    },
+    {
+      "name": "Tailwind CSS",
+      "package": "tailwindcss",
+      "version": "4.3.3",
+      "license": "MIT",
+      "upstream": "https://github.com/tailwindlabs/tailwindcss",
+      "installedSource": "tailwindcss/LICENSE",
+      "notice": "tailwindcss-MIT.txt",
+      "sha256": "60e0b68c0f35c078eef3a5d29419d0b03ff84ec1df9c3f9d6e39a519a5ae7985"
+    },
+    {
+      "name": "Go standard library and JavaScript runtime",
+      "version": "go1.26.10",
+      "license": "BSD-3-Clause",
+      "upstream": "https://go.dev/LICENSE",
+      "installedSource": "GOROOT/LICENSE",
+      "notice": "go-BSD.txt",
+      "sha256": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad"
+    }
+  ]
+}

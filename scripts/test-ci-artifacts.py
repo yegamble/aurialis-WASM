@@ -139,6 +139,22 @@ class ArtifactBoundaryTests(unittest.TestCase):
             self.assertFalse((self.root / artifacts.RECEIPT).exists())
 
 
+class TarCardinalityTests(unittest.TestCase):
+    def test_excess_headers_stop_after_the_first_forbidden_member(self):
+        for expected in (artifacts.MEMBERS, artifacts.BROWSER_MEMBERS, {"index.html": 1, "shell.txt": 1}):
+            class HeaderProbe:
+                visited = 0
+
+                def __iter__(self):
+                    for index in range(6000):
+                        self.visited += 1
+                        yield tarfile.TarInfo("extra-" + str(index))
+            probe = HeaderProbe()
+            with self.assertRaises(ValueError):
+                artifacts.bounded_tar_members(probe, expected)
+            self.assertEqual(probe.visited, len(expected) + 1)
+
+
 class ProvenanceTests(unittest.TestCase):
     def test_rerun_consumes_explicit_earlier_producer_and_rejects_future_attempt(self):
         with tempfile.TemporaryDirectory() as temporary:

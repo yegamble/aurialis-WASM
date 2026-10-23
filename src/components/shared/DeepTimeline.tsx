@@ -1,6 +1,7 @@
 "use client";
 
 import { useId } from "react";
+import { Button } from "./Primitives";
 import type { AutomationTarget, ScriptV2 } from "@/lib/deep-mastering";
 
 function automationLane(target: AutomationTarget): string {
@@ -34,7 +35,7 @@ export function DeepTimeline({ script, selectedId, onSelect, playheadRatio = 0 }
               const first = move.points[0]; const last = move.points.at(-1); if (!first || !last) return null;
               return <span key={move.id} aria-hidden="true" className="absolute top-3 h-5 min-w-px rounded-full border border-ink/30" style={{ left: String(first.frame / script.source.frames * 100) + "%", width: String((last.frame - first.frame) / script.source.frames * 100) + "%", backgroundColor: colors.at(index), opacity: move.muted ? 0.3 : 0.8 }} />;
             })}
-            {script.moves.filter((move) => move.id === selectedId && automationLane(move.target) === lane).map((move) => <button key={move.id} type="button" className="!w-11 !min-w-11 !h-11 focus-visible:outline-2 focus-visible:outline-clay-dark" style={{ left: "clamp(0px, calc(" + String(((move.points[0]?.frame ?? 0) + (move.points.at(-1)?.frame ?? 0)) / 2 / script.source.frames * 100) + "% - 22px), calc(100% - 44px))" }} aria-label={"Edit selected " + automationLabel(move.target) + " move"} onClick={() => { onSelect(move.id); }}><span className="h-3 w-3 rounded-full border-2 border-paper bg-ink" /></button>)}
+            {script.moves.filter((move) => move.id === selectedId && automationLane(move.target) === lane).map((move) => <button key={move.id} type="button" className="absolute top-0 flex items-center justify-center !w-11 !min-w-11 !h-11 focus-visible:outline-2 focus-visible:outline-clay-dark" style={{ left: "clamp(0px, calc(" + String(((move.points[0]?.frame ?? 0) + (move.points.at(-1)?.frame ?? 0)) / 2 / script.source.frames * 100) + "% - 22px), calc(100% - 44px))" }} aria-label={"Edit selected " + automationLabel(move.target) + " move"} onClick={() => { onSelect(move.id); }}><span className="h-3 w-3 rounded-full border-2 border-paper bg-ink" /></button>)}
             {lane !== "AI Repair" && <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-px bg-ink/60" style={{ left: String(Math.max(0, Math.min(1, playheadRatio)) * 100) + "%" }} />}
           </div>
         </div>)}
@@ -44,6 +45,7 @@ export function DeepTimeline({ script, selectedId, onSelect, playheadRatio = 0 }
       <option value="">Choose a move to edit</option>
       {script.moves.map((move) => <option key={move.id} value={move.id}>{automationLabel(move.target)} · {move.id}{move.muted ? " · muted" : ""}</option>)}
     </select></label>
+    {selectedId && <Button variant="secondary" onClick={() => { onSelect(selectedId); }}>Edit selected move</Button>}
     <ol className="space-y-2 text-xs" aria-label="Measured proposal sections">{script.sections.map((section) => <li key={section.id}><strong>{section.name}</strong> · {(section.startFrame / script.source.sampleRate).toFixed(3)}–{(section.endFrame / script.source.sampleRate).toFixed(3)} s · {Math.round(section.confidence * 100)}% change strength · musical role unknown</li>)}</ol>
   </section>;
 }

@@ -2061,7 +2061,7 @@ function ToolsView() {
           icon="refresh-cw"
           eyebrow="Direction"
           title="Reference match"
-          copy="Reference audio analysis and automatic matching are not available."
+          copy="Measure your starting chain against reference audio, then review bounded EQ and optional width changes."
           href={`/reference/${targetId}`}
         />
         <ToolCard

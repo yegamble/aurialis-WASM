@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdvancedParams } from "../audio-dsp";
 import { createLivePlayback } from "../live-playback";
+import * as automation from "../live-automation";
+import { engineParams } from "../browser-engine";
+import type { ScriptV2 } from "../deep-mastering";
 
 const source = () => ({ sampleRate: 48000, left: new Float32Array(48000), right: new Float32Array(48000) });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
-function graphHarness(autoReady = true, autoArm = true) {
+function graphHarness(autoReady = true, autoArm = true, autoAutomation = false) {
   const contexts: Context[] = [];
   const nodes: Node[] = [];
   const worker = vi.fn();
@@ -14,7 +17,13 @@ function graphHarness(autoReady = true, autoArm = true) {
   vi.spyOn(WebAssembly, "compile").mockResolvedValue(compiledModule);
   class Port {
     onmessage: ((event: MessageEvent<unknown>) => void) | null = null;
-    postMessage = vi.fn((message: { type?: string; generation?: number }) => { if (message.type === "arm" && autoArm) queueMicrotask(() => { this.message({ type: "stream-armed", generation: message.generation }); }); });
+    revision = 0;
+    postMessage = vi.fn((message: { type?: string; generation?: number; token?: number; revision?: number }) => {
+      if (message.type === "arm" && autoArm) queueMicrotask(() => { this.message({ type: "stream-armed", generation: message.generation }); });
+      if (autoAutomation && message.type === "bind-source") queueMicrotask(() => { this.message({ type: "automation-ack", token: message.token, revision: 0 }); });
+      if (autoAutomation && message.type === "schedule") { this.revision = message.revision ?? 0; queueMicrotask(() => { this.message({ type: "automation-staged", token: message.token }); }); }
+      if (autoAutomation && message.type === "schedule-commit") queueMicrotask(() => { this.message({ type: "automation-ack", token: message.token, revision: this.revision }); });
+    });
     close = vi.fn();
     message(data: unknown) { this.onmessage?.(new MessageEvent("message", { data })); }
   }
@@ -63,7 +72,39 @@ function graphHarness(autoReady = true, autoArm = true) {
   return { contexts, nodes, fetchModule, compiledModule, worker };
 }
 
+async function attachedGraph() {
+  const harness = graphHarness(true, true, true);
+  const identity = { pcmHash: "a".repeat(64), sampleRate: 48000, frames: 48000 };
+  const params = engineParams(createDefaultAdvancedParams());
+  const script: ScriptV2 = { version: "2.0", source: identity, revision: 1, profile: "Warm Analog", summary: "Explicit baseline", chainParams: params, sections: [{ id: "all", name: "Section 1", roleHint: "unknown", confidence: 0, startFrame: 0, endFrame: 48000 }], moves: [], findings: [], beforeMetrics: { integratedLufs: -18, shortTermLufs: -18, truePeakDbtp: -6, samplePeakDbfs: -6, dynamicRangeDb: 12, correlation: 1, lowBassCorrelation: 1, dcLeftDbfs: -100, dcRightDbfs: -100, clippingSamples: 0, gainReductionDb: 0 } };
+  vi.spyOn(automation, "verifiedSourceVector").mockResolvedValue(new Float64Array(11));
+  vi.spyOn(automation, "prepareLiveAutomation").mockImplementation((candidate) => Promise.resolve({ source: new Float64Array(11), controls: new Float64Array(82), moves: new Float64Array(0), moveCount: 0, revision: candidate.revision, deviceRate: 48000 }));
+  const controller = createLivePlayback(source(), createDefaultAdvancedParams(), {}, { blob: new Blob(), identity });
+  await controller.applyScript(script, new AbortController().signal);
+  const context = harness.contexts[0], node = harness.nodes[0]; if (!context || !node) throw new Error("Missing attached graph");
+  return { ...harness, controller, context, node };
+}
+
 describe("per-track live audio lifecycle", () => {
+  it("rejects a Detach whose settings guard changes during context resume before publishing", async () => {
+    const { controller, context, node } = await attachedGraph(); let resume: (() => void) | undefined, current = true;
+    context.resume.mockImplementationOnce(() => new Promise<void>((resolve) => { resume = resolve; }));
+    const pending = controller.detachScript(createDefaultAdvancedParams(), new AbortController().signal, () => current);
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => { expect(resume).toBeTypeOf("function"); }); current = false; resume?.();
+    await rejected;
+    expect(node.port.postMessage.mock.calls.some(([message]) => message.type === "detach")).toBe(false);
+    expect(context.close).not.toHaveBeenCalled(); controller.dispose();
+  });
+  it("pauses an uncertain Detach ACK whose settings guard became stale", async () => {
+    const { controller, context, node } = await attachedGraph(); let current = true;
+    const pending = controller.detachScript(createDefaultAdvancedParams(), new AbortController().signal, () => current);
+    const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => { expect(node.port.postMessage.mock.calls.some(([message]) => message.type === "detach")).toBe(true); });
+    const request = node.port.postMessage.mock.calls.find(([message]) => message.type === "detach")?.[0];
+    current = false; node.port.message({ type: "automation-ack", token: request?.token, revision: 0 });
+    await rejected; expect(controller.getState()).toMatchObject({ ready: false, playing: false }); expect(context.close).toHaveBeenCalledOnce(); controller.dispose();
+  });
   it("defers audio and network initialization until Play and starts in processed A", () => {
     const { contexts, fetchModule, worker } = graphHarness();
     const controller = createLivePlayback(source(), createDefaultAdvancedParams());

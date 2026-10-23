@@ -461,12 +461,17 @@ export function createLivePlayback(
       activePublication?.abort();
       if (!canCommit()) throw new DOMException("The source or settings changed.", "AbortError");
       if (!installedScript) { desiredScript = undefined; currentParams = engineParams(next); serializedSettings = JSON.stringify(currentParams); controls?.publish(currentParams, ++state.parameterVersion); return; }
-      await ensureInitialized(); const context = audio; if (!context) throw new Error("The audio graph is unavailable.");
+      await ensureInitialized(); signal.throwIfAborted();
+      const context = audio; if (!context) throw new Error("The audio graph is unavailable.");
       await context.resume();
       try {
+        signal.throwIfAborted();
+        if (!canCommit()) throw new DOMException("The source or settings changed before detach.", "AbortError");
         const params = engineParams(next), version = state.parameterVersion + 1;
         controls?.publish(params, version);
         await requestPublication({ type: "detach", controls: packLiveControls(params, 2), version }, signal, canCommit);
+        signal.throwIfAborted();
+        if (!canCommit()) { fail(new Error("The detach request changed before acknowledgment. Playback paused; press Play to restore the selected revision.")); throw new DOMException("The source or settings changed during detach.", "AbortError"); }
         installedScript = undefined; desiredScript = undefined; currentParams = params; serializedSettings = JSON.stringify(params); controls?.publish(params, version);
         state = { ...state, parameterVersion: version }; emit();
       } finally { if (!state.playing && audio === context) await context.suspend(); }

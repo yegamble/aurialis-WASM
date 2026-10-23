@@ -11,6 +11,7 @@ import (
 	"syscall/js"
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
+	"github.com/yegamble/Aurialis-WASM/internal/browserjobs"
 )
 
 // The JS boundary is an offline/block bridge. It is not an allocation-free
@@ -249,6 +250,7 @@ func main() {
 	global.Set("aurialisDSPSetBand", js.FuncOf(jsSetBand))
 	global.Set("aurialisDSPProcessBlock", js.FuncOf(jsProcessBlock))
 	global.Set("aurialisDSPMeasure", js.FuncOf(jsMeasure))
+	global.Set("aurialisOfflineAbi", browserjobs.ABIVersion)
 	global.Set("aurialisOfflineJob", js.FuncOf(jsOfflineJob))
 	global.Set("aurialisDSPReady", true)
 	select {}

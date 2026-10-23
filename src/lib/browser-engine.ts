@@ -145,7 +145,7 @@ async function audioRequest(
     if (usesBrowserAudio()) throw error;
     const address = typeof location === "undefined" ? "this address" : location.origin;
     throw new Error(
-      `Could not process audio on this device at ${address}. Reload Aurialis and try again. If this browser cannot handle the file, use the local Aurialis app on this device.`,
+      `Could not reach the local audio server at ${address}. Check that Aurialis is running, then try again. If your browser reports a blocked local connection, check this site's local-network permission.`,
       { cause: error },
     );
   }
@@ -173,7 +173,7 @@ async function readAudioResponse<T>(read: () => Promise<T>, signal?: AbortSignal
     return result;
   } catch (error: unknown) {
     signal?.throwIfAborted();
-    throw new Error("The local audio result was interrupted or unreadable. Try again or use the local Aurialis app on this device.", { cause: error });
+    throw new Error("The local audio response was interrupted or unreadable. Try again or use the local Aurialis app on this device.", { cause: error });
   }
 }
 

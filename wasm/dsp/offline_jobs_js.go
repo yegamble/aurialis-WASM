@@ -9,7 +9,7 @@ import (
 	"github.com/yegamble/Aurialis-WASM/internal/browserjobs"
 )
 
-func offlineInput(value js.Value) ([]byte, bool) {
+func offlineInput(value js.Value, limit int) ([]byte, bool) {
 	if value.Type() != js.TypeObject || value.IsNull() {
 		return nil, false
 	}
@@ -23,10 +23,11 @@ func offlineInput(value js.Value) ([]byte, bool) {
 	if channelIntrinsics.sharedType.Type() == js.TypeFunction && channelIntrinsics.hasInstance.Call("call", channelIntrinsics.sharedType, buffer).Bool() {
 		return nil, false
 	}
-	length := channelIntrinsics.length.Call("call", value).Int()
-	if length < 0 || length > browserjobs.MaxInputBytes {
+	lengthValue := channelIntrinsics.length.Call("call", value).Float()
+	if lengthValue < 0 || lengthValue > float64(limit) {
 		return nil, false
 	}
+	length := int(lengthValue)
 	raw := make([]byte, length)
 	if js.CopyBytesToGo(raw, value) != length {
 		return nil, false
@@ -48,11 +49,11 @@ func jsOfflineJob(_ js.Value, args []js.Value) any {
 	if _, err := browserjobs.DecodeRequest(raw); err != nil {
 		return offlineError(err.Error())
 	}
-	source, ok := offlineInput(args[1])
+	source, ok := offlineInput(args[1], browserjobs.MaxInputBytes)
 	if !ok {
 		return offlineError("Invalid local source buffer")
 	}
-	reference, ok := offlineInput(args[2])
+	reference, ok := offlineInput(args[2], browserjobs.MaxInputBytes-len(source))
 	if !ok || len(reference) > browserjobs.MaxInputBytes-len(source) {
 		return offlineError("Invalid or oversized local reference buffer")
 	}

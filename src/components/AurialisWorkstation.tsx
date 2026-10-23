@@ -69,6 +69,8 @@ import { SourceRelink } from "./shared/LibraryTools";
 import { useTransportScrub } from "@/lib/use-transport-scrub";
 import { audioKey } from "@/lib/library";
 import { FeatureAnalysisPanel } from "./shared/FeatureAnalysisPanel";
+import { DeepProposalPanel } from "./shared/DeepProposalPanel";
+import { DeepTimeline } from "./shared/DeepTimeline";
 
 const stemNames = new Map<number, string[]>([
   [2, ["Vocals", "Instrumental"]],
@@ -592,6 +594,7 @@ function MasterView({ trackId }: { trackId: string }) {
   const [activeBandId, setActiveBandId] = useState<EQBandId>("low");
   const [exportOpen, setExportOpen] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
+  const [deepMoveId, setDeepMoveId] = useState("");
   const [bitDepth, setBitDepth] = useState<ExportBitDepth>(24);
   const [message, setMessage] = useState("");
   const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
@@ -969,6 +972,7 @@ function MasterView({ trackId }: { trackId: string }) {
             handover={handover}
           />
           <LiveSpectrumChart frame={spectrum} playing={playback?.playing ?? false} />
+          {track.mode === "deep" && track.deepMastering && <DeepTimeline script={track.deepMastering.proposal} selectedId={deepMoveId} onSelect={setDeepMoveId} playheadRatio={playheadRatio} />}
           {sourceError && <div className="flex flex-wrap items-center gap-3" role="alert">
             <p className="disclosure">{sourceError}</p>
             <Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry source</Button><Button variant="secondary" onClick={() => { setRestoreOpen(true); }}>Restore source</Button>
@@ -1026,6 +1030,8 @@ function MasterView({ trackId }: { trackId: string }) {
               track={track}
               processing={processing}
               sourceReady={source !== null}
+              selectedMoveId={deepMoveId}
+              onSelectMove={setDeepMoveId}
               onApply={(next) => {
                 dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next, shortcutUndo: {} } });
                 setMessage("Profile applied to live playback. Adjust it in Advanced mode while you listen.");
@@ -1555,16 +1561,19 @@ function SimpleControls({
   );
 }
 
-function DeepControls({ track, processing, sourceReady, onApply }: {
+function DeepControls({ track, processing, sourceReady, onApply, selectedMoveId, onSelectMove }: {
   track: Track;
   processing: boolean;
   sourceReady: boolean;
   onApply: (params: AdvancedParams) => void;
+  selectedMoveId: string;
+  onSelectMove: (id: string) => void;
 }) {
   const { dispatch } = useStore();
   const [selectedProfile, setSelectedProfile] = useState<ProfileId>(track.profile);
   return (
     <div className="control-stack deep-controls">
+      <DeepProposalPanel track={track} sourceReady={sourceReady} selectedMoveId={selectedMoveId} onSelectMove={onSelectMove} />
       <div>
         <h2>Engineer profiles</h2>
         <p>Apply a static tonal starting point, then refine it in Advanced mode.</p>

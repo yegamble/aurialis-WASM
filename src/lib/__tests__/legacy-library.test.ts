@@ -37,7 +37,7 @@ function opfs(file: File) {
   vi.stubGlobal("navigator", { storage: { getDirectory: vi.fn().mockResolvedValue({ getDirectoryHandle }) } });
   return { getFile, getFileHandle, getDirectoryHandle };
 }
-function wav(): File { return new File(["RIFFxxxxWAVEpayload"], "irrelevant.bin", { lastModified: 123 }); }
+function wav(): File { return new File(["RIFF0000WAVEpayload"], "irrelevant.bin", { lastModified: 123 }); }
 const signal = () => new AbortController().signal;
 
 describe("read-only legacy library recovery", () => {
@@ -109,7 +109,7 @@ describe("read-only legacy library recovery", () => {
     const source = (await scanLegacySources(signal())).sources[0]; if (!source) throw new Error("Missing fixture");
     await expect(readLegacyWav(source, controller.signal)).rejects.toMatchObject({ name: "AbortError" }); expect(handles.getFile).not.toHaveBeenCalled();
   });
-  it("cancels a pending OPFS read promptly and prevents overlapping uncancelable reads", async () => {
+  it("cancels a pending OPFS read promptly and prevents overlapping browser reads", async () => {
     const file = wav(), key = `track.wav|${String(file.size)}|123`; await seed([key]);
     const source = (await scanLegacySources(signal())).sources[0]; if (!source) throw new Error("Missing fixture");
     let release: (() => void) | undefined, started: (() => void) | undefined;

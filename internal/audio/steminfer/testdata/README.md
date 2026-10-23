@@ -1,5 +1,5 @@
 # Private trained-stem qualification
-<!-- cspell:words BabySlakh Slakh CyclePat PyTorch RoPE F32 F16 VECLIB OPENBLAS GOMAXPROCS SISDR Manilow Wichern Seetharaman WASPAA heldout mmap fullwindow steminfer -->
+<!-- cspell:words BabySlakh Slakh CyclePat PyTorch RoPE F32 F16 VECLIB OPENBLAS GOMAXPROCS SISDR Manilow Wichern Seetharaman WASPAA heldout mmap fullwindow steminfer clavinet -->
 
 These development tools do not enable a public separation route or browser model. All PCM and inference stay on the local device. Python, PyTorch, NumPy, SciPy and SoundFile are development dependencies, not product runtime dependencies. The native private probe currently uses Apple Accelerate; portable and browser performance remain unqualified.
 
@@ -44,4 +44,4 @@ All five native heads and residual matched the full-window original within the u
 | Piano | 0.63 | 7.83 |
 | Other | -4.42 | 2.54 |
 
-Original PyTorch produced essentially the same scores. Piano and Other remain weak; this single fixture does not qualify public activation. Track00012 is prepared but **unexecuted**. Broader musical/artifact review, silence and near-silence qualification, actual overlapping-window seams, portable inference, browser GPU limits and distribution/admission remain open. No whole-product or Waves equivalence follows.
+Original PyTorch produced essentially the same scores. The model has separate `piano`, `digital-piano` and `keys` heads; this unchanged five-head subset uses `piano`, while the Track00005 Piano truth combines acoustic grand and electric/clavinet sources. Keep the combined score and diagnose this coverage difference explicitly; do not relabel truth after seeing predictions. Piano and Other remain weak; this single fixture does not qualify public activation. Track00012 is prepared but **unexecuted**. Broader musical/artifact review, silence and near-silence qualification, actual overlapping-window seams, portable inference, browser GPU limits and distribution/admission remain open. No whole-product or Waves equivalence follows.

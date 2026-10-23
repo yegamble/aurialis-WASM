@@ -87,6 +87,7 @@ func New(cfg Config) *Server {
 	mux.HandleFunc("POST /analyze/features", s.handleAnalyzeFeatures)
 	mux.HandleFunc("POST /api/analyze/features", s.handleAnalyzeFeatures)
 
+	mux.HandleFunc("POST /api/automation/compile", s.handleCompileAutomation)
 	mux.HandleFunc("POST /api/master/render", s.handleMasterRender)
 	mux.HandleFunc("POST /master/render", s.handleMasterRender)
 
@@ -248,6 +249,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"analysisMethod":             "deterministic-energy-heuristics",
 		"featureAnalysisMethod":      "normalized-hann-spectrum-and-novelty",
 		"featureAnalysisVersion":     "1.0",
+		"masteringScriptVersions":    []string{"1.0", "2.0"},
+		"scheduleAbiVersion":         1,
 		"maxUploadBytes":             s.cfg.MaxUploadBytes,
 		"maxDecodedFrames":           audio.MaxDecodedFrames,
 		"maxAudioFileBytes":          min(MaxAudioFileBytes, s.cfg.MaxUploadBytes),
@@ -445,6 +448,13 @@ func (s *Server) handleAnalyzeDeep(w http.ResponseWriter, r *http.Request) {
 	}
 
 	version := r.FormValue("scriptVersion")
+	if r.URL.Query().Has("scriptVersion") {
+		if version != "" || len(r.URL.Query()["scriptVersion"]) != 1 {
+			writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "Duplicate scriptVersion")
+			return
+		}
+		version = r.URL.Query().Get("scriptVersion")
+	}
 	if version != "" && version != "2.0" {
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_script_version", "scriptVersion must be 2.0 or omitted for legacy v1")
 		return
@@ -454,6 +464,12 @@ func (s *Server) handleAnalyzeDeep(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if version == "2.0" {
+		for key, values := range r.URL.Query() {
+			if (key != "profile" && key != "scriptVersion") || len(values) != 1 {
+				writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "Unsupported ScriptV2 analysis query")
+				return
+			}
+		}
 		for key := range r.Form {
 			if key != "profile" && key != "scriptVersion" {
 				writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "ScriptV2 analysis accepts only profile and scriptVersion")

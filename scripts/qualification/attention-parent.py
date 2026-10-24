@@ -12,7 +12,7 @@ import traceback
 from owned_groups import OwnedGroups, command_hash, snapshot
 from observed_process import ObservedProcess
 from attention_identity import RECORD_CAP, static_identity
-from attention_contract import ProbeState, check_browser_command, check_resources, check_static_runtime, final_empty, node_command, parse_actual_command
+from attention_contract import ATTENTION_MODES, MODES, ProbeState, check_browser_command, check_resources, check_static_runtime, final_empty, node_command, parse_actual_command
 
 
 def read_metadata(path):
@@ -97,7 +97,7 @@ def actual_command(pid, executable):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mode', choices=['normal', 'crash', 'metadata', 'first-four'], required=True)
+    parser.add_argument('--mode', choices=MODES, required=True)
     parser.add_argument('--output', required=True)
     args = parser.parse_args()
     base = Path(__file__).resolve().parents[2]
@@ -258,7 +258,7 @@ def main():
             check_resources(final, len(owned.known) + 1, directory_bytes(output), disk.f_bavail * disk.f_frsize, time.monotonic() - started, supervisor.observe(snapshot()))
         except BaseException as error:
             cleanup.append({'phase': 'final-bounds-and-empty-observation', 'error': str(error)[:4096]})
-        result = {'version': 1, 'mode': args.mode, 'status': 'candidate-pass' if primary is None and not cleanup else 'fail', 'scope': ('first-four component numerical fixtures only; no model/audio/performance qualification' if args.mode == 'first-four' else 'normal/crash ownership or metadata-only source command, each requiring separate release; no device/fixture/audio/model'), 'audioProcessing': False, 'gpuRequested': args.mode in ('metadata', 'first-four'), 'launch': launch, 'browserCommand': browser_command, 'staticServerCommand': server_command, 'staticRuntimeVerification': server_verification, 'staticCommandObservations': command_observations, 'profile': profile, 'primary': primary, 'cleanup': cleanup, 'exitCode': child.poll() if child else None, 'seconds': time.monotonic() - started, 'observations': observations, 'leaders': owned.leaders if owned else None, 'admissions': owned.admissions if owned else [], 'events': owned.events if owned else [], 'preCrashBrowserMembers': before, 'confirmedCrashSurvivors': survivors, 'postCrashObservation': post_crash, 'finalObservation': final, 'limits': {'wallSeconds': 60, 'workSeconds': 25, 'outputBytesIncludingScratch': 64 * 1024 ** 2, 'minimumFreeBytes': 6 * 1024 ** 3, 'unionRSSBytes': 4 * 1024 ** 3, 'liveProcesses': 256, 'knownIdentities': 4096}}
+        result = {'version': 1, 'mode': args.mode, 'status': 'candidate-pass' if primary is None and not cleanup else 'fail', 'scope': (args.mode + ' component numerical fixtures only; no model/audio/performance qualification' if args.mode in ATTENTION_MODES else 'normal/crash ownership or metadata-only source command, each requiring separate release; no device/fixture/audio/model'), 'audioProcessing': False, 'gpuRequested': (args.mode == 'metadata' or args.mode in ATTENTION_MODES), 'launch': launch, 'browserCommand': browser_command, 'staticServerCommand': server_command, 'staticRuntimeVerification': server_verification, 'staticCommandObservations': command_observations, 'profile': profile, 'primary': primary, 'cleanup': cleanup, 'exitCode': child.poll() if child else None, 'seconds': time.monotonic() - started, 'observations': observations, 'leaders': owned.leaders if owned else None, 'admissions': owned.admissions if owned else [], 'events': owned.events if owned else [], 'preCrashBrowserMembers': before, 'confirmedCrashSurvivors': survivors, 'postCrashObservation': post_crash, 'finalObservation': final, 'limits': {'wallSeconds': 60, 'workSeconds': 25, 'outputBytesIncludingScratch': 64 * 1024 ** 2, 'minimumFreeBytes': 6 * 1024 ** 3, 'unionRSSBytes': 4 * 1024 ** 3, 'liveProcesses': 256, 'knownIdentities': 4096}}
         terminal_status = 'fail'
         receipt_hash = None
         try:

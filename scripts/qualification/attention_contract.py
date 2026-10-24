@@ -8,9 +8,12 @@ MAX_LIVE = 256
 MAX_KNOWN = 4096
 
 
+ATTENTION_MODES = ('first-four', 'remaining-1', 'remaining-2', 'remaining-3', 'remaining-4', 'remaining-5', 'remaining-6')
+MODES = ('normal', 'crash', 'metadata', *ATTENTION_MODES)
+
 def node_command(node, launcher, mode, control):
-    if mode not in ('normal', 'crash', 'metadata', 'first-four'):
-        raise ValueError('Only normal/crash/metadata source commands exist')
+    if mode not in MODES:
+        raise ValueError('Closed qualification mode required')
     return [node, '--max-old-space-size=192', '--stack-size=8192', launcher, mode, control]
 
 
@@ -115,10 +118,12 @@ class ProbeState:
         self.work.add(value['id'])
 
     def ready(self, value, mode):
+        if mode not in MODES:
+            raise RuntimeError('Closed readiness mode required')
         expected = {'token', 'nodePID', 'browserPID', 'serverPID', 'status', 'mode', 'ownershipAcknowledgedBeforeWorker', 'audioProcessing', 'gpuRequested'}
-        if set(value) != expected or not self.server or not self.work or value['token'] != self.token or value['nodePID'] != self.node or value['browserPID'] != self.browser or value['serverPID'] != self.server['pid'] or value['status'] != 'pass' or value['mode'] != mode or value['ownershipAcknowledgedBeforeWorker'] is not True or value['audioProcessing'] is not False or value['gpuRequested'] is not (mode in ('metadata', 'first-four')):
+        if set(value) != expected or not self.server or not self.work or value['token'] != self.token or value['nodePID'] != self.node or value['browserPID'] != self.browser or value['serverPID'] != self.server['pid'] or value['status'] != 'pass' or value['mode'] != mode or value['ownershipAcknowledgedBeforeWorker'] is not True or value['audioProcessing'] is not False or value['gpuRequested'] is not (mode == 'metadata' or mode in ATTENTION_MODES):
             raise RuntimeError('Readiness lacks exact acknowledged source authority')
-        if mode == 'first-four' and len(self.work) != 4:
+        if mode in ATTENTION_MODES and len(self.work) != 4:
             raise RuntimeError('Exactly four fresh fixture ACKs required')
 
     def crash_survivors(self, before, after):

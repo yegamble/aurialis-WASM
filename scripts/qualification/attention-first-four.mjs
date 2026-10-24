@@ -1,8 +1,19 @@
 /** Private fixed source plan. No I/O/browser/adapter work occurs on import. */
 import{open,lstat,realpath}from'node:fs/promises';import{constants}from'node:fs';import{createHash}from'node:crypto';import path from'node:path';
-import{recordFor}from'../../internal/audio/steminfer/testdata/webgpu/attention/runtime-contract.mjs';import{shapePlan}from'../../internal/audio/steminfer/testdata/webgpu/attention/contract.mjs';import{preflightBatch}from'../../internal/audio/steminfer/testdata/webgpu/attention/capture-driver.mjs';
+import{recordFor}from'../../internal/audio/steminfer/testdata/webgpu/attention/runtime-contract.mjs';import{shapePlan}from'../../internal/audio/steminfer/testdata/webgpu/attention/contract.mjs';import{FIXTURES}from'../../internal/audio/steminfer/testdata/webgpu/attention/fixture-index.mjs';import{MAX_NEW_OUTPUT_BYTES}from'../../internal/audio/steminfer/testdata/webgpu/attention/capture-contract.mjs';
 export const FIRST_FOUR=Object.freeze(['zero-m3-n65.bin','ftz-resurrection-m1-n2.bin','last-key-dominant-m1-n1723.bin','pattern-m8-n1723.bin']);
-export const hostLedger=Object.freeze({hashScratch:65536,hashCopyAllowance:131072,hashControl:16384,hashAllowance:4096,hashPhase:217088,receiptObject:32768,receiptText:24576,receiptUTF8:32768,receiptControl:16384,receiptHash:4096,receiptPhase:110592,exclusiveWithCapture:true,maximumRetainedSmallReceipts:4,networkRepresentation:1908,retainedReceiptBytes:2016,controllerDirectoryCharacters:145,controllerDirectoryBytes:290,controllerDependencyReferences:64,controllerScalarReferences:256,controllerOwnerToken:32,controllerCleanup:64,controllerEnsure:64,controllerLease:96,controllerFixedControl:256,controllerUnrounded:866,controllerControl:896,combinedAddon:4820,combinedHash:221908,combinedPageHash:303092,combinedCapture:248532,combinedReceipt:115412});
+export const hostLedger=Object.freeze({hashScratch:65536,hashCopyAllowance:131072,hashControl:16384,hashAllowance:4096,hashPhase:217088,receiptObject:32768,receiptText:24576,receiptUTF8:32768,receiptControl:16384,receiptHash:4096,receiptPhase:110592,exclusiveWithCapture:true,maximumRetainedSmallReceipts:4,networkRepresentation:1908,retainedReceiptBytes:2016,controllerDirectoryCharacters:145,controllerDirectoryBytes:290,controllerDependencyReferences:64,controllerScalarReferences:256,selectionOrdinalBytes:8,selectionUsesReservedSlot:true,controllerOwnerToken:32,controllerCleanup:64,controllerEnsure:64,controllerLease:96,controllerFixedControl:256,controllerUnrounded:866,controllerControl:896,combinedAddon:4820,combinedHash:221908,combinedPageHash:303092,combinedCapture:248532,combinedReceipt:115412});
+/** Closed mode ordinals only. No filenames or case arrays are supplied. */
+export function attentionOrdinal(mode){if(mode==='first-four')return 0;if(typeof mode==='string'&&mode.length===11&&mode.startsWith('remaining-')){const ordinal=mode.charCodeAt(10)-48;if(ordinal>=1&&ordinal<=6)return ordinal;}return-1;}
+export function fixtureNameAt(ordinal,index){
+ if(!Number.isInteger(ordinal)||ordinal<0||ordinal>6||!Number.isInteger(index)||index<0||index>3)throw new Error('Closed fixture ordinal/index required');
+ if(ordinal===0)return FIRST_FOUR[index];
+ const target=4*(ordinal-1)+index;let seen=0;
+ for(const pin of FIXTURES){let completed=false;for(const name of FIRST_FOUR)if(pin.name===name)completed=true;if(completed)continue;if(seen===target)return pin.name;seen++;}
+ throw new Error('Pinned remaining fixture index changed');
+}
+/** Scalar preflight ends before acquisition; no selected-name array survives. */
+export function ordinalPreflight(ordinal){let bytes=0;for(let index=0;index<4;index++){const pin=recordFor(fixtureNameAt(ordinal,index));bytes+=shapePlan(pin.m,pin.n).stageBytes+16384;}if(bytes>MAX_NEW_OUTPUT_BYTES)throw new Error('Closed batch output cap');return bytes;}
 const nativeIO=Object.freeze({open,lstat,realpath}),apply=Reflect.apply,viewBuffer=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Uint8Array.prototype),'buffer').get,detach=globalThis.structuredClone;
 const geometry=s=>[s.dev,s.ino,s.size,s.mtimeNs,s.ctimeNs].map(String).join('|');
 let active=null;
@@ -25,14 +36,14 @@ export function createFixtureInspection(file,pin,io=nativeIO){
  });
 }
 /** One fixed batch per owned Node command. Injected controls never use native I/O. */
-export function createFirstFourController(environment){
+export function createFirstFourController(environment,remainingOrdinal=0){
  const {directory,reserve,beforeWork,select,clearSelection,capture,record,check=()=>{},inspectFactory=createFixtureInspection}=environment;let used=false;
- if(!path.isAbsolute(directory)||directory.length>hostLedger.controllerDirectoryCharacters||[reserve,beforeWork,select,clearSelection,capture,record,check,inspectFactory].some(fn=>typeof fn!=='function'))throw new Error('Closed first-four dependencies required');
+ if(!Number.isInteger(remainingOrdinal)||remainingOrdinal<0||remainingOrdinal>6||!path.isAbsolute(directory)||directory.length>hostLedger.controllerDirectoryCharacters||[reserve,beforeWork,select,clearSelection,capture,record,check,inspectFactory].some(fn=>typeof fn!=='function'))throw new Error('Closed first-four dependencies required');
  return Object.freeze({async run(signal=new AbortController().signal){
   signal.throwIfAborted();if(used||active)throw new Error('One first-four batch; no queue/reuse');used=true;const token={};active=token;let allClosed=true;
-  const outputs=[];try{preflightBatch(FIRST_FOUR);
-   for(let index=0;index<FIRST_FOUR.length;index++){
-    const pin=recordFor(FIRST_FOUR[index]),{chargedApplicationBytes,stageBytes}=shapePlan(pin.m,pin.n);let lease,inspection,inspectionAttempt=false,inspectionClosed=true,selectionAttempt=false,selectionClosed=true,captureAttempt=false,captureClosed=true,recordAttempt=false,recordClosed=true,primary;const cleanup=[];
+  const outputs=[];try{ordinalPreflight(remainingOrdinal);
+   for(let index=0;index<4;index++){
+    const pin=recordFor(fixtureNameAt(remainingOrdinal,index)),{chargedApplicationBytes,stageBytes}=shapePlan(pin.m,pin.n);let lease,inspection,inspectionAttempt=false,inspectionClosed=true,selectionAttempt=false,selectionClosed=true,captureAttempt=false,captureClosed=true,recordAttempt=false,recordClosed=true,primary;const cleanup=[];
     const ensure=()=>{signal.throwIfAborted();check();};
     try{
      ensure();lease=reserve(chargedApplicationBytes);if(!lease||typeof lease.release!=='function')throw new Error('Invalid fixture application lease');const release=lease.release.bind(lease);lease={release};
@@ -57,7 +68,7 @@ export function createFirstFourController(environment){
     }
     if(primary||cleanup.length)throw cleanup.length?new AggregateError([...(primary?[primary]:[]),...cleanup],String(primary?.message??'First-four cleanup failed')+'; cleanup: '+cleanup.map(x=>String(x.message??x)).join('; ')):primary;
    }
-   return Object.freeze({scope:'first-four private numeric component diagnostics only',cases:Object.freeze(outputs),closed:true});
+   return Object.freeze({scope:remainingOrdinal===0?'first-four private numeric component diagnostics only':'remaining closed batch private numeric component diagnostics only',cases:Object.freeze(outputs),closed:true});
   }finally{if(allClosed&&active===token)active=null;}
  }});
 }

@@ -154,6 +154,31 @@ class Contract(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             state.admit_work({**self.work(), 'id': '00000004-1234-1234-1234-123456789abc'}, observed)
 
+    def test_each_remaining_mode_requires_four_fresh_ack_pairs_and_truthful_gpu_flag(self):
+        for ordinal in range(1, 7):
+            mode = 'remaining-' + str(ordinal)
+            self.assertEqual(node_command('/node', '/launch', mode, '/control')[-2:], [mode, '/control'])
+            state, observed = self.state()
+            ready = {'token': 'token', 'nodePID': 10, 'browserPID': 20, 'serverPID': 30, 'status': 'pass', 'mode': mode, 'ownershipAcknowledgedBeforeWorker': True, 'audioProcessing': False, 'gpuRequested': True}
+            for index in range(4):
+                with self.assertRaises(RuntimeError):
+                    state.ready(ready, mode)
+                state.admit_work({**self.work(), 'id': f'{index:08d}-1234-1234-1234-123456789abc'}, observed)
+            state.ready(ready, mode)
+            for changed in ({'gpuRequested': False}, {'mode': 'first-four'}, {'audioProcessing': True}):
+                with self.assertRaises(RuntimeError):
+                    state.ready({**ready, **changed}, mode)
+            with self.assertRaises(RuntimeError):
+                state.admit_work({**self.work(), 'id': '00000004-1234-1234-1234-123456789abc'}, observed)
+
+    def test_invalid_remaining_modes_fail_before_node_command_or_ready(self):
+        for mode in ('remaining-0', 'remaining-7', 'remaining-01', 'remaining-1x', 'remaining-1;flag'):
+            with self.assertRaises(ValueError):
+                node_command('/node', '/launch', mode, '/control')
+            state, _ = self.state()
+            with self.assertRaises(RuntimeError):
+                state.ready({}, mode)
+
     def test_crash_only_exact_pre_admitted_live_survivor_and_final_empty(self):
         state, _ = self.state()
         before = [row(20), row(21, 20, parent=20)]

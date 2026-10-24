@@ -2,7 +2,7 @@
 # Private attention launcher — accepted ownership controls
 <!-- cspell:words Popen yosefgamble steminfer testdata webgpu -->
 
-The accepted runtime scopes are one no-audio normal and one crash control on frozen `9dafac9`, plus the separate metadata-only observation on `52a440c`, recorded below. One separately released first-four batch on `aa75d45` is recorded below pending independent evidence review. Additional device/fixture/dispatch/capture execution remains unreleased. Earlier source-only sections are historical checkpoints: their no-execution statements describe those waves, not the later accepted ownership controls. Importing the modules still starts no work. No normal/crash repeat is authorized by this documentation.
+The accepted runtime scopes are one no-audio normal and one crash control on frozen `9dafac9`, plus the separate metadata-only observation on `52a440c`, recorded below. The separately released first-four batch on `aa75d45` was independently accepted as bounded component evidence. Additional device/fixture/dispatch/capture execution remains unreleased. Earlier source-only sections are historical checkpoints: their no-execution statements describe those waves, not the later accepted ownership controls. Importing the modules still starts no work. No normal/crash repeat is authorized by this documentation.
 
 ## Exact reuse and local runtime facts
 
@@ -270,3 +270,26 @@ These widths are propagated uncertainty intervals reported by the reviewed execu
 The actual adapter limits included 32,768 workgroup-storage bytes and 1,024 maximum invocations. The requested device reported 16,384 workgroup-storage bytes, 256 invocations, 268,435,456 maximum buffer bytes and 134,217,728 storage-binding bytes. The sole device feature was `core-features-and-limits`; no optional feature or forced adapter/backend was requested. All four reported capabilities are retained in their case JSON. Optional identity redaction prevents exact device attribution; earlier CDP renderer metadata is not substituted for it.
 
 The final verdict hash is `d8244994e7bfb5874423ab6d6e9470c0a89d6de185a040b8bca04a4738e65eaf`; its closed guard hash is `c38ac7989593c794207c301fa45b1485f0e2c3a0b582292af393e14e00456f65`. Both groups (Node 6692 and Browser 6708) had empty all-member/live-member observations at final cleanup and the later external check. The fresh-profile path in the actual argv, static Python launch/runtime evidence and four request/ACK pairs are retained. At sealing, the temporary profile path was absent; the persisted raw tree contains 28 regular files totaling 354,912 bytes and no symlinks. The reviewed source closes the normal BrowserServer; this audit did not instrument filesystem deletion calls. The aggregated network inventory is confined to the observed private context, not a whole-machine network audit. No additional actual run or retry occurred.
+
+
+## Remaining fixture ordinals — source only
+
+`remaining-1` through `remaining-6` are exact closed modes. They select the remaining 24 pinned fixtures in original manifest order, excluding all four accepted cases. There is no caller-controlled name list and no loop that starts another batch automatically. Each mode requires its own future source-approved, freshly admitted execution. No actual remaining fixture, browser, device or dispatch ran in this source wave.
+
+| Mode | Four fixed names, in order (`.bin`) |
+| --- | --- |
+| `remaining-1` | `pattern-m1-n1`, `pattern-m1-n15`, `pattern-m1-n16`, `pattern-m3-n17` |
+| `remaining-2` | `pattern-m1-n63`, `pattern-m1-n64`, `pattern-m3-n65`, `pattern-m1-n255` |
+| `remaining-3` | `pattern-m1-n256`, `pattern-m1-n257`, `last-key-dominant-m1-n1`, `last-key-dominant-m1-n16` |
+| `remaining-4` | `last-key-dominant-m1-n17`, `last-key-dominant-m1-n64`, `last-key-dominant-m1-n65`, `last-key-dominant-m1-n256` |
+| `remaining-5` | `last-key-dominant-m1-n257`, `ties-m3-n65`, `cancellation-m3-n65`, `high-dynamic-m3-n65` |
+| `remaining-6` | `rounding-boundary-m3-n65`, `subnormal-input-m1-n2`, `pv-cancellation-m1-n1723`, `normal-exp-boundary-m1-n2` |
+
+The selector walks the existing `FIXTURES` records and skips `FIRST_FOUR`, returning the existing name value. The imported manifest was already loaded by the shared runtime contract; no duplicate manifest, retained selected-name array or 24-descriptor array is created. Scalar preflight visits the four selected records, computes their output bound and returns before acquisition. Its temporary lookup/preflight frames are not live during page hashing or capture. The retained ordinal is eight bytes in the already charged thirty-two-slot allowance, replacing the reserved admission-selection slot. The dependency count, controller 866-byte sum rounded to 896 and combined page-hash maximum 303,092 bytes remain unchanged. This is logical payload/control accounting, not a VM heap or garbage-collection claim.
+
+All modes reuse the same one-case lease, exact source hash, inert one-File selection, fresh default adapter/device checks, managed stream and receipt closure. There is no initial extra Worker ACK: exactly four fresh work ACKs are required. Device, file, receipt and selection settlement precede the next case; the first RED stops the batch. The next mode cannot start automatically. The five-second fixture, twenty-five-second work, sixty-second final-check, 16 MiB application, 64 MiB output, 6 GiB free and 4 GiB sampled process-union caps are unchanged, as are FP/reference/control formulas, shader, all 28 fixture hashes, uncertainty bounds and FTZ rules. Empty optional device identity remains LIMITED. Source controls verify exact partition/order, invalid modes/indices, bounds, no queue, cancellation, delayed receipt close and first-failure stop using injected interfaces.
+
+The accepted actual source `aa75d45`, Writer `c4c07eb` and complete raw index remain frozen. Its seven Writer files were additionally preserved before this new documentation update. Default ordinal zero retains the first-four meaning, but no actual repeat is released. Remaining-source acceptance and a separate explicit release for each batch are still required; full device-local separation and public activation remain open.
+
+
+The retained Go-versus-Torch bass PCM discrepancy remains a functional blocker: reported normalized RMS error is 0.579 and maximum absolute PCM error is 0.0126703. The retained attention endpoint RED also remains open. Component diagnostics do not resolve original-model parity or musical quality. After this frozen selection checkpoint, the next council should first localize the deterministic CPU seam using retained tensors; this source wave performs no such audit or full-model inference.

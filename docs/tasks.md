@@ -748,3 +748,22 @@ Main advanced through reader-guide PR #10 at `bbc254a` while Simple PR #11 was b
 ## MP3 and FLAC import — 2026-10-24
 
 **Open — awaiting merge.** Browser and native import now decode FLAC and MP3 in Go CDR. FLAC is a standard-library decoder (CRC-8/16 and MD5 verified, mono/stereo, 4–32-bit, 8–192 kHz). MP3 uses a modified vendored go-mp3 (`internal/third_party/gomp3`) with float output, gapless LAME/Lavc trimming and a fixed upstream short-block M/S defect. The unmerged `codex/legacy-audio-decoder` FFmpeg-to-WASM experiment was not reused (`distributionApproved: false`, C toolchain). Evidence: `unit` FLAC bit-exact to source WAV and FFmpeg across 5 encoder variants; MP3 within 1e-5 of FFmpeg `mp3float` across 7 variants plus a 0 dBFS short-block oracle; 1.9M fuzz executions; `playwright` real-WASM FLAC/MP3 import with zero audio requests. Measured decode of a 5-minute stereo 44.1 kHz track in Node Go/WASM: FLAC ≈4 s, 320 kb/s MP3 ≈10 s. Legacy recovery of old compressed originals remains a separate open item.
+
+## Opt-in true-peak limiter (algorithm 2) — 2026-10-24
+
+Algorithm 2 adds a lookahead limiter that bounds an 8× reconstructed peak (see the correction below). Algorithm 1 is unchanged and keeps zero latency. Algorithm 2 buffers `round(1.5 ms × rate) + 46` frames (118 at 48 kHz). Its 8× 48-tap detector costs about 4× the algorithm-1 render time (0.53 µs per frame natively), roughly 6 s for a four-minute 48 kHz track. `dsp.RenderLatencyCompensated` realigns and drains `RenderBufferContext`, `RenderScriptContext` and `RenderScriptV2Context`. Reference guards still require algorithm 1, and live playback, the worklet and the TypeScript validators still accept algorithm 1 only.
+
+Evidence (`unit`): `truepeak_test.go` checks fs/4, hot-noise and near-Nyquist square fixtures at 44.1/48/96/192 kHz with ceilings of −0.1/−1/−6 dBTP. Every case measured at or below the ceiling. Algorithm 1 measured up to +2.48 dBTP at a −1 dBTP ceiling.
+
+Correction (independent reference): the first version reused the 49-tap 4× meter filter as its detector. That meter read −1.04 dBTP, but an independent 32× 128-tap Kaiser reference measured up to +1.25 dBTP on near-Nyquist tones and 0.16–0.7 dB over the ceiling on program-like noise mixes. The detector is now 8× with 48 taps plus 0.2 dB headroom. `TestTruePeakLimiterHoldsAgainstIndependentReference` holds kick/220 Hz/noise mixes, with and without 19 kHz and 0.45 fs tones, at or below −1 dBTP on that reference at 44.1 and 96 kHz; removing the headroom fails 5 of 6 cases. Full-band white noise can still read about 0.15 dB high. The tests also cover:
+
+- bit-identical aligned output against v1 below the ceiling;
+- delayed bit-identical bypass;
+- 127-frame streaming plus partial `Drain` matching the offline render;
+- short inputs;
+- gain-reduction reporting, version-switch and `Reset` clearing;
+- zero allocations.
+
+Setting the lookahead support to 0 made 21 bound cases fail. `gofmt`, `go vet` (native, js/wasm), `staticcheck -checks all`, js/wasm and wasip1 builds and `go test -race ./...` passed. `golangci-lint` could not run because the installed binary was built with Go 1.25.
+
+Open: the browser export does not request algorithm 2 yet. This is bounded by the finite meter and is not formal true-peak certification. Earlier rulings reserved "algorithm 2" for the studio compressor bundle; that bundle would now take the next unused ID. Status: **open — awaiting merge**.

@@ -263,6 +263,7 @@ type Engine struct {
 	limPrevL    [3]float64
 	limPrevR    [3]float64
 	lastLimGRDB float64
+	truePeak    truePeakLimiter
 
 	// Loudness-matched A/B tracking
 	inEnergySum  float64
@@ -284,6 +285,7 @@ func NewEngine(sampleRate float64) *Engine {
 		limEnvLin:  1.0,
 		abGainLin:  1.0,
 		prngState:  0x9E3779B97F4A7C15,
+		truePeak:   newTruePeakLimiter(sampleRate),
 	}
 	e.recomputeAllCoeffs()
 	return e
@@ -308,6 +310,10 @@ func (e *Engine) SetParams(next Params) {
 	}
 	prev := e.params
 	e.params = next
+	if algorithmOf(prev) != algorithmOf(next) {
+		// Latency changes with the algorithm; never mix delayed and immediate frames.
+		e.truePeak.reset()
+	}
 	if prev.Compressor != next.Compressor || prev.Saturation != next.Saturation || prev.Stereo != next.Stereo || prev.Limiter != next.Limiter || prev.Repair != next.Repair || prev.DeHarsh != next.DeHarsh || prev.Multiband != next.Multiband {
 		e.recomputeStageCoeffs()
 	}
@@ -385,6 +391,7 @@ func (e *Engine) Reset() {
 	e.limPrevL = [3]float64{}
 	e.limPrevR = [3]float64{}
 	e.lastLimGRDB = 0.0
+	e.truePeak.reset()
 	e.inEnergySum = 0.0
 	e.outEnergySum = 0.0
 	e.abGainLin = 1.0
@@ -694,6 +701,15 @@ func (e *Engine) processBlock(inL, inR, outL, outR []float32, lanes *automationL
 	// Fast bit-identical bypass when Bypass is enabled or all stages are neutral (and not in loudness-matched A mode).
 	laneActive := lanes != nil && (len(lanes.gain) > 0 || (e.params.Stereo.Enabled && len(lanes.width) > 0))
 	if e.params.Bypass || (!laneActive && e.isChainNeutral() && !e.params.ABOriginal) {
+		if e.params.AlgorithmVersion == TruePeakAlgorithmVersion {
+			for i := 0; i < n; i++ {
+				outL[i], outR[i] = e.truePeakPassthrough(inL[i], inR[i])
+			}
+			e.truePeak.pending = e.truePeak.latency
+			e.lastGRDB = 0
+			e.lastLimGRDB = 0
+			return
+		}
 		for i := 0; i < n; i++ {
 			l := float64(inL[i])
 			r := float64(inR[i])
@@ -723,6 +739,7 @@ func (e *Engine) processBlock(inL, inR, outL, outR []float32, lanes *automationL
 	stereoActive := e.params.Stereo.Enabled && ((lanes != nil && len(lanes.width) > 0) || math.Abs(e.params.Stereo.WidthPct-100.0) >= 1e-5 || e.params.Stereo.MonoBass || e.params.Stereo.MidGainDB != 0 || e.params.Stereo.SideGainDB != 0 || math.Abs(e.extended.currentMid-e.extended.midGain) > 1e-7 || math.Abs(e.extended.currentSide-e.extended.sideGain) > 1e-7)
 	repairActive := e.params.Repair.Enabled && (math.Abs(e.params.Repair.DeEssDB) >= 1e-7 || math.Abs(e.params.Repair.TransientDB) >= 1e-7 || e.params.Repair.DeClip)
 	limActive := e.params.Limiter.Enabled
+	truePeakV2 := e.params.AlgorithmVersion == TruePeakAlgorithmVersion
 
 	for i := 0; i < n; i++ {
 		rawL := sanitizeSample(float64(inL[i]))
@@ -786,62 +803,73 @@ func (e *Engine) processBlock(inL, inR, outL, outR []float32, lanes *automationL
 			}
 		}
 
-		// Stage 6: Sample-peak limiter with optional cubic inter-sample estimate
-		if limActive {
+		// Stage 6: v1 sample-peak limiter with optional cubic inter-sample estimate,
+		// or the v2 lookahead limiter against reconstructed (true) peaks.
+		switch {
+		case truePeakV2:
+			l, r, rawL, rawR = e.processTruePeakStage(l, r, rawL, rawR, limActive)
+		case limActive:
 			l, r = e.processLimiterSample(l, r)
-		} else {
+		default:
 			e.lastLimGRDB = 0
 		}
-
-		// Track input/output energy for Loudness-Matched A/B monitoring
-		e.inEnergySum = 0.9995*e.inEnergySum + 0.0005*(rawL*rawL+rawR*rawR)
-		e.outEnergySum = 0.9995*e.outEnergySum + 0.0005*(l*l+r*r)
-		if e.inEnergySum > 1e-9 && e.outEnergySum > 1e-9 {
-			targetAB := math.Sqrt(e.outEnergySum / e.inEnergySum)
-			if targetAB > 4.0 {
-				targetAB = 4.0
-			} else if targetAB < 0.25 {
-				targetAB = 0.25
-			}
-			e.abGainLin = 0.995*e.abGainLin + 0.005*targetAB
-		}
-
-		if e.params.ABOriginal {
-			if e.params.LoudnessMatchAB {
-				l = rawL * e.abGainLin
-				r = rawR * e.abGainLin
-			} else {
-				l = rawL
-				r = rawR
-			}
-		} else if e.params.LoudnessMatchAB && e.abGainLin > 1e-6 {
-			// Normalize Mastered B back to original reference loudness when Level Match is active on B
-			l /= e.abGainLin
-			r /= e.abGainLin
-		}
-
-		// Stage 7: TPDF Dither for 16-bit or 24-bit Quantization
-		if e.params.DitherBits == 16 || e.params.DitherBits == 24 {
-			l = e.applyTPDFDither(l, e.params.DitherBits)
-			r = e.applyTPDFDither(r, e.params.DitherBits)
-		}
-
-		// Monitor level matching and dither occur after the main limiter. Reapply
-		// a linked sample ceiling to mastered B so those stages cannot exceed it.
-		// Original A and explicit bypass retain the unprocessed source.
-		if limActive && !e.params.ABOriginal {
-			ceiling := e.stages.limiterSampleCeiling
-			peak := math.Max(math.Abs(l), math.Abs(r))
-			if peak > ceiling {
-				multiplier := ceiling / peak
-				l *= multiplier
-				r *= multiplier
-				e.lastLimGRDB -= linToDB(multiplier)
-			}
-		}
-		outL[i] = finiteFloat32(l)
-		outR[i] = finiteFloat32(r)
+		outL[i], outR[i] = e.finishSample(l, r, rawL, rawR, limActive)
 	}
+	if truePeakV2 {
+		e.truePeak.pending = e.truePeak.latency
+	}
+}
+
+// finishSample applies loudness-matched monitoring, dither, and the final
+// linked sample ceiling after the limiter stage.
+func (e *Engine) finishSample(l, r, rawL, rawR float64, limActive bool) (float32, float32) {
+	// Track input/output energy for Loudness-Matched A/B monitoring
+	e.inEnergySum = 0.9995*e.inEnergySum + 0.0005*(rawL*rawL+rawR*rawR)
+	e.outEnergySum = 0.9995*e.outEnergySum + 0.0005*(l*l+r*r)
+	if e.inEnergySum > 1e-9 && e.outEnergySum > 1e-9 {
+		targetAB := math.Sqrt(e.outEnergySum / e.inEnergySum)
+		if targetAB > 4.0 {
+			targetAB = 4.0
+		} else if targetAB < 0.25 {
+			targetAB = 0.25
+		}
+		e.abGainLin = 0.995*e.abGainLin + 0.005*targetAB
+	}
+
+	if e.params.ABOriginal {
+		if e.params.LoudnessMatchAB {
+			l = rawL * e.abGainLin
+			r = rawR * e.abGainLin
+		} else {
+			l = rawL
+			r = rawR
+		}
+	} else if e.params.LoudnessMatchAB && e.abGainLin > 1e-6 {
+		// Normalize Mastered B back to original reference loudness when Level Match is active on B
+		l /= e.abGainLin
+		r /= e.abGainLin
+	}
+
+	// Stage 7: TPDF Dither for 16-bit or 24-bit Quantization
+	if e.params.DitherBits == 16 || e.params.DitherBits == 24 {
+		l = e.applyTPDFDither(l, e.params.DitherBits)
+		r = e.applyTPDFDither(r, e.params.DitherBits)
+	}
+
+	// Monitor level matching and dither occur after the main limiter. Reapply
+	// a linked sample ceiling to mastered B so those stages cannot exceed it.
+	// Original A and explicit bypass retain the unprocessed source.
+	if limActive && !e.params.ABOriginal {
+		ceiling := e.stages.limiterSampleCeiling
+		peak := math.Max(math.Abs(l), math.Abs(r))
+		if peak > ceiling {
+			multiplier := ceiling / peak
+			l *= multiplier
+			r *= multiplier
+			e.lastLimGRDB -= linToDB(multiplier)
+		}
+	}
+	return finiteFloat32(l), finiteFloat32(r)
 }
 
 func (e *Engine) processRepairSample(l, r float64) (float64, float64) {
@@ -1180,6 +1208,39 @@ func (e *Engine) processLimiterSample(l, r float64) (float64, float64) {
 		}
 	}
 	return outL, outR
+}
+
+// processTruePeakStage runs the v2 limiter stage for one frame and returns the
+// frame delayed by the lookahead. A disabled limiter or TruePeak=false still
+// pass through the same delay so v2 latency never depends on settings.
+func (e *Engine) processTruePeakStage(l, r, rawL, rawR float64, limActive bool) (float64, float64, float64, float64) {
+	limit := limActive && e.params.Limiter.TruePeak
+	if limActive && !limit {
+		l, r = e.processLimiterSample(l, r)
+	} else if !limActive {
+		e.lastLimGRDB = 0
+	}
+	ceiling := e.stages.limiterCeiling
+	l, r, rawL, rawR, gain := e.truePeak.process(l, r, rawL, rawR, ceiling, e.stages.limiterRelease, limit)
+	if !limit {
+		return l, r, rawL, rawR
+	}
+	e.lastLimGRDB = math.Max(0, -linToDB(gain))
+	return math.Max(-ceiling, math.Min(ceiling, l)), math.Max(-ceiling, math.Min(ceiling, r)), rawL, rawR
+}
+
+// truePeakPassthrough keeps v2 bypass bit-identical to the source, delayed by
+// the same lookahead as processed audio so toggling bypass stays aligned.
+func (e *Engine) truePeakPassthrough(inL, inR float32) (float32, float32) {
+	l, r := float64(inL), float64(inR)
+	if math.IsNaN(l) || math.IsInf(l, 0) {
+		l = 0
+	}
+	if math.IsNaN(r) || math.IsInf(r, 0) {
+		r = 0
+	}
+	_, _, l, r, _ = e.truePeak.process(l, r, l, r, e.stages.limiterCeiling, e.stages.limiterRelease, false)
+	return float32(l), float32(r)
 }
 
 func (e *Engine) nextUniform() float64 {

@@ -229,15 +229,20 @@ func RenderScriptV2Context(ctx context.Context, buf *audio.Buffer, script *Scrip
 	if err != nil {
 		return nil, nil, dsp.Metrics{}, err
 	}
-	left, right := make([]float32, len(buf.Left)), make([]float32, len(buf.Right))
-	for start := 0; start < len(left); start += 4096 {
-		if err := ctx.Err(); err != nil {
-			return nil, nil, dsp.Metrics{}, err
+	left, right, err := dsp.RenderLatencyCompensated(engine, len(buf.Left), func(left, right []float32) error {
+		for start := 0; start < len(left); start += 4096 {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			end := min(start+4096, len(left))
+			if !processor.ProcessBlock(buf.Left[start:end], buf.Right[start:end], left[start:end], right[start:end]) {
+				return errors.New("compiled automation invariant failed")
+			}
 		}
-		end := min(start+4096, len(left))
-		if !processor.ProcessBlock(buf.Left[start:end], buf.Right[start:end], left[start:end], right[start:end]) {
-			return nil, nil, dsp.Metrics{}, errors.New("compiled automation invariant failed")
-		}
+		return nil
+	})
+	if err != nil {
+		return nil, nil, dsp.Metrics{}, err
 	}
 	metrics, err := dsp.MeasureStereoContext(ctx, left, right, float64(buf.SampleRate))
 	metrics.GainReductionDB = engine.LastGainReductionDB()

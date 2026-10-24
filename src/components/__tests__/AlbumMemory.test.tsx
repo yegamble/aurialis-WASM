@@ -28,7 +28,10 @@ const total = () => owners.reduce((sum, owner) => sum + owner.current, 0);
 const active = () => owners.filter((owner) => !owner.released);
 let wav: Blob, canonical: Blob;
 function mount() { return render(<StoreProvider><AurialisWorkstation route="album" paramId="memory-album" /></StoreProvider>); }
-async function start() { fireEvent.click(await screen.findByRole("button", { name: "Render album masters" })); }
+async function start(waitForSettlement = true) {
+  const button = await screen.findByRole<HTMLButtonElement>("button", { name: "Render album masters" }); fireEvent.click(button);
+  if (waitForSettlement) await waitFor(() => { expect(button.disabled).toBe(false); });
+}
 
 beforeEach(() => {
   owners.length = 0;
@@ -82,7 +85,7 @@ it("releases failed phase audio while preserving only metadata and its verified 
 it("keeps source, packet and metadata charged after unmount until a late owned render and cleanup actually settle", async () => {
   const mounted = mount(); let finish: ((value: Awaited<ReturnType<typeof engine.serverRenderOwned>>) => void) | undefined;
   vi.mocked(engine.serverRenderOwned).mockReturnValue(new Promise((resolve) => { finish = resolve; }));
-  await start(); await waitFor(() => { expect(engine.serverRenderOwned).toHaveBeenCalledOnce(); });
+  await start(false); await waitFor(() => { expect(engine.serverRenderOwned).toHaveBeenCalledOnce(); });
   const before = total(); expect(before).toBeGreaterThan(packetBytes + canonicalBytes); mounted.unmount(); expect(total()).toBe(before);
   await act(async () => { const owner = memory.reserveBrowserAudioMemory(canonical.size); finish?.({ blob: canonical, owner, dispose: owner.dispose }); await Promise.resolve(); });
   await waitFor(() => { expect(total()).toBe(0); });

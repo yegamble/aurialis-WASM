@@ -239,7 +239,7 @@ describe("device-local browser audio transport", () => {
     const worker = TestWorker.all[0]; if (!worker) throw new Error("Missing worker");
     expect(worker.url).toBe(`/offline-job-worker.js?processing=${fingerprint}`);
     expect(worker.message).toMatchObject({ processing: { fingerprint, offlineSha256, offlineBytes: 8 } });
-    worker.reply(); const rejected = await result; expect(rejected).toBeInstanceOf(Error); expect((rejected as Error).message).toContain("different processing build"); expect(worker.terminated).toBe(true); expect(fetch).not.toHaveBeenCalled();
+    worker.reply(); const rejected = await result; expect(rejected).toBeInstanceOf(Error); expect(rejected).toMatchObject({ name: "ProcessingBuildMismatchError" }); expect(worker.terminated).toBe(true); expect(fetch).not.toHaveBeenCalled();
   });
   it("accepts a qualified result only with the exact checked processing identity", async () => {
     const fingerprint = "a".repeat(64);

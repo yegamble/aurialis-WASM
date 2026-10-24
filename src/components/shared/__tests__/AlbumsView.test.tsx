@@ -72,7 +72,7 @@ async function open() {
   const view = render(<StoreProvider><Probe /><AlbumView albumId="album-test" /></StoreProvider>);
   await screen.findByRole("button", { name: "Render album masters" }); return view;
 }
-async function run() { fireEvent.click(screen.getByRole("button", { name: "Render album masters" })); await screen.findByRole("button", { name: "Download Song 1" }); }
+async function run() { fireEvent.click(screen.getByRole("button", { name: "Render album masters" })); await screen.findByRole("button", { name: "Download Song 1" }); await waitFor(() => { expect(screen.getByRole("button", { name: "Render album masters" })).toBeEnabled(); }); }
 beforeEach(() => {
   const storage = new Map<string, string>();
   vi.stubGlobal("localStorage", { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value); } });

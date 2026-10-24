@@ -71,10 +71,12 @@ describe("measured Reference review", () => {
     fireEvent.click(screen.getByRole("button", { name: "Analyze reference audio" }));
     await waitFor(() => { expect(track().advanced.input).toBe(3); });
     expect(track().advanced.eqBands[2].gainDb).toBe(0);
+    // The rejected Apply settles after the store update renders; wait for its notice.
+    await waitFor(() => { expect(screen.getByText(/Source or processing changed/u)).toBeInTheDocument(); });
     expect(screen.getByRole("button", { name: "Apply measured proposal" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Revert Reference" })).toBeDisabled();
-    expect(screen.getByText(/Source or processing changed/u)).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent(/Your newer settings were preserved/u);
+    expect(track().advanced.eqBands[2].gainDb).toBe(0);
   });
   it.each([false, true])("rejects a reference-only competing edit and permits fresh analysis (repeated: %s)", async (repeated) => {
     let editAndApplyOnCommit = false;

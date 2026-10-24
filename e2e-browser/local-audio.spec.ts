@@ -96,3 +96,17 @@ test("serves exact dynamic HTML and RSC assets while rejecting API uploads and u
   expect(wasm.headers()["cache-control"]).toBe("no-store, no-transform");
   expect(await wasm.body()).toHaveLength(0);
 });
+
+test("imports FLAC and MP3 through the real Go WASM decoder without network audio", async ({ page, context }) => {
+  const forbidden: string[] = [];
+  context.on("request", (request) => { if (!["GET", "HEAD"].includes(request.method()) || request.postDataBuffer()?.length) forbidden.push(request.method() + " " + request.url()); });
+  for (const [name, mimeType, label] of [["tone-96k-s24.flac", "audio/flac", "96 kHz · FLAC"], ["tone-44k-cbr.mp3", "audio/mpeg", "44.1 kHz · MP3"]] as const) {
+    await page.goto("/");
+    await page.getByLabel("Upload audio file").setInputFiles({ name, mimeType, buffer: await readFile("internal/audio/testdata/" + name) });
+    await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
+    await expect(page.getByText(label)).toBeVisible();
+  }
+  const formats = await page.evaluate(() => (JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as { tracks: { format: string; sampleRate: number }[] }).tracks.map((track) => `${track.format}@${String(track.sampleRate)}`).sort());
+  expect(formats).toEqual(["FLAC@96000", "MP3@44100"]);
+  expect(forbidden).toEqual([]);
+});

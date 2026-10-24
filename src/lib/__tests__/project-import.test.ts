@@ -1,9 +1,10 @@
 import { Blob as NativeBlob, File as NativeFile } from "node:buffer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { importAudio, readCanonicalWAV } from "../browser-engine";
-import { prepareProjectFile } from "../project-import";
+import { importedTrack, isSourceFileName, prepareProjectFile } from "../project-import";
 
 vi.mock("../browser-engine", () => ({ importAudio: vi.fn(), readCanonicalWAV: vi.fn(), serverRender: vi.fn(), trackMetrics: vi.fn() }));
+vi.mock("../db", () => ({ newAudioAssetId: () => "track-test" }));
 function canonical(change?: (view: DataView) => void): Blob {
   const bytes = new Uint8Array(52), view = new DataView(bytes.buffer);
   for (const [offset, text] of [[0, "RIFF"], [8, "WAVE"], [12, "fmt "], [36, "data"]] as const) {
@@ -61,5 +62,24 @@ describe("canonical import transfer validation", () => {
     vi.mocked(importAudio).mockImplementation(() => { controller.abort(); return Promise.resolve(result(canonical())); });
     await expect(prepareProjectFile(file, controller.signal, () => undefined)).rejects.toMatchObject({ name: "AbortError" });
     expect(readCanonicalWAV).not.toHaveBeenCalled();
+  });
+});
+describe("compressed source admission", () => {
+  it("admits WAV, FLAC and MP3 names and labels the project with the source format", async () => {
+    expect(["a.wav", "b.WAVE", "c.flac", "d.MP3"].map(isSourceFileName)).toEqual([true, true, true, true]);
+    for (const [name, format] of [["song.flac", "FLAC"], ["song.mp3", "MP3"], ["song.wave", "WAV"]] as const) {
+      const source = new File([new Uint8Array(64)], name), imported = result(canonical());
+      const progress = vi.fn<(stage: string) => void>();
+      vi.mocked(importAudio).mockResolvedValue(imported);
+      await prepareProjectFile(source, new AbortController().signal, progress);
+      expect(progress).toHaveBeenCalledWith(`Decoding and reconstructing your ${format} on this device…`);
+      expect(importedTrack(source, imported).format).toBe(format);
+    }
+  });
+  it("rejects other codecs before any decode", async () => {
+    for (const name of ["song.ogg", "song.m4a", "song.aiff", "song.flac.exe"]) {
+      await expect(prepareProjectFile(new File([new Uint8Array(64)], name), new AbortController().signal, () => undefined)).rejects.toThrow("WAV, FLAC or MP3");
+    }
+    expect(importAudio).not.toHaveBeenCalled();
   });
 });

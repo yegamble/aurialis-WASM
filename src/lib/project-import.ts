@@ -4,6 +4,14 @@ import { newAudioAssetId } from "./db";
 import type { SourceIdentity, Track } from "./types";
 const MAX_SOURCE_FRAMES = 16 * 1024 * 1024;
 const MAX_SOURCE_BYTES = MAX_SOURCE_FRAMES * 8 + 44;
+/** File-picker filter for sources the Go CDR decoder reconstructs. */
+export const SOURCE_ACCEPT = "audio/wav,audio/x-wav,audio/flac,audio/x-flac,audio/mpeg,.wav,.wave,.flac,.mp3";
+const SOURCE_EXTENSION = /\.(wav|wave|flac|mp3)$/iu;
+export const isSourceFileName = (name: string): boolean => SOURCE_EXTENSION.test(name);
+function sourceFormat(name: string): string {
+  const extension = SOURCE_EXTENSION.exec(name)?.[1]?.toUpperCase() ?? "WAV";
+  return extension === "WAVE" ? "WAV" : extension;
+}
 function canonicalGeometry(header: DataView, bytes: number): { sampleRate: number; frames: number } | null {
   const id = (offset: number) => String.fromCharCode(...Array.from({ length: 4 }, (_, index) => header.getUint8(offset + index)));
   const canonical = header.byteLength === 44 && bytes >= 52 && bytes <= MAX_SOURCE_BYTES &&
@@ -36,11 +44,11 @@ async function wavCapacity(file: File): Promise<{ frames: number; sampleRate: nu
 
 export async function prepareProjectFile(file: File, signal: AbortSignal, progress: (stage: string) => void) {
   signal.throwIfAborted();
-  if (!/\.wav$/iu.test(file.name) || file.size === 0 || file.size > MAX_SOURCE_BYTES) throw new Error("Choose a nonempty PCM WAV file up to 128 MiB. Other codecs are not supported.");
+  if (!isSourceFileName(file.name) || file.size === 0 || file.size > MAX_SOURCE_BYTES) throw new Error("Choose a nonempty WAV, FLAC or MP3 file up to 128 MiB. Other formats are not supported.");
   const capacity = await wavCapacity(file);
   signal.throwIfAborted();
   if (capacity && capacity.frames > MAX_SOURCE_FRAMES) throw new Error("This WAV exceeds the 16,777,216 frame limit. Use a shorter source or lower sample rate.");
-  progress("Validating and reconstructing your WAV on this device…");
+  progress(`Decoding and reconstructing your ${sourceFormat(file.name)} on this device…`);
   const imported = await importAudio(file, signal);
   signal.throwIfAborted();
   progress("Checking reconstructed audio…");
@@ -57,7 +65,7 @@ export function importedTrack(file: File, imported: Awaited<ReturnType<typeof pr
   const measurement = imported.measurement;
   return {
     id: id ?? newAudioAssetId("track"), title: file.name.replace(/\.[^.]+$/u, "").replace(/[-_]/gu, " "), filename: file.name,
-    duration: measurement.duration, size: file.size, format: "WAV", sampleRate: measurement.sampleRate,
+    duration: measurement.duration, size: file.size, format: sourceFormat(file.name), sampleRate: measurement.sampleRate,
     status: "ready", createdAt: now, updatedAt: now, seed: 0, source: "upload", mode: "advanced", genre: "Pop", tone: "Warm", intensity: 50, target: "Streaming",
     metrics: trackMetrics(measurement.afterMetrics), measurements: measurement.afterMetrics, measurementKind: "source",
     advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), measurement.sampleRate), profile: "modern_pop_polish",

@@ -29,36 +29,38 @@ func RenderScriptContext(ctx context.Context, buf *audio.Buffer, script *Script)
 		return nil, nil, dsp.Metrics{}, err
 	}
 	n := len(buf.Left)
-	left, right := make([]float32, n), make([]float32, n)
 	sampleRate := float64(buf.SampleRate)
 	engine := dsp.NewEngine(sampleRate)
 	current := script.ChainParams
 	engine.SetParams(current)
-	start := 0
-	for frame := 0; frame < n; frame++ {
-		if frame%4096 == 0 {
-			if err := ctx.Err(); err != nil {
-				return nil, nil, dsp.Metrics{}, err
+	left, right, err := dsp.RenderLatencyCompensated(engine, n, func(left, right []float32) error {
+		start := 0
+		for frame := 0; frame < n; frame++ {
+			if frame%4096 == 0 {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
 			}
-		}
-		params := applyMovesAtTime(script.ChainParams, script.Moves, float64(frame)/sampleRate)
-		if params == current && frame-start < 4096 {
-			continue
-		}
-		if frame > start {
-			engine.ProcessBlock(buf.Left[start:frame], buf.Right[start:frame], left[start:frame], right[start:frame])
-		}
-		if params != current {
-			if err := dsp.ValidateParams(params); err != nil {
-				return nil, nil, dsp.Metrics{}, fmt.Errorf("invalid combined automation: %w", err)
+			params := applyMovesAtTime(script.ChainParams, script.Moves, float64(frame)/sampleRate)
+			if params == current && frame-start < 4096 {
+				continue
 			}
-			engine.SetParams(params)
-			current = params
+			if frame > start {
+				engine.ProcessBlock(buf.Left[start:frame], buf.Right[start:frame], left[start:frame], right[start:frame])
+			}
+			if params != current {
+				if err := dsp.ValidateParams(params); err != nil {
+					return fmt.Errorf("invalid combined automation: %w", err)
+				}
+				engine.SetParams(params)
+				current = params
+			}
+			start = frame
 		}
-		start = frame
-	}
-	engine.ProcessBlock(buf.Left[start:], buf.Right[start:], left[start:], right[start:])
-	if err := ctx.Err(); err != nil {
+		engine.ProcessBlock(buf.Left[start:], buf.Right[start:], left[start:], right[start:])
+		return ctx.Err()
+	})
+	if err != nil {
 		return nil, nil, dsp.Metrics{}, err
 	}
 	metrics, measureErr := dsp.MeasureStereoContext(ctx, left, right, sampleRate)

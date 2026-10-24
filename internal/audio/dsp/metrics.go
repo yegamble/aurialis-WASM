@@ -283,15 +283,17 @@ func RenderBufferContext(ctx context.Context, inL, inR []float32, sampleRate flo
 	if len(inR) < n {
 		n = len(inR)
 	}
-	outL := make([]float32, n)
-	outR := make([]float32, n)
 	if n == 0 {
+		outL, outR := make([]float32, 0), make([]float32, 0)
 		return outL, outR, MeasureStereo(outL, outR, sampleRate), nil
 	}
 
 	engine := NewEngine(sampleRate)
 	engine.SetParams(params)
-	if err := renderBlocks(ctx, engine, inL[:n], inR[:n], outL, outR); err != nil {
+	outL, outR, err := RenderLatencyCompensated(engine, n, func(outL, outR []float32) error {
+		return renderBlocks(ctx, engine, inL[:n], inR[:n], outL, outR)
+	})
+	if err != nil {
 		return nil, nil, Metrics{}, err
 	}
 	grDB := engine.LastGainReductionDB()

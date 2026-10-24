@@ -124,7 +124,7 @@ export function analyzeStages(fixture, result) {
     }
   }
   if(termVisits!==2*p.m*p.n*64 || termVisits>p.referenceWork)throw new Error('Attention reference traversal admission changed');
-  return Object.freeze({ classification:reasons.size?'underflow-limited':'ordinary-input-diagnostic', reasons:[...reasons], bounds, grids,
+  return Object.freeze({ classification:reasons.size?'underflow-limited':'ordinary-input-diagnostic', reasons:Object.freeze([...reasons]), bounds:Object.freeze(bounds), grids:Object.freeze(grids),
     termVisits, referenceCoarseUnits:p.referenceWork, validationFloatVisits:p.fixtureCells+p.stageCells+p.inputs, additionalArithmetic:'per term: compensated sums, interval corners and absolute-sum accumulation; per score: up to three18-term exp enclosures; these are NOT machine-instruction units',
     maximumOutputIntervalWidth, savedEndpoints:'native Go float64 denominator, actual original math, actual CPU SDPA and unfused probe are distinct diagnostics; none supplies a tolerance',
     scope:'directed/FTZ stage and propagated source enclosure; CPU/source only until actual hardware review' });

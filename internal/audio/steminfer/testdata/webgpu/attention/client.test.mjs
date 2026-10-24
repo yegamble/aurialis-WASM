@@ -42,3 +42,31 @@ test('reservation or private-copy failure leaves gate reusable with no Worker',a
  const fail=setup({read:async()=>{throw new Error('read failed');}});await assert.rejects(fail.client.run(pin.name,blob()),/read failed/);await turn();assert.equal(fail.released,1);assert.equal(fail.workers.length,0);
  const next=setup(),pending=next.client.run(pin.name,blob());await turn();const w=next.workers[0];w.reply(report(w));const r=await pending;r.dispose();
 });
+// Captured test intrinsics bypass caller-owned .buffer/.byteLength shadows.
+const intrinsicBufferBytes=Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'byteLength').get;
+const originalViewBuffer=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Float32Array.prototype),'buffer').get;
+const actualBytes=b=>Reflect.apply(intrinsicBufferBytes,b,[]);
+const actualBuffer=view=>Reflect.apply(originalViewBuffer,view,[]);
+test('receipt maps reject deletion/reassignment and private inventory survives view buffer shadows',async()=>{
+ const s=setup(),pending=s.client.run(pin.name,blob());await turn();const w=s.workers[0];w.reply(report(w));const r=await pending,bound=r.comparison.bounds.output,grid=r.comparison.grids.output,boundBuffer=actualBuffer(bound),gridBuffer=actualBuffer(grid);
+ try{
+  assert.equal(Reflect.deleteProperty(r.comparison.bounds,'output'),false);assert.equal(Reflect.set(r.comparison.grids,'output',new Int16Array(0)),false);
+  assert.ok(Object.isFrozen(r.comparison.bounds)&&Object.isFrozen(r.comparison.grids));
+  Object.defineProperty(bound,'buffer',{value:new ArrayBuffer(0)});Object.defineProperty(grid,'buffer',{value:new ArrayBuffer(0)});
+  r.dispose();assert.equal(actualBytes(boundBuffer),0);assert.equal(actualBytes(gridBuffer),0);assert.equal(bound.byteLength,0);assert.equal(grid.byteLength,0);assert.equal(s.released,1);
+ }finally{r.dispose();}
+});
+test('own byteLength zero cannot hide stage bound or grid backing buffers from disposal',async()=>{
+ const s=setup(),pending=s.client.run(pin.name,blob());await turn();const w=s.workers[0];w.reply(report(w));const r=await pending,buffers=[r.result,actualBuffer(r.comparison.bounds.output),actualBuffer(r.comparison.grids.output)];
+ try{
+  for(const b of buffers){assert.ok(actualBytes(b)>0);Object.defineProperty(b,'byteLength',{value:0});assert.ok(actualBytes(b)>0);}
+  r.dispose();for(const b of buffers)assert.equal(actualBytes(b),0);r.dispose();assert.equal(s.released,1);
+ }finally{r.dispose();}
+});
+test('partly pre-detached aliases and post-receipt abort detach the remaining closed inventory once',async()=>{
+ const s=setup(),controller=new AbortController(),pending=s.client.run(pin.name,blob(),controller.signal);await turn();const w=s.workers[0];w.reply(report(w));const r=await pending,bound=r.comparison.bounds.output,grid=r.comparison.grids.output,boundBuffer=actualBuffer(bound),gridBuffer=actualBuffer(grid),other=actualBuffer(r.comparison.bounds.raw);
+ try{
+  structuredClone(null,{transfer:[r.result,boundBuffer]});Object.defineProperty(gridBuffer,'byteLength',{value:0});
+  controller.abort();assert.equal(actualBytes(boundBuffer),0);assert.equal(actualBytes(gridBuffer),0);assert.equal(actualBytes(other),0);assert.equal(bound.byteLength,0);assert.equal(grid.byteLength,0);r.dispose();assert.equal(s.released,1);
+ }finally{r.dispose();}
+});

@@ -501,3 +501,6 @@ Source-only Round D preparation records 28 preregistered cases under the32-case 
 - [ ] Private attention source bridge: eight observable actual-row/all-key WGSL passes and parent/Worker lifetime are drafted with 33 passing source units; combined propagated checking accepts all 28 unchanged CPU probes (25 ordinary-input diagnostics, three LIMITED). New controlled classification/lost-device REDs are retained. Source/numeric/ownership peer review and separately authorized hardware remain pending; no actual attention GPU, audio or model execution and no public activation. FP/data-operation and integer/control ledgers are explicitly separate. [Private scope and evidence](../internal/audio/steminfer/testdata/webgpu/attention/README.md#source-only-eight-stage-bridge-checkpoint).
 
 <!-- cspell:words WGSL -->
+
+
+- [ ] Private attention receipt follow-up: independent map-replacement and shadowed-length disposal escapes fixed; three retained pre-fix RED regressions now pass within the 36/36 source suite. Final indexed CPU audit metrics are 0.458623375 seconds / 82,870,272 bytes RSS; the 0.839-second / 83,918,848-byte draft is retained separately. Original proof indices remain unchanged. Peer source/ownership review and separately authorized hardware remain open; no model/GPU/public activation.

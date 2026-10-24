@@ -171,3 +171,6 @@ The isolated stem-research branch adds 28 bounded, device-local CPU attention fi
 
 
 Private attention source checkpoint: an isolated eight-pass all-key shader and disposable fixture Worker now have 33 CPU/source units and a propagated audit of the unchanged 28 CPU probes (25 ordinary-input diagnostics, three LIMITED). No attention GPU operation, model forward or public feature was enabled. The [private guide](internal/audio/steminfer/testdata/webgpu/attention/README.md#source-only-eight-stage-bridge-checkpoint) records ownership, full uncertainty, retained failures and independent/hardware review still pending.
+
+
+The private attention receipt follow-up closes independently reproduced disposal escapes using an immutable private backing-buffer inventory and captured intrinsic byte lengths. All 36 source units passed; peer RED probes and the original checkpoint remain preserved. This enables no GPU/model execution or public feature. Hardware qualification remains open.

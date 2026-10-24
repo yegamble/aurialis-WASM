@@ -178,3 +178,6 @@ The test-only attention recorder adds no HTTP endpoint or public ABI. Its 28 clo
 The private fixture bridge now defines eight stored all-key stages and a pinned one-shot Worker ABI. It adds no HTTP endpoint, application import, model download or trained separation capability. Thirty-three source units and a new propagated audit of unchanged CPU probes passed; no actual attention GPU operation occurred. Readable fixture receipts retain memory admission until disposal detaches their buffers. Source/ownership/numeric review and authorized hardware qualification remain open. See the [private contract guide](../internal/audio/steminfer/testdata/webgpu/attention/README.md#source-only-eight-stage-bridge-checkpoint).
 
 <!-- cspell:words WGSL -->
+
+
+The private fixture receipt now captures its original backing-buffer inventory before publication. Caller-visible map replacement, `buffer` shadows, and own `byteLength` properties cannot release admission while those original buffers remain readable. Disposal also handles partial prior detachment and post-delivery cancellation. The corrected 36-case source suite passed; no public API, hardware execution or model capability was added.

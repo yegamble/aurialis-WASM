@@ -22,6 +22,31 @@ beforeEach(() => { vi.stubGlobal("indexedDB", new IDBFactory()); vi.stubGlobal("
 afterEach(async () => { for (const session of sessions.splice(0)) await session.close().catch(() => undefined); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("bounded durable album spool", () => {
+  it("pauses by deleting pending bytes and releasing unused disk demand while keeping its prefix and lock", async () => {
+    const spool = await open("paused", expectedBytes * 2), first = await spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal());
+    await spool.promote(first.assetId, signal()); await spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(1), signal());
+    await spool.pause(); expect(spool.prefix()).toEqual([first]);
+    await expect(AlbumSpool.claim("paused")).rejects.toThrow(/another tab/u);
+    await expect(spool.withOutput({ ...first, index: 1 }, signal(), () => Promise.resolve(undefined))).rejects.toThrow(/owned/u);
+    const other = await open("competing", maximumAlbumSpoolBytes - expectedBytes);
+    await expect(spool.resume()).rejects.toThrow(/disk limit/u); expect(spool.prefix()).toEqual([first]);
+    await other.close(); await spool.resume();
+    const next = await spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(1), signal()); await spool.promote(next.assetId, signal()); expect(spool.prefix()).toHaveLength(2);
+  });
+  it("does not admit another render while paused until the remaining whole-plan demand is reserved again", async () => {
+    const spool = await open("paused-empty"); await spool.pause();
+    await expect(spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal())).rejects.toThrow(/reserved/u);
+    const other = await open("all-capacity", maximumAlbumSpoolBytes);
+    await expect(spool.resume()).rejects.toThrow(/disk limit/u); await other.close(); await spool.resume();
+    await spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal());
+  });
+  it("retains the owner and pending demand after failed pause cleanup until an explicit retry settles", async () => {
+    const spool = await open("pause-failure"); await spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal());
+    vi.spyOn(IDBObjectStore.prototype, "delete").mockImplementationOnce(() => { throw new DOMException("Cleanup denied", "QuotaExceededError"); });
+    await expect(spool.pause()).rejects.toThrow(/Cleanup denied/u); await expect(AlbumSpool.claim("pause-failure")).rejects.toThrow(/another tab/u);
+    await expect(open("other", maximumAlbumSpoolBytes)).rejects.toThrow(/disk limit/u);
+    await spool.pause(); const next = await open("other", maximumAlbumSpoolBytes); expect(next.prefix()).toEqual([]);
+  });
   it("claims album ownership before plan or storage IO and binds whole demand only after planning", async () => {
     const opening = vi.spyOn(indexedDB, "open"), spool = await AlbumSpool.claim("early"); sessions.push(spool);
     expect(opening).not.toHaveBeenCalled(); expect(spool.prefix()).toEqual([]);

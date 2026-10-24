@@ -167,6 +167,29 @@ export class AlbumSpool {
       });
     } finally { database.close(); }
   }
+  /** Cancel frees unfinished disk demand while the exact owner keeps its verified prefix and lock. */
+  pause(): Promise<void> {
+    return this.schedule(async () => {
+      await this.change((manifest, budget, outputs) => {
+        if (!manifest) throw new Error("The stored album is unavailable.");
+        if (manifest.pending) { outputs.delete([manifest.albumId, manifest.pending.assetId]); budget.bytes -= manifest.pending.bytes; }
+        budget.reserved -= manifest.reserved;
+        return { manifest: { ...manifest, pending: null, reserved: 0, revision: manifest.revision + 1 }, budget };
+      });
+    });
+  }
+  /** Re-admit the remaining complete-plan demand before another track may render. */
+  resume(): Promise<void> {
+    return this.schedule(async () => {
+      await this.change((manifest, budget) => {
+        if (!manifest || manifest.pending) throw new Error("Clear unfinished album storage before resuming this plan.");
+        const remaining = manifest.expectedBytes - committedBytes(manifest), extra = remaining - manifest.reserved;
+        if (budget.bytes + budget.reserved + extra > maximumAlbumSpoolBytes) throw new Error("Stored album demand exceeds the encoded disk limit. Clear an older run before retrying.");
+        budget.reserved += extra;
+        return { manifest: { ...manifest, reserved: remaining, revision: manifest.revision + 1 }, budget };
+      });
+    });
+  }
   stage(wav: Blob, layout: Omit<AlbumSpoolOutput, "assetId" | "bytes">, signal: AbortSignal): Promise<AlbumSpoolOutput> {
     return this.schedule(async () => {
       signal.throwIfAborted(); const current = this.manifest;

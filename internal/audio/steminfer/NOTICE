@@ -16,3 +16,10 @@ This package is private implementation work. It establishes no separation-qualit
 
 Recovered existing-F16 container SHA256 0d51845078d4c075d825ba18f776f9af96e50d34d3491102a1215b6dbaf684b7 (176487688 bytes).
 All1691 selected tensors were independently reloaded and compared byte-for-byte to the pinned original by testdata/prune_original.py; the container identity changed; the unavailable historical container was not byte-compared. The recovery manifest records each original tensor SHA256 and the historical-container mismatch explicitly.
+
+Private attention CPU recorder source provenance:
+Roman Solovyev original Attend, MIT, commit 6fdad13686bb7e84d029ec66f9dbe76e65c93ebf.
+models/bs_roformer/attend.py:4410 bytes, SHA256 c7abbc40a3fd20ff7f6001fa9f8ee9ad5df6452272712a5e719b8f8468bf2223.
+https://github.com/ZFTurbo/Music-Source-Separation-Training/blob/6fdad13686bb7e84d029ec66f9dbe76e65c93ebf/models/bs_roformer/attend.py
+Actual original math/CPU SDPA endpoints and separate unfused probes are distinct;
+no model or public browser inference is enabled by these development fixtures.

@@ -489,3 +489,10 @@ The Technical Writer synchronized current contracts and this evidence across the
 Run 39711192709 passed every gate except the Add Air live test (52/53 browser cases). Its fixed theoretical RMS assertion expected -9.49 dBFS but the Linux speaker feed measured -10.098 dBFS. The test now measures B Original on the same device, verifies neutral A Processed matches within 0.1 dB, then retains independent activation changes and restoration within 0.1 dB. A bounded original level check still rejects silence or excessive gain. Application processing is unchanged.
 
 Verification: full local Chromium suite **53/53 passed (2.3 minutes)**; TypeScript, repository lint and changed-test spelling passed. Direct ESLint invocation on the E2E file reported that E2E files are excluded; the configured repository lint passed afterward. Remote CI rerun pending. Status: **open — awaiting merge**.
+
+<!-- cspell:words SDPA unfused softmax -->
+## Private attention CPU checkpoint — open
+
+Source-only Round D preparation records 28 preregistered cases under the32-case cap, with full key counts through 1723 and no model/audio/GPU work. Actual Go/original/auditor processes exited 0 in 5.684 seconds total, with 8,366,140 initial producer/ref/log bytes and observed sampled RSS below the 1 GiB cap. Eight Node contract tests and the Go registry check passed. The CPU stage audit reports 25 ordinary-input diagnostics and 3 limited cases; this is not GPU qualification. The mandatory FTZ resurrection returns 3.194352447230943e-37 on actual Go/original math/CPU SDPA, from a subnormal 9.982351397596697e-39 probability, and stays limited. Maximum distinct endpoint differences are retained without inventing a common parity tolerance.
+
+[Private fixtures and limits](../internal/audio/steminfer/testdata/webgpu/attention/README.md) preserve source hashes, resource formulas and pending Worker/propagated-stage/hardware gates. Earlier GEMM/normalization captures and conditioning/quality REDs remain untouched. This isolated branch is not rebased onto current main; no old result is relabeled. Status: open — private research, no public activation or completed-product claim.

@@ -163,3 +163,8 @@ Gate commands above are requirements, not claims of passing CI. See [`docs/tasks
 - [`docs/tasks.md`](docs/tasks.md) — Developer task tracker synchronized by `aurialis-tech-writer`.
 - [`docs/design/aurialis-redesign.md`](docs/design/aurialis-redesign.md) — Warm editorial UI/UX & HCL/OKLCH design specification.
 
+
+<!-- cspell:words SDPA unfused softmax -->
+## Private attention research checkpoint
+
+The isolated stem-research branch adds 28 bounded, device-local CPU attention fixtures, preserving every key through N=1723. Actual native Go, original Attend math/CPU SDPA and unfused probes remain distinct; eight small contract tests passed. The mandatory FTZ resurrection case remains limited even though its CPU final value is normal. There is no attention GPU dispatch, model forward, endpoint or public capability. [Private design and evidence](internal/audio/steminfer/testdata/webgpu/attention/README.md) states the resource conventions and remaining gates. This older branch's historical product documentation is not a replacement for newer main documentation.

@@ -1,4 +1,4 @@
-<!-- cspell:words swiftshader PGID PPID pidpath PYTHONDONTWRITEBYTECODE WGSL -->
+<!-- cspell:words swiftshader PGID PPID pidpath PYTHONDONTWRITEBYTECODE WGSL Workgroups -->
 # Private attention launcher — accepted ownership controls
 <!-- cspell:words Popen yosefgamble steminfer testdata webgpu -->
 
@@ -159,3 +159,33 @@ The receiver now records the first incoming JSON store through the captured Arra
 This change does not repair the older attention receiver, which similarly validates its envelope before registering `data.report.result`. That is a separate known source concern for the upcoming attention gate, and no attention fixture release can precede its ownership audit. Actual metadata/browser/adapter/device/fixture/model/audio execution remains held. The fixed metadata source needs independent exact-byte review first.
 
 Final source verification for the narrow incoming-store repair passed 97 injected Node cases (0.842538917 seconds), 45 Python controls (0.047 seconds) and three pure handlers (0.003 seconds). The locally changed peer-derived probe observes refusal, refund one and zero incoming bytes after settlement. Seven-document spelling passed; no actual metadata or attention execution follows.
+
+
+## Actual metadata-only run on frozen `52a440c`
+
+Following independent source acceptance, exactly one authorized metadata run used fresh output `artifacts/private-stems/recovery-20261023/attention-owned-metadata-20261024-v1`. Preflight rehashed all ten runtime/helper pins and 63 source files, confirmed Node 26.12.0 and Brave 155.1.97.59, and observed 7,704,567,808 free bytes. No retry, alternate adapter/backend or cap change occurred. The final verdict passed in 4.047902166 seconds with null primary, zero cleanup errors and Node exit zero. This wall duration includes ownership/startup/capture/cleanup and is not a GPU or model benchmark.
+
+The provisional receipt became authority only after closure, hash validation and final admission. Its SHA-256 is `a50f5dcaa903483a9922b957a0ef356f941d245fad81586cb55022f0e63cc67e`; the separate final-verdict SHA-256 is `4275ad769204c39443fafe502333cf0460563180d21c88e24d093cff8995da1a`. Parent final `members` and `liveMembers` were both empty. A fresh read-only external snapshot of the exact two owned groups was also empty after the parent exited. Actual Node/browser leaders were 14770/14782, each with the same-numbered group. The raw PID/start/parent/group, argv, static-runtime and cleanup evidence remain in the receipt.
+
+Two fresh before-work request/ACK pairs preceded work. Actual browser argv omitted unsafe SwiftShader, sandbox-disabling, headless and GPU/backend-forcing flags; source sandbox options remained enabled. The exact framework Python runtime path, 101,280-byte size and `0e0ee9e1b325a948d9d19344cffea41f5a59b42d63f1abcfc44d710ff827b21a` hash matched fresh kernel/file observations and strict source argv. Nineteen resource samples observed a maximum 926,973,952-byte supervisor/owned-union RSS, 10,924,313 output bytes, nine live/ten known identities and minimum 7,699,005,440 free bytes. These are sampled facts under unchanged bounds. The 60-second limit remains a last-resource-check-before-final-write bound.
+
+Only after final cleanup admission did post-processing read and validate the closed metadata file: 1,172 bytes, mode 0600, SHA-256 `093f779543f9a4e573513f920733e186dfcb05c915e70cbfc9f61cd9ee68a183`. The actual returned adapter information was vendor `apple`, architecture `metal-3`, empty device and description, and boolean `isFallbackAdapter: false`. Empty identity fields are valid and yield attribution LIMITED. This is actual adapter API evidence, unlike the earlier CDP renderer-only observations. It does not identify an exact device, standardize a backend, establish requested-device capabilities or qualify a model. The complete actual set contains 23 supported features, retained in raw evidence without truncation.
+
+| Actual adapter limit | Reported value |
+| --- | ---: |
+| `maxBufferSize` | 4,294,967,292 |
+| `maxStorageBufferBindingSize` | 4,294,967,292 |
+| `maxComputeInvocationsPerWorkgroup` | 1,024 |
+| `maxComputeWorkgroupSizeX` | 1,024 |
+| `maxComputeWorkgroupSizeY` | 1,024 |
+| `maxComputeWorkgroupSizeZ` | 64 |
+| `maxComputeWorkgroupStorageSize` | 32,768 |
+| `maxComputeWorkgroupsPerDimension` | 65,535 |
+| `maxStorageBuffersPerShaderStage` | 10 |
+| `maxBindingsPerBindGroup` | 1,000 |
+
+The retained context routing inventory contains 19 same-origin GETs with empty bodies, no foreign entries and no violations. Its scope is the observed private page/Worker context, not a whole-machine network audit. The pinned producer source calls only zero-argument `requestAdapter()`. `device: not-requested`, zero GPU-buffer/shader/dispatch counters and zero selected fixtures are reviewed source declarations, not independently instrumented API-call counters. No actual device, attention stages, model, audio or numerical result was produced. The 49,152/36,864/54,016-byte exclusive logical representation bounds remain source-derived application accounting, not measured VM/driver residency.
+
+A read-only postprocessor initially assumed an ACK phase named `owned-before-worker` and failed. That diagnostic RED is retained separately. The actual unchanged schema copies the admitted request with phase `before-worker`; corrected analysis checks exact request/ACK equality. This was not a run failure, source modification or runtime retry.
+
+The review index is `artifacts/private-stems/recovery-20261023/attention-metadata-runtime-review-20261024-v1/run-index.json`. Accepted older ownership controls, the first static-command RED, metadata incoming-store RED, numeric/FTZ/model limitations and old frozen indices remain unchanged. Independent review of this bounded metadata evidence precedes any next source ruling. The known older attention-result receiver ownership concern must be audited separately; no attention capture implementation or execution is released by this observation.

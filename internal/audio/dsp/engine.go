@@ -1221,13 +1221,12 @@ func (e *Engine) processTruePeakStage(l, r, rawL, rawR float64, limActive bool) 
 		e.lastLimGRDB = 0
 	}
 	ceiling := e.stages.limiterCeiling
-	gain := e.truePeak.gain(e.truePeak.requirement(l, r, ceiling, limit), e.stages.limiterRelease)
-	l, r, rawL, rawR = e.truePeak.push(l, r, rawL, rawR)
+	l, r, rawL, rawR, gain := e.truePeak.process(l, r, rawL, rawR, ceiling, e.stages.limiterRelease, limit)
 	if !limit {
 		return l, r, rawL, rawR
 	}
 	e.lastLimGRDB = math.Max(0, -linToDB(gain))
-	return math.Max(-ceiling, math.Min(ceiling, l*gain)), math.Max(-ceiling, math.Min(ceiling, r*gain)), rawL, rawR
+	return math.Max(-ceiling, math.Min(ceiling, l)), math.Max(-ceiling, math.Min(ceiling, r)), rawL, rawR
 }
 
 // truePeakPassthrough keeps v2 bypass bit-identical to the source, delayed by
@@ -1240,8 +1239,7 @@ func (e *Engine) truePeakPassthrough(inL, inR float32) (float32, float32) {
 	if math.IsNaN(r) || math.IsInf(r, 0) {
 		r = 0
 	}
-	e.truePeak.gain(e.truePeak.requirement(l, r, e.stages.limiterCeiling, false), e.stages.limiterRelease)
-	_, _, l, r = e.truePeak.push(l, r, l, r)
+	_, _, l, r, _ = e.truePeak.process(l, r, l, r, e.stages.limiterCeiling, e.stages.limiterRelease, false)
 	return float32(l), float32(r)
 }
 

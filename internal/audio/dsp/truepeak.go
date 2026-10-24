@@ -2,24 +2,91 @@ package dsp
 
 import "math"
 
-// True-peak lookahead geometry, in input frames. The detector reuses the
-// metering peakFIR, whose output at step j reconstructs t in [j-6, j-5) from
-// samples [j-12, j]. Holding each requirement for H = A+12 steps and averaging
-// over A steps bounds the gain of every sample in that support once the signal
-// is delayed by L = A+11. A is the attack ramp.
+// True-peak lookahead geometry, in input frames. The detector output at step j
+// covers t in (j-K, j-K+1] using samples [j-2K+1, j]. Holding each requirement
+// for H = L+1 steps and averaging over A steps bounds the gain of every sample
+// in that 2K-sample support once the signal is delayed by L = A+2K-2. A is the
+// attack ramp.
 const (
 	truePeakAttackSeconds = 0.0015
-	truePeakSupport       = 11
-	truePeakRing          = 320 // > A+12 at 192 kHz (288+12)
+	truePeakPhases        = 8  // oversampling ratio of the limiter detector
+	truePeakHalfTaps      = 24 // K: input samples on each side of a detected point
+	truePeakSupport       = 2*truePeakHalfTaps - 2
+	truePeakRing          = 384 // > A+2K-1 at 192 kHz (288+47)
+	truePeakKaiser        = 8.0
+	// truePeakHeadroom (-0.2 dB) absorbs the detector's truncation error.
+	// Against an independent 128-tap 32x reconstruction it keeps program-like
+	// material with strong near-Nyquist content under the ceiling. Full-band
+	// white noise, whose reconstruction depends on distant samples, can still
+	// read about 0.15 dB high on such references.
+	truePeakHeadroom = 0.977237221 // 10^(-0.2/20)
 )
 
-// truePeakLimiter is the algorithm v2 lookahead limiter. Requirements come from
-// the same 4x windowed-sinc reconstruction used by MeasureStereo, so the output
-// is limited against the meter's own definition of a true peak.
+// truePeakFIR is a Kaiser-windowed sinc interpolator split into polyphase
+// branches. It is deliberately stricter than the BS.1770-style 4x meter
+// (peakFIR), whose 49 taps under-read content near Nyquist by more than 1 dB.
+var truePeakFIR = func() [truePeakPhases][2 * truePeakHalfTaps]float64 {
+	bessel := func(x float64) float64 {
+		sum, term := 1.0, 1.0
+		for k := 1; k < 40; k++ {
+			term *= x / 2 / float64(k)
+			sum += term * term
+		}
+		return sum
+	}
+	var coefficients [truePeakPhases][2 * truePeakHalfTaps]float64
+	for phase := range coefficients {
+		for tap := range coefficients[phase] {
+			// Tap 0 is the newest sample j; phase p evaluates t = j-K+1-p/M.
+			distance := float64(truePeakHalfTaps-1-tap) + float64(phase)/truePeakPhases
+			sinc := 1.0
+			if distance != 0 {
+				sinc = math.Sin(math.Pi*distance) / (math.Pi * distance)
+			}
+			w := distance / float64(truePeakHalfTaps)
+			window := 0.0
+			if math.Abs(w) < 1 {
+				window = bessel(truePeakKaiser*math.Sqrt(1-w*w)) / bessel(truePeakKaiser)
+			}
+			coefficients[phase][tap] = sinc * window
+		}
+	}
+	return coefficients
+}()
+
+// truePeakDetector returns the linked stereo peak of the reconstructed signal.
+type truePeakDetector struct {
+	history [2][2 * truePeakHalfTaps]float64
+	cursor  int
+}
+
+func (d *truePeakDetector) sample(left, right float64) float64 {
+	const taps = 2 * truePeakHalfTaps
+	d.history[0][d.cursor], d.history[1][d.cursor] = left, right
+	peak := 0.0
+	for phase := range truePeakFIR {
+		var l, r float64
+		index := d.cursor
+		for _, coefficient := range truePeakFIR[phase] {
+			l += coefficient * d.history[0][index]
+			r += coefficient * d.history[1][index]
+			if index == 0 {
+				index = taps
+			}
+			index--
+		}
+		peak = math.Max(peak, math.Max(math.Abs(l), math.Abs(r)))
+	}
+	d.cursor = (d.cursor + 1) % taps
+	return peak
+}
+
+// truePeakLimiter is the algorithm v2 lookahead limiter. Requirements come
+// from truePeakFIR against the ceiling lowered by truePeakHeadroom.
 type truePeakLimiter struct {
 	attack, latency, hold int
 
-	detector peakInterpolator
+	detector truePeakDetector
 
 	// Delay line: processed L/R and raw L/R for A/B monitoring and bypass.
 	delay  [4][truePeakRing]float64
@@ -108,4 +175,15 @@ func (t *truePeakLimiter) push(l, r, rawL, rawR float64) (float64, float64, floa
 	t.delay[0][at], t.delay[1][at], t.delay[2][at], t.delay[3][at] = l, r, rawL, rawR
 	t.cursor = (t.cursor + 1) % t.latency
 	return dl, dr, drl, drr
+}
+
+// process advances the limiter by one frame and returns the delayed frame with
+// its gain. With limit false it runs at unity gain so state stays aligned.
+func (t *truePeakLimiter) process(l, r, rawL, rawR, ceiling, release float64, limit bool) (float64, float64, float64, float64, float64) {
+	gain := t.gain(t.requirement(l, r, ceiling*truePeakHeadroom, limit), release)
+	l, r, rawL, rawR = t.push(l, r, rawL, rawR)
+	if !limit {
+		return l, r, rawL, rawR, 1
+	}
+	return l * gain, r * gain, rawL, rawR, gain
 }

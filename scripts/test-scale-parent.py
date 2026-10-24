@@ -1,5 +1,7 @@
 """Parent ACK and external-service admission controls; no ps/browser/process launch."""
 import copy
+import ast
+from types import SimpleNamespace
 import importlib.util
 import json
 from pathlib import Path
@@ -17,6 +19,48 @@ SPEC.loader.exec_module(PARENT)
 
 
 class ParentContracts(unittest.TestCase):
+    def cleanup_branch(self, members):
+        # Execute the actual parent's cleanup branch without invoking main, OS
+        # observation, metadata IO or deletion. This catches stale-variable use.
+        source = Path(__file__).parent / "run-album-scale.py"
+        tree = ast.parse(source.read_text())
+        branch = next(node for node in ast.walk(tree) if isinstance(node, ast.If)
+                      and ast.unparse(node.test) == "primary is None and (not cleanup) and (arguments.mode != 'crash')")
+        code = compile(ast.fix_missing_locations(ast.Module(body=[branch], type_ignores=[])), str(source), "exec")
+        launcher = {"mode": "normal", "project": "album-native-scale", "primary": None, "cleanup": [], "childExit": None, "audioProcessing": False}
+        ready = {"token": "token", "status": "pass", "ownershipAcknowledgedBeforeWorker": True, "nodePID": 10, "browserPID": 20, "mode": "normal", "audioProcessing": False}
+        fresh = {"owned": {"groups": [10, 20], "liveMembers": members}, "values": {"processes": len(members), "ownedRSS": len(members)}}
+        profile = Mock(); profile.cleanup_success.return_value = {"mockOnly": True}
+        write = Mock()
+        environment = {"primary": None, "cleanup": [], "arguments": SimpleNamespace(mode="normal", project="album-native-scale"),
+                       "read_json": lambda path, limit: (launcher if path.name == "launcher.json" else ready, {"path": str(path)}),
+                       "control": Path("/no-real-io/control"), "validate_launcher": PARENT.validate_launcher,
+                       "completion_proof": [], "token": "token", "child": SimpleNamespace(pid=10, returncode=0, poll=lambda: 0),
+                       "owned": SimpleNamespace(leaders={"browser": {"pid": 20}}), "last_sample": fresh,
+                       "sample": lambda: fresh, "final_observation": {"liveMembers": []}, "profile_owner": profile,
+                       "root": Path("/no-real-io"), "scratch": Path("/no-real-io/native"), "write_metadata": write,
+                       "profile_descriptor": {"mockOnly": True}, "profile_cleanup": None}
+        exec(code, environment)
+        return environment, profile, write, fresh
+
+    def test_new_live_member_after_stale_empty_observation_refuses_cleanup_and_commit(self):
+        environment, profile, write, fresh = self.cleanup_branch([{"pid": 21, "pgid": 20}])
+        profile.validate.assert_not_called()
+        profile.cleanup_success.assert_not_called()
+        write.assert_not_called()
+        self.assertEqual(environment["cleanup"][0]["phase"], "success-profile-cleanup")
+        self.assertIn("empty owned groups", environment["cleanup"][0]["message"])
+        self.assertIs(environment["final_observation"], fresh["owned"])
+
+    def test_immediate_empty_observation_is_bound_into_durable_cleanup_commit(self):
+        environment, profile, write, fresh = self.cleanup_branch([])
+        self.assertEqual(environment["cleanup"], [])
+        profile.cleanup_success.assert_called_once()
+        receipt = write.call_args.args[1]
+        self.assertTrue(receipt["emptyOwnedGroups"])
+        self.assertIs(receipt["ownedObservation"], fresh["owned"])
+        self.assertIs(receipt["resourceSample"], fresh["values"])
+
     def test_parent_signal_handler_only_sets_stop_without_interrupting_handle_assignment(self):
         flag = PARENT.StopFlag(); sentinel = object()
         def spawn():

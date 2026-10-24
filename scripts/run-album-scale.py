@@ -296,13 +296,14 @@ def main():
                     if ready.get('token') != token or ready.get('status') != 'pass' or ready.get('ownershipAcknowledgedBeforeWorker') is not True or ready.get('nodePID') != child.pid or ready.get('browserPID') != owned.leaders['browser']['pid'] or ready.get('mode') != 'normal' or ready.get('audioProcessing') is not False:
                         raise RuntimeError('Normal diagnostic work did not prove its exact acknowledged completion')
                     completion_proof.append(ready_receipt)
-                sample()
-                if child.poll() != 0 or final_observation is None or final_observation['liveMembers']:
+                cleanup_sample = sample()
+                final_observation = cleanup_sample['owned']
+                if child.poll() != 0 or final_observation['liveMembers']:
                     raise RuntimeError('Profile cleanup requires settled child and empty owned groups')
                 profile_owner.validate()
                 # This durable commit point follows all work assertions and real group settlement.
                 pre_cleanup = root / ('pre-cleanup-' + scratch.name + '.json')
-                write_metadata(pre_cleanup, {'token': token, 'profile': profile_descriptor, 'status': 'verified-success-before-profile-cleanup', 'completion': completion_proof, 'emptyOwnedGroups': True, 'childExit': child.returncode, 'resourceSample': last_sample['values']})
+                write_metadata(pre_cleanup, {'token': token, 'profile': profile_descriptor, 'status': 'verified-success-before-profile-cleanup', 'completion': completion_proof, 'emptyOwnedGroups': True, 'ownedObservation': final_observation, 'childExit': child.returncode, 'resourceSample': cleanup_sample['values']})
                 profile_cleanup = {'commitReceipt': str(pre_cleanup), 'state': profile_owner.cleanup_success()}
                 sample()
             except BaseException as error:

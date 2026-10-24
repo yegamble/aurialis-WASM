@@ -2,7 +2,7 @@
 # Private attention launcher — accepted ownership controls
 <!-- cspell:words Popen yosefgamble steminfer testdata webgpu -->
 
-The accepted runtime scopes are one no-audio normal and one crash control on frozen `9dafac9`, plus the separate metadata-only observation on `52a440c`, recorded below. The new first-four attention mode is SOURCE ONLY; device/fixture/dispatch/capture execution remains unreleased. Earlier source-only sections are historical checkpoints: their no-execution statements describe those waves, not the later accepted ownership controls. Importing the modules still starts no work. No normal/crash repeat is authorized by this documentation.
+The accepted runtime scopes are one no-audio normal and one crash control on frozen `9dafac9`, plus the separate metadata-only observation on `52a440c`, recorded below. One separately released first-four batch on `aa75d45` is recorded below pending independent evidence review. Additional device/fixture/dispatch/capture execution remains unreleased. Earlier source-only sections are historical checkpoints: their no-execution statements describe those waves, not the later accepted ownership controls. Importing the modules still starts no work. No normal/crash repeat is authorized by this documentation.
 
 ## Exact reuse and local runtime facts
 
@@ -245,3 +245,28 @@ Actual fixed literal lengths, thirty 16-bit counter slots and four bounded recei
 
 
 The narrow correction passed fifteen focused source controls and all 120 injected Node controls, with zero skipped or failed cases. Its source audit and seven-file Writer spelling checks pass. The prior first-four source index remains unchanged; the new lifetime/phase checkpoint requires independent exact-byte review before any runtime decision.
+
+
+### First-four actual attention observation — component scope only
+
+Exactly one separately released batch ran on frozen `aa75d45`, completing in 4.836961792 seconds with no primary/cleanup errors. Four closed eight-stage files contain 317,512 bytes in the fixed zero, FTZ resurrection, last-key dominance and full-pattern order. Three cases passed as ordinary-input diagnostics. The resurrection case remains underflow LIMITED: raw scores `[0,-700]`, scaled scores `[0,-87.5]`, exponential and probability values `[1,0]` and all-zero output were actually captured. This observation does not establish original-model endpoint parity.
+
+Each fresh default adapter/device report passed the reviewed capability admission. The actual API returned vendor `apple`, architecture `metal-3` and fallback false, with empty device/description strings; device attribution remains LIMITED and no backend is inferred. Reports contain 23 adapter features, one core device feature and ten limits for each. Exactly four fresh work ACK pairs and forty same-origin GETs with empty bodies were retained, with no route violations. Final parent and fresh external owned-group member lists were empty. Actual argv retained the sandbox settings and omitted unsafe SwiftShader and backend-forcing flags.
+
+Fifty-four resource samples recorded maximum process-union RSS 1,128,448,000 bytes, nine live processes, ten known identities and minimum free space 7,576,072,192 bytes. This is sampled admission evidence and guarded completion time, not a benchmark or continuous driver-memory measurement. All logical ledgers and numerical rules remain unchanged. Sixty-five exact executed sources were preserved before this Writer-only update; raw files, receipts, capability data, ACKs, commands and hashes are sealed under `attention-first-four-runtime-review-20261024-v1` in the private artifacts directory. Independent exact-byte review, the other attention cases and full device-local model/runtime/resource/quality qualification remain open. No further runtime, public inference, audio processing or whole-project completion is authorized by this observation.
+
+
+#### Actual fixed-order numerical records
+
+| Case | Raw stage bytes | Actual classification | Reported maximum output interval width |
+| --- | ---: | --- | ---: |
+| Zero, `m=3,N=65` | 4,692 | Ordinary-input diagnostic | 0 |
+| FTZ resurrection, `m=1,N=2` | 304 | Underflow LIMITED | 2.2854426417032815e-36 |
+| Last-key dominance, `m=1,N=1723` | 34,724 | Ordinary-input diagnostic | 0.04339309114479306 |
+| Full pattern, `m=8,N=1723` | 277,792 | Ordinary-input diagnostic | 0.0009204014801435373 |
+
+These widths are propagated uncertainty intervals reported by the reviewed executed checker. They are not observed error versus exact real arithmetic or a whole-model precision guarantee. The raw stage hashes/packing and finite samples were independently checked offline without repeating full reference dot products or model inference. Guard/canary validation and numerical enclosure admission occurred in the reviewed executed producer/client before streaming; the numeric stage files do not independently expose the producer's guard buffers.
+
+The actual adapter limits included 32,768 workgroup-storage bytes and 1,024 maximum invocations. The requested device reported 16,384 workgroup-storage bytes, 256 invocations, 268,435,456 maximum buffer bytes and 134,217,728 storage-binding bytes. The sole device feature was `core-features-and-limits`; no optional feature or forced adapter/backend was requested. All four reported capabilities are retained in their case JSON. Optional identity redaction prevents exact device attribution; earlier CDP renderer metadata is not substituted for it.
+
+The final verdict hash is `d8244994e7bfb5874423ab6d6e9470c0a89d6de185a040b8bca04a4738e65eaf`; its closed guard hash is `c38ac7989593c794207c301fa45b1485f0e2c3a0b582292af393e14e00456f65`. Both groups (Node 6692 and Browser 6708) had empty all-member/live-member observations at final cleanup and the later external check. The fresh-profile path in the actual argv, static Python launch/runtime evidence and four request/ACK pairs are retained. At sealing, the temporary profile path was absent; the persisted raw tree contains 28 regular files totaling 354,912 bytes and no symlinks. The reviewed source closes the normal BrowserServer; this audit did not instrument filesystem deletion calls. The aggregated network inventory is confined to the observed private context, not a whole-machine network audit. No additional actual run or retry occurred.

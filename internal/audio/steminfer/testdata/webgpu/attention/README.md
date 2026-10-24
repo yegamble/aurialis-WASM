@@ -2,7 +2,7 @@
 # Private full-key attention CPU fixtures
 <!-- cspell:words steminfer testdata webgpu SDPA unfused softmax einsum WGSL readback GOMAXPROCS VECLIB OPENBLAS BLAS Solovyev -->
 
-This development slice records synthetic post-RoPE, single-head attention inputs and actual native/original CPU outputs. It enables no application route or model selection. The initial CPU checkpoint enabled no Worker or GPU dispatch; the later source-only bridge below remains unexecuted on hardware. Its source branch remains based on frozen `d705f6d`; newer main documentation is not replaced or relabeled by this private checkpoint.
+This development slice records synthetic post-RoPE, single-head attention inputs and actual native/original CPU outputs. It enables no application route or model selection. The initial CPU checkpoint enabled no Worker or GPU dispatch; the later source-only bridge preceded the separately released first-four actual observation recorded below. Historical no-execution statements describe their respective source waves. Its source branch remains based on frozen `d705f6d`; newer main documentation is not replaced or relabeled by this private checkpoint.
 
 The 28 preregistered cases use queries `[m,64]` with `1 <= m <= 8` and keys/values `[N,64]` with `1 <= N <= 1723`. Every query attends to all keys. Ragged boundaries, full-key tails, ties, cancellation, high dynamic range, directed-rounding boundaries, subnormal inputs and FTZ resurrection are separate cases. The ceiling is 32 cases and 64 MiB of new producer/reference/log output.
 
@@ -169,3 +169,12 @@ Actual fixed literal lengths, thirty 16-bit counter slots and four bounded recei
 
 
 The narrow correction passed fifteen focused source controls and all 120 injected Node controls, with zero skipped or failed cases. Its source audit and seven-file Writer spelling checks pass. The prior first-four source index remains unchanged; the new lifetime/phase checkpoint requires independent exact-byte review before any runtime decision.
+
+
+### First-four actual attention observation — component scope only
+
+Exactly one separately released batch ran on frozen `aa75d45`, completing in 4.836961792 seconds with no primary/cleanup errors. Four closed eight-stage files contain 317,512 bytes in the fixed zero, FTZ resurrection, last-key dominance and full-pattern order. Three cases passed as ordinary-input diagnostics. The resurrection case remains underflow LIMITED: raw scores `[0,-700]`, scaled scores `[0,-87.5]`, exponential and probability values `[1,0]` and all-zero output were actually captured. This observation does not establish original-model endpoint parity.
+
+Each fresh default adapter/device report passed the reviewed capability admission. The actual API returned vendor `apple`, architecture `metal-3` and fallback false, with empty device/description strings; device attribution remains LIMITED and no backend is inferred. Reports contain 23 adapter features, one core device feature and ten limits for each. Exactly four fresh work ACK pairs and forty same-origin GETs with empty bodies were retained, with no route violations. Final parent and fresh external owned-group member lists were empty. Actual argv retained the sandbox settings and omitted unsafe SwiftShader and backend-forcing flags.
+
+Fifty-four resource samples recorded maximum process-union RSS 1,128,448,000 bytes, nine live processes, ten known identities and minimum free space 7,576,072,192 bytes. This is sampled admission evidence and guarded completion time, not a benchmark or continuous driver-memory measurement. All logical ledgers and numerical rules remain unchanged. Sixty-five exact executed sources were preserved before this Writer-only update; raw files, receipts, capability data, ACKs, commands and hashes are sealed under `attention-first-four-runtime-review-20261024-v1` in the private artifacts directory. Independent exact-byte review, the other attention cases and full device-local model/runtime/resource/quality qualification remain open. No further runtime, public inference, audio processing or whole-project completion is authorized by this observation.

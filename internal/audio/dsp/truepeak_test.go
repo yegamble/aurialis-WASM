@@ -223,3 +223,77 @@ func TestTruePeakProcessingDoesNotAllocate(t *testing.T) {
 		t.Fatalf("v2 processing allocated %g", allocations)
 	}
 }
+
+// referenceTruePeakDB is an independent 32x, 128-tap Kaiser-windowed sinc
+// reconstruction, evaluated away from the buffer edges so truncation of the
+// buffer itself cannot ring. It shares no code with truePeakFIR or peakFIR.
+func referenceTruePeakDB(channels [][]float32, edge int) float64 {
+	const phases, half, beta = 32, 64, 10.0
+	bessel := func(x float64) float64 {
+		sum, term := 1.0, 1.0
+		for k := 1; k < 50; k++ {
+			term *= x / 2 / float64(k)
+			sum += term * term
+		}
+		return sum
+	}
+	var kernel [phases][2 * half]float64
+	for p := range kernel {
+		for k := range kernel[p] {
+			d := float64(k-half+1) - float64(p)/phases
+			sinc := 1.0
+			if d != 0 {
+				sinc = math.Sin(math.Pi*d) / (math.Pi * d)
+			}
+			kernel[p][k] = sinc * bessel(beta*math.Sqrt(1-(d/half)*(d/half))) / bessel(beta)
+		}
+	}
+	peak := 0.0
+	for _, x := range channels {
+		for i := edge; i < len(x)-edge; i++ {
+			for p := range kernel {
+				v := 0.0
+				for k, c := range kernel[p] {
+					if j := i + k - half + 1; j >= 0 && j < len(x) {
+						v += c * float64(x[j])
+					}
+				}
+				peak = math.Max(peak, math.Abs(v))
+			}
+		}
+	}
+	return linToDB(peak)
+}
+
+func TestTruePeakLimiterHoldsAgainstIndependentReference(t *testing.T) {
+	// Program-like content with strong high-frequency energy: a decaying kick,
+	// a 220 Hz tone and broadband noise, plus a 19 kHz or 0.45 fs tone. The
+	// 49-tap 4x meter under-reads these near Nyquist, so a limiter driven by it
+	// leaves real inter-sample overs; v2 must hold the reference under ceiling.
+	for _, rate := range []float64{44100, 96000} {
+		for _, hf := range []float64{0, 19000, 0.45 * rate} {
+			t.Run(fmt.Sprintf("%.0f/%.0f", rate, hf), func(t *testing.T) {
+				const n = 8000
+				left, right := make([]float32, n), make([]float32, n)
+				state := uint32(99)
+				for i := range left {
+					state = state*1664525 + 1013904223
+					noise := 2*float64(state)/math.MaxUint32 - 1
+					at := float64(i) / rate
+					beat := math.Mod(at, 0.05)
+					x := 0.8*math.Exp(-beat*60)*math.Sin(2*math.Pi*55*beat) + 0.3*math.Sin(2*math.Pi*220*at) + 0.25*noise + 0.2*math.Sin(2*math.Pi*hf*at)
+					left[i], right[i] = float32(x), float32(0.9*x)
+				}
+				p := truePeakParams(-1)
+				p.InputGainDB = 6
+				outL, outR, _, err := RenderBufferContext(context.Background(), left, right, rate, p)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := referenceTruePeakDB([][]float32{outL, outR}, 300); got > -1 {
+					t.Fatalf("independent 32x reference %.3f dBTP exceeds -1 dBTP", got)
+				}
+			})
+		}
+	}
+}

@@ -100,6 +100,35 @@ class Contract(unittest.TestCase):
             with self.assertRaises(ValueError):
                 HOST.next_job(directory, source, LEGACY_SOURCE, HOST.JOBS[0])
 
+    def test_retained_prepare_error_refuses_read_run_and_seal_authority(self):
+        with tempfile.TemporaryDirectory() as temp:
+            driver = pathlib.Path(temp) / 'driver';driver.mkdir()
+            directory = pathlib.Path(temp) / 'legacy';directory.mkdir()
+            snapshot = {'files': {}, 'frozen': {}}
+            (driver / 'SOURCE.json').write_text(json.dumps(snapshot))
+            (driver / 'PREPARED.json').write_text(json.dumps({'sourceSHA256': HOST.digest(driver / 'SOURCE.json'),
+                'legacySourceSHA256': HOST.SOURCE_SHA, 'jobs': list(HOST.JOBS)}))
+            original_digest = HOST.digest
+            def pinned(file):
+                return HOST.SOURCE_SHA if file == directory / 'SOURCE.json' else original_digest(file)
+            with mock.patch.object(HOST, 'DRIVER', driver), mock.patch.object(HOST, 'source_snapshot', return_value=snapshot) as source, mock.patch.object(HOST, 'digest', side_effect=pinned), mock.patch.object(OLD, 'read_source', return_value=(directory, {})) as legacy, mock.patch.object(OLD, 'budget') as budget, mock.patch.object(HOST, 'next_job') as next_job, mock.patch.object(HOST.GUARD, 'bounded_unit') as child:
+                self.assertEqual(HOST.read_prepared()[0], snapshot)
+                error = driver / 'PREPARE-ERROR.json'
+                for kind in ('retained error after complete PREPARED close failure', 'dangling error symlink'):
+                    if kind.startswith('retained'):
+                        error.write_text(json.dumps({'primaryFailure': {'type': 'OSError', 'message': kind}}))
+                    else:
+                        error.symlink_to(driver / 'missing-error-target')
+                        self.assertFalse(error.exists())
+                        self.assertTrue(error.is_symlink())
+                    source.reset_mock();legacy.reset_mock()
+                    for entry in (lambda: HOST.read_prepared(), lambda: HOST.run(HOST.JOBS[0], '/coord'), lambda: HOST.seal('/coord')):
+                        with self.subTest(kind=kind), self.assertRaisesRegex(ValueError, '^retained preparation failure; no execution or seal authority$'):
+                            entry()
+                    source.assert_not_called();legacy.assert_not_called()
+                    budget.assert_not_called();next_job.assert_not_called();child.assert_not_called()
+                    error.unlink()
+
     def test_prior_raw_acceptance_needs_exact_confirmed_host_settlement(self):
         with tempfile.TemporaryDirectory() as temp, mock.patch.object(HOST, 'DRIVER', pathlib.Path(temp) / 'host'):
             directory = pathlib.Path(temp) / 'legacy';directory.mkdir()

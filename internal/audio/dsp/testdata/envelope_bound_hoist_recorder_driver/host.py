@@ -132,6 +132,8 @@ def prepare(coordination):
 
 
 def read_prepared():
+    if os.path.lexists(DRIVER / 'PREPARE-ERROR.json'):
+        raise ValueError('retained preparation failure; no execution or seal authority')
     audit_metadata()
     snapshot = read_json(DRIVER / 'SOURCE.json')
     if snapshot != source_snapshot():

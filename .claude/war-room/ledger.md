@@ -778,3 +778,10 @@ The plan proposes only native then GoJS recorders at 44.1, 48, 96 and 192 kHz. A
 Seven additional host/policy files are separately pinned and checked before each child and after admission. The copied recording block changes only its explicit policy call. Fresh exclusive claims, exact START/clean SETTLED provenance, prior raw-result revalidation and final exact-eight scope checks prevent advancing after uncertain settlement, mutation or an extra job. The fully owned guard and all work/counters/IO/caps remain unchanged. Extra metadata has a finite 3,063,808-byte allocation reserve charged as4 MiB within the existing64 MiB source allowance; raw disk demand/floor/explicit other demand remain unchanged. Python script argv and interpreter identity/flags are observed honestly; an external launch receipt must capture the complete Python command.
 
 All11 source/static/read-only/mock controls and scoped spelling passed. No actual source preparation, runtime child, build, module copy, profile or timing ran. A later seal must label combined scoped qualification rather than a uniform46-child pass, retain final journal bytes and preserve the old REDs. Candidate unselected, existing192k steady RED, cross-target full-state identity UNPROVEN and final main integration/gates remain open.
+
+
+#### Preparation-error source correction
+
+Independent source review found that complete prepared bytes could coexist with a retained close-failure receipt yet grant authority. The original failed peer probe and prior checkpoint remain retained. The driver now refuses any `PREPARE-ERROR.json` entry before reading bindings, including a dangling symlink; read, run and seal share this refusal.
+
+All12 current source/static/read-only/mock controls and the unchanged one-test peer probe passed. The added control proves refusal before source/dependency reads, budget/frontier admission or the child guard. No actual preparation or runtime was released or executed; the original mixed evidence, module/source pins, work/caps and open performance/integration status remain unchanged.

@@ -192,3 +192,6 @@ The private capture sink contract now requires synchronous handle construction w
 
 
 Private attention launcher preparation now reuses the accepted Node admission helper and observed-survivor helper verbatim from `51d206c`. The shared OwnedGroups core remains SHA-256 `d5a9978835c7ebcd6fd9c30c6074f4e55b84ac26683b66c4f9198daf3dd08a40`; no group-membership or signaling framework was forked. Prior helper versions remain bound to their immutable indices, and current per-file hashes/origins are recorded in `scripts/qualification/provenance.json`. Three mocked Node admission controls passed in this source wave; they launch no browser and do not rerun or replace the earlier sixteen process controls. Actual launcher/hardware qualification remains held.
+
+
+A private normal/crash launcher now defines parent/Node/browser/static-server admission and work admission acknowledgements. It exposes no application endpoint or capture mode. Actual execution remains held: current evidence is 70 injected Node/source tests and eight pure Python controls only. The existing fourteen static routes and fixture protocol are unchanged. Future CDP renderer observations are explicitly separate from adapter/features/limits that have not been requested; no source-only result grants hardware or model authority. See the [launcher contract](../scripts/qualification/attention-launcher.md).

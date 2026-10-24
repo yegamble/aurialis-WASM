@@ -111,3 +111,10 @@ No server, socket, browser, GPU API/compiler, process helper, model, audio, infe
 
 
 Private attention launcher preparation now reuses the accepted Node admission helper and observed-survivor helper verbatim from `51d206c`. The shared OwnedGroups core remains SHA-256 `d5a9978835c7ebcd6fd9c30c6074f4e55b84ac26683b66c4f9198daf3dd08a40`; no group-membership or signaling framework was forked. Prior helper versions remain bound to their immutable indices, and current per-file hashes/origins are recorded in `scripts/qualification/provenance.json`. Three mocked Node admission controls passed in this source wave; they launch no browser and do not rerun or replace the earlier sixteen process controls. Actual launcher/hardware qualification remains held.
+
+
+## Source-only normal/crash launcher
+
+The [private launcher guide](../../../../../../scripts/qualification/attention-launcher.md) defines the next held ownership gate. It reuses exact accepted helpers, checks installed/runtime hashes, opens acknowledged browser ownership first, acquires a managed static server in that Node group and requires a fresh work ACK. Only normal/crash controls exist; no fixture is selected and no WebGPU adapter is requested. Visible Brave options explicitly retain sandboxing with no GPU/software override. Read-only installed bundle facts are not runtime hardware evidence.
+
+Seventy injected Node/source cases and eight pure Python policy/import controls passed. The current source wave launched no actual browser/server/Worker/GPU and ran no OS group controls. Future output/resource caps include profile/logs/metadata and the supervisor union; final success requires a closed receipt hash plus final observations with no live owned processes and bounds before its separate verdict. Existing fourteen assets, 28 fixture bytes, 16 MiB admission, capture budgets and all numeric shaders/bounds are unchanged. Earlier failures and indices are retained. Independent source review, actual normal/crash controls and attention hardware execution remain separately held; no inference, model, audio, benchmark or public activation.

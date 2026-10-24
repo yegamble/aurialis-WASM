@@ -513,3 +513,6 @@ Source-only Round D preparation records 28 preregistered cases under the32-case 
 
 
 Private attention launcher preparation now reuses the accepted Node admission helper and observed-survivor helper verbatim from `51d206c`. The shared OwnedGroups core remains SHA-256 `d5a9978835c7ebcd6fd9c30c6074f4e55b84ac26683b66c4f9198daf3dd08a40`; no group-membership or signaling framework was forked. Prior helper versions remain bound to their immutable indices, and current per-file hashes/origins are recorded in `scripts/qualification/provenance.json`. Three mocked Node admission controls passed in this source wave; they launch no browser and do not rerun or replace the earlier sixteen process controls. Actual launcher/hardware qualification remains held.
+
+
+- [ ] Private attention launcher source: closed normal/crash modes, exact shared group helpers, pinned installed Brave/runtime files, explicit visible sandboxing, managed static-server acquisition and fresh work admission ACKs implemented. Injected controls: 70 Node/source cases in 608.552625 milliseconds; eight pure Python cases in 0.012 seconds. Read-only bundle version is not renderer/adapter proof. No actual launcher/server/browser/Worker/GPU/model ran. Independent source review, actual normal/crash controls and separately authorized hardware fixtures remain open; no capture mode/public activation.

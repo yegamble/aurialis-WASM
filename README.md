@@ -183,3 +183,6 @@ Independent QA reopened that capture source gate: a sink factory could fail afte
 
 
 Private attention launcher preparation now reuses the accepted Node admission helper and observed-survivor helper verbatim from `51d206c`. The shared OwnedGroups core remains SHA-256 `d5a9978835c7ebcd6fd9c30c6074f4e55b84ac26683b66c4f9198daf3dd08a40`; no group-membership or signaling framework was forked. Prior helper versions remain bound to their immutable indices, and current per-file hashes/origins are recorded in `scripts/qualification/provenance.json`. Three mocked Node admission controls passed in this source wave; they launch no browser and do not rerun or replace the earlier sixteen process controls. Actual launcher/hardware qualification remains held.
+
+
+The next private attention launcher is now source-only: normal/crash modes use accepted group ownership and a fresh visible Brave profile with explicit sandboxing. Seventy injected Node/source tests and eight pure Python policy tests passed; no actual browser/server/Worker/GPU ran. [The launcher guide](scripts/qualification/attention-launcher.md) records pinned local runtime files, work admission ACKs, resource caps, commands and actual ownership/hardware gates still held. It activates no audio or model capability.

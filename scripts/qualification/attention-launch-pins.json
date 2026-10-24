@@ -1,0 +1,58 @@
+{
+  "scope": "read-only source/runtime pins; no Brave execution or adapter evidence",
+  "nodeVersion": "v26.12.0",
+  "node": {
+    "path": "/Users/yosefgamble/.nvm/versions/node/v26.12.0/bin/node",
+    "bytes": 147340208,
+    "sha256": "12ccc7c7d8b9b33ac0740fc7c2590d2aba14ccfa0a40f3d3f7a6c4c60c87f07c"
+  },
+  "python": {
+    "path": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+    "bytes": 102352,
+    "sha256": "9ea22c79baac7ee6906d807799f351ae5de25b74be3ead66370714ea5348ca9f"
+  },
+  "brave": {
+    "path": "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
+    "bytes": 72544,
+    "sha256": "67539969b31e7579456d87ea62d9556f928f9c92af86bb3f43fe33b57d1cfad7",
+    "bundleVersion": "197.59",
+    "shortVersion": "155.1.97.59"
+  },
+  "playwrightVersion": "1.64.1",
+  "playwrightEntry": {
+    "path": "/Users/yosefgamble/.codex/worktrees/product-completion/Aurialis-WASM/node_modules/.pnpm/@playwright+test@1.64.1/node_modules/@playwright/test/index.js",
+    "bytes": 648,
+    "sha256": "499da5dd8585212108a1443793de31ebc061ca7db02343f107955f261180cdfc"
+  },
+  "playwrightPackage": {
+    "path": "/Users/yosefgamble/.codex/worktrees/product-completion/Aurialis-WASM/node_modules/.pnpm/@playwright+test@1.64.1/node_modules/@playwright/test/package.json",
+    "bytes": 754,
+    "sha256": "6b1c8bb530059f2555530e8dcc1b3803565237e17598683b3766c0fa313b3fd6"
+  },
+  "playwrightCore": {
+    "path": "/Users/yosefgamble/.codex/worktrees/product-completion/Aurialis-WASM/node_modules/.pnpm/playwright-core@1.64.1/node_modules/playwright-core/lib/coreBundle.js",
+    "bytes": 3585406,
+    "sha256": "829521b67ed7be90c7d6d6098ff39f2241562d47e4ad7ccab13710924a56001d"
+  },
+  "ownedGroupsSHA256": "d5a9978835c7ebcd6fd9c30c6074f4e55b84ac26683b66c4f9198daf3dd08a40",
+  "observedProcessSHA256": "a4904130b5c125d3563868c1e9d69dc2cd9be07a105b1cf7250d914b15836df3",
+  "ownedBrowserSHA256": "093d935b01dafd316707ab65b2787de65c25b2d9f1c7c47185e16084e81dd965",
+  "contract": "attention-ownership-normal-crash-1",
+  "helpers": [
+    {
+      "path": "scripts/qualification/owned_groups.py",
+      "bytes": 7214,
+      "sha256": "d5a9978835c7ebcd6fd9c30c6074f4e55b84ac26683b66c4f9198daf3dd08a40"
+    },
+    {
+      "path": "scripts/qualification/observed_process.py",
+      "bytes": 1686,
+      "sha256": "a4904130b5c125d3563868c1e9d69dc2cd9be07a105b1cf7250d914b15836df3"
+    },
+    {
+      "path": "scripts/qualification/owned-browser.mjs",
+      "bytes": 3855,
+      "sha256": "093d935b01dafd316707ab65b2787de65c25b2d9f1c7c47185e16084e81dd965"
+    }
+  ]
+}

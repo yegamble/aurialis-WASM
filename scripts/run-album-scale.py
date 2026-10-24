@@ -19,7 +19,7 @@ from observed_service import ObservedService  # noqa: E402
 from owned_profile import OwnedProfile  # noqa: E402
 from scale_resources import (MIB, GIB, MAX_DATA, MAX_IDENTITIES, MAX_SCRATCH, MAX_LOGS, MAX_REPORTS, MAX_MISC, MIN_FREE, TERMINAL_RESERVE, disk_values, resource_values, known_identity_count, admit_sample, bounded_json)  # noqa: E402
 from scale_completion import read_json, validate_launcher, validate_scale_result  # noqa: E402
-from scale_service import service_contract, pin_service, OwnedStaticService, ReadinessHTTPError  # noqa: E402
+from scale_service import service_contract, pin_service, OwnedStaticService, ReadinessHTTPError, ListenerProbeError  # noqa: E402
 from qualification_runtime import qualification_runtime  # noqa: E402
 import qualification_clock as clock  # noqa: E402
 
@@ -281,6 +281,9 @@ def main():
     except BaseException as error:
         primary = {'type': type(error).__name__, 'message': str(error)[:4096], 'traceback': traceback.format_exc()[-8192:]}
         if isinstance(error, ReadinessHTTPError): primary['readinessFraming'] = error.diagnostic
+        if isinstance(error, ListenerProbeError):
+            primary['listenerProbe'] = error.diagnostic
+            cleanup.extend(error.diagnostic['cleanup'])
     finally:
         # A single absolute clock includes every cleanup. The last12s reserve
         # direct assigned-handle reaps(2x3), final observation3 and publication3.

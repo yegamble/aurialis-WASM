@@ -82,12 +82,19 @@ class ParentContracts(unittest.TestCase):
             self.assertEqual(receipt["primary"]["message"], str(failure))
             if isinstance(failure, PARENT.ReadinessHTTPError):
                 self.assertEqual(receipt["primary"]["readinessFraming"], failure.diagnostic)
+            if isinstance(failure, PARENT.ListenerProbeError):
+                self.assertEqual(receipt["primary"]["listenerProbe"], failure.diagnostic)
+                self.assertEqual(receipt["cleanup"], failure.diagnostic["cleanup"])
             self.assertEqual(receipt["deadline"]["absoluteSeconds"], 120)
             profile.cleanup_success.assert_not_called()
 
     def test_actual_primary_receipt_retains_selected_readiness_diagnostic(self):
         diagnostic = {"status": 200, "contentLength": {"count": 0, "values": []}, "transferEncoding": {"count": 1, "values": ["chunked"]}, "contentEncoding": {"count": 0, "values": []}}
         self.test_assigned_node_survives_observer_setup_failure_and_is_reaped_under_configured_clock(PARENT.ReadinessHTTPError("selected framing refusal", diagnostic))
+
+    def test_actual_primary_and_secondary_cleanup_retain_listener_diagnostic(self):
+        diagnostic = {"command": ["/usr/sbin/lsof", "-t"], "executed": True, "exitCode": 1, "stdout": {"complete": False}, "cleanup": [{"phase": "listener-direct-reap", "message": "injected wait0 failure"}]}
+        self.test_assigned_node_survives_observer_setup_failure_and_is_reaped_under_configured_clock(PARENT.ListenerProbeError("listener probe refused", diagnostic))
 
     def test_actual_sample_allows_bounded_cleanup_after_work_cap_without_allowing_more_work(self):
         tree = ast.parse((Path(__file__).parent / "run-album-scale.py").read_text())
@@ -179,12 +186,13 @@ class ParentContracts(unittest.TestCase):
             config = Path(contract["argv"][4]); config.parent.mkdir(parents=True); config.write_text(json.dumps(contract["config"]))
             observer = Mock(); observer.identity = {"pid": 100}; observer.observe.return_value = [{"pid": 100}, {"pid": 101}]
             command = " ".join(contract["argv"])
-            with patch.object(scale_service.subprocess, "check_output", side_effect=[command, "p101\n"]):
+            probe = {"command": ["fixture lsof"], "exitCode": 0, "cleanup": []}
+            with patch.object(scale_service.subprocess, "check_output", return_value=command), patch.object(scale_service, "listener_probe", return_value=({101}, probe)):
                 self.assertTrue(scale_service.pin_service(observer, contract, {})["observationOnly"])
             with patch.object(scale_service.subprocess, "check_output", return_value=command.replace("/node ", "/wrong-node ")):
                 with self.assertRaisesRegex(RuntimeError, "exact pinned"):
                     scale_service.pin_service(observer, contract, {})
-            with patch.object(scale_service.subprocess, "check_output", side_effect=[command, "p999\n"]):
+            with patch.object(scale_service.subprocess, "check_output", return_value=command), patch.object(scale_service, "listener_probe", return_value=({999}, probe)):
                 with self.assertRaisesRegex(RuntimeError, "listener does not belong"):
                     scale_service.pin_service(observer, contract, {})
             modified = copy.deepcopy(contract["config"]); modified["assets"]["directory"] = "/foreign"; config.write_text(json.dumps(modified))

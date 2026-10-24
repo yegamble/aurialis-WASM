@@ -221,6 +221,8 @@ Shared Tailwind button variants, dialog surfaces, control groups and module disc
 
 ## Album cohort ownership — private integration checkpoint
 
+The QA listener probe owns its exact subprocess through bounded capture, cancellation and reap attempts. It uses PID-only output, preserves primary and cleanup failures separately and keeps the existing live service-group check. A late result cannot grant listener authority. This source-only correction does not qualify actual service or full-length Album execution; see [engineering controls](../scripts/qualification/README.md#bounded-listener-probe--sourceunit-only).
+
 The actual `b47cf2f` direct-owned static attempt stopped at listener validation after 1.495 seconds, before browser/profile work. Source execution reached that pin after exact decoded identity, HTML and security checks, but listener output and successful framing-mode receipts were not published, so their cause/mode remain unproven. Service exit 130, empty terminal arrays and fresh independent empty task groups were retained with no cleanup error or profile deletion. Its 58-file RED/27 execution bindings remain separate from the `7855677` attempt and the older no-service controls.
 
 Readiness header authority requires complete defect-free, unfolded parsing before either parsed flag or framing-field extraction. Python may return a partial defective header message without throwing; that path now preserves unknown flags rather than reporting later fields absent. The real-parser regression exposes both malformed and folded blocks, and 86/86 pure controls pass after the narrow ordering correction. The actual `7855677` rejected framing remains unknown; no runtime gate was rerun.

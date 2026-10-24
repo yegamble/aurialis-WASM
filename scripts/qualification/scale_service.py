@@ -17,6 +17,7 @@ from qualification_clock import remaining
 from observed_service import ObservedService
 from owned_groups import snapshot, same
 from scale_resources import bounded_json
+from listener_probe import listener_probe, ListenerProbeError
 
 
 def service_contract(base, budget_root, node, port):
@@ -60,17 +61,13 @@ def pin_service(observer, contract, rows):
         raise RuntimeError("External service is not the exact pinned Node/Wrangler/config command")
     live = observer.observe(rows)
     port = contract["url"].rsplit(":", 1)[1]
-    text = subprocess.check_output(["/usr/sbin/lsof", "-nP", "-iTCP:" + port, "-sTCP:LISTEN", "-Fp"], text=True, timeout=remaining(3))
-    lines = text.splitlines()
-    if not lines or any(not line.startswith("p") or not line[1:].isdigit() for line in lines):
-        raise RuntimeError("Exact external service listener unavailable")
-    pids = {int(line[1:]) for line in lines}
+    pids, probe = listener_probe(int(port))
     proved = {row["pid"]: row for row in live}
     if not pids or not pids <= set(proved):
-        raise RuntimeError("External listener does not belong to the admitted service group")
+        raise ListenerProbeError("External listener does not belong to the admitted service group", probe)
     return {"leader": dict(observer.identity), "listeners": [dict(proved[pid]) for pid in sorted(pids)],
             "config": config_receipt, "command": contract["argv"], "url": contract["url"],
-            "cliSHA256": contract["cliSHA256"], "observationOnly": True}
+            "cliSHA256": contract["cliSHA256"], "observationOnly": True, "listenerProbe": probe}
 
 
 class ReadinessHTTPError(RuntimeError):

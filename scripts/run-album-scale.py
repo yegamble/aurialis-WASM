@@ -15,6 +15,7 @@ import traceback
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'qualification'))
 from owned_groups import OwnedGroups, command_hash, snapshot  # noqa: E402
 from observed_process import ObservedProcess, union_rows, known_group_survivors  # noqa: E402
+from qualification_runtime import qualification_runtime  # noqa: E402
 
 MIB = 1024 ** 2
 GIB = 1024 ** 3
@@ -63,6 +64,7 @@ def command(pid):
 
 
 def main():
+    runtime = qualification_runtime()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--budget-root', required=True)
     parser.add_argument('--scratch', required=True)
@@ -246,7 +248,7 @@ def main():
                 raise RuntimeError('Final disk reserve violated')
         except BaseException as error:
             cleanup.append({'phase': 'final-observation', 'type': type(error).__name__, 'message': str(error)[:4096]})
-        result = {'version': 2, 'mode': arguments.mode, 'launch': launch, 'status': 'pass' if primary is None and not cleanup else 'fail', 'primary': primary, 'cleanup': cleanup, 'exitCode': child.poll() if child else None, 'seconds': round(time.monotonic() - started, 3), 'samples': samples, 'peaks': peaks, 'minimumFreeBytes': minimum_free, 'profilePaths': sorted(profiles), 'beforeWorkAcknowledgments': len(before_ack), 'leaders': owned.leaders if owned else None, 'admissions': owned.admissions if owned else [], 'events': owned.events if owned else [], 'preCrashBrowserMembers': pre_crash_browser, 'confirmedCrashSurvivors': crash_survivors, 'postCrashObservation': post_crash, 'finalObservation': final_observation, 'externalNative': native.identity if native else None, 'limits': {'seconds': arguments.seconds, 'dataBytes': MAX_DATA, 'scratchBytes': 512 * MIB, 'logBytes': 128 * MIB, 'minimumFreeBytes': MIN_FREE, 'nodeRSS': GIB, 'nativeRSS': GIB, 'browserProcessRSS': 3 * GIB, 'unionOwnedRSS': 4 * GIB}}
+        result = {'version': 2, 'pythonRuntime': runtime, 'mode': arguments.mode, 'launch': launch, 'status': 'pass' if primary is None and not cleanup else 'fail', 'primary': primary, 'cleanup': cleanup, 'exitCode': child.poll() if child else None, 'seconds': round(time.monotonic() - started, 3), 'samples': samples, 'peaks': peaks, 'minimumFreeBytes': minimum_free, 'profilePaths': sorted(profiles), 'beforeWorkAcknowledgments': len(before_ack), 'leaders': owned.leaders if owned else None, 'admissions': owned.admissions if owned else [], 'events': owned.events if owned else [], 'preCrashBrowserMembers': pre_crash_browser, 'confirmedCrashSurvivors': crash_survivors, 'postCrashObservation': post_crash, 'finalObservation': final_observation, 'externalNative': native.identity if native else None, 'limits': {'seconds': arguments.seconds, 'dataBytes': MAX_DATA, 'scratchBytes': 512 * MIB, 'logBytes': 128 * MIB, 'minimumFreeBytes': MIN_FREE, 'nodeRSS': GIB, 'nativeRSS': GIB, 'browserProcessRSS': 3 * GIB, 'unionOwnedRSS': 4 * GIB}}
         try:
             with receipt.open('x') as file:
                 json.dump(result, file, indent=2)

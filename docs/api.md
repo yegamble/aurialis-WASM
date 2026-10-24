@@ -11,6 +11,8 @@ API CI runs the complete Newman collection and raw security probes against the v
 
 ## Album orchestration — private integration checkpoint
 
+The QA supervisor now refuses unsupported Python before launching children; its separate profile primitive also checks Python 3.14.6 and fd-relative cleanup before creating directories. Nine synthetic directory/runtime controls passed. The earlier Python 3.9.6 cleanup failure remains retained; actual profile/resource integration remains open. These qualification-only checks add no endpoint.
+
 The QA-only external service-group observer adds no endpoint or signal authority. Sixteen pure identity/ancestry/resource-union controls passed; actual service observation and parent resource/ACK wiring remain unqualified. Existing application producers and API behavior are unchanged.
 
 The later context-neutral error producer `34a9cab` passed 65 actual sequential feature jobs, four native and five browser delivery/identity sentinels, and fresh closed-package checks. The QA-only BrowserServer profile/remote-stream helpers add no endpoint. Their 44 synthetic contracts pass; actual controls and complete resource wiring remain open before full-length tests. The shared error class and API checks are unchanged; earlier full-suite evidence remains labeled `516c086` rather than relabeled after the copy change.

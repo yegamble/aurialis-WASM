@@ -12,10 +12,10 @@ Run the eighteen synthetic controls with `python3 -m unittest discover -s script
 
 ## Album supervisor
 
-The normal and crash modes use a tiny Worker without audio or codec work. Use a fresh scratch name for every attempt; prior receipts and results are never overwritten. The pinned Node executable is verified before launch.
+The normal and crash modes use a tiny Worker without audio or codec work. Use a fresh scratch name for every attempt; prior receipts and results are never overwritten. The pinned Node executable is verified before launch. The supervisor and synthetic profile controls also require the existing Python 3.14.6 interpreter shown below. Before creating profiles or spawning children, the supervisor records its actual executable/version and requires the symlink-safe fd-relative directory removal API; unsupported runtimes fail without a fallback. Python 3.9.6 failed two earlier cleanup controls; the retained six-case success was specifically Python 3.14.6. Nine updated synthetic directory/runtime controls passed with that supported interpreter. The parent profile primitive is not yet wired into the actual BrowserServer supervisor.
 
 ```sh
-python3 scripts/run-album-scale.py \
+/opt/homebrew/opt/python@3.14/bin/python3.14 scripts/run-album-scale.py \
   --node "$HOME/.nvm/versions/node/v26.12.0/bin/node" \
   --mode normal --seconds 60 \
   --budget-root artifacts/album-qualification-example \

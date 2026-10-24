@@ -38,7 +38,7 @@ class Contract(unittest.TestCase):
         brave = '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser'
         command = parse_actual_command(brave + ' --remote-debugging-pipe --user-data-dir=/tmp/fresh/profile', brave)
         self.assertEqual(check_browser_command(command, brave, '/tmp/fresh'), str(Path('/tmp/fresh/profile').resolve()))
-        for flag in ('--no-sandbox', '--headless=new', '--use-angle=metal', '--use-angle=swiftshader', '--disable-gpu', '--disable-web-security', '--ignore-certificate-errors'):
+        for flag in ('--no-sandbox', '--enable-unsafe-swiftshader', '--headless=new', '--use-angle=metal', '--use-angle=swiftshader', '--disable-gpu', '--disable-web-security', '--ignore-certificate-errors'):
             with self.subTest(flag=flag), self.assertRaises(RuntimeError):
                 check_browser_command(command + [flag], brave, '/tmp/fresh')
         with self.assertRaises(ValueError):

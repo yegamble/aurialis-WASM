@@ -44,3 +44,10 @@ python3 scripts/qualification/attention-parent.py --mode crash --output "$PWD/ar
 ```
 
 The original CPU, scalar-GEMM, normalization, conditioning/quality and capture-failure proofs remain unchanged. Actual attention shader compilation/adapter identity, normal/crash process observations and 28 hardware fixture captures are all still pending; this checkpoint qualifies no model, latency, musical quality or public feature.
+
+
+## Retained normal RED and explicit flag correction
+
+The one released normal attempt at `b599aa6` failed after 1.428087584 seconds while checking the static Python server command prefix. Its raw static command was not saved, so its alias cause remains unknown. Browser argv/profile were retained; final saved live-members and all-members lists were both empty, with no cleanup errors. No work ACK, page, tiny Worker, fixture, adapter or audio work occurred. The original raw files and review index remain unchanged.
+
+The browser command included Playwright's default `--enable-unsafe-swiftshader`. [Chromium's primary documentation](https://chromium.googlesource.com/chromium/src/+/main/docs/gpu/swiftshader.md) describes its software WebGL fallback/security effect; that flag does not identify an actual adapter. The new, explicitly reviewed source option ignores only this default and the command guard rejects it. The omission list is frozen; no other arguments/defaults, backend selection or sandbox options change. Contract revision two requires new normal/crash controls after review; no new actual launch occurred. Two controlled old-source REDs and the first actual RED remain preserved.

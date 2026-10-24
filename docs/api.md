@@ -195,3 +195,6 @@ Private attention launcher preparation now reuses the accepted Node admission he
 
 
 A private normal/crash launcher now defines parent/Node/browser/static-server admission and work admission acknowledgements. It exposes no application endpoint or capture mode. Actual execution remains held: current evidence is 70 injected Node/source tests and eight pure Python controls only. The existing fourteen static routes and fixture protocol are unchanged. Future CDP renderer observations are explicitly separate from adapter/features/limits that have not been requested; no source-only result grants hardware or model authority. See the [launcher contract](../scripts/qualification/attention-launcher.md).
+
+
+Private launcher qualification now explicitly ignores only Playwright's `--enable-unsafe-swiftshader` default; the actual-command guard rejects that flag. Visible mode, explicit sandboxing and every other default remain unchanged. Both source regressions failed against the old options/guard and now pass within 70 Node/source and eight pure policy cases. The first actual normal RED is preserved: static Python command-prefix rejection, final saved live and all-member lists empty, no work ACK or audio/adapter work. Its exact alias cause is unknown. New normal/crash controls remain unreleased; this is no hardware result.

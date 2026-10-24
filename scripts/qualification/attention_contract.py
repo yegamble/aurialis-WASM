@@ -39,7 +39,7 @@ def check_browser_command(parts, brave, scratch):
     from pathlib import Path
     if not parts or parts[0] != brave:
         raise RuntimeError('Actual Brave executable differs from pin')
-    forbidden = ('--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--use-angle', '--use-gl', '--enable-unsafe-webgpu', '--enable-webgpu-developer-features', '--disable-web-security', '--headless', '--ignore-certificate-errors', '--disable-software-rasterizer')
+    forbidden = ('--enable-unsafe-swiftshader', '--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--use-angle', '--use-gl', '--enable-unsafe-webgpu', '--enable-webgpu-developer-features', '--disable-web-security', '--headless', '--ignore-certificate-errors', '--disable-software-rasterizer')
     if any(part == flag or part.startswith(flag + '=') for part in parts[1:] for flag in forbidden):
         raise RuntimeError('Actual sandbox/GPU/security flags refused')
     profiles = [part.split('=', 1)[1] for part in parts if part.startswith('--user-data-dir=')]

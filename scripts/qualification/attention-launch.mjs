@@ -9,7 +9,7 @@ import {admittedBrowser,beforeOwnedWork,exclusiveJSON} from './owned-browser.mjs
 
 export function launchOptions(pins){
  if(pins.brave.path!=='/Applications/Brave Browser.app/Contents/MacOS/Brave Browser')throw new Error('Exact installed Brave required');
- return Object.freeze({headless:false,chromiumSandbox:true,executablePath:pins.brave.path});
+ return Object.freeze({headless:false,chromiumSandbox:true,executablePath:pins.brave.path,ignoreDefaultArgs:Object.freeze(['--enable-unsafe-swiftshader'])});
 }
 const errorView=error=>error instanceof AggregateError?{message:String(error.message).slice(0,512),causes:error.errors.slice(0,4).map(cause=>String(cause?.stack??cause).slice(0,512))}:String(error?.stack??error).slice(0,2048);
 export async function runOwnershipProbe(mode,deps){

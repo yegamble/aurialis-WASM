@@ -186,3 +186,6 @@ Private attention launcher preparation now reuses the accepted Node admission he
 
 
 The next private attention launcher is now source-only: normal/crash modes use accepted group ownership and a fresh visible Brave profile with explicit sandboxing. Seventy injected Node/source tests and eight pure Python policy tests passed; no actual browser/server/Worker/GPU ran. [The launcher guide](scripts/qualification/attention-launcher.md) records pinned local runtime files, work admission ACKs, resource caps, commands and actual ownership/hardware gates still held. It activates no audio or model capability.
+
+
+Private launcher qualification now explicitly ignores only Playwright's `--enable-unsafe-swiftshader` default; the actual-command guard rejects that flag. Visible mode, explicit sandboxing and every other default remain unchanged. Both source regressions failed against the old options/guard and now pass within 70 Node/source and eight pure policy cases. The first actual normal RED is preserved: static Python command-prefix rejection, final saved live and all-member lists empty, no work ACK or audio/adapter work. Its exact alias cause is unknown. New normal/crash controls remain unreleased; this is no hardware result.

@@ -516,3 +516,6 @@ Private attention launcher preparation now reuses the accepted Node admission he
 
 
 - [ ] Private attention launcher source: closed normal/crash modes, exact shared group helpers, pinned installed Brave/runtime files, explicit visible sandboxing, managed static-server acquisition and fresh work admission ACKs implemented. Injected controls: 70 Node/source cases in 608.552625 milliseconds; eight pure Python cases in 0.012 seconds. Read-only bundle version is not renderer/adapter proof. No actual launcher/server/browser/Worker/GPU/model ran. Independent source review, actual normal/crash controls and separately authorized hardware fixtures remain open; no capture mode/public activation.
+
+
+Private launcher qualification now explicitly ignores only Playwright's `--enable-unsafe-swiftshader` default; the actual-command guard rejects that flag. Visible mode, explicit sandboxing and every other default remain unchanged. Both source regressions failed against the old options/guard and now pass within 70 Node/source and eight pure policy cases. The first actual normal RED is preserved: static Python command-prefix rejection, final saved live and all-member lists empty, no work ACK or audio/adapter work. Its exact alias cause is unknown. New normal/crash controls remain unreleased; this is no hardware result.

@@ -128,6 +128,23 @@ Frozen `envelope-node-visit-screen-host/source-v1/SOURCE-SHA256.json` is `3d31cf
 
 The final seal re-read actual streams, counters, parent/child receipts, old recorder bytes and immutable semantic/72-unit/v5-RED prerequisites. `envelope-node-visit-screen-host/source-v1/VERIFY-SHA256.json` is `3c72daf7ccd7c94e4ffaf470aa84899637de34646c3dde9ccad50edcedac1b83` (69 files/642,128 bytes); `VERIFY-QUALIFICATION.json` is `5f357d699c70e2b879913607f191960fc5a5cb270a9482cb7b5d73a8e845c0d9`. This establishes the scoped untimed screen gate only. Source-v5 infrastructure RED and the existing 192 kHz steady timing RED remain unchanged. Root review and all-agent quiet acknowledgment still precede any measurement release while other producers/functional work are active. No callback maximum, physical deadline, headroom, source wrap/EOF/drain or physical steady-state claim is made; candidate unselected and cross-target full-state identity UNPROVEN.
 
+### First node-visit same-module timing checkpoint
+
+**Open — first six-child bracket retained; steady RED, candidate unselected.** After final Chair release and coordinated Album/backend quiet acknowledgment, the frozen source-v1 host ran exactly steady then peaky, baseline-before → candidate → baseline-after. All six measurement Go/parent exits were zero; failure/cleanup/signals were null, stdout reached EOF and GoJS I/O closed. Actual verification/timed PCM, numeric-state and clock bytes agreed within each bracket and with each child's reset verification. Every allocation-count/allocated-byte delta was zero. No retry, profiling, fixture rerun, source edit or rebuild occurred.
+
+| Workload / leg | Finite mean ms per 128 | Repeat mean ms per 128 |
+|---|---:|---:|
+| Steady baseline before | 0.748352 | 0.749000 |
+| Steady candidate | 0.766768 | 0.764184 |
+| Steady baseline after | 0.766632 | 0.773944 |
+| Peaky baseline before | 0.618160 | 0.611480 |
+| Peaky candidate | 0.608848 | 0.609888 |
+| Peaky baseline after | 0.609576 | 0.609144 |
+
+Both steady candidate means exceed 0.666666667 ms. Before/after drift remains visible; this bracket demonstrates no consistent improvement. These are 32-block batch means only. Each measurement child processed 49,152 base frames/196,608 high-frame upper and 463,432 numeric words under unchanged caps. Each finite/repeat timed window covers frames 8,192–12,288 after reset, before physical source wrap/EOF. No worst-callback, browser, physical-deadline, headroom, drain or physical steady-state certification follows; cross-target full-state identity remains UNPROVEN.
+
+The seal re-read all ten actual screen streams and immutable recorder/semantic/72-unit/v5-RED prerequisites. `envelope-node-visit-screen-host/source-v1/MEASUREMENT-SHA256.json` is `268715bac849025662b7ee0ec1ec16991835cb308ed595d7ec722a92645e11ba` (106 files/1,532,155 bytes); qualification is `63a5a42cbcf5d9acf81e8f9250e9be6f04b9f296fc19594f8a24c157045e6b45`. A post-run seal helper initially queried a nonexistent EOF key; its retained diagnostic precedes a corrected read-only seal using actual `stdoutEOF`, with no child rerun or changed receipt. All owned producers settled. Historical failures and original steady RED remain retained; production DSP/selection unchanged. Next investigation requires measured function attribution and separate source review/release.
+
 ## Whole-product completion loop — October 22, 2026
 
 **Status: bounded wave locally verified; open — awaiting merge. Product incomplete.** The reviewed baseline `f5ec9ad` includes owner-merged PR #5. The older pending-merge entries below retain their historical status. The [current completion review](reviews/2026-10-22-war-room-completion.md) lists outstanding planned features and Round D rulings.

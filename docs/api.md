@@ -157,3 +157,6 @@ The bound-coordinate follow-up now has an inactive `.source` payload: one exact 
 
 
 The next DSP qualification attempt passed all 36 original native/GoJS units and the native 8 kHz recorder. Its GoJS 8 kHz output and counters matched both sealed references, but an overstrict host request check rejected a normal missing-file query. That historical gate remains RED. A separate source-only policy and eight-recorder continuation plan preserve the completed work; no completed child will be rerun to repair receipt analysis.
+
+
+The private fixed-eight recorder driver changes no public API or ABI. Its separately pinned host/policy preserves the existing modules and all completed evidence; execution remains held for source review.

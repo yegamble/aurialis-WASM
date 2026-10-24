@@ -153,3 +153,10 @@ The closed maximum remains 13,848,280 application-buffer bytes, 1,946,144 coarse
 
 
 The private receipt lifecycle was corrected after two independent QA RED probes. A closed private inventory replaces disposal-time discovery through exposed maps. Module-captured ArrayBuffer length/transfer operations detach and verify every remaining original backing store before admission releases; frozen metadata maps are an additional defense. Thirty-six CPU source units passed, including property shadows and partly detached aliases. No shader, numeric interval, fixture pin or resource budget changed. Hardware/ownership acceptance is still pending.
+
+
+### Private attention capture ownership
+
+The private page keeps one fixture receipt in a closure and exports no raw buffers or full interval JSON. A preparation-only raw-stage hash uses at most 298,272 logical bytes; the later single-in-flight 2 KiB protocol uses 243,712 bytes. The phases are exclusive and fit the existing 303,104-byte capture slack. Summary fields/strings/counts are closed and JSON is capped at 8,192 characters. These representation budgets do not claim VM heap or process RSS limits.
+
+A settlement promise is attached to each exact client run, independent of any later global owner. The page retains its session until that run releases, and retains a completed receipt until every parent chunk write/hash/file close or cancellation cleanup settles and is acknowledged. Private 0700/0600 numeric files use bounded snapshots, incremental hashing and independent closed-file verification hashing. The injected driver launches no process; exact shared ownership helpers from `188385980aea78aa180c883f6055d151b6af6add` are reused without changes and with provenance. Forty-nine Node units and three pure server-handler tests passed; no real server/browser/adapter/GPU or model was executed. Actual normal/crash ownership and hardware qualification remain open.

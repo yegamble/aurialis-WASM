@@ -1,0 +1,17 @@
+import{test}from'node:test';import assert from'node:assert/strict';import{mkdtemp,rm,readFile,stat,readdir}from'node:fs/promises';import{tmpdir}from'node:os';import path from'node:path';import{readFileSync}from'node:fs';import{createHash}from'node:crypto';
+import{createFileSinkFactory}from'./capture-files.mjs';import{boundedSummary,CAPTURE_ABI,CHUNK_BYTES}from'./capture-contract.mjs';import{FIXTURES}from'./fixture-index.mjs';import{parseFixture}from'./contract.mjs';import{packed}from'./test-helpers.mjs';import{LIMITS,MODEL_CONTRACT}from'./runtime-contract.mjs';import{SHADER_SHA256}from'./shader.mjs';
+const pin=FIXTURES[0],raw=readFileSync(new URL('./unit-pattern-m1-n1.bin',import.meta.url)),f=parseFixture(raw.buffer.slice(raw.byteOffset,raw.byteOffset+raw.byteLength)),data=Buffer.from(packed(f));
+function header(){const limits=Object.fromEntries(LIMITS.map(k=>[k,2**30])),summary=boundedSummary({model:MODEL_CONTRACT,shaderSHA256:SHADER_SHA256,comparison:{classification:'ordinary-input-diagnostic',reasons:[],maximumOutputIntervalWidth:.01},capability:{vendor:'dummy',architecture:'dummy',device:'dummy',description:'SOURCE UNIT ONLY',hardwareStatus:'not measured',backend:'dummy',reportedFallback:null,adapterFeatures:[],deviceFeatures:[],adapterLimits:limits,deviceLimits:limits}},pin);return{abi:CAPTURE_ABI,id:'local-file-unit',name:pin.name,total:f.plan.stageBytes,chunkBytes:CHUNK_BYTES,hash:createHash('sha256').update(data).digest('hex'),fixtureSHA256:pin.sha256,summary};}
+test('private numeric file writes/hash/close settle with exact bytes and restrictive permissions',async()=>{
+ const root=await mkdtemp(path.join(tmpdir(),'aurialis-capture-unit-'));try{const make=createFileSinkFactory(root),sink=await make(header());await sink.write(data,0);const result=await sink.finish();assert.deepEqual(await readFile(result.path),data);assert.equal((await stat(result.path)).mode&0o777,0o600);assert.equal((await stat(path.dirname(result.path))).mode&0o777,0o700);await assert.rejects(make(header()),/duplicate/);}finally{await rm(root,{recursive:true,force:true});}
+});
+test('truncated checksum-mismatched and overlapping writes cannot commit; abort removes private output',async()=>{
+ const root=await mkdtemp(path.join(tmpdir(),'aurialis-capture-unit-'));try{
+  let make=createFileSinkFactory(root),sink=await make(header());await assert.rejects(sink.finish(),/truncated/);await sink.abort();assert.deepEqual(await readdir(root),[]);
+  make=createFileSinkFactory(root);sink=await make(header());await sink.write(Buffer.alloc(data.length),0);await assert.rejects(sink.finish(),/checksum/);await sink.abort();assert.deepEqual(await readdir(root),[]);
+  make=createFileSinkFactory(root);sink=await make(header());const writing=sink.write(data,0);await assert.rejects(sink.write(data,0),/order/);await writing;await sink.abort();await sink.abort();assert.deepEqual(await readdir(root),[]);
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+test('pending writes own their bounded byte snapshot rather than mutable caller Buffer',async()=>{
+ const root=await mkdtemp(path.join(tmpdir(),'aurialis-capture-unit-'));try{const sink=await createFileSinkFactory(root)(header()),caller=Buffer.from(data),pending=sink.write(caller,0);caller.fill(0);await pending;const r=await sink.finish();assert.deepEqual(await readFile(r.path),data);}finally{await rm(root,{recursive:true,force:true});}
+});

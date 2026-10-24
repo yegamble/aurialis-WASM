@@ -70,3 +70,7 @@ test('partly pre-detached aliases and post-receipt abort detach the remaining cl
   controller.abort();assert.equal(actualBytes(boundBuffer),0);assert.equal(actualBytes(gridBuffer),0);assert.equal(actualBytes(other),0);assert.equal(bound.byteLength,0);assert.equal(grid.byteLength,0);r.dispose();assert.equal(s.released,1);
  }finally{r.dispose();}
 });
+test('exact-run settlement latch cannot be replaced by a later active run',async()=>{
+ const s=setup(),first=s.client.run(pin.name,blob()),firstSettled=first.whenSettled();let releasedFirst=false;void firstSettled.then(()=>{releasedFirst=true;});await turn();s.workers[0].reply(report(s.workers[0]));const a=await first;assert.equal(releasedFirst,false);a.dispose();await firstSettled;assert.equal(releasedFirst,true);
+ const second=s.client.run(pin.name,blob()),secondSettled=second.whenSettled();let releasedSecond=false;void secondSettled.then(()=>{releasedSecond=true;});await firstSettled;assert.equal(releasedSecond,false);await turn();s.workers[1].reply(report(s.workers[1]));const b=await second;assert.equal(releasedSecond,false);b.dispose();await secondSettled;assert.equal(releasedSecond,true);
+});

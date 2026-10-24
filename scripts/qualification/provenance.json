@@ -1,0 +1,31 @@
+{
+  "sourceCommit": "188385980aea78aa180c883f6055d151b6af6add",
+  "policy": "Exact accepted shared helper files; no local edits or separate process framework. Actual browser normal/crash controls remain a separate gate.",
+  "files": [
+    {
+      "path": "scripts/qualification/README.md",
+      "bytes": 2114,
+      "sha256": "1163e1c2bb10f5f76d82b02f79491c6c6ffca3c1a7f0f0844ada7051aa67e12d"
+    },
+    {
+      "path": "scripts/qualification/observed_process.py",
+      "bytes": 1294,
+      "sha256": "cb7c231998b6770ff1cf05119a6b93215ccde500b0d26c86b2ac864a73826b0a"
+    },
+    {
+      "path": "scripts/qualification/observed_process_test.py",
+      "bytes": 1681,
+      "sha256": "3465eec03ce6e4e2be219ddc7bff9dbf544bce22b53ac2cc40c937223e20739e"
+    },
+    {
+      "path": "scripts/qualification/owned_groups.py",
+      "bytes": 7214,
+      "sha256": "d5a9978835c7ebcd6fd9c30c6074f4e55b84ac26683b66c4f9198daf3dd08a40"
+    },
+    {
+      "path": "scripts/qualification/ownership_test.py",
+      "bytes": 11107,
+      "sha256": "12a1a8bd1aa7cd48dd0f3e511d427f0dbd8bf8fe4535055cab5e3542a0a1be69"
+    }
+  ]
+}

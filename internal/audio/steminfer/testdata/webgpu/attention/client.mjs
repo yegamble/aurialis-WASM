@@ -24,7 +24,9 @@ export function createAttentionClient(environment={}){
     const token={};owner=token;let worker,workerReject,snapshot,readBuffer,canceled,settled=false,cleanupTimer,receipt,comparison,resultBuffer,released=false;
     const ownedBuffers=[];
     const remember=buffer=>{try{bufferBytes(buffer);}catch{return;}ownedBuffers.push(buffer);};
-    let resolveUser,rejectUser;const returned=new Promise((resolve,reject)=>{resolveUser=resolve;rejectUser=reject;});
+    let resolveUser,rejectUser,resolveReleased;const fullyReleased=new Promise(resolve=>{resolveReleased=resolve;});
+    const returned=new Promise((resolve,reject)=>{resolveUser=resolve;rejectUser=reject;});
+    Object.defineProperty(returned,'whenSettled',{value:()=>fullyReleased});
     const settle=(error,value)=>{if(settled)return;settled=true;if(error)rejectUser(error);else resolveUser(value);};
     const release=()=>{
       if(released)return;
@@ -36,7 +38,7 @@ export function createAttentionClient(environment={}){
       const live=[...new Set(ownedBuffers)].filter(buffer=>bufferBytes(buffer)>0);
       if(live.length)transferClone(null,{transfer:live});
       if(ownedBuffers.some(buffer=>bufferBytes(buffer)!==0))throw new Error('Attention backing stores remain owned');
-      snapshot=undefined;readBuffer=undefined;lease.release();released=true;if(owner===token)owner=null;
+      snapshot=undefined;readBuffer=undefined;lease.release();released=true;if(owner===token)owner=null;resolveReleased();
     };
     const cancel=error=>{if(canceled)return;canceled=error;if(receipt){release();return;}settle(error);if(worker){try{worker.postMessage({abi:RUNTIME_ABI,id:token.id,kind:'cancel'});}catch{}cleanupTimer=setTimeout(()=>{worker.terminate();workerReject?.(error);},50);}};
     const abort=()=>cancel(signal.reason instanceof Error?signal.reason:new DOMException('Attention canceled','AbortError'));

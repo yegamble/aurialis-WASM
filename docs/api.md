@@ -181,3 +181,8 @@ The private fixture bridge now defines eight stored all-key stages and a pinned 
 
 
 The private fixture receipt now captures its original backing-buffer inventory before publication. Caller-visible map replacement, `buffer` shadows, and own `byteLength` properties cannot release admission while those original buffers remain readable. Disposal also handles partial prior detachment and post-delivery cancellation. The corrected 36-case source suite passed; no public API, hardware execution or model capability was added.
+
+
+### Private attention capture — static development assets only
+
+The isolated fixture harness now defines fourteen checksum-bound GET/HEAD assets with strict localhost/Origin/CSP policy. It serves no fixture and accepts no upload or public audio job. One selected local numerical File is bound to the existing 28-case pin index. Closed capture messages carry ID, sequence, byte offset/total and hashes; completion requires actual parent file closure and full raw-stage hash agreement. The source-only driver launches no process. Forty-nine Node units and three pure handler tests passed without starting a server/browser/GPU. Actual launcher, process ownership and hardware remain separately gated.

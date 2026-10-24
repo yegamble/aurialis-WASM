@@ -1,0 +1,72 @@
+{
+  "harness.mjs": {
+    "bytes": 2012,
+    "sha256": "c5ff74d53610d890a4dfdf6ddfc27d8e204f401b45ff2368ef30f5eb3d7af675",
+    "mime": "text/javascript; charset=utf-8"
+  },
+  "capture.mjs": {
+    "bytes": 5961,
+    "sha256": "ac9ac6b5989465a1db455e45ffdd0d334a191534a4711e09b87b83c1fbc10216",
+    "mime": "text/javascript; charset=utf-8"
+  },
+  "capture-contract.mjs": {
+    "bytes": 6386,
+    "sha256": "5ed16b0f26456f6030f35e636216ad3b7a3d6b704d54bc09c164b43ff3f8f599",
+    "mime": "text/javascript; charset=utf-8"
+  },
+  "client.mjs": {
+    "bytes": 6898,
+    "sha256": "99dcfff8fb5bc7d42a296149a3dc5a8a303781da8bd794576f9d2a2bc1c1672e",
+    "mime": "text/javascript; charset=utf-8"
+  },
+  "contract.mjs": {
+    "bytes": 16110,
+    "sha256": "4f8282b3ff08f1108c7b87292ab43af6ec5cd0439059b94254b1911c3ccad31a",
+    "mime": "text/javascript; charset=utf-8"
+  },
+  "fixture-index.mjs": {
+    "bytes": 5042,
+    "sha256": "ceaa8e5a42e7501b4ae81d76a173b385adaffda31709875d8f06d8879ab51b1d",
+    "mime": "text/javascript; charset=utf-8"
+  },
+  "runtime-contract.mjs": {
+    "bytes": 6017,
+    "sha256": "d3756c94e1e6f11e76882b06e7f095d89e3edf90043f17de3b49fdd738970059",
+    "mime": "text/javascript; charset=utf-8"
+  },
+  "propagated.mjs": {
+    "bytes": 12292,
+    "sha256": "9c8bfeda6b84f7786f3f79f0d78e0487eeddc186d66600a917e463f1e698c87f",
+    "mime": "text/javascript; charset=utf-8"
+  },
+  "shader.mjs": {
+    "bytes": 3024,
+    "sha256": "42f16dfd7797d627e8984c1f353a6910f89211d1fdf115c4c12db3921bbd5856",
+    "mime": "text/javascript; charset=utf-8"
+  },
+  "worker.mjs": {
+    "bytes": 1208,
+    "sha256": "8c3197da501abde6d9e0b6320a6256c8b1e4bc879aecaea04446c1cc314b504f",
+    "mime": "text/javascript; charset=utf-8"
+  },
+  "gpu-runner.mjs": {
+    "bytes": 6620,
+    "sha256": "bb6056e246936104e995f57b55233186e26412d9f44442e8ea076521a6308fa3",
+    "mime": "text/javascript; charset=utf-8"
+  },
+  "index.html": {
+    "bytes": 717,
+    "sha256": "24be9bf059f4b73ac76688178c799cea6267df795d933227e40a1b22855fe40a",
+    "mime": "text/html; charset=utf-8"
+  },
+  "style.css": {
+    "bytes": 398,
+    "sha256": "85b5242dc74b360f42edaf5ec1e47ae85cf4a5cc536fe64d04f354eb6d67741c",
+    "mime": "text/css; charset=utf-8"
+  },
+  "favicon.svg": {
+    "bytes": 203,
+    "sha256": "b545a11cc1d222877760f996b1022c2a63b0ac29be5616aebb6067bb8205ff2d",
+    "mime": "image/svg+xml"
+  }
+}

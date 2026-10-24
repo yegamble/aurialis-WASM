@@ -174,3 +174,6 @@ Private attention source checkpoint: an isolated eight-pass all-key shader and d
 
 
 The private attention receipt follow-up closes independently reproduced disposal escapes using an immutable private backing-buffer inventory and captured intrinsic byte lengths. All 36 source units passed; peer RED probes and the original checkpoint remain preserved. This enables no GPU/model execution or public feature. Hardware qualification remains open.
+
+
+A private source-only attention capture harness now has 49 passing Node units and three pure handler tests. It selects one pinned local fixture, captures raw stages through bounded 2 KiB chunks and retains memory ownership until parent writing/hashing/closure settles. No server, browser, adapter, GPU or model ran. Shared process helpers are copied exactly with provenance; the actual launcher/hardware gate remains open.

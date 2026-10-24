@@ -504,3 +504,6 @@ Source-only Round D preparation records 28 preregistered cases under the32-case 
 
 
 - [ ] Private attention receipt follow-up: independent map-replacement and shadowed-length disposal escapes fixed; three retained pre-fix RED regressions now pass within the 36/36 source suite. Final indexed CPU audit metrics are 0.458623375 seconds / 82,870,272 bytes RSS; the 0.839-second / 83,918,848-byte draft is retained separately. Original proof indices remain unchanged. Peer source/ownership review and separately authorized hardware remain open; no model/GPU/public activation.
+
+
+- [ ] Private attention capture source: one pinned local File, closed GET/HEAD assets, phase-exclusive capture budgets, exact-run settlement and parent closed-file hash acknowledgement implemented; 49 Node units and three pure handler tests passed. No server/browser/GPU/model execution. Shared helper source reused exactly with provenance; actual launcher, normal/crash process ownership, real adapter/compilation and 28 existing hardware cases remain separately gated. No public activation.

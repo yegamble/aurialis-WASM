@@ -67,16 +67,26 @@ export function createAttentionClient(environment={}){
   },metadata(signal=new AbortController().signal){
     signal.throwIfAborted();if(owner)throw new Error('One attention operation active; no queue');
     const lease=reserve(METADATA_APPLICATION_BYTES);if(!lease||typeof lease.release!=='function')throw new Error('Invalid metadata memory lease');
-    const token={};owner=token;let worker,terminate,raw,receipt,workerReject,canceled,settled=false,released=false,cleanupTimer,resolveUser,rejectUser,resolveReleased;
+    const token={};owner=token;let worker,terminate,raw,receipt,workerReject,canceled,settled=false,released=false,replyReceived=false,cleanupTimer,resolveUser,rejectUser,resolveReleased;
     const fullyReleased=new Promise(resolve=>{resolveReleased=resolve;}),returned=new Promise((resolve,reject)=>{resolveUser=resolve;rejectUser=reject;});Object.defineProperty(returned,'whenSettled',{value:()=>fullyReleased});
     const settle=(error,value)=>{if(settled)return;settled=true;if(error)rejectUser(error);else resolveUser(value);};
+    const discard=buffer=>{let bytes;try{bytes=bufferBytes(buffer);}catch{return;}if(bytes)transferClone(null,{transfer:[buffer]});if(bufferBytes(buffer)!==0)throw new Error('Metadata incoming store remains owned');};
+    const register=data=>{
+      const json=data?.json;let incoming;try{bufferBytes(json);incoming=json;}catch{}
+      // Ownership precedes envelope authority. Keep only the first raw store;
+      // extras and late/duplicate stores are detached without another lease.
+      if(!released&&!replyReceived&&incoming)raw=incoming;
+      if(data!==raw)discard(data);
+      if(data&&typeof data==='object')for(const key in data){if(!Object.hasOwn(data,key))continue;const descriptor=Object.getOwnPropertyDescriptor(data,key);if(descriptor&&'value'in descriptor&&descriptor.value!==raw)discard(descriptor.value);}
+      return json;
+    };
     const release=()=>{if(released)return;clearTimeout(deadline);clearTimeout(cleanupTimer);signal.removeEventListener('abort',abort);if(worker){worker.onmessage=null;worker.onerror=null;worker.onmessageerror=null;terminate();}if(raw&&bufferBytes(raw)>0)transferClone(null,{transfer:[raw]});if(raw&&bufferBytes(raw)!==0)throw new Error('Metadata backing store remains owned');raw=undefined;lease.release();released=true;if(owner===token)owner=null;resolveReleased();};
     const cancel=error=>{if(canceled)return;canceled=error;if(receipt){release();return;}settle(error);if(worker){try{worker.postMessage({abi:METADATA_ABI,id:token.id,kind:'cancel'});}catch{}cleanupTimer=setTimeout(()=>{terminate();workerReject?.(error);},50);}};
     const abort=()=>cancel(signal.reason instanceof Error?signal.reason:new DOMException('Metadata canceled','AbortError'));
     const deadline=setTimeout(()=>cancel(new Error('Metadata deadline; host request settlement is not guaranteed by termination')),DEADLINE_MS);signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
     const check=()=>{if(canceled)throw canceled;signal.throwIfAborted();};
     void(async()=>{check();token.id=crypto.randomUUID();worker=makeWorker();terminate=worker.terminate.bind(worker);
-      const incoming=await new Promise((resolve,reject)=>{workerReject=reject;worker.onerror=()=>reject(new Error('Metadata Worker failed'));worker.onmessageerror=()=>reject(new Error('Metadata transfer failed'));worker.onmessage=event=>{try{const data=event.data;if(!data||data.abi!==METADATA_ABI||data.id!==token.id)throw new Error('Metadata result identity changed');if(data.kind==='error'){if(Object.keys(data).sort().join('|')!=='abi|error|id|kind')throw new Error('Metadata error fields changed');throw new Error(String(data.error).slice(0,1024));}if(data.kind!=='metadata-result'||Object.keys(data).sort().join('|')!=='abi|id|json|kind')throw new Error('Metadata result fields changed');resolve(data.json);}catch(error){reject(error);}};worker.postMessage({abi:METADATA_ABI,id:token.id,kind:'adapter-metadata'});});
+      const incoming=await new Promise((resolve,reject)=>{workerReject=reject;worker.onerror=()=>reject(new Error('Metadata Worker failed'));worker.onmessageerror=()=>reject(new Error('Metadata transfer failed'));worker.onmessage=event=>{try{const data=event.data,json=register(data);if(released||replyReceived)return;if(canceled)throw canceled;if(!data||data.abi!==METADATA_ABI||data.id!==token.id)throw new Error('Metadata result identity changed');if(data.kind==='error'){if(Object.keys(data).sort().join('|')!=='abi|error|id|kind')throw new Error('Metadata error fields changed');throw new Error(String(data.error).slice(0,1024));}if(data.kind!=='metadata-result'||Object.keys(data).sort().join('|')!=='abi|id|json|kind')throw new Error('Metadata result fields changed');replyReceived=true;resolve(json);}catch(error){replyReceived=true;reject(error);}};worker.postMessage({abi:METADATA_ABI,id:token.id,kind:'adapter-metadata'});});
       // Transfer ownership is recorded before geometry/parse refusal. Worker
       // producer state ends before parse; no parsed object survives this call.
       bufferBytes(incoming);raw=incoming;check();worker.onmessage=null;worker.onerror=null;worker.onmessageerror=null;terminate();decodeMetadata(raw);check();clearTimeout(deadline);

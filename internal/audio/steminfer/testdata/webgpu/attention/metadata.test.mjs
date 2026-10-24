@@ -116,3 +116,20 @@ test('maximum raw metadata transport is exactly32 single-flight chunks with no r
 test('cancellation during ownership ACK cannot create page or sink side effects',async()=>{
  const controller=new AbortController();let resolve,sideeffects=0;const pending=metadataFromOwnedPage({call(){sideeffects++;}},()=>{sideeffects++;},()=>new Promise(done=>{resolve=done;}),{signal:controller.signal});const rejected=assert.rejects(pending,{name:'AbortError'});controller.abort();resolve();await rejected;assert.equal(sideeffects,0);
 });
+
+test('invalid metadata envelopes dispose all direct transferred stores before exact refund',async()=>{
+ const getter=Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'byteLength').get;
+ for(const variant of ['wrong-id','wrong-abi','extra-field','error-envelope']){
+  let refund=0,worker,atRefund;const incoming=new ArrayBuffer(8192),extra=new ArrayBuffer(64);Object.defineProperty(incoming,'byteLength',{value:0});
+  const c=createAttentionClient({reserve(){return{release(){atRefund=[getter.call(incoming),getter.call(extra)];refund++;}};},makeWorker(){worker={terminate(){},postMessage(message){if(message.kind==='cancel')return;const data={abi:METADATA_ABI,id:message.id,kind:'metadata-result',json:incoming,unexpected:extra};if(variant==='wrong-id')data.id='wrong-id';if(variant==='wrong-abi')data.abi='wrong-abi';if(variant==='error-envelope'){data.kind='error';data.error='worker original';}queueMicrotask(()=>worker.onmessage({data}));}};return worker;}});
+  const pending=c.metadata();await assert.rejects(pending,/identity|fields/);await pending.whenSettled();assert.equal(refund,1);assert.deepEqual(atRefund,[0,0],'all incoming stores detach before refund');assert.equal(getter.call(incoming),0);assert.equal(getter.call(extra),0);
+ }
+});
+test('canceled and late duplicate metadata stores detach without releasing a newer lease',async()=>{
+ const f=fakeClient('held'),controller=new AbortController(),first=f.client.metadata(controller.signal);await tick();const handler=f.worker.onmessage,id=f.message.id;controller.abort();await assert.rejects(first,{name:'AbortError'});await first.whenSettled();assert.equal(f.releases,1);
+ const second=f.client.metadata();await tick();const late=new ArrayBuffer(8192),extra=new ArrayBuffer(32);handler({data:{abi:METADATA_ABI,id,kind:'metadata-result',json:late,extra}});assert.equal(late.byteLength,0);assert.equal(extra.byteLength,0);assert.equal(f.charged,65536);assert.equal(f.releases,1);
+ const valid=encodeMetadata(report()),secondHandler=f.worker.onmessage;secondHandler({data:{abi:METADATA_ABI,id:f.message.id,kind:'metadata-result',json:valid}});const duplicate=new ArrayBuffer(8192);secondHandler({data:{abi:METADATA_ABI,id:f.message.id,kind:'metadata-result',json:duplicate}});assert.equal(duplicate.byteLength,0);const receipt=await second;assert.ok(receipt.result.byteLength>0);receipt.dispose();await second.whenSettled();assert.equal(f.releases,2);
+});
+test('canceled metadata reply owns its store until detached and never acquires receipt authority',async()=>{
+ const f=fakeClient('held'),controller=new AbortController(),pending=f.client.metadata(controller.signal);await tick();const handler=f.worker.onmessage,id=f.message.id,raw=new ArrayBuffer(8192);controller.abort(new Error('original source cancellation'));await assert.rejects(pending,/original source cancellation/);handler({data:{abi:METADATA_ABI,id,kind:'metadata-result',json:raw}});await pending.whenSettled();assert.equal(raw.byteLength,0);assert.equal(f.releases,1);assert.equal(f.charged,0);
+});

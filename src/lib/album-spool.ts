@@ -1,8 +1,11 @@
+import { registerAlbumCleanup, markAlbumCleanup, completeAlbumCleanup, type AlbumCleanupCapability } from "./album-cleanup";
+import { reserveBrowserAudioMemory } from "./browser-jobs";
+
 /** Device-local encoded masters. This store never contains original uploads or settings. */
 export const maximumAlbumSpoolBytes = 64 * (44 + 16_777_216 * 6);
 const databaseName = "aurialis-album-spool-v1", runsStore = "runs", outputStore = "outputs", budgetKey = "budget";
 const maximumMetadataBytes = 256 * 1024;
-export interface AlbumSpoolRecipe {
+interface AlbumSpoolRecipe {
   albumId: string; bindingHash: string; processingBuild: string; planHash: string; expectedBytes: number; totalTracks: number;
 }
 export interface AlbumSpoolOutput { index: number; assetId: string; sha256: string; sampleRate: number; frames: number; bytes: number }
@@ -82,6 +85,9 @@ async function albumLock(albumId: string): Promise<() => Promise<void>> {
     void settled.catch(reject);
   });
 }
+class AlbumSpoolOwnershipChangedError extends Error {
+  constructor() { super("The album spool ownership changed. No stored output was modified."); }
+}
 type Change = (manifest: Manifest | null, budget: Budget, outputs: IDBObjectStore) => { manifest: Manifest | null; budget: Budget };
 
 /** Metadata-only session; callers must verify PCM/recipe authority before using a recovered prefix. */
@@ -90,12 +96,27 @@ export class AlbumSpool {
   private queue: Promise<unknown> = Promise.resolve();
   private closing = false;
   private closePromise: Promise<void> | null = null;
-  private constructor(private readonly albumId: string, private readonly releaseLock: () => Promise<void>) {}
+  private closed = false;
+  private terminalDiscard = false;
+  private releasedForClose = false;
+  private acquired: Promise<void> | null = null;
+  private releaseLock: (() => Promise<void>) | null = null;
+  private readonly capability: AlbumCleanupCapability;
+  private constructor(private readonly albumId: string, capability: AlbumCleanupCapability | undefined,
+    private readonly metadataLease: ReturnType<typeof reserveBrowserAudioMemory> | null, private readonly cleanupOnly: boolean) {
+    this.capability = capability ?? Object.freeze({ retry: () => this.clear() });
+  }
   /** Acquire before any cohort audio work; no DB or recipe is needed to own planning. */
-  static async claim(albumId: string): Promise<AlbumSpool> {
+  static claim(albumId: string, capability?: AlbumCleanupCapability): Promise<AlbumSpool> { return this.claimOwner(albumId, capability, false); }
+  static claimForCleanup(albumId: string): Promise<AlbumSpool> { return this.claimOwner(albumId, undefined, true); }
+  private static async claimOwner(albumId: string, capability: AlbumCleanupCapability | undefined, cleanupOnly: boolean): Promise<AlbumSpool> {
     if (typeof albumId !== "string" || !albumId || albumId.length > 1024) throw new Error("The album identifier is invalid.");
-    const release = await albumLock(albumId);
-    try { return new AlbumSpool(albumId, release); } catch (cause) { await release(); throw cause; }
+    const lease = capability ? null : reserveBrowserAudioMemory(1024 * 1024);
+    const spool = new AlbumSpool(albumId, capability, lease, cleanupOnly);
+    try { registerAlbumCleanup(albumId, spool.capability); } catch (cause) { lease?.dispose(); throw cause; }
+    spool.acquired = albumLock(albumId).then((release) => { spool.releaseLock = release; });
+    try { await spool.acquired; return spool; }
+    catch (cause) { completeAlbumCleanup(albumId, spool.capability); lease?.dispose(); throw cause; }
   }
   static async open(recipe: AlbumSpoolRecipe): Promise<AlbumSpool> {
     const expected = copyRecipe(recipe);
@@ -130,12 +151,7 @@ export class AlbumSpool {
   }
   /** Explicit cleanup can own an obsolete recipe, but only within this album's namespace. */
   static async clearStored(albumId: string): Promise<void> {
-    if (typeof albumId !== "string" || !albumId || albumId.length > 1024) throw new Error("The album identifier is invalid.");
-    const release = await albumLock(albumId), spool = new AlbumSpool(albumId, release);
-    try {
-      await spool.change((manifest, budget) => ({ manifest: manifest ? { ...manifest, owner: crypto.randomUUID(), revision: manifest.revision + 1 } : null, budget }), false);
-      if (spool.manifest) await spool.clear(); else await release();
-    } catch (cause) { await release(); throw cause; }
+    const spool = await this.claimForCleanup(albumId); await spool.clear();
   }
   prefix(): readonly AlbumSpoolOutput[] { return this.manifest?.prefix.map((row) => ({ ...row })) ?? []; }
   private schedule<T>(operation: () => Promise<T>): Promise<T> {
@@ -154,7 +170,7 @@ export class AlbumSpool {
           try {
             const previous = selected.result === undefined ? null : checkedManifest(selected.result), budget = checkedBudget(accounting.result);
             if (previous && previous.albumId !== this.albumId) throw new Error("Stored album ownership belongs to another album.");
-            if (requireOwner && (!previous || !this.manifest || !sameOwner(previous, this.manifest))) throw new Error("The album spool ownership changed. No stored output was modified.");
+            if (requireOwner && (!previous || !this.manifest || !sameOwner(previous, this.manifest))) throw new AlbumSpoolOwnershipChangedError();
             const result = transform(previous, { ...budget }, transaction.objectStore(outputStore));
             next = result.manifest ? checkedManifest(result.manifest) : null; checkedBudget(result.budget);
             if (next) runs.put(next, `album:${this.albumId}`); else runs.delete(`album:${this.albumId}`);
@@ -240,32 +256,64 @@ export class AlbumSpool {
       } finally { database.close(); }
     });
   }
-  close(): Promise<void> {
+  isClosed(): boolean { return this.closed; }
+  private discardRequested(): boolean { return this.terminalDiscard; }
+  private hasManifest(): boolean { return this.manifest !== null; }
+  private async releaseOwnedLock(): Promise<void> {
+    const release = this.releaseLock; if (release) { await release(); this.releaseLock = null; this.releasedForClose = true; }
+  }
+  private finishOwner(): void {
+    this.closed = true; this.metadataLease?.dispose();
+    // External Batch owners release their charged recipe/report references before removing their slot.
+    if (this.metadataLease) completeAlbumCleanup(this.albumId, this.capability);
+  }
+  close(): Promise<void> { return this.finish(false); }
+  clear(): Promise<void> { return this.finish(true); }
+  private finish(discard: boolean): Promise<void> {
+    this.terminalDiscard ||= discard;
+    if (this.closed) return Promise.resolve();
     if (this.closePromise) return this.closePromise;
-    this.closing = true;
-    this.closePromise = this.queue.then(async () => {
-      if (!this.manifest) return;
-      await this.change((manifest, budget, outputs) => {
-        if (!manifest) throw new Error("The stored album is unavailable.");
-        if (manifest.pending) { outputs.delete([manifest.albumId, manifest.pending.assetId]); budget.bytes -= manifest.pending.bytes; }
-        budget.reserved -= manifest.reserved;
-        if (!manifest.prefix.length) { budget.runs--; return { manifest: null, budget }; }
-        return { manifest: { ...manifest, pending: null, reserved: 0, revision: manifest.revision + 1 }, budget };
-      });
-    }).finally(this.releaseLock);
+    this.closing = true; markAlbumCleanup(this.albumId, this.capability);
+    const attempt = this.queue.then(async () => {
+      await this.acquired;
+      if (!this.releaseLock) this.releaseLock = await albumLock(this.albumId);
+      if (this.cleanupOnly && !this.manifest) await this.change((manifest, budget) => ({ manifest: manifest ? { ...manifest, owner: crypto.randomUUID(), revision: manifest.revision + 1 } : null, budget }), false);
+      if (this.manifest) {
+        if (this.discardRequested()) await this.removeOwned();
+        else {
+          await this.change((manifest, budget, outputs) => {
+            if (!manifest) throw new Error("The stored album is unavailable.");
+            if (manifest.pending) { outputs.delete([manifest.albumId, manifest.pending.assetId]); budget.bytes -= manifest.pending.bytes; }
+            budget.reserved -= manifest.reserved;
+            if (!manifest.prefix.length) { budget.runs--; return { manifest: null, budget }; }
+            return { manifest: { ...manifest, pending: null, reserved: 0, revision: manifest.revision + 1 }, budget };
+          });
+          if (this.discardRequested() && this.hasManifest()) await this.removeOwned();
+        }
+      }
+      await this.releaseOwnedLock();
+      // Clear can arrive after the callback resolves but before WebLock request settlement. A fresh
+      // lock plus the unchanged full-manifest CAS is required before touching that older generation.
+      if (this.discardRequested() && this.manifest) {
+        this.releaseLock = await albumLock(this.albumId); await this.removeOwned(); await this.releaseOwnedLock();
+      }
+      this.finishOwner();
+    });
+    this.closePromise = attempt.catch(async (cause: unknown) => {
+      if (this.releasedForClose && cause instanceof AlbumSpoolOwnershipChangedError) {
+        await this.releaseOwnedLock(); this.finishOwner();
+        throw new Error("The earlier album run changed after its lock was released. Its cleanup owner was retired; the current stored run was not modified. Review that run before clearing again.", { cause });
+      }
+      this.closePromise = null; markAlbumCleanup(this.albumId, this.capability, cause); throw cause;
+    });
     return this.closePromise;
   }
-  clear(): Promise<void> {
-    if (this.closing) return Promise.reject(new Error("The album spool owner is closed."));
-    this.closing = true;
-    this.closePromise = this.queue.then(async () => {
-      await this.change((manifest, budget, outputs) => {
-        if (!manifest) throw new Error("The stored album is unavailable.");
-        for (const row of [...manifest.prefix, ...(manifest.pending ? [manifest.pending] : [])]) outputs.delete([manifest.albumId, row.assetId]);
-        budget.bytes -= committedBytes(manifest); budget.reserved -= manifest.reserved; budget.runs--;
-        return { manifest: null, budget };
-      });
-    }).finally(this.releaseLock);
-    return this.closePromise;
+  private async removeOwned(): Promise<void> {
+    await this.change((manifest, budget, outputs) => {
+      if (!manifest) throw new Error("The stored album is unavailable.");
+      for (const row of [...manifest.prefix, ...(manifest.pending ? [manifest.pending] : [])]) outputs.delete([this.albumId, row.assetId]);
+      budget.bytes -= committedBytes(manifest); budget.reserved -= manifest.reserved; budget.runs--;
+      return { manifest: null, budget };
+    });
   }
 }

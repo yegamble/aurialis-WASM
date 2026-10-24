@@ -3,6 +3,7 @@ import { webcrypto } from "node:crypto";
 import { IDBFactory, IDBDatabase, IDBObjectStore } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AlbumSpool, maximumAlbumSpoolBytes } from "../album-spool";
+import { albumCleanupStatus, retryAlbumCleanup } from "../album-cleanup";
 
 const hash = "a".repeat(64), expectedBytes = 644;
 const recipe = (albumId = "album-one", bytes = expectedBytes) => ({ albumId, bindingHash: hash, processingBuild: "b".repeat(64), planHash: "c".repeat(64), expectedBytes: bytes, totalTracks: bytes === maximumAlbumSpoolBytes ? 64 : 2 });
@@ -84,14 +85,17 @@ describe("bounded durable album spool", () => {
   });
   it.each(["revision", "owner", "processingBuild"] as const)("checks persisted %s in the same transaction that loads output bytes", async (field) => {
     const spool = await open(), pending = await spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal()); await spool.promote(pending.assetId, signal());
+    let originalManifest: unknown;
     const database = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open("aurialis-album-spool-v1", 1); request.onsuccess = () => { resolve(request.result); }; request.onerror = () => { reject(request.error ?? new Error("Fixture open failed")); }; });
     try { await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction("runs", "readwrite"), store = transaction.objectStore("runs"), request = store.get("album:album-one");
-      request.onsuccess = () => { const manifest = request.result as Record<string, unknown>; store.put({ ...manifest, [field]: field === "revision" ? Number(manifest.revision) + 1 : field === "owner" ? crypto.randomUUID() : "f".repeat(64) }, "album:album-one"); };
+      request.onsuccess = () => { const manifest = request.result as Record<string, unknown>; originalManifest = manifest; store.put({ ...manifest, [field]: field === "revision" ? Number(manifest.revision) + 1 : field === "owner" ? crypto.randomUUID() : "f".repeat(64) }, "album:album-one"); };
       transaction.oncomplete = () => { resolve(); }; transaction.onerror = () => { reject(transaction.error ?? new Error("Fixture mutation failed")); };
     }); } finally { database.close(); }
     const consume = vi.fn<(blob: Blob) => Promise<void>>();
     await expect(spool.withOutput(pending, signal(), consume)).rejects.toThrow(/ownership/u); expect(consume).not.toHaveBeenCalled();
+    const restored = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open("aurialis-album-spool-v1", 1); request.onsuccess = () => { resolve(request.result); }; request.onerror = () => { reject(request.error ?? new Error("Fixture reopen failed")); }; });
+    try { await new Promise<void>((resolve, reject) => { const transaction = restored.transaction("runs", "readwrite"); transaction.objectStore("runs").put(originalManifest, "album:album-one"); transaction.oncomplete = () => { resolve(); }; transaction.onerror = () => { reject(transaction.error ?? new Error("Fixture restore failed")); }; }); } finally { restored.close(); }
   });
   it("stores immutable staged bytes separately from the metadata-only verified prefix", async () => {
     const spool = await open(), wav = new Blob([new Uint8Array(expectedBytes)]);
@@ -155,11 +159,18 @@ describe("bounded durable album spool", () => {
     const closing = spool.close(); await expect(AlbumSpool.open(recipe())).rejects.toThrow(/another tab/u);
     held.resolve(undefined); await downloading; await closing; const resumed = await open(); expect(resumed.prefix()).toHaveLength(1);
   });
+  it("refuses a full cleanup capability registry before another WebLock or storage IO", async () => {
+    for (let index = 0; index < 64; index++) { const owner = await AlbumSpool.claim(`early-${String(index)}`); sessions.push(owner); }
+    const lock = vi.spyOn(navigator.locks, "request"), opening = vi.spyOn(indexedDB, "open");
+    await expect(AlbumSpool.claim("overflow")).rejects.toThrow(/64 active/u); expect(lock).not.toHaveBeenCalled(); expect(opening).not.toHaveBeenCalled();
+  });
   it("limits stored run count and validates byte/layout demand before any database write", async () => {
     await expect(AlbumSpool.open({ ...recipe(), totalTracks: 65 })).rejects.toThrow(/64/u);
     await expect(AlbumSpool.open({ ...recipe(), expectedBytes: maximumAlbumSpoolBytes + 1 })).rejects.toThrow(/disk limit/u);
     const spool = await open(); await expect(spool.stage(new Blob([new Uint8Array(expectedBytes + 1)]), layout(0), signal())).rejects.toThrow(/length/u);
-    for (let index = 1; index < 64; index++) await open(`album-${String(index)}`);
+    for (const [index, owner] of [spool, ...await Promise.all(Array.from({ length: 63 }, (_, item) => open(`album-${String(item + 1)}`)))].entries()) {
+      const pending = await owner.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal()); await owner.promote(pending.assetId, signal()); await owner.close(); expect(index).toBeLessThan(64);
+    }
     await expect(open("overflow")).rejects.toThrow(/64 stored/u);
   });
   it("clears only its own run while preserving another album's exact staged output", async () => {
@@ -169,12 +180,69 @@ describe("bounded durable album spool", () => {
     await second.withOutput(right, signal(), (stored) => { expect(stored.size).toBe(expectedBytes); return Promise.resolve(); });
     await expect(second.withOutput(left, signal(), () => Promise.resolve(undefined))).rejects.toThrow(/owned/u);
   });
+  it.each(["close", "clear"] as const)("keeps failed terminal %s ownership until the same owner retries its actual transaction", async (method) => {
+    const spool = await open(`terminal-${method}`, expectedBytes * 2), first = await spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal()); await spool.promote(first.assetId, signal());
+    await spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(1), signal());
+    vi.spyOn(IDBObjectStore.prototype, "delete").mockImplementationOnce(() => { throw new DOMException("Terminal delete failed", "UnknownError"); });
+    await expect(method === "close" ? spool.close() : spool.clear()).rejects.toThrow(/Terminal delete failed/u);
+    const competed = await AlbumSpool.claim(`terminal-${method}`).then((owner) => { sessions.push(owner); return true; }, () => false);
+    expect(competed).toBe(false); await expect(spool.resume()).rejects.toThrow(/closed/u);
+    await (method === "close" ? spool.close() : spool.clear()); const next = await open(`terminal-${method}`, expectedBytes * 2); expect(next.prefix()).toHaveLength(method === "clear" ? 0 : 1);
+  });
+  it("does not repeat deletion after an empty close transaction already removed its manifest", async () => {
+    const spool = await open("empty-late-discard"), completed = deferred<() => void>(), transaction = Reflect.get(IDBDatabase.prototype, "transaction");
+    vi.spyOn(IDBDatabase.prototype, "transaction").mockImplementation(function (this: IDBDatabase, ...args) {
+      const current = transaction.apply(this, args);
+      if (args[1] === "readwrite") Object.defineProperty(current, "oncomplete", { set(handler: (event: Event) => void) { current.addEventListener("complete", (event) => { completed.resolve(() => { handler.call(current, event); }); }, { once: true }); } }); return current;
+    });
+    const closing = spool.close(), release = await completed.promise; vi.restoreAllMocks(); expect(spool.clear()).toBe(closing); release(); await expect(closing).resolves.toBeUndefined();
+    expect(albumCleanupStatus("empty-late-discard")).toBeNull(); const next = await open("empty-late-discard"); expect(next.prefix()).toEqual([]);
+  });
+  it.each([false, true])("finishes late discard after actual lock release settlement, with competing ownership %s", async (competes) => {
+    const releasing = deferred<undefined>(), gate = deferred<undefined>(), foreignReady = deferred<undefined>(), foreignEnd = deferred<undefined>();
+    let held = false, initial = true;
+    vi.stubGlobal("navigator", { locks: { request: async (name: string, _options: unknown, consume: (lock: { name: string } | null) => Promise<void>) => {
+      if (held) return consume(null); held = true; try { await consume({ name }); } finally { held = false; }
+      if (initial) { initial = false; releasing.resolve(undefined); await gate.promise; }
+    } } });
+    const spool = await open("late-discard"), row = await spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal()); await spool.promote(row.assetId, signal());
+    const closing = spool.close(); await releasing.promise; const clearing = spool.clear(); expect(clearing).toBe(closing); expect(spool.clear()).toBe(closing);
+    const foreign = competes ? navigator.locks.request("aurialis-album:late-discard", { ifAvailable: true }, async (lock) => { expect(lock).not.toBeNull(); foreignReady.resolve(undefined); await foreignEnd.promise; }) : Promise.resolve();
+    if (competes) await foreignReady.promise;
+    const observed = competes ? expect(closing).rejects.toThrow(/another tab/u) : expect(closing).resolves.toBeUndefined(); gate.resolve(undefined); await observed;
+    if (competes) {
+      expect(albumCleanupStatus("late-discard")?.pending).toBe(true); await expect(AlbumSpool.claim("late-discard")).rejects.toThrow(/already owned/u);
+      foreignEnd.resolve(undefined); await foreign;
+      const first = retryAlbumCleanup("late-discard"), second = retryAlbumCleanup("late-discard"); expect(first).toBe(second); await first;
+    }
+    expect(albumCleanupStatus("late-discard")).toBeNull(); const next = await open("late-discard"); expect(next.prefix()).toEqual([]);
+  });
+  it("retires a superseded late cleanup owner visibly without deleting a newer foreign generation", async () => {
+    const releasing = deferred<undefined>(), gate = deferred<undefined>(); let initial = true;
+    vi.stubGlobal("navigator", { locks: { request: async (name: string, _options: unknown, consume: (lock: { name: string }) => Promise<void>) => {
+      await consume({ name }); if (initial) { initial = false; releasing.resolve(undefined); await gate.promise; }
+    } } });
+    const spool = await open("superseded"), row = await spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal()); await spool.promote(row.assetId, signal());
+    const closing = spool.close(); await releasing.promise; const clearing = spool.clear(); expect(clearing).toBe(closing);
+    const database = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open("aurialis-album-spool-v1", 1); request.onsuccess = () => { resolve(request.result); }; request.onerror = () => { reject(request.error ?? new Error("Fixture open failed")); }; });
+    let newer: unknown;
+    try {
+      await navigator.locks.request("aurialis-album:superseded", { ifAvailable: true }, async () => {
+        await new Promise<void>((resolve, reject) => { const transaction = database.transaction("runs", "readwrite"), store = transaction.objectStore("runs"), request = store.get("album:superseded"); request.onsuccess = () => { const current = request.result as { revision: number }; newer = { ...current, owner: crypto.randomUUID(), revision: current.revision + 1 }; store.put(newer, "album:superseded"); }; transaction.oncomplete = () => { resolve(); }; transaction.onerror = () => { reject(transaction.error ?? new Error("Fixture update failed")); }; });
+      });
+      const failed = expect(closing).rejects.toThrow(/retired; the current stored run was not modified/u); gate.resolve(undefined); await failed;
+      expect(spool.isClosed()).toBe(true); expect(albumCleanupStatus("superseded")).toBeNull();
+      const actual = await new Promise<unknown>((resolve, reject) => { const transaction = database.transaction("runs", "readonly"), request = transaction.objectStore("runs").get("album:superseded"); transaction.oncomplete = () => { resolve(request.result as unknown); }; transaction.onerror = () => { reject(transaction.error ?? new Error("Fixture read failed")); }; }); expect(actual).toEqual(newer);
+    } finally { database.close(); }
+    const next = await open("superseded"); expect(next.prefix()).toEqual([row]);
+  });
   it("leaves failed pending cleanup recoverable and preserves the verified prefix", async () => {
     const first = await open("cleanup", expectedBytes * 2);
     const prefix = await first.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal()); await first.promote(prefix.assetId, signal());
     await first.stage(new Blob([new Uint8Array(expectedBytes)]), layout(1), signal());
     vi.spyOn(IDBObjectStore.prototype, "delete").mockImplementationOnce(() => { throw new DOMException("Delete denied", "UnknownError"); });
     await expect(first.close()).rejects.toThrow("Delete denied");
+    await expect(AlbumSpool.claim("cleanup")).rejects.toThrow(/another tab/u); await first.close();
     const resumed = await open("cleanup", expectedBytes * 2); expect(resumed.prefix()).toEqual([prefix]);
     const next = await resumed.stage(new Blob([new Uint8Array(expectedBytes)]), layout(1), signal()); await resumed.promote(next.assetId, signal());
     expect(resumed.prefix()).toHaveLength(2);

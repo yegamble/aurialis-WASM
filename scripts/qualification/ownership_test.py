@@ -39,26 +39,37 @@ class Ownership(unittest.TestCase):
   with mock.patch('owned_groups.command_hash',return_value='changed live command'),mock.patch('owned_groups.snapshot',return_value={10:leader}),mock.patch('owned_groups.os.killpg') as kill:
    with self.assertRaisesRegex(RuntimeError,'identity changed'):owned.cleanup()
    kill.assert_not_called()
- def make(self,root):
+ def make(self,root,stop_between_spawn_and_assignment=False):
   # Monitoring must work before a process can exist outside this setup scope.
   rows=snapshot()
   if os.getpid() not in rows or command_hash(os.getpid()) is None:
    raise RuntimeError('Synthetic parent process monitoring preflight failed.')
   path=root/'candidate.json';ack=root/'node-ack.txt';token=secrets.token_hex(16)
   code="""import json,os,pathlib,signal,subprocess,sys,time
-child=None
+child=None;stopping=False
 def stop(_signal,_frame):
- raise SystemExit(0)
+ global stopping
+ stopping=True
 signal.signal(signal.SIGTERM,stop)
 try:
  ack=pathlib.Path(sys.argv[2]);deadline=time.monotonic()+3
  while not ack.exists():
+  if stopping:raise SystemExit(0)
   if time.monotonic()>deadline:raise RuntimeError('Parent admission acknowledgement timeout.')
   time.sleep(.01)
  if ack.read_text()!=sys.argv[3]:raise RuntimeError('Parent admission acknowledgement mismatch.')
- child=subprocess.Popen([sys.executable,'-c',sys.argv[4]],start_new_session=True)
+ if stopping:raise SystemExit(0)
+ def launch():
+  spawned=subprocess.Popen([sys.executable,'-c',sys.argv[4]],start_new_session=True)
+  if sys.argv[5]=='hold':
+   pathlib.Path(sys.argv[1]).with_name('spawned.json').write_text(json.dumps({'nodePID':os.getpid(),'browserPID':spawned.pid}))
+   while not stopping:time.sleep(.01)
+  return spawned
+ child=launch()
+ if stopping:raise SystemExit(0)
  pathlib.Path(sys.argv[1]).write_text(json.dumps({'nodePID':os.getpid(),'browserPID':child.pid,'token':sys.argv[3]}))
- time.sleep(60)
+ deadline=time.monotonic()+60
+ while not stopping and time.monotonic()<deadline:time.sleep(.01)
 finally:
  if child is not None:
   if child.poll() is None:child.terminate()
@@ -68,10 +79,16 @@ finally:
 """
   node=None;owned=None
   try:
-   node=subprocess.Popen([sys.executable,'-c',code,str(path),str(ack),token,CHILD],start_new_session=True)
+   node=subprocess.Popen([sys.executable,'-c',code,str(path),str(ack),token,CHILD,'hold' if stop_between_spawn_and_assignment else 'normal'],start_new_session=True)
    owned=OwnedGroups(node.pid,os.getpid(),token)
    # The child cannot spawn its detached process until this exact admission.
    ack.write_text(token)
+   if stop_between_spawn_and_assignment:
+    until=time.monotonic()+3
+    while not (root/'spawned.json').exists():
+     if time.monotonic()>until:raise RuntimeError('Held assignment handshake timeout.')
+     time.sleep(.01)
+    node.terminate()
    until=time.monotonic()+3
    while not path.exists():
     if node.poll() is not None:raise RuntimeError('Synthetic parent exited before handshake.')
@@ -123,6 +140,12 @@ finally:
    rows=snapshot()
    self.assertNotIn(candidate['nodePID'],rows)
    self.assertNotIn(candidate['browserPID'],rows)
+ def test_term_after_spawn_before_assignment_still_reaps_both_children(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d)
+   with self.assertRaisesRegex(RuntimeError,'Synthetic parent exited before handshake'):self.make(root,stop_between_spawn_and_assignment=True)
+   spawned=json.loads((root/'spawned.json').read_text());rows=snapshot()
+   self.assertNotIn(spawned['nodePID'],rows);self.assertNotIn(spawned['browserPID'],rows)
  def test_detached_child_survives_node_crash_then_both_groups_clean(self):
   with tempfile.TemporaryDirectory() as d:
    node,owned,candidate=self.make(Path(d))

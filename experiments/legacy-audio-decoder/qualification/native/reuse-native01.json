@@ -1,0 +1,61 @@
+{
+  "source": "/private/tmp/aurialis-private-decoder-native-01",
+  "records": [
+    {
+      "path": "build-status.json",
+      "bytes": 25486,
+      "sha256": "e1d3ccb7510578c8196ed416c874a308ef8f59b88c335cfc524c364f563158b2"
+    },
+    {
+      "path": "native-component-inventory.json",
+      "bytes": 385,
+      "sha256": "f6fae8c4ac45b3ecbe77d4c29b21172514853361c9b9d5eb29487a1331b3fbc0"
+    },
+    {
+      "path": "cc-version.txt",
+      "bytes": 245,
+      "sha256": "3e8cc208c40f60832f67377aa1b03c3e7e858f20cd5d365464944700c0bd7ad1"
+    },
+    {
+      "path": "cc-sha256.txt",
+      "bytes": 99,
+      "sha256": "753014b5ade9aa80a0f7d61cdec1afc98a2372e1a40ed4b2658a2d0501e6c7f2"
+    },
+    {
+      "path": "ffbuild/config.h",
+      "bytes": 24750,
+      "sha256": "07a76111f29244b1eba4fbcb0d0c0c16033a4efe69ed434963e6125782debe76"
+    },
+    {
+      "path": "ffbuild/config_components.h",
+      "bytes": 75690,
+      "sha256": "cff3e2b9fd2fe0c95e4d09d67853ffc3c0aeab7ee8344217edf31851b778ccf3"
+    },
+    {
+      "path": "install/lib/libavcodec.a",
+      "bytes": 1039666,
+      "sha256": "0d82acfab71d9b6211661b45c06fac4232fa0f4396e174808c37fe53edf919a1"
+    },
+    {
+      "path": "install/lib/libavformat.a",
+      "bytes": 731442,
+      "sha256": "98decbcefc7b1faa281a0bc1ec451b9df9b21dd1d4557bfdb8f9d02dc8837459"
+    },
+    {
+      "path": "install/lib/libavutil.a",
+      "bytes": 874898,
+      "sha256": "4a189f77cecaea0e1e4a332f98f4a071bb94c60977945dc62cbaa61811945149"
+    },
+    {
+      "path": "install/lib/libswresample.a",
+      "bytes": 114954,
+      "sha256": "a489398cfd50b4e07b240fe1462e4f955bf02e365f24f19e6219e111d903b698"
+    }
+  ],
+  "headers": {
+    "bytes": 1207103,
+    "files": 134,
+    "dirs": 4,
+    "contentLayoutSHA256": "064a3dfba66bd50693069d87f0331f075542bf7c51e950199142cdd7c75aaa82"
+  }
+}

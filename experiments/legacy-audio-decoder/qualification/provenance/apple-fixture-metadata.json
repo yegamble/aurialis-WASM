@@ -1,0 +1,68 @@
+{
+  "metadataOnly": true,
+  "encodedAudio": false,
+  "compiledCode": false,
+  "commands": {
+    "os": {
+      "args": [
+        "/usr/bin/sw_vers"
+      ],
+      "exitCode": 0,
+      "stdout": "ProductName:\t\tmacOS\nProductVersion:\t\t26.5.1\nBuildVersion:\t\t25F80\n",
+      "stderr": ""
+    },
+    "sdkVersion": {
+      "args": [
+        "/usr/bin/xcrun",
+        "--sdk",
+        "macosx",
+        "--show-sdk-version"
+      ],
+      "exitCode": 0,
+      "stdout": "26.4\n",
+      "stderr": ""
+    },
+    "sdkPath": {
+      "args": [
+        "/usr/bin/xcrun",
+        "--sdk",
+        "macosx",
+        "--show-sdk-path"
+      ],
+      "exitCode": 0,
+      "stdout": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk\n",
+      "stderr": ""
+    },
+    "compilerPath": {
+      "args": [
+        "/usr/bin/xcrun",
+        "--sdk",
+        "macosx",
+        "--find",
+        "clang"
+      ],
+      "exitCode": 0,
+      "stdout": "/Library/Developer/CommandLineTools/usr/bin/clang\n",
+      "stderr": ""
+    },
+    "compilerVersion": {
+      "args": [
+        "/usr/bin/xcrun",
+        "--sdk",
+        "macosx",
+        "clang",
+        "--version"
+      ],
+      "exitCode": 0,
+      "stdout": "Apple clang version 21.0.0 (clang-2100.0.123.102)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin\n",
+      "stderr": ""
+    }
+  },
+  "audioToolboxInfo": {
+    "path": "/System/Library/Frameworks/AudioToolbox.framework/Versions/A/Resources/Info.plist",
+    "sha256": "ff7b6cd8648037a0867a574c33b13e810baa72bf5114ba038bdf7bd45aae9ba6",
+    "identifier": "com.apple.audio.toolbox.AudioToolbox",
+    "version": "1.14",
+    "shortVersion": "1.14"
+  }
+}

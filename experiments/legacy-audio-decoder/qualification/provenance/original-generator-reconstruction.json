@@ -1,0 +1,7 @@
+{
+  "status": "exact original hash verified",
+  "sourceSHA256": "797d6151714e8f8a4384632781f476c29124907926a6bd4358665aa8bedc12ae",
+  "expectedFromFixture01Provenance": "797d6151714e8f8a4384632781f476c29124907926a6bd4358665aa8bedc12ae",
+  "method": "reconstructed after execution by reverting only the controlled owned-process cleanup diff; not described as a prior captured snapshot",
+  "newGeneratorSHA256": "61b6c31689195c6bbb55376e96fa54f25c101bc378812621829065276078475b"
+}

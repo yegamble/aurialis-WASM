@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fixture, decode } from "../e2e/audio-fixture";
-import { engineParams } from "../src/lib/browser-engine";
+import { engineParams, exportParams, exportScript } from "../src/lib/engine-params";
 import type { AdvancedParams, MeasuredAudioMetrics, Track } from "../src/lib/types";
 import type { ReleaseReport } from "../src/lib/release-review";
 import type { ScriptV2 } from "../src/lib/deep-mastering";
@@ -34,11 +34,13 @@ async function settings(page: Page, id: string) {
     return track.advanced;
   }, id);
 }
-async function nativeRender(info: TestInfo, source: Buffer, advanced: AdvancedParams, bitDepth: number, script?: ScriptV2) {
-  const directory = info.outputPath(`native-oracle-${String(bitDepth)}`);
+// Exports render with algorithm 2; live playback (live = true) stays on algorithm 1.
+async function nativeRender(info: TestInfo, source: Buffer, advanced: AdvancedParams, bitDepth: number, script?: ScriptV2, live = false) {
+  const directory = info.outputPath(`native-oracle-${String(bitDepth)}${live ? "-live" : ""}`);
   await mkdir(directory, { recursive: true });
   await writeFile(directory + "/source.wav", source);
-  await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", ...(script ? { script: JSON.stringify(script) } : { params: JSON.stringify(engineParams(advanced)) }), bitDepth }));
+  const rendered = script ? { script: JSON.stringify(live ? script : exportScript(script)) } : { params: JSON.stringify(live ? engineParams(advanced) : exportParams(advanced)) };
+  await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", ...rendered, bitDepth }));
   execFileSync("go", ["test", "./internal/browserjobs", "-run", "^TestWriteBrowserOracle$", "-count=1"], { env: { ...process.env, AURIALIS_BROWSER_ORACLE_DIR: directory }, stdio: "pipe" });
   return { audio: await readFile(directory + "/native.wav"), metadata: JSON.parse(await readFile(directory + "/native.json", "utf8")) as { afterMetrics: { integratedLufs: number; samplePeakDbfs: number } } };
 }
@@ -202,7 +204,7 @@ test("Deep analysis compilation live apply and source-bound export keep every au
   if (!capture) throw new Error("Missing actual local Deep playback PCM");
   expect(capture.missing).toBe(0);
   expect(capture.compiledMoves).toBe(applied.moves.length);
-  const native = await nativeRender(info, source, accepted.advanced, 32, applied), pcm = decode(native.audio);
+  const pcm = decode((await nativeRender(info, source, accepted.advanced, 32, applied, true)).audio);
   let maximumLiveError = 0;
   for (let frame = 0; frame < 16384; frame++) {
     maximumLiveError = Math.max(maximumLiveError, Math.abs((pcm.left.at(frame) ?? Infinity) - (capture.outputLeft.at(frame) ?? 0)), Math.abs((pcm.right.at(frame) ?? Infinity) - (capture.outputRight.at(frame) ?? 0)));
@@ -216,6 +218,7 @@ test("Deep analysis compilation live apply and source-bound export keep every au
   const downloaded = await downloading, path = await downloaded.path();
   if (!path) throw new Error("Missing browser-local Deep script export");
   expect(await downloaded.failure()).toBeNull();
+  const native = await nativeRender(info, source, accepted.advanced, 32, applied);
   expect(await readFile(path)).toEqual(native.audio);
   const evidence = info.outputPath("actual-local-Deep-evidence.json");
   await writeFile(evidence, JSON.stringify({ source: applied.source, revision: applied.revision, compiledMoves: capture.compiledMoves, capturedFrames: 16384, maximumLiveError, exactNativeWavBytes: native.audio.length }, null, 2));

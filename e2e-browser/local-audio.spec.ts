@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { fixture, decode } from "../e2e/audio-fixture";
-import { engineParams } from "../src/lib/browser-engine";
+import { exportParams } from "../src/lib/engine-params";
 import type { AdvancedParams } from "../src/lib/types";
 
 /** Real Cloudflare static Worker, real browser Go WASM, no HTTP audio server. */
@@ -31,7 +31,7 @@ test("imports, measures and exports native-equivalent PCM with zero audio networ
   expect(await downloaded.failure()).toBeNull(); if (!path) throw new Error("Missing browser-local export");
   const output = await readFile(path);
   const directory = info.outputPath("native-oracle"); await mkdir(directory, { recursive: true });
-  await writeFile(directory + "/source.wav", source); await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", params: JSON.stringify(engineParams(advanced)), bitDepth: 32 }));
+  await writeFile(directory + "/source.wav", source); await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", params: JSON.stringify(exportParams(advanced)), bitDepth: 32 }));
   execFileSync("go", ["test", "./internal/browserjobs", "-run", "^TestWriteBrowserOracle$", "-count=1"], { env: { ...process.env, AURIALIS_BROWSER_ORACLE_DIR: directory }, stdio: "pipe" });
   const native = await readFile(directory + "/native.wav");
   expect(output).toEqual(native);

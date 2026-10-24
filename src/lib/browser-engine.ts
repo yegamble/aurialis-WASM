@@ -1,7 +1,8 @@
 import { engineParams } from "./engine-params";
 export { engineParams } from "./engine-params";
 import { assertExpectedProcessingBuild, ProcessingBuildMismatchError } from "./processing-identity";
-import { deviceAudioRequest, usesBrowserAudio } from "./browser-jobs";
+import { deviceAudioRequest, deviceOwnedAudioRequest, usesBrowserAudio, type OwnedAudioResult } from "./browser-jobs";
+import type { EncodedLayout } from "./encoded-layout";
 import type { ScriptV2 } from "./deep-mastering";
 import type { AdvancedParams, MeasuredAudioMetrics, SourceIdentity } from "./types";
 
@@ -163,6 +164,17 @@ export function processPreview(
   engineQueue = result.then(() => undefined, () => undefined);
   return result;
 }
+function renderForm(file: Blob, processing: { params: object } | { script: ScriptV2 }, bitDepth: 16 | 24 | 32): FormData {
+  const data = new FormData();
+  data.append("file", file, "source.wav");
+  if ("script" in processing) data.append("script", JSON.stringify(processing.script));
+  else data.append("params", JSON.stringify(processing.params));
+  data.append("bitDepth", String(bitDepth));
+  return data;
+}
+function clearRenderForm(data: FormData): void {
+  data.delete("file"); data.delete("params"); data.delete("script");
+}
 export async function serverRender(
   file: Blob,
   params: object,
@@ -172,22 +184,30 @@ export async function serverRender(
 ): Promise<Blob> {
   assertExpectedProcessingBuild(expectedBuild);
   signal?.throwIfAborted();
-  const data = new FormData();
-  data.append("file", file, "source.wav");
-  data.append("params", JSON.stringify(params));
-  data.append("bitDepth", String(bitDepth));
-  const response = await audioRequest(data, signal, false, expectedBuild);
-  if (!response.ok)
-    throw await audioError(response, "Audio processing failed. Please try again.");
-  return readAudioResponse(() => response.blob(), signal);
+  const data = renderForm(file, { params }, bitDepth);
+  try {
+    const response = await audioRequest(data, signal, false, expectedBuild);
+    if (!response.ok) throw await audioError(response, "Audio processing failed. Please try again.");
+    return await readAudioResponse(() => response.blob(), signal);
+  } finally { clearRenderForm(data); }
 }
 export async function serverRenderScript(file: Blob, script: ScriptV2, bitDepth: 16 | 24 | 32, signal?: AbortSignal, expectedBuild?: string): Promise<Blob> {
   assertExpectedProcessingBuild(expectedBuild);
   signal?.throwIfAborted();
-  const data = new FormData(); data.append("file", file, "source.wav"); data.append("script", JSON.stringify(script)); data.append("bitDepth", String(bitDepth));
-  const response = await audioRequest(data, signal, false, expectedBuild);
-  if (!response.ok) throw await audioError(response, "The applied script could not be rendered. Restore its matching source and retry.");
-  return readAudioResponse(() => response.blob(), signal);
+  const data = renderForm(file, { script }, bitDepth);
+  try {
+    const response = await audioRequest(data, signal, false, expectedBuild);
+    if (!response.ok) throw await audioError(response, "The applied script could not be rendered. Restore its matching source and retry.");
+    return await readAudioResponse(() => response.blob(), signal);
+  } finally { clearRenderForm(data); }
+}
+/** The central transport transfers its result owner before admitting another worker. */
+export async function serverRenderOwned(file: Blob, processing: { params: object } | { script: ScriptV2 }, layout: EncodedLayout, signal: AbortSignal, expectedBuild: string): Promise<OwnedAudioResult> {
+  assertExpectedProcessingBuild(expectedBuild); signal.throwIfAborted();
+  const data = renderForm(file, processing, layout.bitDepth);
+  try {
+    return await deviceOwnedAudioRequest("/api/master/render", { method: "POST", body: data, signal }, layout, expectedBuild);
+  } finally { clearRenderForm(data); }
 }
 export async function readCanonicalWAV(blob: Blob): Promise<StereoPCM> {
   const data = new DataView(await blob.arrayBuffer());

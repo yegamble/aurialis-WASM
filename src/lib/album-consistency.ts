@@ -36,6 +36,14 @@ function validate(readings: readonly AlbumReading[]): void {
   }
 }
 
+/** Every non-gain module is explicitly disabled; this stage does not normalize or limit. */
+export function albumLinearParams(gainDb: number) {
+  if (!Number.isFinite(gainDb) || Math.abs(gainDb) > 36) throw new Error("Album gain must be within 36 dB.");
+  return { bypass: false, abOriginal: false, loudnessMatchAb: false, inputGainDb: gainDb, eqEnabled: false,
+    compressor: { enabled: false }, saturation: { enabled: false }, stereo: { enabled: false },
+    limiter: { enabled: false }, repair: { enabled: false }, deHarsh: { enabled: false }, multiband: { enabled: false }, ditherBits: 0 };
+}
+
 /** Explicit post-chain gain only. A median of tracks is not album-integrated loudness. */
 export function planAlbumGain(readings: readonly AlbumReading[], target: number, mode: AlbumGainMode, offsets: readonly number[]): AlbumGainPlan {
   validate(readings);

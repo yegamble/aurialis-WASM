@@ -4,7 +4,7 @@ import { inspectEncodedWAV } from "./encoded-inspection";
 import { analyzeSourceFeatures, type FeatureMeasurements } from "./feature-analysis";
 import { audioKey } from "./library";
 import { verifyCanonicalSource } from "./project-import";
-import { albumTargets, planAlbumGain, type AlbumGainMode, type AlbumGainPlan, type AlbumReading } from "./album-consistency";
+import { albumLinearParams, albumTargets, planAlbumGain, type AlbumGainMode, type AlbumGainPlan, type AlbumReading } from "./album-consistency";
 import type { Album, MeasuredAudioMetrics, SourceIdentity, Track } from "./types";
 
 const maxCacheBytes = 128 * 1024 * 1024;
@@ -56,13 +56,7 @@ function assertLayout(measured: { frames: number; sampleRate: number }, source: 
   if (measured.frames !== source.frames || measured.sampleRate !== source.sampleRate)
     throw new Error("A rendered track changed its sample count or sample rate. No new master was retained.");
 }
-/** Every non-gain module is explicitly disabled; this stage does not normalize or limit. */
-export function albumLinearParams(gainDb: number) {
-  if (!Number.isFinite(gainDb) || Math.abs(gainDb) > 36) throw new Error("Album gain must be within 36 dB.");
-  return { bypass: false, abOriginal: false, loudnessMatchAb: false, inputGainDb: gainDb, eqEnabled: false,
-    compressor: { enabled: false }, saturation: { enabled: false }, stereo: { enabled: false },
-    limiter: { enabled: false }, repair: { enabled: false }, deHarsh: { enabled: false }, multiband: { enabled: false }, ditherBits: 0 };
-}
+export { albumLinearParams } from "./album-consistency";
 
 /** Own one unchanged cohort and its verified completed prefix. Audio never enters a saved report. */
 export class AlbumBatch {

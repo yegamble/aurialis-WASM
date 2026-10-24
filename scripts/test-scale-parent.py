@@ -61,7 +61,7 @@ class ParentContracts(unittest.TestCase):
         self.assertIs(receipt["ownedObservation"], fresh["owned"])
         self.assertIs(receipt["resourceSample"], fresh["values"])
 
-    def test_assigned_node_survives_observer_setup_failure_and_is_reaped_under_configured_clock(self):
+    def test_assigned_node_survives_observer_setup_failure_and_is_reaped_under_configured_clock(self, failure=None):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory).resolve(); (base / "artifacts").mkdir(); node = base / "fixture-node"; node.write_text("never executed")
             owner = {"pid": __import__("os").getpid(), "ppid": 1, "pgid": 90, "start": "owner", "rssBytes": 1, "state": "S"}
@@ -69,8 +69,9 @@ class ParentContracts(unittest.TestCase):
             process.terminate.side_effect = lambda: setattr(process.poll, "return_value", 0)
             observer = Mock(identity=owner); observer.observe.return_value = owner
             profile = Mock(); profile.state.return_value = {}; profile.create.return_value = {}
+            failure = failure or RuntimeError("observer setup rejected")
             arguments = ["run-album-scale.py", "--budget-root", str(base / "artifacts/budget"), "--scratch", str(base / "artifacts/budget/normal"), "--node", str(node), "--mode", "normal", "--seconds", "60"]
-            with patch.object(PARENT.sys, "argv", arguments), patch.object(PARENT.Path, "cwd", return_value=base), patch.object(PARENT, "qualification_runtime", return_value={"fixture": True}), patch.object(PARENT, "snapshot", return_value={owner["pid"]: owner}), patch.object(PARENT, "command_hash", return_value="a" * 64), patch.object(PARENT, "ObservedProcess", return_value=observer), patch.object(PARENT, "OwnedProfile", return_value=profile), patch.object(PARENT, "OwnedGroups", side_effect=RuntimeError("observer setup rejected")), patch.object(PARENT.subprocess, "check_output", return_value="v26.12.0"), patch.object(PARENT.subprocess, "Popen", return_value=process), patch.object(PARENT.os, "statvfs", return_value=SimpleNamespace(f_bavail=20 * 1024 ** 3, f_frsize=1)), patch.object(PARENT.sys, "stdout", new=SimpleNamespace(buffer=__import__("io").BytesIO())):
+            with patch.object(PARENT.sys, "argv", arguments), patch.object(PARENT.Path, "cwd", return_value=base), patch.object(PARENT, "qualification_runtime", return_value={"fixture": True}), patch.object(PARENT, "snapshot", return_value={owner["pid"]: owner}), patch.object(PARENT, "command_hash", return_value="a" * 64), patch.object(PARENT, "ObservedProcess", return_value=observer), patch.object(PARENT, "OwnedProfile", return_value=profile), patch.object(PARENT, "OwnedGroups", side_effect=failure), patch.object(PARENT.subprocess, "check_output", return_value="v26.12.0"), patch.object(PARENT.subprocess, "Popen", return_value=process), patch.object(PARENT.os, "statvfs", return_value=SimpleNamespace(f_bavail=20 * 1024 ** 3, f_frsize=1)), patch.object(PARENT.sys, "stdout", new=SimpleNamespace(buffer=__import__("io").BytesIO())):
                 try:
                     self.assertEqual(PARENT.main(), 1)
                 finally:
@@ -78,9 +79,15 @@ class ParentContracts(unittest.TestCase):
             process.terminate.assert_called_once()
             process.wait.assert_called()
             receipt = json.loads((base / "artifacts/budget/guard-normal.json").read_text())
-            self.assertEqual(receipt["primary"]["message"], "observer setup rejected")
+            self.assertEqual(receipt["primary"]["message"], str(failure))
+            if isinstance(failure, PARENT.ReadinessHTTPError):
+                self.assertEqual(receipt["primary"]["readinessFraming"], failure.diagnostic)
             self.assertEqual(receipt["deadline"]["absoluteSeconds"], 120)
             profile.cleanup_success.assert_not_called()
+
+    def test_actual_primary_receipt_retains_selected_readiness_diagnostic(self):
+        diagnostic = {"status": 200, "contentLength": {"count": 0, "values": []}, "transferEncoding": {"count": 1, "values": ["chunked"]}, "contentEncoding": {"count": 0, "values": []}}
+        self.test_assigned_node_survives_observer_setup_failure_and_is_reaped_under_configured_clock(PARENT.ReadinessHTTPError("selected framing refusal", diagnostic))
 
     def test_actual_sample_allows_bounded_cleanup_after_work_cap_without_allowing_more_work(self):
         tree = ast.parse((Path(__file__).parent / "run-album-scale.py").read_text())

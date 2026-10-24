@@ -73,43 +73,125 @@ def pin_service(observer, contract, rows):
             "cliSHA256": contract["cliSHA256"], "observationOnly": True}
 
 
+class ReadinessHTTPError(RuntimeError):
+    """Selected framing metadata only; never raw headers, cookies or body bytes."""
+    def __init__(self, message, diagnostic):
+        super().__init__(message)
+        self.diagnostic = json.loads(bounded_json(diagnostic, 4096))
+
+
 def metadata_get(port, path, limit):
-    """Two closed loopback readiness GETs; bounded framing and absolute read time."""
+    """Two closed GETs: bounded RFC9112§6.3/7.1 framing and absolute read time."""
     if path not in ("/", "/processing-build.json") or type(port) is not int or not 1024 <= port <= 65535 or not 1 <= limit <= 64 * 1024:
         raise RuntimeError("Closed static readiness request required")
+    maximum_framing = 16 * 1024
+    diagnostic = {"path": path, "status": None, "headersParsed": False, "framingFieldsParsed": False, "mode": None, "wireBytes": 0,
+                  "headerFramingBytes": 0, "decodedBytes": 0, "chunkCount": 0}
+    for name in ("contentLength", "transferEncoding", "contentEncoding"):
+        diagnostic[name] = {"count": 0, "values": [], "truncated": False}
+
+    def refuse(message): raise ReadinessHTTPError(message, diagnostic)
+
+    def selected(values):
+        safe = ["".join(char if 32 <= ord(char) <= 126 else "?" for char in value[:80]) for value in values[:2]]
+        return {"count": len(values), "values": safe, "truncated": len(values) > 2 or any(len(value) > 80 for value in values[:2])}
+
     request = ("GET " + path + " HTTP/1.1\r\nHost: 127.0.0.1:" + str(port) + "\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n").encode("ascii")
-    # recv returns at most its requested bytes; every blocking operation gets a
-    # newly computed remaining deadline, so a drip cannot reset a socket timeout.
-    with socket.create_connection(("127.0.0.1", port), timeout=remaining(1)) as transport:
-        transport.settimeout(remaining(1)); transport.sendall(request)
-        received = bytearray()
-        while b"\r\n\r\n" not in received:
-            transport.settimeout(remaining(1))
-            chunk = transport.recv(min(4096, 16 * 1024 + 1 - len(received)))
-            if not chunk: raise RuntimeError("Static readiness header ended early")
-            received.extend(chunk)
-            if len(received) > 16 * 1024: raise RuntimeError("Static readiness header exceeds 16 KiB")
-        header, body = bytes(received).split(b"\r\n\r\n", 1)
-        status, _, raw_headers = header.partition(b"\r\n")
-        if status.split(b" ")[:2] not in ([b"HTTP/1.1", b"200"], [b"HTTP/1.0", b"200"]):
-            raise RuntimeError("Static readiness requires 200 without redirects")
-        headers = http.client.parse_headers(io.BytesIO(raw_headers + b"\r\n\r\n"))
-        lengths = headers.get_all("Content-Length", [])
-        if (headers.defects or len(lengths) != 1 or not lengths[0].isascii() or not lengths[0].isdigit()
-                or not 1 <= int(lengths[0]) <= limit or headers.get("Transfer-Encoding") is not None
-                or headers.get("Content-Encoding", "identity") != "identity"):
-            raise RuntimeError("Static readiness requires one bounded uncompressed content length")
-        expected = int(lengths[0]); data = bytearray(body)
-        while True:
-            if len(data) > expected: raise RuntimeError("Static readiness body exceeds exact declared bytes")
-            transport.settimeout(remaining(1))
-            chunk = transport.recv(min(4096, expected + 1 - len(data)))
-            if not chunk: break
-            data.extend(chunk)
-        remaining(1)
-        if len(data) != expected: raise RuntimeError("Static readiness body ended early")
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=remaining(1)) as transport:
+            transport.settimeout(remaining(1)); transport.sendall(request)
+            pending = bytearray(); data = bytearray()
+
+            def receive():
+                transport.settimeout(remaining(1))
+                capacity = maximum_framing + limit + 1 - diagnostic["wireBytes"]
+                if capacity <= 0: refuse("Static readiness wire bytes exceed bound")
+                chunk = transport.recv(min(4096, capacity))
+                diagnostic["wireBytes"] += len(chunk)
+                if diagnostic["wireBytes"] > maximum_framing + limit: refuse("Static readiness wire bytes exceed bound")
+                pending.extend(chunk)
+                return bool(chunk)
+
+            def framing(count):
+                diagnostic["headerFramingBytes"] += count
+                if diagnostic["headerFramingBytes"] > maximum_framing: refuse("Static readiness header/framing exceeds 16 KiB")
+
+            def exact(count):
+                while len(pending) < count:
+                    if not receive(): refuse("Static readiness framed body ended early")
+                result = bytes(pending[:count]); del pending[:count]
+                return result
+
+            def line():
+                while b"\r\n" not in pending:
+                    if len(pending) >= 128: refuse("Static readiness chunk line exceeds 128 bytes")
+                    if not receive(): refuse("Static readiness chunk line ended early")
+                offset = pending.index(b"\r\n")
+                if offset + 2 > 128: refuse("Static readiness chunk line exceeds 128 bytes")
+                value = exact(offset + 2); framing(len(value))
+                return value[:-2]
+
+            while b"\r\n\r\n" not in pending:
+                if len(pending) >= maximum_framing: refuse("Static readiness header exceeds 16 KiB")
+                if not receive(): refuse("Static readiness header ended early")
+            offset = pending.index(b"\r\n\r\n")
+            head = exact(offset + 4); framing(len(head))
+            status, _, raw_headers = head[:-4].partition(b"\r\n")
+            parts = status.split(b" ", 2)
+            if len(parts) >= 2 and len(parts[1]) == 3 and parts[1].isdigit(): diagnostic["status"] = int(parts[1])
+            headers = http.client.parse_headers(io.BytesIO(raw_headers + b"\r\n\r\n"))
+            diagnostic["headersParsed"] = True
+            lengths, transfers, encodings = [headers.get_all(name, []) for name in ("Content-Length", "Transfer-Encoding", "Content-Encoding")]
+            for name, values in (("contentLength", lengths), ("transferEncoding", transfers), ("contentEncoding", encodings)):
+                diagnostic[name] = selected(values)
+            diagnostic["framingFieldsParsed"] = True
+            if not parts or parts[0] not in (b"HTTP/1.0", b"HTTP/1.1") or diagnostic["status"] != 200:
+                refuse("Static readiness requires 200 without redirects")
+            if headers.defects or any(value[:1] in (b" ", b"\t") for value in raw_headers.split(b"\r\n")):
+                refuse("Static readiness malformed/folded headers refused")
+            if len(lengths) > 1 or len(transfers) > 1 or len(encodings) > 1 or (lengths and transfers):
+                refuse("Static readiness ambiguous/duplicate framing refused")
+            if encodings and encodings[0].strip().lower() != "identity": refuse("Static readiness compressed content refused")
+            if headers.get("Trailer") is not None: refuse("Static readiness trailers refused")
+            if transfers:
+                if transfers[0].strip().lower() != "chunked": refuse("Static readiness unsupported transfer coding")
+                diagnostic["mode"] = "chunked"
+                while True:
+                    size_line = line()
+                    if not size_line or any(char not in b"0123456789abcdefABCDEF" for char in size_line):
+                        refuse("Static readiness chunk size/extension refused")
+                    size = int(size_line, 16)
+                    if size == 0:
+                        if line() != b"": refuse("Static readiness trailers refused")
+                        break
+                    diagnostic["chunkCount"] += 1
+                    if diagnostic["chunkCount"] > 128: refuse("Static readiness chunk count exceeds 128")
+                    if size > limit - len(data): refuse("Static readiness decoded body exceeds bound")
+                    data.extend(exact(size)); diagnostic["decodedBytes"] = len(data)
+                    framing(2)
+                    if exact(2) != b"\r\n": refuse("Static readiness chunk data terminator refused")
+            elif lengths:
+                diagnostic["mode"] = "content-length"; value = lengths[0].strip()
+                if not value.isascii() or not value.isdigit() or not 0 <= int(value) <= limit:
+                    refuse("Static readiness declared body exceeds bound or is invalid")
+                data.extend(exact(int(value))); diagnostic["decodedBytes"] = len(data)
+            else:
+                diagnostic["mode"] = "close"
+                while True:
+                    if len(pending) > limit - len(data): refuse("Static readiness decoded body exceeds bound")
+                    data.extend(pending); pending.clear(); diagnostic["decodedBytes"] = len(data)
+                    if not receive(): break
+            if pending or (diagnostic["mode"] != "close" and receive()): refuse("Static readiness bytes follow completed body")
+            remaining(1)
+    except ConnectionRefusedError:
+        raise  # Only not-ready connection refusal can be retried by the startup loop.
+    except ReadinessHTTPError:
+        raise
+    except Exception as error:
+        reason = "Static readiness deadline exhausted" if isinstance(error, RuntimeError) and "deadline" in str(error) else "Static readiness transport/parse failure (" + type(error).__name__ + ")"
+        raise ReadinessHTTPError(reason, diagnostic) from None
     return bytes(data), {"url": "http://127.0.0.1:" + str(port) + path, "status": 200, "bytes": len(data),
-                         "sha256": hashlib.sha256(data).hexdigest(),
+                         "sha256": hashlib.sha256(data).hexdigest(), "framing": diagnostic,
                          "headers": {name: headers.get(name) for name in ("Cross-Origin-Opener-Policy", "Cross-Origin-Embedder-Policy", "Content-Security-Policy", "X-Content-Type-Options", "X-Frame-Options")}}
 
 
@@ -214,13 +296,14 @@ class OwnedStaticService:
                 break
             except ConnectionRefusedError:
                 time.sleep(remaining(.1))
-        identity = json.loads(identity_body)
-        if identity != expected: raise RuntimeError("Served processing identity differs from accepted browser producer")
+        try: identity = json.loads(identity_body)
+        except ValueError: raise ReadinessHTTPError("Served processing identity is invalid JSON", identity_receipt.get("framing", {})) from None
+        if identity != expected: raise ReadinessHTTPError("Served processing identity differs from accepted browser producer", identity_receipt.get("framing", {}))
         body, html_receipt = metadata_get(port, "/", len(html))
-        if body != html: raise RuntimeError("Served HTML differs from accepted browser producer")
+        if body != html: raise ReadinessHTTPError("Served HTML differs from accepted browser producer", html_receipt.get("framing", {}))
         expected_headers = {"Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp", "Content-Security-Policy": self.accepted["csp"], "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY"}
         if any(value["headers"] != expected_headers for value in (identity_receipt, html_receipt)):
-            raise RuntimeError("Served static security headers differ from accepted Worker")
+            raise ReadinessHTTPError("Served static security headers differ from accepted Worker", {"responses": [identity_receipt.get("framing", {}), html_receipt.get("framing", {})]})
         proof = pin_service(self.observer, self.contract, snapshot())
         value = {"process": dict(self.observer.identity), "expectedIdentity": expected_receipt,
                  "identity": identity_receipt, "html": html_receipt, "pin": proof,

@@ -27,6 +27,8 @@ Aurialis is an audio mastering workstation that runs on your computer and opens 
 
 > **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. AI repair, validated instrument separation and certified hardware/true-peak behavior remain open work. Deep is merged with its bounded live/export workflow verified. Release is merged and reviews the exact encoded WAV with its own output hash. Browser processing and resource ownership passed bounded local checks; final CI, merge and deployment remain open. See [current limits](#know-the-current-limits).
 
+**Private decoder research:** 23 generated positive native/browser comparisons passed, with one mono HE-AAC case still uncovered. Lossless samples were exact and the unchanged WASM core stayed within fixed lossy comparison limits. Hostile inputs, detached-browser crash cleanup, final Go CDR publication, licensing and reproducibility remain open. This private experiment adds no hosted recovery capability; see [scoped evidence](experiments/legacy-audio-decoder/qualification/README.md).
+
 ## A small studio, one clear path
 
 ```text

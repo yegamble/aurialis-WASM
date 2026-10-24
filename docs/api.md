@@ -9,6 +9,14 @@ Current routes are implemented by `internal/server`; exact DSP structs are in `i
 
 API CI runs the complete Newman collection and raw security probes against the verified native build artifact, independently of compiler caches and browser shard scheduling. [The CI guide](development.md#how-ci-reuses-builds-and-runs-checks) describes provenance checks and fresh execution; HTTP contracts below are unchanged.
 
+## Private compressed-recovery contract
+
+Private source checkpoint `6c57217` passed 23 generated positive native/browser decoder comparisons; one requested mono HE-AAC case remains uncovered. The exact native FFmpeg 9.0.1 oracle and unchanged fixed-memory WASM core matched frame/rate/channel counts; lossless outputs matched independent source samples bit-for-bit. Positive lossy maximum absolute error was 5.960464477539063e-8 and maximum RMS error was 4.3283845294915466e-9 against 2e-5/2e-6 limits fixed before testing. The actual browser inventory recorded 168 local asset GET requests and no blocked request.
+
+The experiment adds no HTTP endpoint and never posts generated audio. Only fixed decoder assets use local GET requests. Actual first decoded frames establish geometry; source labels and requested encoder profiles cannot replace measured metadata. The recorded 247,119,872-byte RSS sample covers the Node process group only; detached Chromium aggregate memory and crash cleanup remain open. Normal browser/context close passed. Malformed and hostile input, full cancellation, authoritative Go CDR with durable publication, license/relink review and a second clean reproducible build remain held. No compressed-recovery UI, public route or runtime asset is activated.
+
+[Exact private evidence and remaining gates](../experiments/legacy-audio-decoder/qualification/README.md).
+
 ## Device-local transport boundary
 
 The HTTP routes below describe the user’s local Go server. The browser build executes equivalent closed contracts through `deviceAudioRequest` and `internal/browserjobs` in disposable Go/WASM workers; audio buffers are transferred locally rather than posted to an HTTP endpoint. Render, features, Deep, Reference and automation compilation retain the shared Go CDR, source identities, validators and numeric compiler. Compilation still reports `sourceVerified: false`; rendering checks the actual reconstructed source. Existing TypeScript DTO validators and source/revision ownership checks remain active.

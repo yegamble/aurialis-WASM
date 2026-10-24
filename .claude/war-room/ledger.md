@@ -11,6 +11,14 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Private compressed recovery — scoped positive ruling
+
+**Round D/E: ACCEPT finite positive evidence; broader recovery remains open.** Private source checkpoint `6c57217` passed 23 generated positive native/browser decoder comparisons; one requested mono HE-AAC case remains uncovered. The exact native FFmpeg 9.0.1 oracle and unchanged fixed-memory WASM core matched frame/rate/channel counts; lossless outputs matched independent source samples bit-for-bit. Positive lossy maximum absolute error was 5.960464477539063e-8 and maximum RMS error was 4.3283845294915466e-9 against 2e-5/2e-6 limits fixed before testing. The actual browser inventory recorded 168 local asset GET requests and no blocked request.
+
+Source/provenance commits `40c9b9a` and `6c57217` preserve the actual native oracle, deterministic fixture generators, fixed runtime hashes and full 418-record positive index. The canonical matrix SHA-256 is `9e3fd822baf0b42cde54250a28a24f3a2c05d6999623376550e9362a5945c91b`; index SHA-256 is `e4bfcd7d25f8263172b7ed9e9a4b00a29887166ae3af9ad9d3bfeb5a27044a36`. The recorded 247,119,872-byte RSS sample covers the Node process group only; detached Chromium aggregate memory and crash cleanup remain open. Normal browser/context close passed. Malformed and hostile input, full cancellation, authoritative Go CDR with durable publication, license/relink review and a second clean reproducible build remain held. No compressed-recovery UI, public route or runtime asset is activated. This item remains **in-progress (`codex/legacy-audio-decoder`)**; no whole-product or merge acceptance follows.
+
+[Exact private evidence and remaining gates](../../experiments/legacy-audio-decoder/qualification/README.md).
+
 ## Release merge record
 
 [PR #15](https://github.com/yegamble/aurialis-WASM/pull/15) merged at `01c2c158513de942e5c520dd6d383ca3feff0ccd` after exact head `002d1a5` passed all protected checks plus GitGuardian in [run 40013736325](https://github.com/yegamble/aurialis-WASM/actions/runs/40013736325). Its three browser shards passed 36/36/35 cases, totaling 107/107; the reviewed head and merge trees matched. This supersedes historical Release awaiting-merge statements without certifying the browser deployment or whole product. [Post-merge run 40014809849](https://github.com/yegamble/aurialis-WASM/actions/runs/40014809849) also completed successfully at `01c2c15`; its individual browser counts were not separately inspected.

@@ -5,6 +5,14 @@
 
 This describes current implementation boundaries. [`AGENTS.md`](../AGENTS.md) and [`docs/tasks.md`](tasks.md) retain the full product requirements. Implementation on a branch is not verified delivery or a merge to main.
 
+## Private compressed-decoder qualification
+
+Private source checkpoint `6c57217` passed 23 generated positive native/browser decoder comparisons; one requested mono HE-AAC case remains uncovered. The exact native FFmpeg 9.0.1 oracle and unchanged fixed-memory WASM core matched frame/rate/channel counts; lossless outputs matched independent source samples bit-for-bit. Positive lossy maximum absolute error was 5.960464477539063e-8 and maximum RMS error was 4.3283845294915466e-9 against 2e-5/2e-6 limits fixed before testing. The actual browser inventory recorded 168 local asset GET requests and no blocked request.
+
+The experiment precedes Go CDR and has no application import. It uses a single fixed 64 MiB decoder memory and bounded PCM collection without rate conversion, channel mixing, alignment or duration trimming. The frozen matrix and ten runner sources preserve exact native and WASM identities. The recorded 247,119,872-byte RSS sample covers the Node process group only; detached Chromium aggregate memory and crash cleanup remain open. Normal browser/context close passed. Malformed and hostile input, full cancellation, authoritative Go CDR with durable publication, license/relink review and a second clean reproducible build remain held. No compressed-recovery UI, public route or runtime asset is activated.
+
+[Exact private evidence and remaining gates](../experiments/legacy-audio-decoder/qualification/README.md).
+
 ## Device-local deployment boundary
 
 The deployment decision keeps every audio byte and processing job on the user’s device. `deviceAudioRequest` maps the existing application contracts to a dedicated disposable Worker on every public origin. The pure `engine-params.ts` mapper is shared by browser transports and the Node-driven compiled parity verifier, without loading browser-only dependencies into that verifier. `internal/browserjobs` compiles the native CDR, mastering, features, Deep, Reference and numeric compiler to Go/WASM. Metadata and transferable audio buffers travel separately; PCM is never encoded as JSON or base64 in the runtime transport. The native executable remains an explicit device-local fallback through its own loopback UI/API. Public pages never probe it or accept a remote native capability override.

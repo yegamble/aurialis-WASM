@@ -32,6 +32,16 @@ export function write(fd, data) {
   }
   return data.length;
 }
+// One already-frozen source inspector lives outside the internal DSP prefix.
+const artifact = Object.freeze({ file: 'artifacts/private-dsp/recovery-20261023/envelope-bound-hoist-proposal/source-v3/inspect-bound.py.source',
+  sha256: 'd08bb53eaa21e60ede7afd953df277597bb20897d06c2acc0d8b4e14937011fb', bytes: 7143 });
+export function admitInput(root, file, sha) {
+  const exactArtifact = file === artifact.file;
+  if (typeof file !== 'string' || typeof sha !== 'string' || file.split('/').includes('..') || path.isAbsolute(file) || (!file.startsWith('internal/audio/dsp/') && !exactArtifact) || (exactArtifact && sha !== artifact.sha256)) throw new Error('closed source path/hash refused');
+  const data = read(path.join(root, file), exactArtifact ? artifact.bytes : 256 * 1024);
+  if ((exactArtifact && data.length !== artifact.bytes) || hash(data) !== sha) throw new Error('current source input differs');
+  return data;
+}
 export function bind(kind) {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
   const [sourceId, jobId, sourceSHA] = process.argv.slice(2);
@@ -41,7 +51,7 @@ export function bind(kind) {
   const source = JSON.parse(sourceBytes.toString('utf8'));
   if (hash(sourceBytes) !== sourceSHA || source.schema !== 'bound-qualification-v1' || source.jobs?.length !== 46 || source.frozenFiles?.length !== 7 || Object.keys(source.modules ?? {}).sort().join(',') !== 'native,wasm') throw new Error('closed qualification source binding refused');
   for (const [file, sha] of Object.entries(source.runnerFiles)) {
-    if (!file.startsWith('internal/audio/dsp/') || file.split('/').includes('..') || path.isAbsolute(file) || hash(read(path.join(root, file), 256 * 1024)) !== sha) throw new Error('current source input differs');
+    admitInput(root, file, sha);
     if (source.frozenFiles.includes(file) && hash(read(path.join(proof, 'source-frozen', path.basename(file)), 256 * 1024)) !== sha) throw new Error('frozen adapter input differs');
   }
   const matches = source.jobs.filter((job) => job.id === jobId && job.backend === 'wasm' && job.kind === kind);

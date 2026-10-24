@@ -24,3 +24,10 @@ python3 -B internal/audio/dsp/testdata/envelope_bound_hoist_qualification_host/h
 ```
 
 The frozen binding enumerates exact jobs and file caps. After the final publication, an external evidence index must include the final journal bytes; the host never claims a self-hashing append journal. Parent/child receipts remain original raw evidence. Historical baseline compiler executable hashes remain unrecorded. Candidate unselected, existing192k steady RED and all earlier failed attempts remain; the product is **open — awaiting merge**, including later main integration and fresh final-head gates.
+
+
+## First actual attempt and held source correction
+
+The first released attempt stopped after exactly two children. Native `TestStudioExactExtremaBitContract` passed; the GoJS child exited1 while its new path check rejected an already pinned7143-byte source inspector under the artifact directory. Its bytes matched the declared hash. No Go/WASM instantiation or GoJS IO receipt followed. Both parent processes reached EOF with no guard/cleanup/signal failure, and the active lock was removed. The remaining44 children were not launched. The immutable pre-repair RED index is `81da3cf7763cc27de00015b281d317e92fc5a7358ca1d1745b9558e979e9f7c1`; source-v1, claims, raw logs and journal remain untouched.
+
+The source correction allows only that one literal artifact path with its exact7143-byte size and pinned SHA; it adds no general artifact-prefix permission. An independent read-only binding control admits all56 actual inputs, rejects five wrong path/hash/traversal/size cases and records zero Go/WebAssembly entry attempts. All12 source controls passed. Revised actual execution needs a new explicit release; no retry, additional child, build, module copy, timing or selection has occurred.

@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import subprocess
 import tempfile
 import types
 import unittest
@@ -33,6 +34,49 @@ class Contract(unittest.TestCase):
         self.assertNotIn('subprocess.', text)
         for file, sha in PLAN['frozenSources'].items():
             self.assertEqual(HOST.digest(HOST.ROOT / file), sha)
+
+    def test_actual56_inputs_before_runtime_and_one_literal_exception(self):
+        snapshot = HOST.source_snapshot()
+        self.assertEqual(len(snapshot['runnerFiles']), 56)
+        artifact = 'artifacts/private-dsp/recovery-20261023/envelope-bound-hoist-proposal/source-v3/inspect-bound.py.source'
+        self.assertEqual(snapshot['runnerFiles'][artifact], 'd08bb53eaa21e60ede7afd953df277597bb20897d06c2acc0d8b4e14937011fb')
+        with tempfile.TemporaryDirectory() as temp:
+            sizing_root = pathlib.Path(temp)
+            sizing = sizing_root / artifact
+            sizing.parent.mkdir(parents=True)
+            sizing.write_bytes(b'x' * 7144)
+            script = """
+import fs from 'node:fs';
+import { admitInput } from 'BINDING_URL';
+const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+let runtimeAttempts = 0;
+const denied = () => { runtimeAttempts++; throw new Error('runtime forbidden in binding control'); };
+globalThis.Go = denied;
+globalThis.WebAssembly = Object.freeze({ instantiate: denied, compile: denied, Module: denied, Instance: denied });
+let accepted = 0;
+for (const [file, sha] of Object.entries(input.files)) {
+  const data = admitInput(input.root, file, sha);
+  if (file === input.artifact && data.length !== 7143) throw new Error('exact artifact size differs');
+  accepted++;
+}
+let negatives = 0;
+for (const [root, file, sha] of [
+  [input.root, input.artifact + '-other', input.files[input.artifact]],
+  [input.root, input.artifact, '0'.repeat(64)],
+  [input.root, 'internal/audio/dsp/../outside', '0'.repeat(64)],
+  [input.root, Object.keys(input.files).find((name) => name.startsWith('internal/audio/dsp/')), '0'.repeat(64)],
+  [input.sizingRoot, input.artifact, input.files[input.artifact]],
+]) {
+  let rejected = false;
+  try { admitInput(root, file, sha); } catch { rejected = true; }
+  if (!rejected) throw new Error('negative binding was accepted');
+  negatives++;
+}
+console.log(JSON.stringify({ accepted, negatives, runtimeAttempts }));
+""".replace('BINDING_URL', (HOST.SOURCE / 'binding.mjs').as_uri())
+            result = subprocess.run([str(HOST.GRAPH.NODE), '--input-type=module', '-e', script], input=json.dumps({'root': str(HOST.ROOT), 'files': snapshot['runnerFiles'], 'artifact': artifact, 'sizingRoot': str(sizing_root)}).encode(), capture_output=True, timeout=5)
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+            self.assertEqual(json.loads(result.stdout), {'accepted': 56, 'negatives': 5, 'runtimeAttempts': 0})
 
     def test_exact_jobs_work_and_module_pins(self):
         self.assertEqual(len(JOBS), 46)

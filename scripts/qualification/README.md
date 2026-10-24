@@ -41,3 +41,8 @@ The earlier normal/crash probes qualify their earlier helper only. The joined ex
 ### Immediate cleanup observation
 
 Independent source review caught an older empty observation being used after a new resource sample found a live member. The cleanup gate now checks the immediate sample and records that same owned-group and resource observation before the durable commit. A new live member preserves diagnostics and refuses cleanup. Both AST-path regression controls failed against the old source; nine focused parent controls passed after the correction, using injected metadata and mocked IO/deletion only. No actual runtime cleanup has yet qualified this path.
+
+
+### Tiny normal-only remote Download probe
+
+Normal mode keeps its existing tiny Worker and then obtains a fresh second work ACK before one local Blob download in the actual `chromium.connect` BrowserServer context. The deterministic 257 bytes follow `(index * 73 + 19) & 255`; expected SHA-256 is `dd31e55fd954d9edc9e29f8e078387f0dd38e8ea832376311820de6322cdb0d1`. The public stream helper writes exclusive mode-0600 `scratch/remote-download-probe.bin`; inspection reads no more than 258 bytes and requires exact length/content/hash before deleting the server artifact. The client file stays for raw review. URL revocation settles before the bounded `ownership/download-probe.json` receipt and normal readiness. Any failure fails the existing launcher gate; context/connection/server finally is unchanged. Crash mode does not execute this new download. Fourteen file/shared-stream controls passed without a browser. Actual normal/crash/remote transfer remains held until source release; this is no audio or HTTP-audio qualification.

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { normalDownloadProbe } from "./download-probe.mjs";
 import { admittedBrowser, beforeOwnedWork, exclusiveJSON } from "./owned-browser.mjs";
 const require = createRequire(import.meta.url), { chromium } = require("@playwright/test");
 const [mode, project, output] = process.argv.slice(2);
@@ -26,7 +28,13 @@ try {
   } else {
     browser = await chromium.connect(server.wsEndpoint(), { timeout: 15000 }); context = await browser.newContext(); const page = await context.newPage(); await page.goto("about:blank"); await beforeOwnedWork(() => stopping);
     const result = await page.evaluate(() => new Promise((resolve, reject) => { const url = URL.createObjectURL(new Blob(["postMessage(1)"], { type: "application/javascript" })), worker = new Worker(url), deadline = setTimeout(() => { worker.terminate(); URL.revokeObjectURL(url); reject(new Error("No-audio ownership probe deadline")); }, 5000); worker.onmessage = (event) => { clearTimeout(deadline); worker.terminate(); URL.revokeObjectURL(url); resolve(event.data); }; worker.onerror = () => { clearTimeout(deadline); worker.terminate(); URL.revokeObjectURL(url); reject(new Error("No-audio probe worker failed")); }; }));
-    assert.equal(result, 1); await exclusiveJSON(output + "/probe-ready.json", { token: process.env.AURIALIS_OWNERSHIP_TOKEN, status: "pass", mode, ownershipAcknowledgedBeforeWorker: true, browserVersion: browser.version(), audioProcessing: false, nodePID: process.pid, browserPID: server.process().pid });
+    assert.equal(result, 1);
+    if (mode === "normal") {
+      await beforeOwnedWork(() => stopping);
+      const probe = await normalDownloadProbe(page, join(dirname(output), "remote-download-probe.bin"));
+      await exclusiveJSON(output + "/download-probe.json", { token: process.env.AURIALIS_OWNERSHIP_TOKEN, nodePID: process.pid, browserPID: server.process().pid, ...probe });
+    }
+    await exclusiveJSON(output + "/probe-ready.json", { token: process.env.AURIALIS_OWNERSHIP_TOKEN, status: "pass", mode, ownershipAcknowledgedBeforeWorker: true, browserVersion: browser.version(), audioProcessing: false, nodePID: process.pid, browserPID: server.process().pid });
     if (mode === "crash") while (!stopping) await new Promise((resolve) => setTimeout(resolve, 25));
     if (stopping) throw new Error("Owned no-audio root stopped");
   }

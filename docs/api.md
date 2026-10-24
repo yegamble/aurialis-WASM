@@ -11,6 +11,8 @@ API CI runs the complete Newman collection and raw security probes against the v
 
 ## Album orchestration — private integration checkpoint
 
+The normal no-audio QA probe now includes a source-authored 257-byte local Blob Download over the connected BrowserServer public stream, with exact bounded verification and retained client bytes. Fourteen file/shared-stream controls passed; no actual remote download, browser or service was launched. This adds no application HTTP endpoint.
+
 Independent review caught stale process evidence at the QA success-cleanup gate. It now requires and records the immediate fresh observation before committing cleanup; nine focused injected parent controls passed after the old-source RED. No actual cleanup or HTTP behavior changes are qualified by those controls.
 
 The joined QA supervisor now wires fresh complete resource checks before every acknowledgment, exact successful-case/settlement checks and parent-owned profile cleanup. Thirty-three synthetic Python controls passed, including the fixed combined 4,096 historical identity ceiling caught by source review; installed Wrangler routes and the unchanged 34a effective static assets/config are source-bound. No actual service routing, BrowserServer cleanup or full-length audio is qualified by those units. The QA limits add no endpoint and do not alter application memory/job limits.

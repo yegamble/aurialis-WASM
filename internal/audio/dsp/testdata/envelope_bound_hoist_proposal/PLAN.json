@@ -40,10 +40,27 @@
       "totalQueryUpper": 5487,
       "mutationResetEvents": 256,
       "maximumNodesPerQuery": 12,
-      "fullStatePerOperation": "Before/after every one of the 4,911 direct oracle queries and 256 events, compare all 8,192 nodes: epoch plus Float64bits(slope/offset), with pre/post immutability and exact output IEEE bits. The separate 576-query allocation batch compares complete state before/after the measured batch to keep its allocation observation query-only. Preserve negative-zero, subnormal, infinity and multiple signed NaN payload cases.",
       "frames": "Include every residual -2047..2047 and MinInt64/MaxInt64, negative epochs, both tree parities, chunk boundaries, >2^53 clocks, stale root and stale node at each depth, original reset/wrap and clipped rebuild.",
       "noAllocation": "Query-only warmed allocation-count/byte gate must be zero; retain separate unchanged graph allocation gates.",
-      "scope": "Proposed direct-query bounds are separate from original27-case recorder frame counters. Keep original test assertions/tolerances unchanged. No bound increases or shortened cases after failure."
+      "scope": "Proposed direct-query bounds are separate from original27-case recorder frame counters. Keep original test assertions/tolerances unchanged. No bound increases or shortened cases after failure.",
+      "fullStateBatches": 562,
+      "fullStateScans": 1686,
+      "nodePairComparisons": 13811712,
+      "fieldComparisons": 41435136,
+      "scalarFieldReadsUpper": 82870272,
+      "snapshotCopyBytes": 110493696,
+      "pairedDirectQueries": 4911,
+      "totalBoundInvocations": 10398,
+      "nodeVisitsUpper": 124776,
+      "fullStatePerBatch": "Each of 562 setups/events compares all8192 nodes candidate/control before its read-only batch, then snapshots candidate state and compares both implementations to that snapshot after the batch. This checks epoch and exact slope/offset IEEE bits. No repeated full-state scan per pure query. Keep every4911 exact paired output and all576 additional allocation-gate invocations.",
+      "allocationBreakdown": "AllocsPerRun16 with16 queries per closure including one warm call:272 candidate +272 oracle; then16 byte-count queries per implementation:32. Total576 bound calls.",
+      "batchBreakdown": {
+        "residual": 1,
+        "dirtyIEEE": 240,
+        "extreme": 64,
+        "mutation": 256,
+        "allocation": 1
+      }
     },
     "compiledCodeContract": "Inspect fresh candidate native/WASM emitted code after a separate release. Require unchanged multiply/add/max order and bit/state proof before any timing proposal; cancel a compiler-only source rewrite that leaves the conversion dynamic or code identical. V8 behavior remains unproven without further separately reviewed diagnostics."
   },

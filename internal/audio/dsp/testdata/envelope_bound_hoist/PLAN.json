@@ -1,0 +1,53 @@
+{
+  "scope": "Inactive bound coordinate cache plus independent copied-original native query control; no production selection, WASM, fullgraph, profile or timing release.",
+  "productionOriginalSHA256": "9ceee3af867bc992d89dfdd8a778c35648fd140a0a5a84bdfecf2d0ed3d19c5d",
+  "productionCandidateSHA256": "a5ff75b66b649116857effe11fde78749edad3201ed964741cdc137d7967018a",
+  "test": "TestStudioEnvelopeBoundCoordinateOracleAndNoAlloc",
+  "work": {
+    "allSignedResiduals": 4095,
+    "dirtyEpochDepthAndIEEE": 240,
+    "extremeSignedFrameCases": 64,
+    "mutationSequenceQueries": 512,
+    "noAllocationQueriesUpper": 576,
+    "totalQueryUpper": 5487,
+    "mutationResetEvents": 256,
+    "maximumNodesPerQuery": 12,
+    "frames": "Include every residual -2047..2047 and MinInt64/MaxInt64, negative epochs, both tree parities, chunk boundaries, >2^53 clocks, stale root and stale node at each depth, original reset/wrap and clipped rebuild.",
+    "noAllocation": "Query-only warmed allocation-count/byte gate must be zero; retain separate unchanged graph allocation gates.",
+    "scope": "Proposed direct-query bounds are separate from original27-case recorder frame counters. Keep original test assertions/tolerances unchanged. No bound increases or shortened cases after failure.",
+    "fullStateBatches": 562,
+    "fullStateScans": 1686,
+    "nodePairComparisons": 13811712,
+    "fieldComparisons": 41435136,
+    "scalarFieldReadsUpper": 82870272,
+    "snapshotCopyBytes": 110493696,
+    "pairedDirectQueries": 4911,
+    "totalBoundInvocations": 10398,
+    "nodeVisitsUpper": 124776,
+    "fullStatePerBatch": "Each of 562 setups/events compares all8192 nodes candidate/control before its read-only batch, then snapshots candidate state and compares both implementations to that snapshot after the batch. This checks epoch and exact slope/offset IEEE bits. No repeated full-state scan per pure query. Keep every4911 exact paired output and all576 additional allocation-gate invocations.",
+    "allocationBreakdown": "AllocsPerRun16 with16 queries per closure including one warm call:272 candidate +272 oracle; then16 byte-count queries per implementation:32. Total576 bound calls.",
+    "batchBreakdown": {
+      "residual": 1,
+      "dirtyIEEE": 240,
+      "extreme": 64,
+      "mutation": 256,
+      "allocation": 1
+    }
+  },
+  "baselineBUILD": {
+    "file": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/BUILD.json",
+    "sha256": "16aacd5935e4bee8c9e253d926f9fe2d5dfbc2179f68b62b5b7e3d1195fde6f8",
+    "require": "Match the complete frozen compiler-process/effective-environment/runtime/source/test objects in this exact BUILD; module hashes alone do not permit a changed baseline."
+  },
+  "sourceMapping": "exact six original exclusions + one production replacement + one new virtual test source (8 entries); original screen test remains unchanged",
+  "release": "one new native candidate module and this direct test only, after source checkpoint; no baseline rebuild/WASM/graph/profile/timing",
+  "limits": {
+    "compileSeconds": 25,
+    "unitGoSeconds": 25,
+    "unitParentSeconds": 28,
+    "logBytes": 262144,
+    "moduleBytes": 16777216,
+    "sampledLeaderRSSBytes": 1073741824,
+    "sampledRSSIsHardCeiling": false
+  }
+}

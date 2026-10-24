@@ -1,0 +1,298 @@
+package dsp
+
+import (
+	"math"
+	"runtime"
+	"testing"
+)
+
+// BEGIN FROZEN ORIGINAL
+const boundHoistFrozenChunk = 2048
+
+type boundHoistFrozenLine struct {
+	slope, offset float64
+	epoch         int64
+}
+
+// A fixed interval line envelope stores the greatest planned damage.
+// Events occupy at most two adjacent chunks; epochs retire old paths lazily.
+// Callers keep delay+lookahead+hold below boundHoistFrozenChunk and insert events
+// before querying their clock. Rebuilds must clip expired history with addActive.
+type boundHoistFrozenEnvelope struct {
+	trees [2][2 * boundHoistFrozenChunk]boundHoistFrozenLine
+}
+
+func (e *boundHoistFrozenEnvelope) node(tree, index int, epoch int64) *boundHoistFrozenLine {
+	n := &e.trees[tree][index]
+	if n.epoch != epoch {
+		*n = boundHoistFrozenLine{epoch: epoch}
+	}
+	return n
+}
+
+func (e *boundHoistFrozenEnvelope) insertLine(tree, index, low, high int, epoch int64, slope, offset float64) {
+	n := e.node(tree, index, epoch)
+	first, last := slope*float64(low)+offset, slope*float64(high)+offset
+	oldFirst, oldLast := n.slope*float64(low)+n.offset, n.slope*float64(high)+n.offset
+	if first <= oldFirst && last <= oldLast {
+		return
+	}
+	if first >= oldFirst && last >= oldLast {
+		n.slope, n.offset = slope, offset
+		return
+	}
+	mid := (low + high) / 2
+	leftBetter := slope*float64(low)+offset > n.slope*float64(low)+n.offset
+	midBetter := slope*float64(mid)+offset > n.slope*float64(mid)+n.offset
+	if midBetter {
+		n.slope, slope = slope, n.slope
+		n.offset, offset = offset, n.offset
+	}
+	if low == high {
+		return
+	}
+	if leftBetter != midBetter {
+		e.insertLine(tree, index*2, low, mid, epoch, slope, offset)
+	} else {
+		e.insertLine(tree, index*2+1, mid+1, high, epoch, slope, offset)
+	}
+}
+
+func (e *boundHoistFrozenEnvelope) insertRange(tree, index, low, high, from, to int, epoch int64, slope, offset float64) {
+	e.node(tree, index, epoch)
+	if from <= low && high <= to {
+		e.insertLine(tree, index, low, high, epoch, slope, offset)
+		return
+	}
+	mid := (low + high) / 2
+	if from <= mid {
+		e.insertRange(tree, index*2, low, mid, from, to, epoch, slope, offset)
+	}
+	if to > mid {
+		e.insertRange(tree, index*2+1, mid+1, high, from, to, epoch, slope, offset)
+	}
+}
+
+func (e *boundHoistFrozenEnvelope) addSegment(from, to, birth int64, slope, offset float64) {
+	for from <= to {
+		epoch := from / boundHoistFrozenChunk
+		base := epoch * boundHoistFrozenChunk
+		end := min(to, base+boundHoistFrozenChunk-1)
+		e.insertRange(int(epoch&1), 1, 0, boundHoistFrozenChunk-1, int(from-base), int(end-base), epoch, slope, offset+slope*float64(base-birth))
+		from = end + 1
+	}
+}
+
+func (e *boundHoistFrozenEnvelope) add(frame int64, delay, lookahead, hold int, required float64) {
+	if required >= 1 {
+		return
+	}
+	e.addActive(frame, frame+int64(delay), lookahead, hold, required)
+}
+
+func (e *boundHoistFrozenEnvelope) addActive(now, birth int64, lookahead, hold int, required float64) {
+	if required >= 1 {
+		return
+	}
+	damage := 1 - required
+	end := birth + int64(lookahead)
+	if now <= end {
+		e.addSegment(max(now, birth), end, birth, damage/float64(lookahead), 0)
+	}
+	if hold > 0 && now <= end+int64(hold) {
+		e.addSegment(max(now, end), end+int64(hold), birth, 0, damage)
+	}
+}
+
+func (e *boundHoistFrozenEnvelope) bound(frame int64) float64 {
+	epoch := frame / boundHoistFrozenChunk
+	tree := int(epoch & 1)
+	x := int(frame % boundHoistFrozenChunk)
+	low, high, index, damage := 0, boundHoistFrozenChunk-1, 1, 0.0
+	for {
+		n := &e.trees[tree][index]
+		if n.epoch != epoch {
+			break
+		}
+		damage = studioExactMax(damage, n.slope*float64(x)+n.offset)
+		if low == high {
+			break
+		}
+		mid := (low + high) / 2
+		if x <= mid {
+			high = mid
+			index *= 2
+		} else {
+			low = mid + 1
+			index = index*2 + 1
+		}
+	}
+	return studioExactMax(0, 1-damage)
+}
+
+// END FROZEN ORIGINAL
+
+type boundHoistCounts struct {
+	batches, scans, queries, allocationCalls int
+}
+
+func boundHoistSame(t *testing.T, a *studioGainEnvelope, b *boundHoistFrozenEnvelope, counts *boundHoistCounts) {
+	t.Helper()
+	counts.scans++
+	for tree := range a.trees {
+		for index := range a.trees[tree] {
+			x, y := a.trees[tree][index], b.trees[tree][index]
+			if x.epoch != y.epoch || math.Float64bits(x.slope) != math.Float64bits(y.slope) || math.Float64bits(x.offset) != math.Float64bits(y.offset) {
+				t.Fatalf("state scan%d tree%d node%d differs", counts.scans, tree, index)
+			}
+		}
+	}
+}
+
+func boundHoistUnchanged(t *testing.T, a *studioGainEnvelope, b *studioGainEnvelope, counts *boundHoistCounts) {
+	t.Helper()
+	counts.scans++
+	for tree := range a.trees {
+		for index := range a.trees[tree] {
+			x, y := a.trees[tree][index], b.trees[tree][index]
+			if x.epoch != y.epoch || math.Float64bits(x.slope) != math.Float64bits(y.slope) || math.Float64bits(x.offset) != math.Float64bits(y.offset) {
+				t.Fatalf("query changed candidate scan%d tree%d node%d", counts.scans, tree, index)
+			}
+		}
+	}
+}
+
+func boundHoistBatch(t *testing.T, got *studioGainEnvelope, want *boundHoistFrozenEnvelope, frames []int64, counts *boundHoistCounts) {
+	t.Helper()
+	counts.batches++
+	boundHoistSame(t, got, want, counts)
+	before := *got
+	for _, frame := range frames {
+		counts.queries++
+		a, b := math.Float64bits(got.bound(frame)), math.Float64bits(want.bound(frame))
+		if a != b {
+			t.Fatalf("query%d frame%d got%016x want%016x", counts.queries, frame, a, b)
+		}
+	}
+	boundHoistUnchanged(t, got, &before, counts)
+	boundHoistSame(t, &before, want, counts)
+}
+
+func boundHoistFill(got *studioGainEnvelope, want *boundHoistFrozenEnvelope, frame int64, variant int) {
+	bits := [...]uint64{0, 0x8000000000000000, 1, 0x8000000000000001, 0x3ff0000000000000, 0xbff0000000000000, 0x7ff0000000000000, 0xfff0000000000000, 0x7ff8000000000001, 0xfff8000000000011}
+	epoch := frame / studioEnvelopeChunk
+	for tree := range got.trees {
+		for index := range got.trees[tree] {
+			line := studioEnvelopeLine{epoch: epoch, slope: math.Float64frombits(bits[(index+variant)%len(bits)]), offset: math.Float64frombits(bits[(index+3+variant)%len(bits)])}
+			got.trees[tree][index] = line
+			want.trees[tree][index] = boundHoistFrozenLine(line)
+		}
+	}
+}
+
+func boundHoistStale(got *studioGainEnvelope, want *boundHoistFrozenEnvelope, frame int64, depth int) {
+	x, low, high, index := int(frame%studioEnvelopeChunk), 0, studioEnvelopeChunk-1, 1
+	for range depth {
+		mid := (low + high) / 2
+		if x <= mid {
+			high, index = mid, index*2
+		} else {
+			low, index = mid+1, index*2+1
+		}
+	}
+	tree := int((frame / studioEnvelopeChunk) & 1)
+	got.trees[tree][index].epoch++
+	want.trees[tree][index].epoch++
+}
+
+var boundHoistSink uint64
+
+func TestStudioEnvelopeBoundCoordinateOracleAndNoAlloc(t *testing.T) {
+	var got studioGainEnvelope
+	var want boundHoistFrozenEnvelope
+	var counts boundHoistCounts
+	var residuals [4095]int64
+	for index := range residuals {
+		residuals[index] = int64(index - 2047)
+	}
+	boundHoistFill(&got, &want, 0, 0)
+	boundHoistBatch(t, &got, &want, residuals[:], &counts)
+	for scenario := 0; scenario < 20; scenario++ {
+		frame := int64(scenario%5-2)*studioEnvelopeChunk + int64(scenario*101-999)
+		for depth := 0; depth < 12; depth++ {
+			boundHoistFill(&got, &want, frame, scenario)
+			boundHoistStale(&got, &want, frame, depth)
+			frames := [...]int64{frame}
+			boundHoistBatch(t, &got, &want, frames[:], &counts)
+		}
+	}
+	extremes := [...]int64{math.MinInt64, math.MinInt64 + 1, -(1 << 53) - 1, -(1 << 53), -4097, -4096, -2049, -2048, -1, 0, 1, 2047, 2048, 4095, 1<<53 + 1, math.MaxInt64}
+	for variant := 0; variant < 4; variant++ {
+		for _, frame := range extremes {
+			boundHoistFill(&got, &want, frame, variant*3)
+			frames := [...]int64{frame}
+			boundHoistBatch(t, &got, &want, frames[:], &counts)
+		}
+	}
+	bases := [...]int64{0, 2047, 2048, 4095, 4096, 1 << 40}
+	for event := 0; event < 256; event++ {
+		frame := bases[event%len(bases)] + int64(event*31)
+		required := float64(event%19) / 20
+		if event%16 == 0 {
+			got, want = studioGainEnvelope{}, boundHoistFrozenEnvelope{}
+		} else if event%2 == 0 {
+			got.add(frame, 19, 23, 17, required)
+			want.add(frame, 19, 23, 17, required)
+		} else {
+			got.addActive(frame+31, frame, 23, 17, required)
+			want.addActive(frame+31, frame, 23, 17, required)
+		}
+		frames := [...]int64{frame + 31, frame + 59}
+		boundHoistBatch(t, &got, &want, frames[:], &counts)
+	}
+	boundHoistFill(&got, &want, 0, 3)
+	counts.batches++
+	boundHoistSame(t, &got, &want, &counts)
+	before := got
+	var frames [16]int64
+	for index := range frames {
+		frames[index] = int64(index*127 - 511)
+	}
+	var gotSink, wantSink uint64
+	if allocations := testing.AllocsPerRun(16, func() {
+		for _, frame := range frames {
+			gotSink ^= math.Float64bits(got.bound(frame))
+		}
+	}); allocations != 0 {
+		t.Fatalf("candidate query allocations %g", allocations)
+	}
+	if allocations := testing.AllocsPerRun(16, func() {
+		for _, frame := range frames {
+			wantSink ^= math.Float64bits(want.bound(frame))
+		}
+	}); allocations != 0 {
+		t.Fatalf("original query allocations %g", allocations)
+	}
+	counts.allocationCalls += 544
+	if gotSink != wantSink {
+		t.Fatalf("allocation-query output bits differ: %016x %016x", gotSink, wantSink)
+	}
+	var start, end runtime.MemStats
+	runtime.ReadMemStats(&start)
+	for _, frame := range frames {
+		gotSink ^= math.Float64bits(got.bound(frame))
+		wantSink ^= math.Float64bits(want.bound(frame))
+	}
+	runtime.ReadMemStats(&end)
+	counts.allocationCalls += 32
+	boundHoistSink = gotSink ^ wantSink
+	if end.Mallocs != start.Mallocs || end.TotalAlloc != start.TotalAlloc || gotSink != wantSink {
+		t.Fatalf("query-only allocation/bytes/output changed: mallocs%d bytes%d", end.Mallocs-start.Mallocs, end.TotalAlloc-start.TotalAlloc)
+	}
+	boundHoistUnchanged(t, &got, &before, &counts)
+	boundHoistSame(t, &before, &want, &counts)
+	if counts != (boundHoistCounts{batches: 562, scans: 1686, queries: 4911, allocationCalls: 576}) {
+		t.Fatalf("closed work counters differ: %+v", counts)
+	}
+	t.Logf("batches%d stateScans%d pairedQueries%d allocationCalls%d nodesPerScan8192 fieldComparisons41435136 boundCalls10398 nodeVisitUpper124776", counts.batches, counts.scans, counts.queries, counts.allocationCalls)
+}

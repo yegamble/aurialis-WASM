@@ -25,6 +25,9 @@ for (const source of sources) {
 }
 const goNotice = await readFile(path.join(goroot, "LICENSE"));
 await writeFile(path.join(destination, "go-BSD.txt"), goNotice);
+const mp3Notice = await readFile(path.resolve("internal/third_party/gomp3/LICENSE"));
+await writeFile(path.join(destination, "go-mp3-Apache-2.0.txt"), mp3Notice);
+records.push({ name: "go-mp3 (modified copy in internal/third_party/gomp3)", version: "v0.3.4", license: "Apache-2.0", upstream: "https://github.com/hajimehoshi/go-mp3", installedSource: "internal/third_party/gomp3/LICENSE", notice: "go-mp3-Apache-2.0.txt", sha256: createHash("sha256").update(mp3Notice).digest("hex") });
 records.push({ name: "Go standard library and JavaScript runtime", version: goVersion, license: "BSD-3-Clause", upstream: "https://go.dev/LICENSE", installedSource: "GOROOT/LICENSE", notice: "go-BSD.txt", sha256: createHash("sha256").update(goNotice).digest("hex") });
 await writeFile(path.join(destination, "provenance.json"), JSON.stringify({ scope: "Third-party notices copied unchanged from the installed sources used to build the distributed app. This does not select or grant a license for Aurialis-WASM itself. No trained model or third-party GPU kernels are distributed by this checkpoint.", components: records }, null, 2) + "\n");
 await writeFile(path.join(destination, "README.txt"), "Aurialis-WASM third-party notices\n\nThese notices accompany the bundled fonts, browser runtime and generated app assets. The copyright statements and licenses are copied unchanged from installed source packages. See provenance.json for exact versions, original source locations and notice SHA-256 digests. These notices do not assign a license to Aurialis-WASM itself.\n\n" + records.map((record) => `${record.name} (${record.version}): ${record.notice}`).join("\n") + "\n");

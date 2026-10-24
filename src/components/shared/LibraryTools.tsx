@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getAudio, saveAudio, discardStagedAudio, storageSummary, newAudioAssetId } from "@/lib/db";
 import { audioKey, replacementProject, sameSource } from "@/lib/library";
-import { prepareProjectFile, readStoredSource } from "@/lib/project-import";
+import { prepareProjectFile, readStoredSource, SOURCE_ACCEPT } from "@/lib/project-import";
 import { createLivePlayback, type LivePlaybackController, type LivePlaybackState } from "@/lib/live-playback";
 import { useTransportScrub } from "@/lib/use-transport-scrub";
 import { useStore } from "@/lib/store";
@@ -64,9 +64,9 @@ export function SourceRelink({ track, open, onClose }: { track: Track; open: boo
     finally { if (operation.current === controller) setBusy(false); }
   }
   return <Modal open={open} title={`Restore “${track.title}”`} onClose={close} actions={<Button variant="secondary" onClick={close}>{busy ? "Cancel restore" : "Close"}</Button>}>
-    <p className="disclosure">Choose the original PCM WAV. An exact canonical audio match keeps all settings. Replacing a different or unverified source preserves the project and album links, validates settings for its sample rate, and clears source-derived results.</p>
-    <input ref={input} hidden type="file" accept="audio/wav,.wav" aria-label="Restore audio file" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void select(file); }} />
-    <Button variant="secondary" disabled={busy} onClick={() => { input.current?.click(); }}>Choose source WAV</Button>
+    <p className="disclosure">Choose the original WAV, FLAC or MP3. An exact canonical audio match keeps all settings. Replacing a different or unverified source preserves the project and album links, validates settings for its sample rate, and clears source-derived results.</p>
+    <input ref={input} hidden type="file" accept={SOURCE_ACCEPT} aria-label="Restore audio file" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void select(file); }} />
+    <Button variant="secondary" disabled={busy} onClick={() => { input.current?.click(); }}>Choose source audio</Button>
     {message && <p className="disclosure" role="status">{message}</p>}
     {error && <p role="alert" className="disclosure text-danger">{error}</p>}
     {candidate && <div className="mt-4 space-y-3"><p>{candidate.file.name}</p><p className="disclosure">Replace source explicitly to continue. Previously measured output, scripts and reports will be invalidated. A recovery copy is retained until this project is deleted.</p><Button disabled={busy} onClick={() => { const controller = operation.current; if (!controller) return; setBusy(true); setError(""); void commit(candidate.file, candidate.imported, controller).catch((cause: unknown) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Replacement failed."); }).finally(() => { if (operation.current === controller) setBusy(false); }); }}>Replace source</Button></div>}

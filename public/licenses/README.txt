@@ -8,4 +8,5 @@ React (19.3.1): react-MIT.txt
 React DOM (19.3.1): react-dom-MIT.txt
 Next.js (16.4.2): next-MIT.txt
 Tailwind CSS (4.3.3): tailwindcss-MIT.txt
+go-mp3 (modified copy in internal/third_party/gomp3) (v0.3.4): go-mp3-Apache-2.0.txt
 Go standard library and JavaScript runtime (go1.26.10): go-BSD.txt

@@ -182,5 +182,76 @@ class ServiceContracts(unittest.TestCase):
                     SERVICE.resource_union([row(100, 50)], [other])
 
 
+    def test_departed_member_cannot_reappear_with_identical_coarse_identity(self):
+        observer = self.observer()
+        saved = dict(self.rows[102])
+        del self.rows[102]
+        observer.observe()
+        self.assertIn(102, observer.departed)
+        self.rows[102] = {**saved, "ppid": 1}
+        with self.assertRaisesRegex(RuntimeError, "departed|terminal"):
+            observer.observe()
+
+    def test_terminal_member_cannot_become_live_again(self):
+        observer = self.observer()
+        self.rows[102]["state"] = "Z"
+        observer.observe()
+        self.rows[102].update({"state": "S", "ppid": 1})
+        with self.assertRaisesRegex(RuntimeError, "departed|terminal"):
+            observer.observe()
+
+    def test_fresh_confirmed_exit_also_prevents_live_reappearance(self):
+        for terminal in (False, True):
+            with self.subTest(terminal=terminal):
+                self.setUpFresh()
+                observer = self.observer()
+                old = copy.deepcopy(self.rows)
+                command = self.commands[102]
+                self.commands[102] = None
+                if terminal:
+                    self.rows[102]["state"] = "Z"
+                else:
+                    del self.rows[102]
+                observer.observe(old)
+                self.commands[102] = command
+                self.rows[102] = row(102, 1)
+                with self.assertRaisesRegex(RuntimeError, "departed|terminal"):
+                    observer.observe()
+
+    def test_second_leader_command_observation_cannot_ignore_confirmed_exit(self):
+        observer = self.observer()
+        count = 0
+        def raced(pid):
+            nonlocal count
+            if pid == 100:
+                count += 1
+                if count == 2:
+                    del self.rows[100]
+                    return None
+            return self.commands.get(pid)
+        with patch.object(SERVICE, "command_hash", side_effect=raced):
+            with self.assertRaisesRegex(RuntimeError, "leader exited"):
+                observer.observe()
+
+
+
+    def test_entry_anchor_loss_cannot_be_reused_after_reappearance(self):
+        for terminal in (False, True):
+            with self.subTest(terminal=terminal):
+                self.setUpFresh()
+                observer = self.observer()
+                saved = dict(self.rows[100])
+                if terminal:
+                    self.rows[100]["state"] = "Z"
+                else:
+                    del self.rows[100]
+                with self.assertRaisesRegex(RuntimeError, "leader anchor"):
+                    observer.observe()
+                self.rows[100] = saved
+                with self.assertRaisesRegex(RuntimeError, "departed|terminal"):
+                    observer.observe()
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

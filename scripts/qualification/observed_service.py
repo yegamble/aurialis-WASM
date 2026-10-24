@@ -45,12 +45,18 @@ class ObservedService:
             raise RuntimeError("Service event quota exceeded")
         self.events.append(value)
 
+    def _retire(self, pid):
+        if len(set(self.known) | self.departed | {pid}) > IDENTITY_CAP:
+            raise RuntimeError("Service terminal identity quota exceeded")
+        self.departed.add(pid)
+
     def _command(self, current, expected=None):
         value = command_hash(current["pid"])
         if _digest(value) and (expected is None or value == expected):
             return value
         fresh = snapshot().get(current["pid"])
         if fresh is None or (same(_row(fresh), current) and not _live(fresh)):
+            self._retire(current["pid"])
             self._event({"phase": "confirmed-member-exit", "before": dict(current),
                          "after": None if fresh is None else dict(fresh),
                          "observedCommandSHA256": value})
@@ -61,9 +67,14 @@ class ObservedService:
         rows = snapshot() if rows is None else rows
         leader = rows.get(self.identity["pid"])
         if leader is None or not same(_row(leader), self.identity) or not _live(leader):
+            self._retire(self.identity["pid"])
             raise RuntimeError("External service lost its exact live leader anchor")
         if self._command(leader, self.identity["commandSHA256"]) is None:
             raise RuntimeError("External service leader exited during observation")
+        for pid in self.departed:
+            current = rows.get(pid)
+            if current is not None and _live(_row(current)):
+                raise RuntimeError("A confirmed departed or terminal service member reappeared live")
         for pid, previous in self.known.items():
             current = rows.get(pid)
             if current is not None and not same(_row(current), previous):
@@ -72,7 +83,7 @@ class ObservedService:
                     if row.get("pgid") == self.identity["pgid"]}
         if any(pid != row["pid"] for pid, row in selected.items()):
             raise RuntimeError("Service snapshot key differs from its identity")
-        if len(set(self.known) | set(selected)) > IDENTITY_CAP:
+        if len(set(self.known) | self.departed | set(selected)) > IDENTITY_CAP:
             raise RuntimeError("Service identity quota exceeded")
         for row in rows.values():
             if row.get("ppid") in selected and row.get("pgid") != self.identity["pgid"]:
@@ -105,12 +116,17 @@ class ObservedService:
         for pid, current in selected.items():
             previous = self.known.get(pid)
             if not _live(current):
+                if pid not in self.departed:
+                    self._retire(pid)
+                    self._event({"phase": "member-terminal", "identity": dict(current)})
                 command = previous.get("commandSHA256") if previous else None
             else:
                 if previous is not None and previous.get("commandSHA256") is None:
                     raise RuntimeError("An unconfirmed terminal service member became live")
                 command = self._command(current, previous.get("commandSHA256") if previous else None)
                 if command is None:
+                    if pid == self.identity["pid"]:
+                        raise RuntimeError("External service leader exited during observation")
                     continue
                 live.append(dict(current))
             if previous is None:
@@ -126,7 +142,7 @@ class ObservedService:
         for pid, previous in self.known.items():
             if pid not in selected and pid not in self.departed:
                 self._event({"phase": "member-departed", "identity": dict(previous)})
-                self.departed.add(pid)
+                self._retire(pid)
         return live
 
 

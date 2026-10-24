@@ -15,8 +15,8 @@
     "mime": "text/javascript; charset=utf-8"
   },
   "client.mjs": {
-    "bytes": 11380,
-    "sha256": "f140b92bf7c74e7e04ab157396e31d092ae112b39dbd8cafbab1728cd6c319db",
+    "bytes": 12393,
+    "sha256": "1f261243d2b644dd5a46a4f8cfd187dc08309474e8cadae511c4a847151d5a27",
     "mime": "text/javascript; charset=utf-8"
   },
   "contract.mjs": {

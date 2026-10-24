@@ -21,9 +21,18 @@ export function createAttentionClient(environment={}){
     const record=recordFor(name),plan=shapePlan(record.m,record.n),allocation=allocationPlan(plan);
     if(!(blob instanceof Blob)||blob.size!==record.bytes)throw new Error('Attention Blob geometry changed');
     const lease=reserve(plan.chargedApplicationBytes);if(!lease||typeof lease.release!=='function')throw new Error('Invalid attention memory lease');
-    const token={};owner=token;let worker,workerReject,snapshot,readBuffer,canceled,settled=false,cleanupTimer,receipt,comparison,resultBuffer,released=false;
+    const token={};owner=token;let worker,workerReject,snapshot,readBuffer,canceled,settled=false,cleanupTimer,receipt,comparison,resultBuffer,released=false,replyReceived=false;
     const ownedBuffers=[];
     const remember=buffer=>{try{bufferBytes(buffer);}catch{return;}ownedBuffers.push(buffer);};
+    const discard=buffer=>{for(let i=0;i<ownedBuffers.length;i++)if(ownedBuffers[i]===buffer)return;let bytes;try{bytes=bufferBytes(buffer);}catch{return;}if(bytes)transferClone(null,{transfer:[buffer]});if(bufferBytes(buffer)!==0)throw new Error('Attention incoming store remains owned');};
+    const register=data=>{
+      const report=data?.report;
+      // Record ownership before envelope/report authority or cancellation. Never
+      // append to the closed inventory after the first reply/receipt freeze.
+      if(!released&&!replyReceived)remember(report?.result);
+      for(const value of [data,report]){discard(value);if(value&&typeof value==='object')for(const key in value){if(!Object.hasOwn(value,key))continue;const descriptor=Object.getOwnPropertyDescriptor(value,key);if(descriptor&&'value'in descriptor)discard(descriptor.value);}}
+      return report;
+    };
     let resolveUser,rejectUser,resolveReleased;const fullyReleased=new Promise(resolve=>{resolveReleased=resolve;});
     const returned=new Promise((resolve,reject)=>{resolveUser=resolve;rejectUser=reject;});
     Object.defineProperty(returned,'whenSettled',{value:()=>fullyReleased});
@@ -53,7 +62,7 @@ export function createAttentionClient(environment={}){
       const fixture=parseFixture(snapshot);token.id=crypto.randomUUID();worker=makeWorker();
       const report=await new Promise((resolve,reject)=>{
         workerReject=reject;worker.onerror=()=>reject(new Error('Attention Worker failed'));worker.onmessageerror=()=>reject(new Error('Attention transfer failed'));
-        worker.onmessage=event=>{try{const data=event.data;if(!data||data.abi!==RUNTIME_ABI||data.id!==token.id||!['result','error'].includes(data.kind))throw new Error('Attention result identity changed');if(data.kind==='error')throw new Error(String(data.error).slice(0,1024));resolve(data.report);}catch(error){reject(error);}};
+        worker.onmessage=event=>{try{const data=event.data,report=register(data);if(released||replyReceived)return;if(canceled)throw canceled;if(!data||data.abi!==RUNTIME_ABI||data.id!==token.id||!['result','error'].includes(data.kind))throw new Error('Attention result identity changed');if(data.kind==='error')throw new Error(String(data.error).slice(0,1024));replyReceived=true;resolve(report);}catch(error){replyReceived=true;reject(error);}};
         const transfer=snapshot.slice(0);remember(transfer);worker.postMessage({abi:RUNTIME_ABI,id:token.id,model:MODEL_CONTRACT,kind:'attention',name,fixture:transfer},[transfer]);
       });check();
       resultBuffer=report?.result;remember(resultBuffer);

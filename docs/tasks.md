@@ -44,6 +44,24 @@ Each child processed 49,152 base frames including warm, verification and reset-w
 
 The same evidence directory's immutable `FIRST-TIMED-SHA256.json` indexes 91 files, 21,245,213 bytes; SHA-256 `1b93d8de3abea0fe1cdfd359c9f22735b311a49e31b9fe6ac4750ba6d888620f`. It includes all six raw outputs/receipts, both complete paired reports and the unchanged untimed snapshot. The next bounded profile is a source-only proposal; no further measurement is released. All historical failures and the unrelated 270 cross-target state-digest differences remain open.
 
+### Same-module sampling follow-up
+
+The host-only diagnostic used the same existing candidate module for exactly two verification children, one steady and one peaky. Both raw verification outputs exactly reproduced the corresponding accepted outputs. Steady sampling observed 217 total samples, including 100 graph-root samples: gain 24, saturation 24, guard 10 and other 42. Peaky observed 156 total, including 83 graph-root samples: gain 5, saturation 30, guard 15 and other 33. These are coarse stack counts only; no quiet window, benchmark, throughput estimate or deadline inference is established.
+
+The immutable `extrema-paired-screen/profile-b562-v1/SAMPLING-SHA256.json` has SHA-256 `2441f56d707d5ec1e6beeef71c40ae068d567576310665740ca0a43d84efbc1d`. It indexes 23 files, 15,650,216 bytes, including 175,583 profile bytes. The earlier source-only profile proposal remains historical evidence; this paragraph records the separate executed diagnostic. The steady 192 kHz deadline remains RED and selection remains unchanged.
+
+### Envelope node-visit source and unit checkpoint
+
+**Status: source preparation accepted; open — awaiting merge.** The production envelope remains qualified e492 bytes (SHA-256 `9ceee3af867bc992d89dfdd8a778c35648fd140a0a5a84bdfecf2d0ed3d19c5d`). The sole candidate payload (`eb8f5058d09d7d9d8c8b19b2946bc6ff5bbb1bc02d939b526a35434f46a61494`) moves the redundant full-coverage node initialization below that branch. `insertLine` retains initialization before arithmetic; partial recursion stays unchanged. The new preparation/unit runner leaves the frozen producer, Go inventories, six AR exclusions and historical 14/6 overlays intact.
+
+Tier: `unit` only. Four copied-original control tests passed under both baseline and candidate overlays with race instrumentation (1.973/1.942 seconds reported); six synthetic source/admission contracts passed. Tests check all 8,192 node epochs and IEEE slope/offset bits after 512 random insertions, 128 dirty epoch operations and 512 individual event/rebuild operations, plus query bits and native envelope allocation counts. Original Chair two-test evidence (1.817 seconds) and the first four-test v1 run remain separate retained checkpoints.
+
+Fresh evidence is under `artifacts/private-dsp/recovery-20261023/envelope-node-visit/node-visit-source-v2/`. `SOURCE-SHA256.json` has SHA-256 `86a4ba9ed16d67ce70352076c2be591d134cf735b5b131dadfca1041e9fb9c33`; `EVIDENCE-SHA256.json` has SHA-256 `a1158cad01ef2e7897f486ad6d086ad3e03797004916bc92ad88ef3f9bdd259c`. Both native children exited zero without supervisor or cleanup failure. Preparation exposes no module, graph, audio, profiler or timing entry point.
+
+The fallback Node 24/pnpm 11 tool-bootstrap failure and first pinned configured spelling failure remain retained. Nine explicit Go symbol/domain/path dictionary terms address the new `.source` payload spelling diagnostics without changing either Go payload. Applicable source/document spelling is checked separately with pinned Node 26.12.0/pnpm 10.33.0 and dependency repair disabled.
+
+Full-chain native and actual GoJS 135-case comparisons against current e492 archives, original alias/partition/tail/repeat/reset/capacity/allocation gates, and a separate timing release remain pending. The existing steady 192 kHz deadline is RED. The 270 native/WASM numeric-state digest differences remain unproven; no new cross-target state, throughput, browser continuity or public-selection claim follows. The private candidate stays unselected and the whole product remains open.
+
 ## Whole-product completion loop — October 22, 2026
 
 **Status: bounded wave locally verified; open — awaiting merge. Product incomplete.** The reviewed baseline `f5ec9ad` includes owner-merged PR #5. The older pending-merge entries below retain their historical status. The [current completion review](reviews/2026-10-22-war-room-completion.md) lists outstanding planned features and Round D rulings.

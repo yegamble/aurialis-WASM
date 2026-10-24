@@ -1,0 +1,68 @@
+{
+  "scope": "SOURCE ONLY plus separately bounded native unit controls; no production Go mutation, module build, fullgraph/audio, profiling, timing or selection",
+  "qualifiedGoSource": "e4921560a63666ac230bb578d5381886b266d968",
+  "originalProductionSHA256": "9ceee3af867bc992d89dfdd8a778c35648fd140a0a5a84bdfecf2d0ed3d19c5d",
+  "candidateProductionSHA256": "eb8f5058d09d7d9d8c8b19b2946bc6ff5bbb1bc02d939b526a35434f46a61494",
+  "initialChairEvidence": {
+    "directory": "/Users/yosefgamble/github/Aurialis-WASM/artifacts/dsp-profile-plan/next-exact-node-visit",
+    "resultSHA256": "d9b46edd55edec6ab6c4be37c9d62a6d04a6a787cee6c1946ae681395b962998",
+    "status": "retained initial two synthetic unit tests only; reported race 1.817s; not overwritten",
+    "files": [
+      {
+        "file": "NATIVE-RESULT.json",
+        "bytes": 624,
+        "sha256": "d9b46edd55edec6ab6c4be37c9d62a6d04a6a787cee6c1946ae681395b962998"
+      },
+      {
+        "file": "PROPOSAL.json",
+        "bytes": 1060,
+        "sha256": "63ed6112a4ddeedf80e7adb18673c47792338ccf23f5f2f58ee0ec6332c21e60"
+      },
+      {
+        "file": "SOURCE-ONLY.json",
+        "bytes": 868,
+        "sha256": "69007d1ebbeb8c6b101f1a8595c7d57c98883205aa8d68b68e21ed659352d1d1"
+      },
+      {
+        "file": "native-test-overlay.json",
+        "bytes": 1309,
+        "sha256": "ec70356d9aa2ccec4869d0479e4e98ff40647b507b09ae44d9eee0d2eb928817"
+      },
+      {
+        "file": "native-tests.log",
+        "bytes": 65,
+        "sha256": "83fe06d8c18bcdb750b0720cd48da76f7ace39264969c75ffbbc99a8071cab98"
+      },
+      {
+        "file": "node_visit_test.go.source",
+        "bytes": 5895,
+        "sha256": "250c98849b0c55676debbe61f2e5225f9162596a59a99782ef33ede00fc6cc24"
+      },
+      {
+        "file": "studio_gain_envelope.go.source",
+        "bytes": 3627,
+        "sha256": "eb8f5058d09d7d9d8c8b19b2946bc6ff5bbb1bc02d939b526a35434f46a61494"
+      }
+    ]
+  },
+  "change": "Move insertRange node initialization after the fully covered branch; insertLine already initializes that node before arithmetic. Partial initialization and all numerical/traversal operations stay identical.",
+  "overlays": {
+    "baseline": "exact existing six-file AR exclusions, current e492 envelope",
+    "candidate": "same six exclusions plus only envelope source replacement",
+    "unit": "same respective overlay with existing opt-in screen test replaced by frozen independent control .source"
+  },
+  "requiredBeforeTiming": [
+    "independent fullstate IEEE/dirty-epoch/coverage/wrap/clipped-rebuild/native noalloc unit controls",
+    "exact original caps and alias/partition/finite-tail/repeat/reset/noalloc contract gates",
+    "native fullgraph 135 cases baseline/candidate bytes at all five rates, including equality to corresponding current e492 archived candidate streams",
+    "actual GoJS fullgraph 135 cases baseline/candidate bytes at all five rates, including equality to corresponding current e492 archived candidate streams",
+    "native/WASM numeric-state digest discrepancies remain UNPROVEN; never infer cross-target fullstate identity from PCM",
+    "separate source review, compilation release, semantic execution release, then coordinated quiet timing release"
+  ],
+  "persistentReds": [
+    "steady 192k first paired screen exceeds 0.666666667ms/128",
+    "native/WASM 270 numeric-state digests differ; cause unproven",
+    "earlier native recorder race timeout, Node exit1, Nyquist/33.2k transparency failures, Newton peak-search limitation and unqualified AR experiments retained"
+  ],
+  "publicSelection": "unchanged/unselected; whole product OPEN \u2014 awaiting merge"
+}

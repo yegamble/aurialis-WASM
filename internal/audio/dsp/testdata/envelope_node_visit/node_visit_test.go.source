@@ -1,0 +1,235 @@
+package dsp
+
+import (
+	"math"
+	"testing"
+)
+
+// The original e492 envelope below is an independent frozen control.
+// Its body is admitted byte-for-byte after renaming only its receiver type.
+// A fixed interval line envelope stores the greatest planned damage.
+// Events occupy at most two adjacent chunks; epochs retire old paths lazily.
+// Callers keep delay+lookahead+hold below studioEnvelopeChunk and insert events
+// before querying their clock. Rebuilds must clip expired history with addActive.
+type nodeVisitFrozenEnvelope struct {
+	trees [2][2 * studioEnvelopeChunk]studioEnvelopeLine
+}
+
+func (e *nodeVisitFrozenEnvelope) node(tree, index int, epoch int64) *studioEnvelopeLine {
+	n := &e.trees[tree][index]
+	if n.epoch != epoch {
+		*n = studioEnvelopeLine{epoch: epoch}
+	}
+	return n
+}
+
+func (e *nodeVisitFrozenEnvelope) insertLine(tree, index, low, high int, epoch int64, slope, offset float64) {
+	n := e.node(tree, index, epoch)
+	first, last := slope*float64(low)+offset, slope*float64(high)+offset
+	oldFirst, oldLast := n.slope*float64(low)+n.offset, n.slope*float64(high)+n.offset
+	if first <= oldFirst && last <= oldLast {
+		return
+	}
+	if first >= oldFirst && last >= oldLast {
+		n.slope, n.offset = slope, offset
+		return
+	}
+	mid := (low + high) / 2
+	leftBetter := slope*float64(low)+offset > n.slope*float64(low)+n.offset
+	midBetter := slope*float64(mid)+offset > n.slope*float64(mid)+n.offset
+	if midBetter {
+		n.slope, slope = slope, n.slope
+		n.offset, offset = offset, n.offset
+	}
+	if low == high {
+		return
+	}
+	if leftBetter != midBetter {
+		e.insertLine(tree, index*2, low, mid, epoch, slope, offset)
+	} else {
+		e.insertLine(tree, index*2+1, mid+1, high, epoch, slope, offset)
+	}
+}
+
+func (e *nodeVisitFrozenEnvelope) insertRange(tree, index, low, high, from, to int, epoch int64, slope, offset float64) {
+	e.node(tree, index, epoch)
+	if from <= low && high <= to {
+		e.insertLine(tree, index, low, high, epoch, slope, offset)
+		return
+	}
+	mid := (low + high) / 2
+	if from <= mid {
+		e.insertRange(tree, index*2, low, mid, from, to, epoch, slope, offset)
+	}
+	if to > mid {
+		e.insertRange(tree, index*2+1, mid+1, high, from, to, epoch, slope, offset)
+	}
+}
+
+func (e *nodeVisitFrozenEnvelope) addSegment(from, to, birth int64, slope, offset float64) {
+	for from <= to {
+		epoch := from / studioEnvelopeChunk
+		base := epoch * studioEnvelopeChunk
+		end := min(to, base+studioEnvelopeChunk-1)
+		e.insertRange(int(epoch&1), 1, 0, studioEnvelopeChunk-1, int(from-base), int(end-base), epoch, slope, offset+slope*float64(base-birth))
+		from = end + 1
+	}
+}
+
+func (e *nodeVisitFrozenEnvelope) add(frame int64, delay, lookahead, hold int, required float64) {
+	if required >= 1 {
+		return
+	}
+	e.addActive(frame, frame+int64(delay), lookahead, hold, required)
+}
+
+func (e *nodeVisitFrozenEnvelope) addActive(now, birth int64, lookahead, hold int, required float64) {
+	if required >= 1 {
+		return
+	}
+	damage := 1 - required
+	end := birth + int64(lookahead)
+	if now <= end {
+		e.addSegment(max(now, birth), end, birth, damage/float64(lookahead), 0)
+	}
+	if hold > 0 && now <= end+int64(hold) {
+		e.addSegment(max(now, end), end+int64(hold), birth, 0, damage)
+	}
+}
+
+func (e *nodeVisitFrozenEnvelope) bound(frame int64) float64 {
+	epoch := frame / studioEnvelopeChunk
+	tree := int(epoch & 1)
+	x := int(frame % studioEnvelopeChunk)
+	low, high, index, damage := 0, studioEnvelopeChunk-1, 1, 0.0
+	for {
+		n := &e.trees[tree][index]
+		if n.epoch != epoch {
+			break
+		}
+		damage = studioExactMax(damage, n.slope*float64(x)+n.offset)
+		if low == high {
+			break
+		}
+		mid := (low + high) / 2
+		if x <= mid {
+			high = mid
+			index *= 2
+		} else {
+			low = mid + 1
+			index = index*2 + 1
+		}
+	}
+	return studioExactMax(0, 1-damage)
+}
+
+func nodeVisitCheck(t *testing.T, got *studioGainEnvelope, want *nodeVisitFrozenEnvelope, step int, extra ...int64) {
+	t.Helper()
+	for tree := range got.trees {
+		for index := range got.trees[tree] {
+			a, b := got.trees[tree][index], want.trees[tree][index]
+			if a.epoch != b.epoch || math.Float64bits(a.slope) != math.Float64bits(b.slope) || math.Float64bits(a.offset) != math.Float64bits(b.offset) {
+				t.Fatalf("step%d tree%d node%d got(%d,%016x,%016x) want(%d,%016x,%016x)", step, tree, index, a.epoch, math.Float64bits(a.slope), math.Float64bits(a.offset), b.epoch, math.Float64bits(b.slope), math.Float64bits(b.offset))
+			}
+		}
+	}
+	for _, frame := range append([]int64{-1, 0, 1, 2047, 2048, 4095, 4096, 8191, 8192, 1 << 40}, extra...) {
+		if a, b := math.Float64bits(got.bound(frame)), math.Float64bits(want.bound(frame)); a != b {
+			t.Fatalf("step%d frame%d bound got%016x want%016x", step, frame, a, b)
+		}
+	}
+}
+
+func TestStudioEnvelopeNodeVisitIEEEAndFullState(t *testing.T) {
+	special := []float64{0, math.Copysign(0, -1), 1, -1, math.SmallestNonzeroFloat64, -math.SmallestNonzeroFloat64, math.Inf(1), math.Inf(-1), math.Float64frombits(0x7ff8000000000001), math.Float64frombits(0xfff8000000000011)}
+	random := uint64(0x123456789abcdef)
+	next := func() uint64 { random ^= random << 13; random ^= random >> 7; random ^= random << 17; return random }
+	var got studioGainEnvelope
+	var want nodeVisitFrozenEnvelope
+	for step := 0; step < 512; step++ {
+		epoch, tree := int64(next()%7)-2, int(next()&1)
+		from := int(next() % studioEnvelopeChunk)
+		to := from + int(next()%uint64(studioEnvelopeChunk-from))
+		if step%8 == 0 {
+			from, to = 0, studioEnvelopeChunk-1
+		}
+		if step%8 == 1 {
+			to = from
+		}
+		slope, offset := float64(int64(next()%2049)-1024)/256, float64(int64(next()%2049)-1024)/512
+		if step%3 == 0 {
+			slope = special[int(next()%uint64(len(special)))]
+		}
+		if step%5 == 0 {
+			offset = special[int(next()%uint64(len(special)))]
+		}
+		got.insertRange(tree, 1, 0, studioEnvelopeChunk-1, from, to, epoch, slope, offset)
+		want.insertRange(tree, 1, 0, studioEnvelopeChunk-1, from, to, epoch, slope, offset)
+		nodeVisitCheck(t, &got, &want, step)
+	}
+}
+
+func TestStudioEnvelopeNodeVisitDirtyEpochs(t *testing.T) {
+	var got studioGainEnvelope
+	var want nodeVisitFrozenEnvelope
+	epochs := [...]int64{0, -1, 1, 2, math.MinInt64, math.MaxInt64}
+	bits := [...]uint64{0, 0x8000000000000000, 1, 0x8000000000000001, 0x7ff0000000000000, 0xfff0000000000000, 0x7ff8000000000001, 0xfff8000000000011, 0x3fe0000000000000}
+	for tree := range got.trees {
+		for index := range got.trees[tree] {
+			line := studioEnvelopeLine{epoch: epochs[(tree+index)%len(epochs)], slope: math.Float64frombits(bits[index%len(bits)]), offset: math.Float64frombits(bits[(index+3)%len(bits)])}
+			got.trees[tree][index], want.trees[tree][index] = line, line
+		}
+	}
+	ranges := [...][2]int{{0, 2047}, {0, 0}, {2047, 2047}, {0, 1023}, {1024, 2047}, {1023, 1024}, {511, 1537}, {777, 777}}
+	for step := 0; step < 128; step++ {
+		span, epoch, tree := ranges[step%len(ranges)], epochs[step%len(epochs)], step%2
+		slope, offset := math.Float64frombits(bits[(step+1)%len(bits)]), math.Float64frombits(bits[(step+5)%len(bits)])
+		got.insertRange(tree, 1, 0, studioEnvelopeChunk-1, span[0], span[1], epoch, slope, offset)
+		want.insertRange(tree, 1, 0, studioEnvelopeChunk-1, span[0], span[1], epoch, slope, offset)
+		nodeVisitCheck(t, &got, &want, step)
+	}
+}
+
+func TestStudioEnvelopeNodeVisitWrapAndClippedRebuild(t *testing.T) {
+	var got studioGainEnvelope
+	var want nodeVisitFrozenEnvelope
+	bases := [...]int64{0, 2047, 2048, 4095, 4096, 1 << 40}
+	for step := 0; step < 256; step++ {
+		frame := bases[step%len(bases)] + int64(step*31)
+		delay, look, hold, required := 19, 23, 17, float64(step%19)/20
+		got.add(frame, delay, look, hold, required)
+		want.add(frame, delay, look, hold, required)
+		nodeVisitCheck(t, &got, &want, step*2, frame, frame+19, frame+42, frame+59)
+		got.addActive(frame+31, frame, look, hold, required)
+		want.addActive(frame+31, frame, look, hold, required)
+		nodeVisitCheck(t, &got, &want, step*2+1, frame, frame+23, frame+31, frame+40)
+	}
+}
+
+func TestStudioEnvelopeNodeVisitZeroAllocations(t *testing.T) {
+	var got studioGainEnvelope
+	var want nodeVisitFrozenEnvelope
+	frame := int64(0)
+	if count := testing.AllocsPerRun(32, func() {
+		for range 16 {
+			got.add(frame, 19, 23, 17, .25)
+			got.addActive(frame+31, frame, 23, 17, .5)
+			_ = got.bound(frame + 31)
+			frame += 127
+		}
+	}); count != 0 {
+		t.Fatalf("candidate envelope allocated %g times", count)
+	}
+	frame = 0
+	if count := testing.AllocsPerRun(32, func() {
+		for range 16 {
+			want.add(frame, 19, 23, 17, .25)
+			want.addActive(frame+31, frame, 23, 17, .5)
+			_ = want.bound(frame + 31)
+			frame += 127
+		}
+	}); count != 0 {
+		t.Fatalf("frozen control allocated %g times", count)
+	}
+	nodeVisitCheck(t, &got, &want, 0, frame)
+}

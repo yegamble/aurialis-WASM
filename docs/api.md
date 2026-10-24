@@ -23,6 +23,10 @@ The optional `params.algorithmVersion` accepts omitted/zero/one as unchanged alg
 
 Both WASM modules export `aurialis_control_count(abi)` (81 for 1, 82 for 2, zero otherwise), `aurialis_algorithm_supported(version)` (one only for explicit algorithm 1), `aurialis_latency_frames()` and `aurialis_live_drain()`. The appended interface uses `aurialis_control_buffer_v2` and `aurialis_set_controls_v2(count)`; invalid length/version rejects atomically. The worklet requires implemented algorithm 1, matching current count and zero buffered latency before playing. Native `LatencyFrames()` and `Drain()` currently return zero; drain preserves destination contents and does not synthesize an IIR-decay extension. Transport alignment and filter phase are separate from buffered DSP latency.
 
+### Private qualification boundary
+
+Private harness commits `d0dd195` and `cb83d68` qualify a test-only graph comparison without changing routes, public parameters, capability exports or algorithm availability. The Go source remains qualified at `e492156`. The five-rate GoJS/WASM comparison passed 135 cases per side; this is not a live performance or output-certification result. Algorithm 2 remains rejected. See the [private checkpoint](tasks.md#private-gojs-graph-checkpoint--october-23-2026) for retained failures and cross-target limitations.
+
 ## Security and resource contract
 
 The executable binds only to loopback IPs (default `127.0.0.1:8080`). `AURIALIS_ADDR` takes precedence over `PORT`, then `-addr`; a numeric `PORT` becomes `127.0.0.1:<port>`. The request Host must match an allowed local authority and the actual port. A supplied Origin must be HTTP with the same authority; `null` is rejected. Fetch Metadata permits only `none` or `same-origin` when supplied. Rejections return 403 JSON. These checks do not provide remote authentication.

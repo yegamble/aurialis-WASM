@@ -143,6 +143,10 @@ The Go/WASM job reuses FFmpeg when it is already available. Otherwise, a separat
 
 ---
 
+## Private DSP research checkpoint
+
+The private exact-extrema graph has passed a bounded GoJS/WASM comparison: 135 cases per side produced identical PCM, encoded WAV and numeric-state records within that target. This does not select the candidate or enable algorithm 2. The 192 kHz processing deadline, browser continuity and cross-target state differences remain open. See the [private qualification record](docs/tasks.md#private-gojs-graph-checkpoint--october-23-2026) for source, evidence and retained failures.
+
 ## Verification status
 
 Gate commands above are requirements, not claims of passing CI. See [`docs/tasks.md`](docs/tasks.md) and [the ledger](.claude/war-room/ledger.md) for current-session execution evidence and open blockers. The earlier blocked vulnerability lookup was superseded by a successful Go 1.26.10 `govulncheck ./...` run reporting no vulnerabilities. Final local results and failed attempts are recorded in the task tracker; remote PR checks and owner merge remain outstanding. A passing browser smoke test does not certify analog hardware fidelity, codec support, platform release compliance or all accessibility interactions.

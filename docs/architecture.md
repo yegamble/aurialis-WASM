@@ -13,6 +13,14 @@ The engine now declares algorithm 1 explicitly while preserving omitted/zero leg
 
 Advanced reuses a shared EQ-band control group for enable/type/frequency/gain/Q and a shared limiter-release control. High-pass retains gain for other filter types but offers no gain adjustment in sliders, pointer movement or Up/Down keys. All curve markers remain visible; only the selected band owns a 44 px drag target, avoiding overlapping touch targets. Band buttons and labeled fields provide equivalent selection and adjustment.
 
+## Private graph qualification
+
+Commits `d0dd195` and `cb83d68` add a bounded, opt-in GoJS/WASM test harness. They preserve all tracked Go and `go.mod` bytes from qualified source `e492156`. Frozen original and candidate overlays differ only at the previously qualified 25 private extrema sites. This candidate is unselected; the private behavior baseline remains `b7297de`, and public algorithm 2 remains unavailable.
+
+Each rate runs in a fresh child with a closed fixture filesystem, exclusive outputs, a 25-second Go watchdog and a 28-second parent watchdog. Frame, output, log and operation bounds apply before writes. These are trusted-harness limits, not an untrusted-code sandbox or a Go/V8 process-memory guarantee. Five rates passed 135 cases per side with identical within-target output bytes.
+
+The separate native/WASM comparison found identical raw PCM and encoded 16/24-bit WAV sections in this finite corpus, but all 270 numeric-state digests differed. Their cause is unproven. The original Node-exit failure and full native recorder race timeout remain retained failures. Performance screening, browser continuity, the 192 kHz deadline and public activation remain open; the [task checkpoint](tasks.md#private-gojs-graph-checkpoint--october-23-2026) records the immutable evidence index.
+
 ## Build and serving
 
 `pnpm run build:binary` runs `scripts/build.sh`: compile `wasm/dsp` for `js/wasm` (offline preview) and `wasip1/wasm` with `-buildmode=c-shared` (live reactor), copy the matching Go `wasm_exec.js` for the offline module, run the Next.js static export and `scripts/sync-webui.mjs`, then compile `cmd/aurialis`. `internal/webui` embeds generated assets with `//go:embed all:embedded`. The native executable serves HTTP APIs and the frontend without Node at runtime.

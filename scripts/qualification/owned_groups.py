@@ -1,7 +1,8 @@
 """Private harness ownership only. Never imported by application/audio request code."""
 import hashlib,os,signal,subprocess,time
+from qualification_clock import remaining
 def snapshot():
- result=subprocess.run(['/bin/ps','-axo','pid=,ppid=,pgid=,lstart=,rss=,state='],capture_output=True,text=True,timeout=3,check=True,env={**os.environ,'LC_ALL':'C'})
+ result=subprocess.run(['/bin/ps','-axo','pid=,ppid=,pgid=,lstart=,rss=,state='],capture_output=True,text=True,timeout=remaining(3),check=True,env={**os.environ,'LC_ALL':'C'})
  rows={}
  for line in result.stdout.splitlines():
   parts=line.split()
@@ -9,7 +10,7 @@ def snapshot():
   pid,ppid,pgid=map(int,parts[:3]);rows[pid]={'pid':pid,'ppid':ppid,'pgid':pgid,'start':' '.join(parts[3:8]),'rssBytes':int(parts[8])*1024,'state':parts[9]}
  return rows
 def command_hash(pid):
- result=subprocess.run(['/bin/ps','-p',str(pid),'-o','command='],capture_output=True,text=True,timeout=3,check=False)
+ result=subprocess.run(['/bin/ps','-p',str(pid),'-o','command='],capture_output=True,text=True,timeout=remaining(3),check=False)
  if result.returncode==1 and not result.stdout.strip():return None
  if result.returncode:raise RuntimeError('Owned leader command observation failed.')
  if not result.stdout.strip():raise RuntimeError('Owned leader command disappeared.')
@@ -96,10 +97,10 @@ class OwnedGroups:
     if any(row['pgid']==group for row in check['liveMembers']):
      try:os.killpg(group,sig)
      except ProcessLookupError:pass
-   until=time.monotonic()+wait
+   until=time.monotonic()+remaining(wait)
    while time.monotonic()<until:
     observed=self.observe()
     if not observed['liveMembers']:self.events.append({'phase':'stopped','observation':observed});return observed
-    time.sleep(.025)
+    time.sleep(remaining(.025))
   observed=self.observe();self.events.append({'phase':'cleanup-unsettled','observation':observed})
   raise RuntimeError('Owned groups still have live members after bounded cleanup.')

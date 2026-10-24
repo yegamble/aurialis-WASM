@@ -19,8 +19,9 @@ from observed_service import ObservedService  # noqa: E402
 from owned_profile import OwnedProfile  # noqa: E402
 from scale_resources import (MIB, GIB, MAX_DATA, MAX_IDENTITIES, MAX_SCRATCH, MAX_LOGS, MAX_REPORTS, MAX_MISC, MIN_FREE, TERMINAL_RESERVE, disk_values, resource_values, known_identity_count, admit_sample, bounded_json)  # noqa: E402
 from scale_completion import read_json, validate_launcher, validate_scale_result  # noqa: E402
-from scale_service import service_contract, pin_service  # noqa: E402
+from scale_service import service_contract, pin_service, OwnedStaticService  # noqa: E402
 from qualification_runtime import qualification_runtime  # noqa: E402
+import qualification_clock as clock  # noqa: E402
 
 class StopFlag:
     """Never raise across an OS spawn and assignment of its owned handle."""
@@ -67,8 +68,16 @@ def write_metadata(path, value):
         temporary.unlink()
 
 
+def reap_assigned(assigned):
+    """Even exhaustion attempts wait(0) on the exact assigned direct Popen."""
+    if assigned.poll() is None: assigned.kill()
+    try: allowance = clock.remaining(3)
+    except RuntimeError: allowance = 0
+    assigned.wait(timeout=allowance)
+
+
 def command(pid):
-    return subprocess.check_output(['/bin/ps', '-p', str(pid), '-o', 'command='], text=True, timeout=3).strip()
+    return subprocess.check_output(['/bin/ps', '-p', str(pid), '-o', 'command='], text=True, timeout=clock.remaining(3)).strip()
 
 
 def main():
@@ -80,7 +89,9 @@ def main():
     parser.add_argument('--mode', choices=['normal', 'crash', 'scale'], required=True)
     parser.add_argument('--project', choices=['album-native-scale', 'album-browser-scale'], default='album-native-scale')
     parser.add_argument('--native-pid', type=int)
-    parser.add_argument('--service-pid', type=int)
+    service_options = parser.add_mutually_exclusive_group()
+    service_options.add_argument('--service-pid', type=int)
+    service_options.add_argument('--launch-static-service', action='store_true')
     parser.add_argument('--service-port', type=int, default=3927)
     parser.add_argument('--seconds', type=int, default=1800)
     arguments = parser.parse_args()
@@ -93,11 +104,16 @@ def main():
         parser.error('Exact Node binary and a wall limit between 1 and 1800 seconds required')
     if arguments.mode != 'scale' and arguments.seconds > 60:
         parser.error('No-audio controls require a wall limit of at most 60 seconds')
-    if arguments.mode == 'scale' and arguments.project == 'album-browser-scale' and not arguments.service_pid:
+    if arguments.mode == 'scale' and arguments.project == 'album-browser-scale' and not (arguments.service_pid or arguments.launch_static_service):
         parser.error('Browser scale requires its exact external service group')
     if arguments.mode == 'scale' and arguments.project == 'album-native-scale' and not arguments.native_pid:
         parser.error('Native scale must include its external host in union accounting')
-    if subprocess.check_output([str(node_path), '--version'], text=True, timeout=3).strip() != 'v26.12.0':
+    started = time.monotonic()
+    work_until = started + arguments.seconds
+    absolute_until = work_until + 60
+    work_closed = False
+    clock.configure(absolute_until); clock.phase(work_until)
+    if subprocess.check_output([str(node_path), '--version'], text=True, timeout=clock.remaining(3)).strip() != 'v26.12.0':
         raise RuntimeError('Qualification requires the actual pinned Node 26.12.0 child')
     # Denied observation must fail before Popen, and Node waits for admission ACK
     # before launching BrowserServer. A setup failure cannot escape that barrier.
@@ -107,7 +123,10 @@ def main():
     parent = ObservedProcess(os.getpid())
     native = ObservedProcess(arguments.native_pid) if arguments.native_pid else None
     service = ObservedService(arguments.service_pid) if arguments.service_pid else None
-    service_definition = service_contract(base, root, node_path, arguments.service_port) if service else None
+    owned_service = OwnedStaticService(base, root, node_path, arguments.service_port) if arguments.launch_static_service else None
+    service_terminal = False
+    service_ready = service is not None
+    service_definition = owned_service.contract if owned_service else (service_contract(base, root, node_path, arguments.service_port) if service else None)
     service_proof = pin_service(service, service_definition, snapshot()) if service else None
     if native:
         executable = Path(shlex.split(command(arguments.native_pid))[0]).resolve(strict=True)
@@ -147,16 +166,18 @@ def main():
     previous_signals = {number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGINT)}
     for number in previous_signals:
         signal.signal(number, stopping)
-    started = time.monotonic()
     log = root / ('launcher-' + scratch.name + '.log')
     def sample(allow_stopped=False):
-        nonlocal minimum_free, samples, last_sample
+        nonlocal minimum_free, samples, last_sample, service_proof
         if stopping.signal is not None and not allow_stopped:
             raise RuntimeError("Qualification supervisor stopped by signal " + str(stopping.signal))
         rows = snapshot()
         observation = owned.observe(rows) if owned else {"liveMembers": [], "groups": []}
         native_row = native.observe(rows) if native else None
-        service_rows = service.observe(rows) if service else []
+        terminal_observation = owned_service.terminal_observation() if owned_service and service_terminal else None
+        service_rows = terminal_observation["liveMembers"] if terminal_observation else (service.observe(rows) if service else [])
+        if service and service_ready and not service_terminal:
+            service_proof = pin_service(service, service_definition, rows)
         parent_row = parent.observe(rows)
         values = {**disk_values(root, scratch), **resource_values(observation["liveMembers"], child.pid if child else None, native_row, service_rows, parent_row)}
         values["knownIdentities"] = known_identity_count(owned.known if owned else {}, service.known if service else {}, service.departed if service else set(), native.identity if native else None, parent.identity)
@@ -166,13 +187,29 @@ def main():
         samples += 1
         for name, value in values.items():
             peaks[name] = max(peaks[name], value)
-        admit_sample(values, available=available, elapsed=time.monotonic() - started, seconds=arguments.seconds,
+        admit_sample(values, available=available, elapsed=time.monotonic() - started, seconds=arguments.seconds + (60 if work_closed else 0),
                      log_bytes=values["logBytes"], report_bytes=values["reportBytes"], misc_bytes=values["miscBytes"])
-        last_sample = {"values": values, "availableBytes": available, "owned": observation}
+        last_sample = {"values": values, "availableBytes": available, "owned": observation, "terminalService": terminal_observation, "phase": "cleanup" if work_closed else "work"}
         return last_sample
 
     try:
         sample()  # Unspent total demand and complete external/parent union precede allocations.
+        if owned_service:
+            # One already-counted Python parent owns both child lifetimes. No
+            # external host supervisor or second service history is introduced.
+            occupied = subprocess.run(['/usr/sbin/lsof', '-nP', '-iTCP:' + str(arguments.service_port), '-sTCP:LISTEN'], capture_output=True, timeout=clock.remaining(3), check=False)
+            if occupied.returncode != 1 or occupied.stdout:
+                raise RuntimeError('Static service port is occupied or its observation failed')
+            owned_service.prepare()
+            startup_previous = clock.phase(min(work_until, time.monotonic() + 15))
+            try:
+                owned_service.spawn()
+                service = owned_service.observer
+                sample()
+                service_proof = owned_service.ready(base, sample)
+                service_ready = True
+            finally:
+                clock.phase(startup_previous)
         profile_descriptor = profile_owner.create()
         with log.open('xb') as output:
             child = subprocess.Popen(launch, env=environment, start_new_session=True, stdout=output, stderr=subprocess.STDOUT)
@@ -212,8 +249,6 @@ def main():
                     if set(value) != expected or value['token'] != token or value['nodePID'] != child.pid or value['browserPID'] != owned.leaders['browser']['pid'] or value['phase'] != 'before-worker' or request.name != 'before-worker-' + value['id'] + '.json':
                         raise RuntimeError('Work ownership identity mismatch')
                     profile_owner.validate()
-                    if service:
-                        pin_service(service, service_definition, snapshot())
                     acknowledge_work(sample, lambda payload: write_metadata(control / (request.stem + '-ack.json'), payload), value)
                     before_ack.append(request.stem)
                 ready = control / 'probe-ready.json'
@@ -227,7 +262,7 @@ def main():
                     browser_group = owned.leaders['browser']['pgid']
                     pre_crash_browser = [dict(row) for row in check['liveMembers'] if row['pgid'] == browser_group]
                     os.killpg(child.pid, signal.SIGKILL)
-                    child.wait(timeout=3)
+                    child.wait(timeout=clock.remaining(3))
                     forced_crash = True
                     post_crash = owned.observe()
                     crash_survivors = known_group_survivors(pre_crash_browser, post_crash['liveMembers'], browser_group)
@@ -235,7 +270,7 @@ def main():
                         raise RuntimeError('No exact pre-admitted browser-group member survived controlled Node crash')
                 if child.poll() is not None:
                     break
-                time.sleep(.1 if not browser_ack else .25)
+                time.sleep(clock.remaining(.1 if not browser_ack else .25))
             if not browser_ack or not before_ack:
                 raise RuntimeError('Root exited without acknowledged browser/work ownership')
             if arguments.mode == 'crash':
@@ -246,13 +281,17 @@ def main():
     except BaseException as error:
         primary = {'type': type(error).__name__, 'message': str(error)[:4096], 'traceback': traceback.format_exc()[-8192:]}
     finally:
+        # A single absolute clock includes every cleanup. The last12s reserve
+        # direct assigned-handle reaps(2x3), final observation3 and publication3.
+        work_closed = True
+        clock.phase(absolute_until - 12)
         # Before the BrowserServer handle/candidate settles, terminating Node
         # could orphan an unadmitted detached child. Flag-only TERM lets the
         # bootstrap finish its bounded launch and close that actual handle.
         if child is not None and owned is not None and 'browser' not in owned.leaders and child.poll() is None:
             try:
                 child.terminate()
-                child.wait(timeout=25)
+                child.wait(timeout=clock.remaining(25))
             except BaseException as error:
                 cleanup.append({'phase': 'unadmitted-startup-settlement', 'type': type(error).__name__, 'message': str(error)[:4096]})
         if owned is not None and (child is None or child.poll() is not None or 'browser' in owned.leaders):
@@ -267,12 +306,30 @@ def main():
                 if child.poll() is None:
                     child.terminate()
                 try:
-                    child.wait(timeout=5)
+                    child.wait(timeout=clock.remaining(5))
                 except subprocess.TimeoutExpired:
                     child.kill()
-                    child.wait(timeout=3)
+                    child.wait(timeout=clock.remaining(3))
             except BaseException as error:
                 cleanup.append({'phase': 'direct-child', 'type': type(error).__name__, 'message': str(error)[:4096]})
+        if owned_service is not None:
+            service = owned_service.observer
+            service_terminal = True
+            try:
+                owned_service.stop()
+            except BaseException as error:
+                cleanup.append({'phase': 'owned-service-stop', 'type': type(error).__name__, 'message': str(error)[:4096]})
+            cleanup.extend(owned_service.cleanup_errors)
+        # Deadline/refused observation cannot abandon either assigned Popen.
+        # Only direct handles may be killed without group identity authority.
+        clock.phase(absolute_until - 6)
+        for phase_name, assigned in [('node-final-reap', child), ('service-final-reap', owned_service.process if owned_service else None)]:
+            if assigned is not None:
+                try:
+                    reap_assigned(assigned)
+                except BaseException as error:
+                    cleanup.append({'phase': phase_name, 'type': type(error).__name__, 'message': str(error)[:4096]})
+        clock.phase(absolute_until - 3)
         try:
             if owned is not None:
                 final_observation = owned.observe()
@@ -281,6 +338,14 @@ def main():
             sample(allow_stopped=True)
         except BaseException as error:
             cleanup.append({'phase': 'final-observation', 'type': type(error).__name__, 'message': str(error)[:4096]})
+        if owned_service:
+            try:
+                owned_service.publish('settlement.json', {'events': owned_service.events, 'terminal': owned_service.terminal, 'cleanup': owned_service.cleanup_errors}, 32 * 1024)
+                owned_service.publish('exit.json', {'pid': owned_service.process.pid if owned_service.process else None, 'exit': owned_service.process.poll() if owned_service.process else None, 'primary': primary, 'cleanup': cleanup, 'finalTerminal': owned_service.terminal}, 16 * 1024)
+            except BaseException as error:
+                cleanup.append({'phase': 'service-terminal-publication', 'type': type(error).__name__, 'message': str(error)[:4096]})
+            try: owned_service.close_log()
+            except BaseException as error: cleanup.append({'phase': 'service-log-close', 'message': str(error)[:4096]})
         # A deliberate crash preserves diagnostics even when its narrow control passed.
         if primary is None and not cleanup and arguments.mode != 'crash':
             try:
@@ -308,7 +373,8 @@ def main():
                 sample()
             except BaseException as error:
                 cleanup.append({'phase': 'success-profile-cleanup', 'type': type(error).__name__, 'message': str(error)[:4096]})
-        result = {'version': 3, 'pythonRuntime': runtime, 'mode': arguments.mode, 'launch': launch,
+        clock.phase(absolute_until)
+        result = {'version': 4, 'pythonRuntime': runtime, 'mode': arguments.mode, 'launch': launch,
                   'status': 'pass' if primary is None and not cleanup else 'fail', 'primary': primary, 'cleanup': cleanup,
                   'exitCode': child.poll() if child else None, 'seconds': round(time.monotonic() - started, 3),
                   'samples': samples, 'peaks': peaks, 'minimumFreeBytes': minimum_free,
@@ -318,6 +384,8 @@ def main():
                   'preCrashBrowserMembers': pre_crash_browser, 'confirmedCrashSurvivors': crash_survivors,
                   'postCrashObservation': post_crash, 'finalObservation': final_observation,
                   'externalNative': native.identity if native else None, 'supervisor': parent.identity,
+                  'deadline': {'workSeconds': arguments.seconds, 'cleanupAllowanceSeconds': 60, 'absoluteSeconds': arguments.seconds + 60, 'publicationRequiresObservedExitZero': True},
+                  'ownedService': {'directPID': owned_service.process.pid if owned_service.process else None, 'terminal': owned_service.terminal} if owned_service else None,
                   'externalService': {'proof': service_proof, 'admissions': service.admissions, 'events': service.events} if service else None,
                   'limits': {'seconds': arguments.seconds, 'dataBytes': MAX_DATA, 'scratchBytes': MAX_SCRATCH,
                              'logBytes': MAX_LOGS, 'reportBytes': MAX_REPORTS, 'miscBytes': MAX_MISC,
@@ -334,6 +402,7 @@ def main():
                       'fullObservationsPublished': False, 'profile': profile_owner.state(), 'workloadQualified': False}
             data = bounded_json(result)
         try:
+            clock.remaining(3)
             descriptor = os.open(receipt, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
             with os.fdopen(descriptor, 'wb') as file:
                 file.write(data)
@@ -344,6 +413,7 @@ def main():
                 os.fsync(directory)
             finally:
                 os.close(directory)
+            clock.remaining(3)
         except BaseException as error:
             result['receiptFailure'] = {'type': type(error).__name__, 'message': str(error)[:1024]}
             result['status'] = 'fail'

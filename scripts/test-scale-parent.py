@@ -61,6 +61,47 @@ class ParentContracts(unittest.TestCase):
         self.assertIs(receipt["ownedObservation"], fresh["owned"])
         self.assertIs(receipt["resourceSample"], fresh["values"])
 
+    def test_assigned_node_survives_observer_setup_failure_and_is_reaped_under_configured_clock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory).resolve(); (base / "artifacts").mkdir(); node = base / "fixture-node"; node.write_text("never executed")
+            owner = {"pid": __import__("os").getpid(), "ppid": 1, "pgid": 90, "start": "owner", "rssBytes": 1, "state": "S"}
+            process = Mock(pid=333); process.poll.return_value = None
+            process.terminate.side_effect = lambda: setattr(process.poll, "return_value", 0)
+            observer = Mock(identity=owner); observer.observe.return_value = owner
+            profile = Mock(); profile.state.return_value = {}; profile.create.return_value = {}
+            arguments = ["run-album-scale.py", "--budget-root", str(base / "artifacts/budget"), "--scratch", str(base / "artifacts/budget/normal"), "--node", str(node), "--mode", "normal", "--seconds", "60"]
+            with patch.object(PARENT.sys, "argv", arguments), patch.object(PARENT.Path, "cwd", return_value=base), patch.object(PARENT, "qualification_runtime", return_value={"fixture": True}), patch.object(PARENT, "snapshot", return_value={owner["pid"]: owner}), patch.object(PARENT, "command_hash", return_value="a" * 64), patch.object(PARENT, "ObservedProcess", return_value=observer), patch.object(PARENT, "OwnedProfile", return_value=profile), patch.object(PARENT, "OwnedGroups", side_effect=RuntimeError("observer setup rejected")), patch.object(PARENT.subprocess, "check_output", return_value="v26.12.0"), patch.object(PARENT.subprocess, "Popen", return_value=process), patch.object(PARENT.os, "statvfs", return_value=SimpleNamespace(f_bavail=20 * 1024 ** 3, f_frsize=1)), patch.object(PARENT.sys, "stdout", new=SimpleNamespace(buffer=__import__("io").BytesIO())):
+                try:
+                    self.assertEqual(PARENT.main(), 1)
+                finally:
+                    PARENT.clock.configure(None)
+            process.terminate.assert_called_once()
+            process.wait.assert_called()
+            receipt = json.loads((base / "artifacts/budget/guard-normal.json").read_text())
+            self.assertEqual(receipt["primary"]["message"], "observer setup rejected")
+            self.assertEqual(receipt["deadline"]["absoluteSeconds"], 120)
+            profile.cleanup_success.assert_not_called()
+
+    def test_actual_sample_allows_bounded_cleanup_after_work_cap_without_allowing_more_work(self):
+        tree = ast.parse((Path(__file__).parent / "run-album-scale.py").read_text())
+        definition = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef) and node.name == "sample")
+        definition.body = [ast.Global(names=node.names) if isinstance(node, ast.Nonlocal) else node for node in definition.body]
+        code = compile(ast.fix_missing_locations(ast.Module(body=[definition], type_ignores=[])), "actual-parent-sample", "exec")
+        owner = {"pid": 90, "ppid": 1, "pgid": 90, "start": "owner", "rssBytes": 1, "state": "S"}
+        parent = Mock(identity=owner); parent.observe.return_value = owner
+        environment = {**PARENT.__dict__, "minimum_free": 20 * 1024 ** 3, "samples": 0, "last_sample": None, "stopping": SimpleNamespace(signal=None), "snapshot": lambda: {90: owner}, "owned": None, "native": None, "service": None, "service_ready": False, "owned_service": None, "service_terminal": False, "parent": parent, "child": None, "base": Path("/mock"), "root": Path("/mock"), "scratch": Path("/mock/normal"), "started": 0, "arguments": SimpleNamespace(seconds=60), "work_closed": True, "peaks": dict.fromkeys(("dataBytes", "scratchBytes", "logBytes", "reportBytes", "miscBytes", "ownedRSS", "nativeRSS", "nodeRSS", "browserGroupRSS", "serviceGroupRSS", "supervisorRSS", "processes", "knownIdentities"), 0), "disk_values": lambda root, scratch: dict.fromkeys(("dataBytes", "scratchBytes", "logBytes", "reportBytes", "miscBytes"), 0)}
+        exec(code, environment)
+        with patch.object(PARENT.time, "monotonic", return_value=64), patch.object(PARENT.os, "statvfs", return_value=SimpleNamespace(f_bavail=20 * 1024 ** 3, f_frsize=1)):
+            self.assertEqual(environment["sample"]()["phase"], "cleanup")
+            environment["work_closed"] = False
+            with self.assertRaisesRegex(RuntimeError, "wall deadline"): environment["sample"]()
+
+    def test_deadline_exhaustion_still_kills_and_attempts_nonblocking_direct_reap(self):
+        process = Mock(); process.poll.return_value = None
+        with patch.object(PARENT.clock, "remaining", side_effect=RuntimeError("deadline exhausted")):
+            PARENT.reap_assigned(process)
+        process.kill.assert_called_once(); process.wait.assert_called_once_with(timeout=0)
+
     def test_parent_signal_handler_only_sets_stop_without_interrupting_handle_assignment(self):
         flag = PARENT.StopFlag(); sentinel = object()
         def spawn():

@@ -44,14 +44,17 @@ class OwnedGroups:
    if current and not same(current,expected):raise RuntimeError('Owned leader identity changed; no signal authorized.')
    if current and 'Z' not in current['state']:
     command=command_hash(current['pid'])
-    if command is None:
-     # A normal close can settle between the two observations. Recheck exact
-     # identity; never reinterpret a different process or ps failure as exit.
+    if command is None or command!=expected['commandSHA256']:
+     # macOS can replace an exiting command with its zombie display name.
+     # Only an absent or exact-identity zombie may settle this observation;
+     # a changed live command still refuses every subsequent group signal.
      fresh=snapshot().get(current['pid'])
-     if fresh is None:rows.pop(current['pid'],None);current=None
-     elif same(fresh,expected) and 'Z' in fresh['state']:rows[fresh['pid']]=fresh;current=fresh
-     else:raise RuntimeError('Owned leader exit observation did not settle.')
-    elif command!=expected['commandSHA256']:raise RuntimeError('Owned leader identity changed; no signal authorized.')
+     if fresh is None or (same(fresh,expected) and 'Z' in fresh['state']):
+      self.events.append({'phase':'confirmed-leader-exit','leader':name,'before':dict(current),'after':None if fresh is None else dict(fresh),'observedCommandSHA256':command})
+      if fresh is None:rows.pop(current['pid'],None);current=None
+      else:rows[fresh['pid']]=fresh;current=fresh
+     elif command is None:raise RuntimeError('Owned leader exit observation did not settle.')
+     else:raise RuntimeError('Owned leader identity changed; no signal authorized.')
    if name=='browser' and current and self.node_pid in rows and 'Z' not in rows[self.node_pid]['state'] and current['ppid']!=self.node_pid:raise RuntimeError('Live Node lost Browser parent relationship.')
    if current and 'Z' not in current['state']:live_leaders[current['pgid']]=current['pid']
   selected={pid:r for pid,r in rows.items() if r['pgid'] in groups}

@@ -1,0 +1,109 @@
+{
+  "scope": "SOURCE/COMMAND PLAN ONLY; no screen child, timing, build or optimization edit authorized by this plan",
+  "baseBuildId": "node-visit-build-v1",
+  "baseBUILD_SHA256": "16aacd5935e4bee8c9e253d926f9fe2d5dfbc2179f68b62b5b7e3d1195fde6f8",
+  "originalUnitIndexSHA256": "9d6e75edbc100155ff3e7d9f037054a7ee60bb7b199db6a4888cb83b06497c51",
+  "semanticIndexSHA256": "07ccfacdf5247933321e823044660461ea2fb7667a545018851e7a0642a1b2f4",
+  "modules": {
+    "baseline": {
+      "file": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/modules/wasm-baseline.wasm",
+      "bytes": 7568585,
+      "sha256": "f7f270e64ff525c12ef3c67eea786a794667df933a332a4ea02ba71090093d95",
+      "overlaySHA256": "f3a78ca5d10b09e5737378a82dfdd01edcc9fc8305991476071f04330b269a61",
+      "sourceSetSHA256": "dfcc5a16a4b1638ff4a22b672ae95048d545b01e475ab44ef979dc6ac2f7d94e"
+    },
+    "candidate": {
+      "file": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/modules/wasm-candidate.wasm",
+      "bytes": 7568582,
+      "sha256": "d7f415cb7962687b8c77b590d85a098b2fa0c287bed00542d8180cdad0dec0d3",
+      "overlaySHA256": "82affb342f82904e2aa97c0ec2ebe6d23eafd6fac3803e90090c45cbb4627ff6",
+      "sourceSetSHA256": "30416c0cc627d1d880e1991c68e0e8a7b1bab23ea1fbd248c40c0defb3a3b121"
+    }
+  },
+  "runtime": {
+    "path": "/Users/yosefgamble/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.10.darwin-arm64/lib/wasm/wasm_exec.js",
+    "sha256": "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14"
+  },
+  "frozenMethodSources": {
+    "internal/audio/dsp/testdata/extrema_screen/producer.py": "df5a074e7ad79c33dc4f21dd0ea829e63bf96e377840f61b891cbfc5d7987a00",
+    "internal/audio/dsp/testdata/extrema_screen/run-screen.py": "02873b94469aa7d5745ae8b96ee24dfdbf33a87cc2114ec6547c755b991e0f1f",
+    "internal/audio/dsp/testdata/extrema_screen/screen-child.mjs": "64c904d01ea2e0b03f1a4627b4d2cf133824a4dfb3daa94fdae58a8fcb09f7dc",
+    "internal/audio/dsp/testdata/extrema_screen/screen-contract.test.py": "039471d9b17db946c445f80a8e26b7f4e3c20127cce412b5da57a105818afd95",
+    "internal/audio/dsp/testdata/extrema_graph/closed-fs.mjs": "2e56a72cd4012b18518ce0512b5f3ffa697163f327e50ad2208e2b975ad8f2fa",
+    "internal/audio/dsp/testdata/extrema_graph/child-lifecycle.mjs": "e8f8c41a67596938f0064184665209ccdff61a14a556fd42fa801a483e4f8330",
+    "internal/audio/dsp/testdata/extrema_graph/run-wasm-pair.py": "b03ad8a71465470a11324bff8056f930307c3f687300c9bcb33042e888dcd86b",
+    "internal/audio/dsp/studio_extrema_screen_test.go": "99108f7fe4e77e69231fcf88d6ccce7a03673bc00dd5496bbcaec7dc8264e41a"
+  },
+  "metadataChangesOnly": [
+    "Fresh separate screen proof ID/directory, source index and manifest binding; preserve all old proof IDs/files.",
+    "Read graph BUILD modules.wasm.baseline/candidate directly, not old screen BUILD modules.baseline/candidate; no module copy or compilation.",
+    "Baseline is current e492 with exact6 AR exclusions; candidate is same6 plus only admitted envelope source replacement; bind existing effective source sets/overlays, not old14/6 mapping.",
+    "Bind every future host adapter source plus unchanged old method/helper/test hashes; do not falsify the frozen old9 runner inventory.",
+    "Map both existing module recorder streams to accepted same-backend e492candidate archive, reusing actual192k semantic bytes/receipts; old corresponding-label archive assumptions must not be reused.",
+    "Require source-v6 original72-unit index and unchanged first v5RED index; new proof does not remove historical failure."
+  ],
+  "unchangedWork": {
+    "rate": 192000,
+    "workloads": [
+      "steady",
+      "peaky"
+    ],
+    "models": "original Tube/Optical,makeup12,dither24",
+    "modesInEachChild": [
+      "finite",
+      "repeat"
+    ],
+    "sourceFrames": 16777216,
+    "blockFrames": 128,
+    "warmBlocks": 64,
+    "verifyBlocks": 32,
+    "timedBlocks": 32,
+    "resetAt": 0,
+    "postResetFirstFrame": 8192,
+    "postResetFinalFrame": 12288,
+    "verifyBaseFramesPerChild": 24576,
+    "measureBaseFramesPerChild": 49152,
+    "measurementTripletBaseFrames": 147456,
+    "measurementTripletHighFrameUpper": 589824,
+    "bracket": [
+      {
+        "label": "baseline",
+        "leg": "before"
+      },
+      {
+        "label": "candidate",
+        "leg": "candidate"
+      },
+      {
+        "label": "baseline",
+        "leg": "after"
+      }
+    ],
+    "verification": "Two verification children without timing per workload,32 blocks each; actual baseline/candidate PCM, numeric state and input identity must agree. Measurement children repeat verification, reset,warm64,measure32; actual timed PCM/state/clock must agree with own verification and bracket before bytes.",
+    "allocations": "Original outside-interval snapshots; nonzero malloc or total-allocation delta is RED; no overhead subtraction."
+  },
+  "unchangedCaps": {
+    "goTimeoutSeconds": 25,
+    "parentSeconds": 28,
+    "logBytes": 262144,
+    "outputBytes": 8388608,
+    "moduleBytes": 16777216,
+    "baseFrames": 200000,
+    "highFrameUpper": 800000,
+    "numericWords": 16777216,
+    "graphObjectBytes": 2097152,
+    "preparationAllowanceBytes": 6291456,
+    "screenTestAllowanceBytes": 327680,
+    "closedFS": "unchanged original helper caps, exclusive0600 output, descriptor/request/write/receipt caps",
+    "nodeArgv": "Exact old screen Node26 argv; no new heap/stack flags or RSS polling silently inherited from original-unit host."
+  },
+  "releaseSequence": [
+    "Root reviews this plan and any minimal binding/lifecycle adapter source+synthetic checks. No adapter implementation is claimed here.",
+    "Reuse bound192k actual recorder gate bytes and receipts; no new fixture child assumed.",
+    "Separate explicit release for exactly2 verify children per workload; fresh exclusive IDs, no retries.",
+    "Only after accepted verification, root explicit timing release AND all-agent quiet ACK, run first baseline/candidate/baseline triplet per workload sequentially. No source-plan command starts timing."
+  ],
+  "lifecycleReview": "The frozen old supervisor has selector registration before its owned try/finally. Do not edit frozen helpers or reuse that setup gap in a new launcher. A minimal host-owned registration/kill/reap guard must be source-reviewed separately; this does not change Go work, timed interval or caps. Do not add unit RSS polling to the screen method.",
+  "interpretation": "32-block batch means only; no worst-callback/browser/physical-deadline/headroom/steady-state claim. Declared 16M source is before source wrap/EOF; only12288 after reset frames observed, no drain. Existing192k steady RED remains open; no global noisy-threshold waiver.",
+  "additionalExactArithmeticOpportunity": "No additional candidate admitted from coarse gain/saturation/guard stack counts. They do not identify a proven arithmetic-preserving speedup; qualified Go/envelope remain frozen."
+}

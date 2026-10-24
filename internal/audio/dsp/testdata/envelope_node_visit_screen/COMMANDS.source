@@ -1,0 +1,11 @@
+# Source-only sequence for the future reviewed same-module adapter.
+# No runnable new adapter exists in this checkpoint; never point the old
+# producer at the new graph pair or forge an old screen BUILD manifest.
+# 1. Admit graph BUILD16aac..., semantic07cc..., original-units9d6e...,
+#    exact two existing modules and the source pins in PLAN.json.
+# 2. Root separately releases 2 verify children without timing per workload,
+#    preserving original steady/peaky input, finite/repeat order and64/32 blocks.
+# 3. After actual verification and root timing release plus quiet ACK only:
+#    baseline-before -> candidate -> baseline-after, one fresh child at a time,
+#    for each closed workload. No rerun, raised cap or changed original test.
+# This file intentionally executes nothing and does not claim timing release.

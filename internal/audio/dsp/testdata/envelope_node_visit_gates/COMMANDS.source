@@ -1,0 +1,18 @@
+# cspell:ignore GOMAXPROCS worktrees
+# SOURCE PROPOSAL ONLY; no gate execution has been released.
+# Concrete native argv example, to be launched only through unchanged bounded_child:
+# env GOMAXPROCS=1; Go timeout25s; parent28s; log cap262144; fresh exclusive directory.
+["/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/modules/native-baseline.test", "-test.run=^TestStudioPartitionedGraphFixedAvailabilityAndAdmission$", "-test.count=1", "-test.v", "-test.timeout=25s"]
+# Candidate substitutes only the bound native-candidate.test module.
+# Select only exact names and separate reviewed unit work bounds from PLAN.json, one whole test per child.
+# No benchmarks, calibration, repeats, output overwrites, rate/bin truncation or new builds.
+# ACTUAL WASM: the same selected tests exist in the bound wasm-baseline/candidate modules.
+# Existing fixture-only child cannot run ordinary invariant tests unchanged.
+# A separately reviewed log-only adapter must bind BUILD/module/runtime/source hashes,
+# use pinned Node26 + unchanged closedFS/post-exit helpers, require exact start/PASS/no skip,
+# expect no PCM/file open/write, preserve 25s/28s/256KiB limits and 192 MiB Node heap,
+# source-verify arrays/scratch, monitor each actual native/Node child RSS <= 1 GiB,
+# and retain all raw exit/monitor receipts. No unit execution is released yet.
+# No runnable WASM gate command or adapter implementation is asserted in this proposal.
+# TestWriteStudioExtremaScreen is present in all four modules; future screen needs only
+# a separately reviewed host adapter, with no extra Go/WASM/Next build or timing release.

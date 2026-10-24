@@ -1,0 +1,330 @@
+{
+  "scope": "SOURCE/COMMAND PROPOSAL ONLY; no gate or timing release",
+  "baseBuildId": "node-visit-build-v1",
+  "baseBUILD_SHA256": "16aacd5935e4bee8c9e253d926f9fe2d5dfbc2179f68b62b5b7e3d1195fde6f8",
+  "acceptedSemanticIndexSHA256": "07ccfacdf5247933321e823044660461ea2fb7667a545018851e7a0642a1b2f4",
+  "testCount": 18,
+  "backendLabels": [
+    "native-baseline",
+    "native-candidate",
+    "wasm-baseline",
+    "wasm-candidate"
+  ],
+  "additionalGoOrNextBuildRequired": false,
+  "catalogEvidence": "normal untagged Go test declarations + exact module byte-name offsets; no execution or listing probe",
+  "tests": [
+    {
+      "name": "TestStudioExactExtremaBitContract",
+      "file": "internal/audio/dsp/studio_extrema_exact_test.go",
+      "line": 17,
+      "sourceSHA256": "49b9c1651a759692d60aff8c94e350d667c94aad14ce1e50d5c8f8dd0325b421",
+      "scope": "IEEE extrema helper contract",
+      "originalWorkAndAssertions": "fixed original special-value vectors; no PCM recorder",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "ordinary-unit",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioGainEnvelopeMatchesNaive",
+      "file": "internal/audio/dsp/studio_gain_envelope_test.go",
+      "line": 8,
+      "sourceSHA256": "c9fb91fbd089755f3bf41f107e778422bbeeb6dd42bed0fa6259f611dcb98f35",
+      "scope": "multi-chunk wrap and independent scalar envelope",
+      "originalWorkAndAssertions": "7 configurations x 50,000 clock/query iterations; 4,096-slot scalar reference; unchanged 2e-14 tolerance",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "separate-unit-work-bound-reviewed",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioGainEnvelopeLargeClockAndClippedRebuild",
+      "file": "internal/audio/dsp/studio_gain_envelope_test.go",
+      "line": 73,
+      "sourceSHA256": "c9fb91fbd089755f3bf41f107e778422bbeeb6dd42bed0fa6259f611dcb98f35",
+      "scope": "large clock and clipped active rebuild",
+      "originalWorkAndAssertions": "48 events, 3,000 queries near 2^53; unchanged 3e-14 tolerance",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "ordinary-unit",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioLimiterGain4xActualSamplesBoundLinkedAndTail",
+      "file": "internal/audio/dsp/studio_limiter_gain4x_test.go",
+      "line": 14,
+      "sourceSHA256": "a187c27b9e65260268ea3ee87d461b60117bff6ba22c3b6bca89f557abe996dd",
+      "scope": "linked stereo, actual high-rate bound and final sample",
+      "originalWorkAndAssertions": "5 rates; 8,192 samples plus existing lookahead/reset tails; 47,216 high-rate process calls",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "bounded-core",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioLimiterGain4xTransparentDisabledInvalidAndNoAllocations",
+      "file": "internal/audio/dsp/studio_limiter_gain4x_test.go",
+      "line": 60,
+      "sourceSHA256": "a187c27b9e65260268ea3ee87d461b60117bff6ba22c3b6bca89f557abe996dd",
+      "scope": "signed-zero/subnormal null, disabled/invalid and no allocation",
+      "originalWorkAndAssertions": "5 rates x enabled/disabled x 2,048 samples plus lookahead; original AllocsPerRun(100) x 128 at 48 kHz",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "bounded-core",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioPartitionedGraphDelayIdentityAndActualWetImpulse",
+      "file": "internal/audio/dsp/studio_graph_partitioned_test.go",
+      "line": 18,
+      "sourceSHA256": "af5690b0064a0d63dc2295a5f23ffe9a2281d690c9d598ca004fd2a87b6053ca",
+      "scope": "declared delay and exact dry/original/final sample",
+      "originalWorkAndAssertions": "5 rates x 4 modes x 257 samples plus original drains; 40,132 base process/drain frames",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "bounded-core",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioPartitionedGraphEpochPartitionAndRepeat",
+      "file": "internal/audio/dsp/studio_graph_partitioned_test.go",
+      "line": 22,
+      "sourceSHA256": "af5690b0064a0d63dc2295a5f23ffe9a2281d690c9d598ca004fd2a87b6053ca",
+      "scope": "partition, seek/reset epoch and actual repeated-source seams",
+      "originalWorkAndAssertions": "5 rates; finite 513, seek 137, repeated 129 x 40 blocks; 513/127 partitions; at most 101,210 base frames from original maximum latency 2036",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "bounded-core",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioPartitionedGraphFixedAvailabilityAndAdmission",
+      "file": "internal/audio/dsp/studio_graph_partitioned_test.go",
+      "line": 30,
+      "sourceSHA256": "af5690b0064a0d63dc2295a5f23ffe9a2281d690c9d598ca004fd2a87b6053ca",
+      "scope": "in-place input/output alias, capacity/admission and no allocation",
+      "originalWorkAndAssertions": "5 rates; original AllocsPerRun(3) x128; 2,560 process frames including warm call; reject repair/version2/loudness matching",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "bounded-core",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioPartitionedGuardModesAndRebuiltBirths",
+      "file": "internal/audio/dsp/studio_graph_partitioned_test.go",
+      "line": 108,
+      "sourceSHA256": "af5690b0064a0d63dc2295a5f23ffe9a2281d690c9d598ca004fd2a87b6053ca",
+      "scope": "mode edits, rebuilt births, scalar bound and channel linkage",
+      "originalWorkAndAssertions": "5 rates x 15,000 frames; exact original edit clocks/tolerances, 75,000 base frames",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "bounded-core",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioPartitionedGuardDisabledExactDelayAndReset",
+      "file": "internal/audio/dsp/studio_graph_partitioned_test.go",
+      "line": 165,
+      "sourceSHA256": "af5690b0064a0d63dc2295a5f23ffe9a2281d690c9d598ca004fd2a87b6053ca",
+      "scope": "disabled bit identity, signed zero and cleared history",
+      "originalWorkAndAssertions": "5 rates; original 4,096 warm plus 4 input values and 2 declared latency tails; 33,589 base frames",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "bounded-core",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioPartitionedGraphTinyFiniteEOFAndDither",
+      "file": "internal/audio/dsp/studio_graph_partitioned_test.go",
+      "line": 211,
+      "sourceSHA256": "af5690b0064a0d63dc2295a5f23ffe9a2281d690c9d598ca004fd2a87b6053ca",
+      "scope": "tiny/partial finite EOF, final sample and dither sequence",
+      "originalWorkAndAssertions": "5 rates x lengths1/127/128/129 x bits0/16/24 x direct+partitioned renders;213,882 aggregate base process/drain frames,855,528 high-frame upper",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "separate-unit-work-bound-reviewed",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioPartitionedPostDetectorFFTAndStereoLeakage",
+      "file": "internal/audio/dsp/studio_limiter_partitioned_detector_test.go",
+      "line": 51,
+      "sourceSHA256": "2f11a4166a9fba2159e3132e8f55f76785357cd89f5d6be7927f1b830486f523",
+      "scope": "packed-channel isolation, transform round trip and no allocation",
+      "originalWorkAndAssertions": "original FFT arrays; 2,048 samples plus AllocsPerRun(2) x128 including warm call; 2,432 base process frames",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "bounded-core",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioPartitionedPostDetectorPartitionResetAndPartialEOF",
+      "file": "internal/audio/dsp/studio_limiter_partitioned_detector_test.go",
+      "line": 266,
+      "sourceSHA256": "2f11a4166a9fba2159e3132e8f55f76785357cd89f5d6be7927f1b830486f523",
+      "scope": "external partition, partial EOF, timestamp and reset",
+      "originalWorkAndAssertions": "original partitions 1/127/128/129/513; 1,409-source+zero array; 21,135 base process frames across reference/current/reset",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "bounded-core",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioPartitionedPostDetectorDirectConvolutionAndFiniteEdges",
+      "file": "internal/audio/dsp/studio_limiter_partitioned_detector_test.go",
+      "line": 140,
+      "sourceSHA256": "2f11a4166a9fba2159e3132e8f55f76785357cd89f5d6be7927f1b830486f523",
+      "scope": "independent direct FIR and finite boundaries",
+      "originalWorkAndAssertions": "original 7 frame-count nested cases 1/127/128/129/257/513/4097; 13,952 base process frames; unchanged arithmetic allowance",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "bounded-core",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioLimiterGain4xEnvelopeMatchesNaive",
+      "file": "internal/audio/dsp/studio_gain_envelope_test.go",
+      "line": 42,
+      "sourceSHA256": "c9fb91fbd089755f3bf41f107e778422bbeeb6dd42bed0fa6259f611dcb98f35",
+      "scope": "production gain versus independent scalar implementation",
+      "originalWorkAndAssertions": "5 rates x 100,000 high-rate steps x 2 implementations =1,000,000 high-rate process calls; original tolerances intact",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "separate-unit-work-bound-reviewed",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioTubeNominalAliasAndPublishedHotDriveWorstCase",
+      "file": "internal/audio/dsp/studio_saturation_test.go",
+      "line": 167,
+      "sourceSHA256": "86af7aeb1425e486afc1e86744a7e0341988f45d600b398ff53c73793e200d5a",
+      "scope": "nominal spectral alias and retained hot-drive diagnostic",
+      "originalWorkAndAssertions": "44.1/48 kHz x 3 bins x 2 drives; original warm max(16,384,rate/2)+8,192 samples each;374,604 aggregate base frames",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "separate-unit-work-bound-reviewed",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioTapeNominalAliasAndPublishedHotDriveWorstCase",
+      "file": "internal/audio/dsp/studio_saturation_tape_test.go",
+      "line": 117,
+      "sourceSHA256": "024e33e57a8eb227ffe7e24adf431c34557be051c6ef9e6dffcae8b315996484",
+      "scope": "nominal spectral alias and retained hot-drive diagnostic",
+      "originalWorkAndAssertions": "same original 374,604 base frames and -75 dBFS nominal threshold; hot case finite/non-silent only",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "separate-unit-work-bound-reviewed",
+      "execution": "NOT RUN; separate Chair release required"
+    },
+    {
+      "name": "TestStudioTransformerNominalAliasAndPublishedHotDriveWorstCase",
+      "file": "internal/audio/dsp/studio_saturation_transformer_test.go",
+      "line": 129,
+      "sourceSHA256": "2345740c2d4a212219a79545985ea544a7cab2390c2667896a575e83397f2972",
+      "scope": "nominal spectral alias and retained hot-drive diagnostic",
+      "originalWorkAndAssertions": "same original 374,604 base frames and -75 dBFS nominal threshold; hot case finite/non-silent only",
+      "nativeApplicable": true,
+      "actualWasmApplicable": true,
+      "status": "separate-unit-work-bound-reviewed",
+      "execution": "NOT RUN; separate Chair release required"
+    }
+  ],
+  "resourcePolicy": {
+    "moduleBytesMax": 16777216,
+    "goTestTimeoutSeconds": 25,
+    "parentWallSeconds": 28,
+    "parentLogBytesMax": 262144,
+    "sequentialChildren": true,
+    "noRetriesOrOutputOverwrite": true,
+    "fixedRecorderCapsUnchanged": {
+      "baseFrames": 200000,
+      "highFrameUpper": 800000,
+      "numericWords": 16777216,
+      "outputBytes": 8388608,
+      "graphObjectBytes": 2097152,
+      "scratchPreparationAllowanceBytes": 6291456
+    },
+    "importantDistinction": "The fixed 27-case recorder retains all existing counters/caps unchanged. Separate reviewed unit work bounds preserve entire existing named functions, including larger workloads. These units emit no PCM; no recorder acceptance or universal RSS guarantee is inferred. Unit execution is still unreleased pending array/scratch verification and a reviewed log-only/RSS host adapter.",
+    "separateReviewedUnitWorkBounds": {
+      "baseFramesMax": 374604,
+      "highFrameUpperMax": 1498416,
+      "scalarClockQueryIterationsMax": 350000,
+      "tinyEofBaseFrames": 213882,
+      "tinyEofHighFrameUpper": 855528,
+      "gainNaiveHighRateProcessCalls": 1000000,
+      "scope": "whole immutable original unit functions; not recorder counter acceptance; no counts/rates/tails/tolerances shortened"
+    },
+    "proposedUnitHostBounds": {
+      "nodeOldSpaceMiB": 192,
+      "nativeObservedRSSBytesMax": 1073741824,
+      "goJsParentObservedRSSBytesMax": 1073741824,
+      "noPcmOrFileOpenOrFileWrite": true,
+      "sourceArrayAndScratchVerification": "required before execution release",
+      "RSSMonitorSourceAndSyntheticProof": "required before execution release; observed OS RSS, not a claim of instantaneous hard ceiling"
+    }
+  },
+  "hostPlan": {
+    "native": "existing absolute native module + exactly one anchored existing test name per child, count1,v,timeout25; unchanged bounded_child supervisor28s and log256KiB; retain all raw logs/receipts",
+    "actualWasm": "existing WASM module, pinned Node26/runtime, unchanged closedFS and post-exit helpers; separately review a new log-only host adapter with exact test whitelist and base BUILD/module/runtime hashes. No PCM file is expected; require no file open/data, clean Go exit and exact started/PASS log admission. Existing frozen fixture child is hard-coded and must not be edited or reused as a general gate child.",
+    "oldScreen": "entry exists in all four compiled modules; any future screen adapter is host-only and separately reviewed. This is no performance release.",
+    "notIncluded": "No studio_stress, AR, new .source-only Go controls, benchmark, profiler, UI/E2E or cross-target normalization command"
+  },
+  "pendingRulings": [
+    "Review exact largest graph/scratch array source bounds and a native/GoJS-parent observed RSS monitor capped at 1 GiB before unit execution.",
+    "Review minimal log-only host adapter, exact test-result/receipt admission and synthetic contracts; no unit execution is released yet.",
+    "Only after original gates pass may Chair review separate quiet timing; existing 192 kHz RED remains."
+  ],
+  "groups": {
+    "alias": {
+      "inPlaceAndAdmission": [
+        "TestStudioPartitionedGraphFixedAvailabilityAndAdmission"
+      ],
+      "packedStereo": [
+        "TestStudioPartitionedPostDetectorFFTAndStereoLeakage"
+      ],
+      "spectralHeld": [
+        "TestStudioTubeNominalAliasAndPublishedHotDriveWorstCase",
+        "TestStudioTapeNominalAliasAndPublishedHotDriveWorstCase",
+        "TestStudioTransformerNominalAliasAndPublishedHotDriveWorstCase"
+      ]
+    },
+    "partition": [
+      "TestStudioPartitionedGraphEpochPartitionAndRepeat",
+      "TestStudioPartitionedPostDetectorPartitionResetAndPartialEOF",
+      "TestStudioPartitionedPostDetectorDirectConvolutionAndFiniteEdges"
+    ],
+    "tail": [
+      "TestStudioLimiterGain4xActualSamplesBoundLinkedAndTail",
+      "TestStudioPartitionedGraphDelayIdentityAndActualWetImpulse",
+      "TestStudioPartitionedGraphTinyFiniteEOFAndDither",
+      "TestStudioPartitionedPostDetectorPartitionResetAndPartialEOF"
+    ],
+    "wrap": [
+      "TestStudioGainEnvelopeMatchesNaive",
+      "TestStudioGainEnvelopeLargeClockAndClippedRebuild",
+      "TestStudioPartitionedGraphEpochPartitionAndRepeat"
+    ],
+    "reset": [
+      "TestStudioLimiterGain4xActualSamplesBoundLinkedAndTail",
+      "TestStudioPartitionedGuardDisabledExactDelayAndReset",
+      "TestStudioPartitionedGraphEpochPartitionAndRepeat",
+      "TestStudioPartitionedPostDetectorPartitionResetAndPartialEOF"
+    ],
+    "capacity": [
+      "TestStudioPartitionedGraphFixedAvailabilityAndAdmission"
+    ],
+    "noalloc": [
+      "TestStudioLimiterGain4xTransparentDisabledInvalidAndNoAllocations",
+      "TestStudioPartitionedGraphFixedAvailabilityAndAdmission",
+      "TestStudioPartitionedPostDetectorFFTAndStereoLeakage"
+    ],
+    "scalarAndIEEE": [
+      "TestStudioExactExtremaBitContract",
+      "TestStudioGainEnvelopeMatchesNaive",
+      "TestStudioGainEnvelopeLargeClockAndClippedRebuild",
+      "TestStudioPartitionedGuardModesAndRebuiltBirths",
+      "TestStudioLimiterGain4xEnvelopeMatchesNaive"
+    ]
+  }
+}

@@ -1,0 +1,146 @@
+{
+  "scope": "read-only source declarations and raw compiled-name presence; repository-relative module paths; no -test.list, test binary or Node-Go executed",
+  "BUILD_SHA256": "16aacd5935e4bee8c9e253d926f9fe2d5dfbc2179f68b62b5b7e3d1195fde6f8",
+  "all18SelectedTestsPresentInAllFourModules": true,
+  "oldScreenOptInPresentInAllFourModules": true,
+  "fixtureEntryPresentInAllFourModules": true,
+  "negativeControls": "excluded AR, studio_stress build-tagged probe and .source-only control are absent in all four",
+  "modules": [
+    {
+      "backend": "native",
+      "label": "baseline",
+      "file": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/modules/native-baseline.test",
+      "bytes": 6611490,
+      "sha256": "2597fd60ee3809e2b633abee0a48ac01cf40fd15b2bc40a99d4b931b822c3759",
+      "existingTestNameByteOffsets": {
+        "TestStudioExactExtremaBitContract": 1868801,
+        "TestStudioGainEnvelopeMatchesNaive": 1871344,
+        "TestStudioGainEnvelopeLargeClockAndClippedRebuild": 1898746,
+        "TestStudioLimiterGain4xActualSamplesBoundLinkedAndTail": 1905209,
+        "TestStudioLimiterGain4xTransparentDisabledInvalidAndNoAllocations": 1915730,
+        "TestStudioPartitionedGraphDelayIdentityAndActualWetImpulse": 1909423,
+        "TestStudioPartitionedGraphEpochPartitionAndRepeat": 1898844,
+        "TestStudioPartitionedGraphFixedAvailabilityAndAdmission": 1906398,
+        "TestStudioPartitionedGuardModesAndRebuiltBirths": 1896417,
+        "TestStudioPartitionedGuardDisabledExactDelayAndReset": 1902744,
+        "TestStudioPartitionedGraphTinyFiniteEOFAndDither": 1897831,
+        "TestStudioPartitionedPostDetectorFFTAndStereoLeakage": 1902796,
+        "TestStudioPartitionedPostDetectorPartitionResetAndPartialEOF": 1911825,
+        "TestStudioPartitionedPostDetectorDirectConvolutionAndFiniteEdges": 1914706,
+        "TestStudioLimiterGain4xEnvelopeMatchesNaive": 1889275,
+        "TestStudioTubeNominalAliasAndPublishedHotDriveWorstCase": 1906563,
+        "TestStudioTapeNominalAliasAndPublishedHotDriveWorstCase": 1906508,
+        "TestStudioTransformerNominalAliasAndPublishedHotDriveWorstCase": 1913460,
+        "TestWriteStudioExtremaScreen": 1859444,
+        "TestWriteStudioExtremaGraphFixtures": 1873285
+      },
+      "excludedOrSourceOnlyNamesAbsent": {
+        "TestStudioARRepairPredictableTruthAndUntouchedBytes": -1,
+        "TestStudioPartitionedGraphFiniteNyquistFinalOutput": -1,
+        "TestStudioEnvelopeNodeVisitIEEEAndFullState": -1
+      }
+    },
+    {
+      "backend": "native",
+      "label": "candidate",
+      "file": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/modules/native-candidate.test",
+      "bytes": 6611490,
+      "sha256": "2ba1702126b4fb003f58dff458dd909a3f4e6f9a79f47d1fb166e6f39574daff",
+      "existingTestNameByteOffsets": {
+        "TestStudioExactExtremaBitContract": 1868801,
+        "TestStudioGainEnvelopeMatchesNaive": 1871344,
+        "TestStudioGainEnvelopeLargeClockAndClippedRebuild": 1898746,
+        "TestStudioLimiterGain4xActualSamplesBoundLinkedAndTail": 1905209,
+        "TestStudioLimiterGain4xTransparentDisabledInvalidAndNoAllocations": 1915730,
+        "TestStudioPartitionedGraphDelayIdentityAndActualWetImpulse": 1909423,
+        "TestStudioPartitionedGraphEpochPartitionAndRepeat": 1898844,
+        "TestStudioPartitionedGraphFixedAvailabilityAndAdmission": 1906398,
+        "TestStudioPartitionedGuardModesAndRebuiltBirths": 1896417,
+        "TestStudioPartitionedGuardDisabledExactDelayAndReset": 1902744,
+        "TestStudioPartitionedGraphTinyFiniteEOFAndDither": 1897831,
+        "TestStudioPartitionedPostDetectorFFTAndStereoLeakage": 1902796,
+        "TestStudioPartitionedPostDetectorPartitionResetAndPartialEOF": 1911825,
+        "TestStudioPartitionedPostDetectorDirectConvolutionAndFiniteEdges": 1914706,
+        "TestStudioLimiterGain4xEnvelopeMatchesNaive": 1889275,
+        "TestStudioTubeNominalAliasAndPublishedHotDriveWorstCase": 1906563,
+        "TestStudioTapeNominalAliasAndPublishedHotDriveWorstCase": 1906508,
+        "TestStudioTransformerNominalAliasAndPublishedHotDriveWorstCase": 1913460,
+        "TestWriteStudioExtremaScreen": 1859444,
+        "TestWriteStudioExtremaGraphFixtures": 1873285
+      },
+      "excludedOrSourceOnlyNamesAbsent": {
+        "TestStudioARRepairPredictableTruthAndUntouchedBytes": -1,
+        "TestStudioPartitionedGraphFiniteNyquistFinalOutput": -1,
+        "TestStudioEnvelopeNodeVisitIEEEAndFullState": -1
+      }
+    },
+    {
+      "backend": "wasm",
+      "label": "baseline",
+      "file": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/modules/wasm-baseline.wasm",
+      "bytes": 7568585,
+      "sha256": "f7f270e64ff525c12ef3c67eea786a794667df933a332a4ea02ba71090093d95",
+      "existingTestNameByteOffsets": {
+        "TestStudioExactExtremaBitContract": 5243625,
+        "TestStudioGainEnvelopeMatchesNaive": 5245871,
+        "TestStudioGainEnvelopeLargeClockAndClippedRebuild": 5272314,
+        "TestStudioLimiterGain4xActualSamplesBoundLinkedAndTail": 5278478,
+        "TestStudioLimiterGain4xTransparentDisabledInvalidAndNoAllocations": 5288833,
+        "TestStudioPartitionedGraphDelayIdentityAndActualWetImpulse": 5282524,
+        "TestStudioPartitionedGraphEpochPartitionAndRepeat": 5272412,
+        "TestStudioPartitionedGraphFixedAvailabilityAndAdmission": 5279613,
+        "TestStudioPartitionedGuardModesAndRebuiltBirths": 5270079,
+        "TestStudioPartitionedGuardDisabledExactDelayAndReset": 5276013,
+        "TestStudioPartitionedGraphTinyFiniteEOFAndDither": 5271399,
+        "TestStudioPartitionedPostDetectorFFTAndStereoLeakage": 5276065,
+        "TestStudioPartitionedPostDetectorPartitionResetAndPartialEOF": 5284926,
+        "TestStudioPartitionedPostDetectorDirectConvolutionAndFiniteEdges": 5287809,
+        "TestStudioLimiterGain4xEnvelopeMatchesNaive": 5263069,
+        "TestStudioTubeNominalAliasAndPublishedHotDriveWorstCase": 5279778,
+        "TestStudioTapeNominalAliasAndPublishedHotDriveWorstCase": 5279723,
+        "TestStudioTransformerNominalAliasAndPublishedHotDriveWorstCase": 5286501,
+        "TestWriteStudioExtremaScreen": 5234877,
+        "TestWriteStudioExtremaGraphFixtures": 5247642
+      },
+      "excludedOrSourceOnlyNamesAbsent": {
+        "TestStudioARRepairPredictableTruthAndUntouchedBytes": -1,
+        "TestStudioPartitionedGraphFiniteNyquistFinalOutput": -1,
+        "TestStudioEnvelopeNodeVisitIEEEAndFullState": -1
+      }
+    },
+    {
+      "backend": "wasm",
+      "label": "candidate",
+      "file": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/modules/wasm-candidate.wasm",
+      "bytes": 7568582,
+      "sha256": "d7f415cb7962687b8c77b590d85a098b2fa0c287bed00542d8180cdad0dec0d3",
+      "existingTestNameByteOffsets": {
+        "TestStudioExactExtremaBitContract": 5243625,
+        "TestStudioGainEnvelopeMatchesNaive": 5245871,
+        "TestStudioGainEnvelopeLargeClockAndClippedRebuild": 5272314,
+        "TestStudioLimiterGain4xActualSamplesBoundLinkedAndTail": 5278478,
+        "TestStudioLimiterGain4xTransparentDisabledInvalidAndNoAllocations": 5288833,
+        "TestStudioPartitionedGraphDelayIdentityAndActualWetImpulse": 5282524,
+        "TestStudioPartitionedGraphEpochPartitionAndRepeat": 5272412,
+        "TestStudioPartitionedGraphFixedAvailabilityAndAdmission": 5279613,
+        "TestStudioPartitionedGuardModesAndRebuiltBirths": 5270079,
+        "TestStudioPartitionedGuardDisabledExactDelayAndReset": 5276013,
+        "TestStudioPartitionedGraphTinyFiniteEOFAndDither": 5271399,
+        "TestStudioPartitionedPostDetectorFFTAndStereoLeakage": 5276065,
+        "TestStudioPartitionedPostDetectorPartitionResetAndPartialEOF": 5284926,
+        "TestStudioPartitionedPostDetectorDirectConvolutionAndFiniteEdges": 5287809,
+        "TestStudioLimiterGain4xEnvelopeMatchesNaive": 5263069,
+        "TestStudioTubeNominalAliasAndPublishedHotDriveWorstCase": 5279778,
+        "TestStudioTapeNominalAliasAndPublishedHotDriveWorstCase": 5279723,
+        "TestStudioTransformerNominalAliasAndPublishedHotDriveWorstCase": 5286501,
+        "TestWriteStudioExtremaScreen": 5234877,
+        "TestWriteStudioExtremaGraphFixtures": 5247642
+      },
+      "excludedOrSourceOnlyNamesAbsent": {
+        "TestStudioARRepairPredictableTruthAndUntouchedBytes": -1,
+        "TestStudioPartitionedGraphFiniteNyquistFinalOutput": -1,
+        "TestStudioEnvelopeNodeVisitIEEEAndFullState": -1
+      }
+    }
+  ]
+}

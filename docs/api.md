@@ -11,6 +11,8 @@ API CI runs the complete Newman collection and raw security probes against the v
 
 ## Album orchestration — private integration checkpoint
 
+The scale-only network observer now bounds request metadata and report publication, failing explicitly on overflow. Three synthetic Node controls and applicable static checks passed; no actual request/audio qualification is added and no HTTP contract changes.
+
 The QA supervisor now refuses unsupported Python before launching children; its separate profile primitive also checks Python 3.14.6 and fd-relative cleanup before creating directories. Nine synthetic directory/runtime controls passed. The earlier Python 3.9.6 cleanup failure remains retained; actual profile/resource integration remains open. These qualification-only checks add no endpoint.
 
 The QA-only external service-group observer adds no endpoint or signal authority. The corrected observer passed 21 pure identity/ancestry/resource-union controls, including refusal of departed or terminal identities that reappear with the same coarse identifiers. The earlier 16-control gap and failing probes remain retained; actual service observation and parent resource/ACK wiring remain unqualified. Existing application producers and API behavior are unchanged.

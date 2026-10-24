@@ -1,15 +1,26 @@
 /* Paths belong to the bounded Playwright fixture/artifact scope, never audio filenames. */
 /* eslint-disable security/detect-non-literal-fs-filename */
-import { expect, test } from "@playwright/test";
+import { expect, test, type BrowserContext } from "@playwright/test";
+import { scaleNetworkObservation } from "../scripts/qualification/network-observation.mjs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { observeAlbum, workspace, openAlbum, report } from "./album-cases";
 import { beforeOwnedWork, admitDisk, scaleSource, canonicalBytes, totalEncodedBytes, memoryProfile, retainScaleDownload } from "./album-scale-tools";
 
+const inventories = new WeakMap<BrowserContext, ReturnType<typeof scaleNetworkObservation>>();
+test.afterEach(async ({ context }, info) => {
+  const observation = inventories.get(context);
+  if (observation) {
+    observation.close();
+    await info.attach("network-inventory.json", { body: observation.serialize(info.status === "passed"), contentType: "application/json" });
+    observation.assert();
+  }
+});
+
 test("three real 180-second 48 kHz tracks use bounded durable delivery beyond the old aggregate cache", async ({ page, context }, info) => {
   test.setTimeout(1_800_000); await observeAlbum(page); await memoryProfile(page, 8);
   const directory = resolve(process.env.AURIALIS_ALBUM_SCALE_SOURCES ?? "artifacts/album-scale-shared-sources"); await mkdir(info.outputDir, { recursive: true });
-  const network: { url: string; method: string; bytes: number }[] = []; context.on("request", (request) => { network.push({ url: request.url(), method: request.method(), bytes: request.postDataBuffer()?.length ?? 0 }); });
+  const observation = scaleNetworkObservation(context); inventories.set(context, observation); const network = observation.requests;
   const sources = [], disk = [];
   for (let index = 0; index < 3; index++) {
     const source = await scaleSource(directory, index); sources.push(source); disk.push(await admitDisk(info.outputDir, canonicalBytes * 2));
@@ -31,5 +42,8 @@ test("three real 180-second 48 kHz tracks use bounded durable delivery beyond th
   if (info.project.name === "album-browser-scale") { expect(network.filter((entry) => !["GET", "HEAD"].includes(entry.method) || entry.bytes)).toEqual([]); expect(network.every((entry) => new URL(entry.url).origin === new URL(page.url()).origin)).toBe(true); }
   const expected = resolve(directory, "native-output-hashes.json"), hashes = files.map((file) => file.sha256);
   if (info.project.name === "album-native-scale") await writeFile(expected, JSON.stringify(hashes)); else expect(hashes).toEqual(JSON.parse(await readFile(expected, "utf8")));
-  await info.attach("full-album-delivery.json", { body: JSON.stringify({ policyProfile: 8, physical8GBQualified: false, first, recovered, sources, files, repeated, authorizedBeforeAll, disk, network }, null, 2), contentType: "application/json" });
+  observation.assert();
+  const receipt = JSON.stringify({ policyProfile: 8, physical8GBQualified: false, first, recovered, sources, files, repeated, authorizedBeforeAll, disk, network });
+  if (Buffer.byteLength(receipt) > 1024 * 1024) throw new Error("Full Album QA receipt exceeds its 1 MiB publication allowance");
+  await info.attach("full-album-delivery.json", { body: receipt, contentType: "application/json" });
 });

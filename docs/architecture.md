@@ -221,6 +221,8 @@ Shared Tailwind button variants, dialog surfaces, control groups and module disc
 
 ## Album cohort ownership — private integration checkpoint
 
+The scale-only request inventory has explicit count, field and serialized-byte bounds. Overflow is incomplete evidence and fails qualification; after-case publication and the complete delivery report are bounded separately. Three Node controls and fixture/static checks passed without launching a browser. This adds no application processing code or resource guarantee.
+
 The QA supervisor requires the already installed Python 3.14.6 and records its actual executable/version and symlink-safe fd-relative cleanup capability before child launch. A separate exact-directory profile primitive applies the same preflight before creation; nine synthetic controls passed. The unsupported Python 3.9.6 cleanup RED remains retained. Actual parent profile/resource wiring and browser cleanup remain open; these checks do not change application producers.
 
 The QA-only external service observer pins its live leader, proves group ancestry and rejects changed/reused identities or escaped descendants. Its resource union counts each identity once with conservative sampled RSS and grants no signal authority. The corrected 21 pure controls passed, including terminal/departed tombstones and leader-loss reuse refusal. The original 16-control gap and RED probes remain retained; the parent still must wire the complete union and checks before every work acknowledgment. These are observational limits, not kernel memory enforcement; actual BrowserServer/scale qualification remains open.

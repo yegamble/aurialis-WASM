@@ -51,6 +51,23 @@ describe("bounded durable album spool", () => {
     await expect(AlbumSpool.claim("owner")).rejects.toThrow(/another tab/u);
     await spool.close(); const next = await AlbumSpool.claim("owner"); sessions.push(next);
   });
+  it("captures the complete primitive binding before queued admission can observe caller mutation", async () => {
+    const spool = await AlbumSpool.claim("captured"); sessions.push(spool);
+    const mutable = recipe("captured"), binding = spool.bind(mutable); mutable.bindingHash = "f".repeat(64); mutable.processingBuild = "e".repeat(64);
+    await binding; const pending = await spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal()); await spool.promote(pending.assetId, signal()); await spool.close();
+    const restored = await AlbumSpool.open(recipe("captured")); sessions.push(restored); expect(restored.prefix()).toHaveLength(1);
+  });
+  it.each(["revision", "owner", "processingBuild"] as const)("checks persisted %s in the same transaction that loads output bytes", async (field) => {
+    const spool = await open(), pending = await spool.stage(new Blob([new Uint8Array(expectedBytes)]), layout(0), signal()); await spool.promote(pending.assetId, signal());
+    const database = await new Promise<IDBDatabase>((resolve, reject) => { const request = indexedDB.open("aurialis-album-spool-v1", 1); request.onsuccess = () => { resolve(request.result); }; request.onerror = () => { reject(request.error ?? new Error("Fixture open failed")); }; });
+    try { await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction("runs", "readwrite"), store = transaction.objectStore("runs"), request = store.get("album:album-one");
+      request.onsuccess = () => { const manifest = request.result as Record<string, unknown>; store.put({ ...manifest, [field]: field === "revision" ? Number(manifest.revision) + 1 : field === "owner" ? crypto.randomUUID() : "f".repeat(64) }, "album:album-one"); };
+      transaction.oncomplete = () => { resolve(); }; transaction.onerror = () => { reject(transaction.error ?? new Error("Fixture mutation failed")); };
+    }); } finally { database.close(); }
+    const consume = vi.fn<(blob: Blob) => Promise<void>>();
+    await expect(spool.withOutput(pending, signal(), consume)).rejects.toThrow(/ownership/u); expect(consume).not.toHaveBeenCalled();
+  });
   it("stores immutable staged bytes separately from the metadata-only verified prefix", async () => {
     const spool = await open(), wav = new Blob([new Uint8Array(expectedBytes)]);
     const pending = await spool.stage(wav, layout(0), signal());

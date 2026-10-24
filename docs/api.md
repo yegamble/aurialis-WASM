@@ -11,7 +11,7 @@ API CI runs the complete Newman collection and raw security probes against the v
 
 ## Album orchestration — private integration checkpoint
 
-The private spool now separates `claim(albumId)` from `bind(recipe)`: album ownership can begin before qualification and first-pass IO, while complete encoded disk demand is admitted after the full plan is known. No database opens merely to claim a lock. Closing waits for pending admission/cleanup before releasing that lock. These remain internal device-local operations, disconnected from the current Album controller.
+The private spool now separates `claim(albumId)` from `bind(recipe)`: album ownership can begin before qualification and first-pass IO, while complete encoded disk demand is admitted after the full plan is known. No database opens merely to claim a lock. Opening/binding copies six bounded primitive recipe fields before queued work. Output loads verify the fresh complete manifest in the same readonly transaction as the Blob; callers admit load/hash memory first. Closing waits for pending admission/cleanup before releasing that lock. These remain internal device-local operations, disconnected from the current Album controller.
 
 Storage-only foundation `2434a80` introduces a dedicated device-local encoded-output spool without adding an endpoint. It stages output bytes, pending metadata and disk accounting atomically under album ownership; a separate promotion marks a prefix row. Stored metadata alone cannot authorize measured output. The foundation is not connected to rendering or downloads, and the existing 128 MiB cache remains active. Browser storage commitment does not guarantee protection from eviction.
 

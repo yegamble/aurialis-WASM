@@ -21,6 +21,15 @@ function recipeValid(value: AlbumSpoolRecipe) {
   if (!whole(value.totalTracks) || value.totalTracks < 1 || value.totalTracks > 64) throw new Error("Choose between one and 64 album tracks.");
   if (!whole(value.expectedBytes) || value.expectedBytes < value.totalTracks * 50 || value.expectedBytes > maximumAlbumSpoolBytes) throw new Error("This album exceeds the encoded disk limit.");
 }
+function copyRecipe(value: AlbumSpoolRecipe): AlbumSpoolRecipe {
+  const recipe: AlbumSpoolRecipe = { albumId: value.albumId, bindingHash: value.bindingHash, processingBuild: value.processingBuild,
+    planHash: value.planHash, expectedBytes: value.expectedBytes, totalTracks: value.totalTracks };
+  recipeValid(recipe); return recipe;
+}
+function sameOwner(actual: Manifest, expected: Manifest): boolean {
+  return actual.runId === expected.runId && actual.owner === expected.owner && actual.revision === expected.revision
+    && JSON.stringify(actual) === JSON.stringify(expected);
+}
 function outputValid(value: unknown, runId: string, index: number): value is AlbumSpoolOutput {
   const row = object(value);
   return !!row && Object.keys(row).length === 6 && row.index === index && typeof row.assetId === "string"
@@ -89,22 +98,20 @@ export class AlbumSpool {
     try { return new AlbumSpool(albumId, release); } catch (cause) { await release(); throw cause; }
   }
   static async open(recipe: AlbumSpoolRecipe): Promise<AlbumSpool> {
-    recipeValid(recipe);
-    const spool = await AlbumSpool.claim(recipe.albumId);
-    try { await spool.bind(recipe); return spool; }
+    const expected = copyRecipe(recipe);
+    const spool = await AlbumSpool.claim(expected.albumId);
+    try { await spool.bind(expected); return spool; }
     catch (cause) {
       try { await spool.close(); } catch (cleanup) { throw new AggregateError([cause, cleanup], "Album setup failed and storage ownership could not be cleaned up."); }
       throw cause;
     }
   }
   /** Reserve the complete encoded demand only after the whole-cohort plan is known. */
-  bind(recipe: AlbumSpoolRecipe): Promise<void> {
+  async bind(recipe: AlbumSpoolRecipe): Promise<void> {
+    const expected = copyRecipe(recipe);
+    if (expected.albumId !== this.albumId) throw new Error("The storage claim belongs to another album.");
     return this.schedule(async () => {
-      recipeValid(recipe);
-      if (recipe.albumId !== this.albumId) throw new Error("The storage claim belongs to another album.");
       if (this.manifest) throw new Error("This album storage owner is already bound to a plan.");
-      const expected: AlbumSpoolRecipe = { albumId: recipe.albumId, bindingHash: recipe.bindingHash, processingBuild: recipe.processingBuild,
-        planHash: recipe.planHash, expectedBytes: recipe.expectedBytes, totalTracks: recipe.totalTracks };
       await this.change((previous, budget, outputs) => {
         if (previous && ["bindingHash", "processingBuild", "planHash", "expectedBytes", "totalTracks"].some((key) => previous[key as keyof AlbumSpoolRecipe] !== expected[key as keyof AlbumSpoolRecipe])) throw new Error("Stored masters belong to a different sequence, plan or processing build. Clear that stored run before rendering again.");
         let manifest = previous;
@@ -147,7 +154,7 @@ export class AlbumSpool {
           try {
             const previous = selected.result === undefined ? null : checkedManifest(selected.result), budget = checkedBudget(accounting.result);
             if (previous && previous.albumId !== this.albumId) throw new Error("Stored album ownership belongs to another album.");
-            if (requireOwner && (!previous || !this.manifest || previous.runId !== this.manifest.runId || previous.owner !== this.manifest.owner || previous.revision !== this.manifest.revision)) throw new Error("The album spool ownership changed. No stored output was modified.");
+            if (requireOwner && (!previous || !this.manifest || !sameOwner(previous, this.manifest))) throw new Error("The album spool ownership changed. No stored output was modified.");
             const result = transform(previous, { ...budget }, transaction.objectStore(outputStore));
             next = result.manifest ? checkedManifest(result.manifest) : null; checkedBudget(result.budget);
             if (next) runs.put(next, `album:${this.albumId}`); else runs.delete(`album:${this.albumId}`);
@@ -193,8 +200,15 @@ export class AlbumSpool {
       const database = await openDatabase();
       try {
         const blob = await new Promise<unknown>((resolve, reject) => {
-          const transaction = database.transaction(outputStore, "readonly"), request = transaction.objectStore(outputStore).get([this.albumId, row.assetId]);
-          transaction.oncomplete = () => { resolve(request.result as unknown); };
+          const transaction = database.transaction([runsStore, outputStore], "readonly"), request = transaction.objectStore(outputStore).get([this.albumId, row.assetId]);
+          const selected = transaction.objectStore(runsStore).get(`album:${this.albumId}`);
+          transaction.oncomplete = () => {
+            try {
+              const actual = checkedManifest(selected.result);
+              if (!this.manifest || !sameOwner(actual, this.manifest)) throw new Error("The album spool ownership changed. No stored output was authorized.");
+              resolve(request.result as unknown);
+            } catch (cause) { reject(cause instanceof Error ? cause : new Error("Stored album ownership validation failed.", { cause })); }
+          };
           transaction.onerror = transaction.onabort = () => { reject(transaction.error ?? new Error("Stored album output could not be loaded.")); };
         });
         signal.throwIfAborted();

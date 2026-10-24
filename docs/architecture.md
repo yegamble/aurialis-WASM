@@ -1,3 +1,4 @@
+<!-- cspell:words swiftshader -->
 # Aurialis-WASM architecture
 <!-- cspell:words buildmode Hann steganography automator -->
 
@@ -176,3 +177,8 @@ The prospective guard conservatively samples the monitoring parent plus Node/bro
 
 
 Private launcher qualification now explicitly ignores only Playwright's `--enable-unsafe-swiftshader` default; the actual-command guard rejects that flag. Visible mode, explicit sandboxing and every other default remain unchanged. Both source regressions failed against the old options/guard and now pass within 70 Node/source and eight pure policy cases. The first actual normal RED is preserved: static Python command-prefix rejection, final saved live and all-member lists empty, no work ACK or audio/adapter work. Its exact alias cause is unknown. New normal/crash controls remain unreleased; this is no hardware result.
+
+
+The private static-command diagnostic now persists bounded raw `ps` text, exact PID/start/parent/group observations before and after capture, and a separately labeled Darwin executable-path/file-hash observation **before** unchanged argv parsing. A kernel-path match cannot authorize an argv alias, and these observations are not atomic running-image attestation. Original read/hash errors and cleanup failures remain separate. Published Apple interface research, installed SDK header hashes and the retained normal RED are recorded in `scripts/qualification/attention-identity-sources.json`.
+
+A source-only one-child runner uses the exact pinned Python executable and `serve.py` argv. An environment-gated ready marker precedes ownership admission; the child then accepts EOF only and cannot release socket work. The parent reuses unchanged OwnedGroups authority, preserves its exact direct child through every failed setup/cleanup path, and captures `observed`/`fail` evidence without normal/crash or adapter qualification. Thirty-seven injected Python controls, seventy injected Node/source controls and three pure handler cases passed. This source wave ran no actual child diagnostic, server, browser, native identity call, GPU, audio or model. The original normal RED and every historical proof remain unchanged; actual diagnostic and new normal/crash execution remain held.

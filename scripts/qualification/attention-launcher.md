@@ -1,3 +1,4 @@
+<!-- cspell:words swiftshader PGID PPID pidpath PYTHONDONTWRITEBYTECODE -->
 # Private attention launcher — source only
 <!-- cspell:words Popen yosefgamble steminfer testdata webgpu -->
 
@@ -51,3 +52,30 @@ The original CPU, scalar-GEMM, normalization, conditioning/quality and capture-f
 The one released normal attempt at `b599aa6` failed after 1.428087584 seconds while checking the static Python server command prefix. Its raw static command was not saved, so its alias cause remains unknown. Browser argv/profile were retained; final saved live-members and all-members lists were both empty, with no cleanup errors. No work ACK, page, tiny Worker, fixture, adapter or audio work occurred. The original raw files and review index remain unchanged.
 
 The browser command included Playwright's default `--enable-unsafe-swiftshader`. [Chromium's primary documentation](https://chromium.googlesource.com/chromium/src/+/main/docs/gpu/swiftshader.md) describes its software WebGL fallback/security effect; that flag does not identify an actual adapter. The new, explicitly reviewed source option ignores only this default and the command guard rejects it. The omission list is frozen; no other arguments/defaults, backend selection or sandbox options change. Contract revision two requires new normal/crash controls after review; no new actual launch occurred. Two controlled old-source REDs and the first actual RED remain preserved.
+
+
+## Static Python identity diagnostic — source only
+
+The first normal RED did not retain the rejected static command, so its exact alias remains unverified. The repaired parent now saves the bounded raw command before applying the original strict executable-prefix/source-argv rules. It brackets capture with exact PID/start/PGID/PPID observations and separately records Darwin `proc_pidpath` plus streamed file SHA-256/geometry. The [source manifest](attention-identity-sources.json) records local SDK interface hashes and [Apple's published wrapper](https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/libsyscall/wrappers/libproc/libproc.c). No Apple implementation body was copied. The native API remains unexecuted in this source wave. Path/hash observations are diagnostic, not atomic running-image attestation or permission to accept an alias. Raw capture, after-identity, persistence, executable-read and descriptor-close errors are retained separately; any missing evidence fails closed.
+
+The new `attention-python-identity.py` is a separately gated, minimal one-child runner. It uses the same pinned Python executable and exact `serve.py` argv; no Node or browser launches. An optional environment token makes `serve.py` publish a small ready marker after interpreter startup and block **before socket bind or asset loading**. This barrier accepts EOF only: no message can release work. The runner waits for that marker before OwnedGroups admission, so an interpreter launch transition is not mistaken for an admitted identity change. Before admission, the exact Popen handle remains owned and is closed/terminated/reaped on failure. After admission, unchanged group authority performs cleanup; a failed wait still attempts exact direct-child kill/reap while preserving the group refusal. No group signal rule is relaxed.
+
+The runner records strict argv rejection honestly as evidence. Its final status is only `observed` or `fail`, with `qualification: false`; even complete capture grants no normal/crash, hardware or model acceptance. Limits remain 4 GiB sampled supervisor/child union RSS, 256 live / 4,096 known identities, 64 MiB new output including scratch, 6 GiB free reserve and 60 seconds at the last resource admission before final writes. The child ready deadline is five seconds. One raw command record is capped at 192 KiB, its command prefix at 16 KiB, kernel path at 4 KiB, and executable file scan at 64 MiB using a 64 KiB scratch read. There is no HTTP client, fixture File, adapter or audio operation. The unchanged helper's historical `node` leader key labels this direct Python child; no Node runtime is implied.
+
+Executed source evidence: 37 injected Python cases in 0.035 seconds (8 policy, 17 identity, 12 held-runner controls); 70 injected Node/source cases in 553.35475 milliseconds, concurrency one; and three pure handler cases in 0.002 seconds. These cover raw persistence before strict refusal, before/after identity drift, unavailable/faked native API, bounded ps cleanup, simultaneous read/close failures, ready-before-admission, no release-to-bind token, admission/capture/close/group/wait failures and final live-member refusal. They use fake process/API objects and tiny private files only. Independent peer primary/close RED and corrected probe are retained alongside both old SwiftShader source REDs. No actual process diagnostic, socket, browser or GPU ran during this source wave.
+
+Source controls:
+
+```sh
+PYTHONDONTWRITEBYTECODE=1 /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9 -m unittest discover -s scripts/qualification -p 'test_attention_*.py'
+/Users/yosefgamble/.nvm/versions/node/v26.12.0/bin/node --test --test-concurrency=1 scripts/qualification/attention-launch.test.mjs scripts/test-owned-browser.mjs internal/audio/steminfer/testdata/webgpu/attention/*.test.mjs
+PYTHONDONTWRITEBYTECODE=1 /Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9 internal/audio/steminfer/testdata/webgpu/attention/test_capture_server.py
+```
+
+**Do not execute this diagnostic until separately released after source review:**
+
+```sh
+/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9 scripts/qualification/attention-python-identity.py --output "$PWD/artifacts/private-stems/attention-python-identity-UNIQUE"
+```
+
+The original normal/crash source checkpoint, first actual RED, fixture/shader bytes, intervals and all numeric budgets remain unchanged. This runner's source/pin changes require independent review before that one-child diagnostic; fresh browser normal/crash controls remain a later separate gate.

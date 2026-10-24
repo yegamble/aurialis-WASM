@@ -11,6 +11,7 @@ import time
 import traceback
 from owned_groups import OwnedGroups, command_hash, snapshot
 from observed_process import ObservedProcess
+from attention_identity import RECORD_CAP, static_identity
 from attention_contract import ProbeState, check_browser_command, check_resources, final_empty, node_command, parse_actual_command
 
 
@@ -109,7 +110,21 @@ def main():
     primary, cleanup, final, post_crash = None, [], None, None
     browser_ack, server_ack, forced_crash = False, False, False
     browser_command, server_command, profile = None, None, None
-    before, survivors, observations = [], [], []
+    before, survivors, observations, command_observations = [], [], [], []
+    def persist_command(record):
+        if len(command_observations) >= 2:
+            raise RuntimeError('STATIC command observation quota')
+        data = (json.dumps(record, indent=2) + '\n').encode()
+        if len(data) > RECORD_CAP:
+            raise RuntimeError('STATIC command observation serialization cap')
+        observed = owned.observe()
+        disk = os.statvfs(base)
+        check_resources(observed, len(owned.known) + 1, directory_bytes(output) + len(data), disk.f_bavail * disk.f_frsize - len(data), time.monotonic() - started, supervisor.observe(snapshot()))
+        name = 'static-command-before-parse-' + str(len(command_observations)) + '.json'
+        descriptor = os.open(output / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(descriptor, 'wb') as file:
+            file.write(data)
+        command_observations.append({'path': name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(), 'record': record})
     started = time.monotonic()
     try:
         with (output / 'launcher.log').open('xb') as log:
@@ -143,7 +158,8 @@ def main():
                     value = read_metadata(server)
                     observed = owned.observe()
                     state.admit_server(value, observed)
-                    server_command = actual_command(value['serverPID'], pins['python']['path'])
+                    raw_static_command = static_identity(state.server, pins['python'], persist_command)
+                    server_command = parse_actual_command(raw_static_command, pins['python']['path'])
                     expected = [pins['python']['path'], str(base / 'internal/audio/steminfer/testdata/webgpu/attention/serve.py')]
                     if server_command != expected:
                         raise RuntimeError('Actual static server executable/source mismatch')
@@ -221,7 +237,7 @@ def main():
             check_resources(final, len(owned.known) + 1, directory_bytes(output), disk.f_bavail * disk.f_frsize, time.monotonic() - started, supervisor.observe(snapshot()))
         except BaseException as error:
             cleanup.append({'phase': 'final-bounds-and-empty-observation', 'error': str(error)[:4096]})
-        result = {'version': 1, 'mode': args.mode, 'status': 'candidate-pass' if primary is None and not cleanup else 'fail', 'scope': 'actual normal/crash ownership only if separately released; no audio/GPU request', 'audioProcessing': False, 'gpuRequested': False, 'launch': launch, 'browserCommand': browser_command, 'staticServerCommand': server_command, 'profile': profile, 'primary': primary, 'cleanup': cleanup, 'exitCode': child.poll() if child else None, 'seconds': time.monotonic() - started, 'observations': observations, 'leaders': owned.leaders if owned else None, 'admissions': owned.admissions if owned else [], 'events': owned.events if owned else [], 'preCrashBrowserMembers': before, 'confirmedCrashSurvivors': survivors, 'postCrashObservation': post_crash, 'finalObservation': final, 'limits': {'wallSeconds': 60, 'workSeconds': 25, 'outputBytesIncludingScratch': 64 * 1024 ** 2, 'minimumFreeBytes': 6 * 1024 ** 3, 'unionRSSBytes': 4 * 1024 ** 3, 'liveProcesses': 256, 'knownIdentities': 4096}}
+        result = {'version': 1, 'mode': args.mode, 'status': 'candidate-pass' if primary is None and not cleanup else 'fail', 'scope': 'actual normal/crash ownership only if separately released; no audio/GPU request', 'audioProcessing': False, 'gpuRequested': False, 'launch': launch, 'browserCommand': browser_command, 'staticServerCommand': server_command, 'staticCommandObservations': command_observations, 'profile': profile, 'primary': primary, 'cleanup': cleanup, 'exitCode': child.poll() if child else None, 'seconds': time.monotonic() - started, 'observations': observations, 'leaders': owned.leaders if owned else None, 'admissions': owned.admissions if owned else [], 'events': owned.events if owned else [], 'preCrashBrowserMembers': before, 'confirmedCrashSurvivors': survivors, 'postCrashObservation': post_crash, 'finalObservation': final, 'limits': {'wallSeconds': 60, 'workSeconds': 25, 'outputBytesIncludingScratch': 64 * 1024 ** 2, 'minimumFreeBytes': 6 * 1024 ** 3, 'unionRSSBytes': 4 * 1024 ** 3, 'liveProcesses': 256, 'knownIdentities': 4096}}
         terminal_status = 'fail'
         receipt_hash = None
         try:

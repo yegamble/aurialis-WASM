@@ -1,0 +1,52 @@
+{
+  "scope": "Source/interface research only. No libproc/ps/process diagnostic was executed during this source-fix wave. No Apple implementation body copied or vendored.",
+  "reviewDate": "2026-10-24",
+  "darwin": {
+    "primaryURL": "https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/libsyscall/wrappers/libproc/libproc.c",
+    "sourceRevisionScope": "Reviewed current published main; local installed SDK interface hashes below are exact. URL is not claimed immutable.",
+    "symbol": "proc_pidpath",
+    "semantics": "Published wrapper requests PROC_PIDPATHINFO and returns path byte length or0; observation is separate from argv text and from an atomic running-image attestation.",
+    "localSDKHeaders": [
+      {
+        "path": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/libproc.h",
+        "resolvedPath": "/Library/Developer/CommandLineTools/SDKs/MacOSX26.4.sdk/usr/include/libproc.h",
+        "bytes": 7575,
+        "sha256": "246d87709fc6b9157ce5cf3c475656ac48e0e1ae8bbdc46cf45acd34294448cd"
+      },
+      {
+        "path": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/proc_info.h",
+        "resolvedPath": "/Library/Developer/CommandLineTools/SDKs/MacOSX26.4.sdk/usr/include/sys/proc_info.h",
+        "bytes": 31262,
+        "sha256": "e427fa96b348537b21552b9de71e01039410bcad2cedee5584c5e5fddafd70fc"
+      }
+    ],
+    "bufferBytes": 4096,
+    "nativeCallStatus": "UNEXECUTED; source tests inject a fake library only"
+  },
+  "swiftshader": {
+    "primaryURL": "https://chromium.googlesource.com/chromium/src/+/main/docs/gpu/swiftshader.md",
+    "reviewScope": "The flag opts into lower-security software WebGL fallback. Its presence alone does not identify an actual requested adapter.",
+    "observedOldDefault": "--enable-unsafe-swiftshader",
+    "newExplicitOption": {
+      "ignoreDefaultArgs": [
+        "--enable-unsafe-swiftshader"
+      ]
+    },
+    "newActualCommandGuard": "reject same flag, while keeping explicit sandbox and no other args/overrides",
+    "localPlaywrightSource": {
+      "path": "/Users/yosefgamble/.codex/worktrees/product-completion/Aurialis-WASM/node_modules/.pnpm/playwright-core@1.64.1/node_modules/playwright-core/lib/coreBundle.js",
+      "sha256": "829521b67ed7be90c7d6d6098ff39f2241562d47e4ad7ccab13710924a56001d",
+      "reviewedLines": [
+        44758,
+        44767,
+        44768
+      ]
+    }
+  },
+  "retainedActualNormalRED": {
+    "sourceCommit": "b599aa634b65c5326f42ce8d5dde8b767d0fc44d",
+    "index": "artifacts/private-stems/recovery-20261023/attention-owned-normal-red-20261024-v1/run-index.json",
+    "indexSHA256": "27f2626c898f485a71bf9edd54d2521f2f2e8d156c1a22f51d7c0657e9ba817c",
+    "causeScope": "Static command prefix rejection; exact raw command/alias not observed or reconstructed. Final saved liveMembers and members both empty."
+  }
+}

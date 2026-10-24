@@ -2,6 +2,9 @@
 import hashlib
 import http.server
 import json
+import os
+import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -83,7 +86,23 @@ class Handler(http.server.BaseHTTPRequestHandler):
         pass
 
 
+def identity_hold(environment, source, destination, pid):
+    """Optional diagnostic-only barrier: it can stop, never release socket work."""
+    token = environment.get('AURIALIS_ATTENTION_IDENTITY_HOLD')
+    if token is None:
+        return True
+    if not isinstance(token, str) or re.fullmatch('[0-9a-f]{64}', token) is None:
+        raise ValueError('Invalid identity hold token')
+    destination.write(json.dumps({'phase': 'identity-held-before-bind', 'pid': pid, 'token': token}) + '\n')
+    destination.flush()
+    if source.readline(4097) != '':
+        raise ValueError('Identity hold accepts EOF only; no work release exists')
+    return False
+
+
 def main():
+    if not identity_hold(os.environ, sys.stdin, sys.stdout, os.getpid()):
+        return
     server = http.server.HTTPServer(('127.0.0.1', 0), Handler)
     server.assets = assets()
     print(json.dumps({'url': 'http://127.0.0.1:' + str(server.server_port), 'scope': 'private static assets only'}), flush=True)

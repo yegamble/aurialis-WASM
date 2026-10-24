@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "scope": "SOURCE only until separately released; observed/fail identity evidence only",
+  "python": {
+    "path": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+    "bytes": 102352,
+    "sha256": "9ea22c79baac7ee6906d807799f351ae5de25b74be3ead66370714ea5348ca9f"
+  },
+  "servePath": "internal/audio/steminfer/testdata/webgpu/attention/serve.py",
+  "sources": [
+    {
+      "path": "internal/audio/steminfer/testdata/webgpu/attention/serve.py",
+      "bytes": 4900,
+      "sha256": "003dbbc23a0f7bff1065f353d13defa113e9fbf1c9cebb6962fa47e7f1fcc6b1"
+    },
+    {
+      "path": "scripts/qualification/attention_identity.py",
+      "bytes": 11232,
+      "sha256": "a3d3a5e6752b8a42b453abc37838e0bea15f6f1640bf371d445aadd180a09975"
+    },
+    {
+      "path": "scripts/qualification/attention_contract.py",
+      "bytes": 6015,
+      "sha256": "2908ec15393d029eabc7800ee573623d05ebcea5b2aa4b6f83b8a215bef6b457"
+    },
+    {
+      "path": "scripts/qualification/attention-parent.py",
+      "bytes": 17227,
+      "sha256": "f0e90e4a9e7db009914d05e03716f589dbd0d48603301172c2797973cd96e22e"
+    },
+    {
+      "path": "scripts/qualification/owned_groups.py",
+      "bytes": 7214,
+      "sha256": "d5a9978835c7ebcd6fd9c30c6074f4e55b84ac26683b66c4f9198daf3dd08a40"
+    },
+    {
+      "path": "scripts/qualification/observed_process.py",
+      "bytes": 1686,
+      "sha256": "a4904130b5c125d3563868c1e9d69dc2cd9be07a105b1cf7250d914b15836df3"
+    },
+    {
+      "path": "scripts/qualification/attention_python_identity.py",
+      "bytes": 11616,
+      "sha256": "5b6b97a0cc447492cb41505ee6fc23023a10a11b12f94dd0a0d7f3587df034e2"
+    },
+    {
+      "path": "scripts/qualification/attention-python-identity.py",
+      "bytes": 205,
+      "sha256": "6f598984a5d60b6145930d7550be0a838c58f17292a518fc72ddb4c401124cc6"
+    }
+  ]
+}

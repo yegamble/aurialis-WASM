@@ -60,6 +60,8 @@ class OwnedProfile:
                 current = {"dev": str(info.st_dev), "ino": str(info.st_ino), "symlink": stat.S_ISLNK(info.st_mode)}
             except FileNotFoundError:
                 current = None
+            except OSError as error:
+                current = {"unobserved": type(error).__name__, "reason": str(error)[:1024]}
             values.append({"kind": key, "expected": dict(record), "current": current, "absent": current is None})
         return {"diagnosticOnly": True, "paths": values, "removed": list(self.removed)}
 

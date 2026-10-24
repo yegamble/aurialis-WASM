@@ -96,6 +96,12 @@ class ProfileContracts(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.owner.cleanup_success()
 
+    def test_failed_state_observation_never_reports_absence(self):
+        self.owner.create()
+        with patch.object(Path, "lstat", side_effect=PermissionError("injected observation denial")):
+            state = self.owner.state()
+        self.assertTrue(all(not item["absent"] and item["current"]["unobserved"] == "PermissionError" for item in state["paths"]))
+
     def test_parent_success_cleanup_requires_actual_absence(self):
         self.owner.create()
         with patch.object(MODULE.shutil, "rmtree") as remove:

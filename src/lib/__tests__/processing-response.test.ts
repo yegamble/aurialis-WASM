@@ -67,7 +67,8 @@ describe("response-specific processing authority", () => {
   it("preserves producer mismatch authority when underlying response cancellation rejects", async () => {
     const cause = new Error("Cancellation failed"), cancel = vi.fn().mockRejectedValue(cause);
     const value = new Response(new ReadableStream<Uint8Array>({ cancel }));
-    await expect(assertNativeProcessingResponse(value, expected)).rejects.toMatchObject({ name: "ProcessingBuildMismatchError", cause });
+    await expect(assertNativeProcessingResponse(value, expected)).rejects.toMatchObject({ name: "ProcessingBuildMismatchError",
+      message: "The actual audio response could not confirm this processing build. Refresh the app and try again.", cause });
   });
   it("declines a missing create-response identity without parsing or guessing a job ID", async () => {
     const value = response(queued, ""), read = vi.spyOn(value, "json"); vi.mocked(fetch).mockResolvedValue(value);

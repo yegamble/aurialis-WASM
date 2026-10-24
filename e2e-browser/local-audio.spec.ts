@@ -65,8 +65,13 @@ test("rejects mismatched real Go module bytes before processing and retries with
   });
   await page.goto("/");
   await page.getByLabel("Upload audio file").setInputFiles({ name: "stale-engine.wav", mimeType: "audio/wav", buffer: fixture(997, .1) });
-  await expect(page.getByText(/processing module does not match/iu)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("status")).toContainText("The actual audio response could not confirm this processing build.", { timeout: 30_000 });
+  expect(served).toBe(1);
   expect(new URL(page.url()).pathname).toBe("/");
+  expect(await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as { tracks?: unknown[] };
+    return state.tracks ?? [];
+  })).toEqual([]);
   await page.getByLabel("Upload audio file").setInputFiles({ name: "fresh-engine.wav", mimeType: "audio/wav", buffer: fixture(997, .1) });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
   expect(served).toBeGreaterThanOrEqual(2);

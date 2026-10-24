@@ -20,7 +20,7 @@ export function injectedProcessingIdentity(): Readonly<ProcessingIdentity> | nul
 
 /** A producer identity is public consistency metadata, never an authentication secret. */
 export class ProcessingBuildMismatchError extends Error {
-  constructor(cause?: unknown) { super("The actual audio response could not confirm this processing build. Plan the complete album again.", { cause }); this.name = "ProcessingBuildMismatchError"; }
+  constructor(cause?: unknown) { super("The actual audio response could not confirm this processing build. Refresh the app and try again.", { cause }); this.name = "ProcessingBuildMismatchError"; }
 }
 export function assertExpectedProcessingBuild(expected: string | undefined): void {
   if (expected !== undefined && !/^[a-f0-9]{64}$/u.test(expected)) throw new ProcessingBuildMismatchError();

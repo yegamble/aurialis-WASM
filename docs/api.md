@@ -25,7 +25,7 @@ Both WASM modules export `aurialis_control_count(abi)` (81 for 1, 82 for 2, zero
 
 ### Private qualification boundary
 
-Private harness commits `d0dd195` and `cb83d68` qualify a test-only graph comparison without changing routes, public parameters, capability exports or algorithm availability. The Go source remains qualified at `e492156`. The five-rate GoJS/WASM comparison passed 135 cases per side; this is not a live performance or output-certification result. Algorithm 2 remains rejected. See the [private checkpoint](tasks.md#private-gojs-graph-checkpoint--october-23-2026) for retained failures and cross-target limitations.
+Private harness commits `d0dd195` and `cb83d68` qualify a test-only graph comparison without changing routes, public parameters, capability exports or algorithm availability. The Go source remains qualified at `e492156`. The five-rate GoJS/WASM comparison passed 135 cases per side; this is not a live performance or output-certification result. Algorithm 2 remains rejected. The separate performance screen is prepared source only, without compiled or measured results. See the [private checkpoint](tasks.md#private-gojs-graph-checkpoint--october-23-2026) for retained failures and cross-target limitations.
 
 ## Security and resource contract
 

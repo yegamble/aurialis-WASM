@@ -1,5 +1,5 @@
 # Aurialis-WASM architecture
-<!-- cspell:words buildmode Hann steganography -->
+<!-- cspell:words buildmode Hann steganography testdata -->
 
 This describes current implementation boundaries. [`AGENTS.md`](../AGENTS.md) and [`docs/tasks.md`](tasks.md) retain the full product requirements. Implementation on a branch is not verified delivery or a merge to main.
 
@@ -15,11 +15,11 @@ Advanced reuses a shared EQ-band control group for enable/type/frequency/gain/Q 
 
 ## Private graph qualification
 
-Commits `d0dd195` and `cb83d68` add a bounded, opt-in GoJS/WASM test harness. They preserve all tracked Go and `go.mod` bytes from qualified source `e492156`. Frozen original and candidate overlays differ only at the previously qualified 25 private extrema sites. This candidate is unselected; the private behavior baseline remains `b7297de`, and public algorithm 2 remains unavailable.
+Commits `d0dd195` and `cb83d68` add a bounded, opt-in GoJS/WASM test harness. They preserve all tracked Go and `go.mod` bytes from qualified source `e492156`. Frozen original and candidate overlays differ only at the previously qualified 25 private extrema sites. This candidate is unselected; the reference performance baseline remains `b7297de`, and public algorithm 2 remains unavailable.
 
 Each rate runs in a fresh child with a closed fixture filesystem, exclusive outputs, a 25-second Go watchdog and a 28-second parent watchdog. Frame, output, log and operation bounds apply before writes. These are trusted-harness limits, not an untrusted-code sandbox or a Go/V8 process-memory guarantee. Five rates passed 135 cases per side with identical within-target output bytes.
 
-The separate native/WASM comparison found identical raw PCM and encoded 16/24-bit WAV sections in this finite corpus, but all 270 numeric-state digests differed. Their cause is unproven. The original Node-exit failure and full native recorder race timeout remain retained failures. Performance screening, browser continuity, the 192 kHz deadline and public activation remain open; the [task checkpoint](tasks.md#private-gojs-graph-checkpoint--october-23-2026) records the immutable evidence index.
+The separate native/WASM comparison found identical raw PCM and encoded 16/24-bit WAV sections in this finite corpus, but all 270 numeric-state digests differed. Their cause is unproven. The original Node-exit failure and full native recorder race timeout remain retained failures. A separate fixed-count performance screen is prepared in `internal/audio/dsp/testdata/extrema_screen/`, with one opt-in Go test and unchanged production source. Its deterministic verification, source-clock and output gates require review before compilation; no timing has run. Performance screening, browser continuity, the 192 kHz deadline and public activation remain open; the [task checkpoint](tasks.md#private-gojs-graph-checkpoint--october-23-2026) records the immutable evidence index.
 
 ## Build and serving
 

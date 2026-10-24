@@ -145,7 +145,7 @@ The Go/WASM job reuses FFmpeg when it is already available. Otherwise, a separat
 
 ## Private DSP research checkpoint
 
-The private exact-extrema graph has passed a bounded GoJS/WASM comparison: 135 cases per side produced identical PCM, encoded WAV and numeric-state records within that target. This does not select the candidate or enable algorithm 2. The 192 kHz processing deadline, browser continuity and cross-target state differences remain open. See the [private qualification record](docs/tasks.md#private-gojs-graph-checkpoint--october-23-2026) for source, evidence and retained failures.
+The private exact-extrema graph has passed a bounded GoJS/WASM comparison: 135 cases per side produced identical PCM, encoded WAV and numeric-state digest records within that target. This does not select the candidate or enable algorithm 2. The fixed-count performance screen is source-only; compilation and timing remain pending. The 192 kHz processing deadline, browser continuity and cross-target state differences remain open. See the [private qualification record](docs/tasks.md#private-gojs-graph-checkpoint--october-23-2026) for source, evidence and retained failures.
 
 ## Verification status
 

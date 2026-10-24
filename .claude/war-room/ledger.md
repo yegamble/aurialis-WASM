@@ -613,3 +613,14 @@ Next ruling permits preparation of a separate full-chain native/actual GoJS sema
 The separate host-only diagnostic sampled exactly two existing candidate-module verification children. Their raw verification outputs exactly reproduced the accepted steady/peaky outputs. Steady observed 217 total/100 graph-root samples (gain 24, saturation 24, guard 10, other 42); peaky observed 156 total/83 graph-root samples (gain 5, saturation 30, guard 15, other 33). These are coarse stack samples only, with no quiet-window, benchmark, throughput or deadline inference. The earlier profile proposal remains historical; this is its separately executed diagnostic follow-up.
 
 Immutable `extrema-paired-screen/profile-b562-v1/SAMPLING-SHA256.json` SHA-256 `2441f56d707d5ec1e6beeef71c40ae068d567576310665740ca0a43d84efbc1d` indexes 23 files, 15,650,216 bytes, including 175,583 profile bytes. The same modules and their prior timing results remain unchanged. Steady 192 kHz remains RED; candidate unselected and whole product open.
+
+
+<!-- cspell:ignore GOARM -->
+
+### Node-visit full-chain runner source checkpoint — 2026-10-23
+
+**Round D ruling: accept source and release exactly four sequential module builds; open — awaiting merge.** The five-file `envelope_node_visit_graph` extension passed seven synthetic contracts, Node child syntax, unchanged source/inventory admission and five-file configured spelling. The initial five-name Go-environment spelling failure and exact source are retained separately. Production Go and candidate payload `eb8f5058d09d7d9d8c8b19b2946bc6ff5bbb1bc02d939b526a35434f46a61494` remain unchanged; old producers, inventories, exact 14/6 proofs and six AR files stay intact.
+
+Source v2 `SOURCE-SHA256.json` SHA-256 is `c15f2e59f6eb42555b45800d78631a64f9a8dfcc77d9be465b69969cb178f9d3`; source provenance SHA-256 is `0cdb915ecc432ca542a3ac062be221f652730b32b7fb6d16445cccf9ce6212fb`. Both exact source-time compiler environments observed `GOARM64=v8.0`. The producer records every new runner source and actual compiler/runtime inputs. The released build-only tranche consists of native baseline/candidate plus two GoJS modules, each capped at 16 MiB and a 25-second compiler watchdog, with one compiler at a time. Graph execution and timing remain unreleased at this source checkpoint.
+
+Future native and actual GoJS semantic pairs must match one another and the accepted e492 candidate archives at all five rates, with all original recorder/resource/output/cleanup caps and raw proof retained. Original alias/partition/tail/wrap/repeat/reset/capacity/allocation gates remain separately required. Steady 192 kHz remains RED; cross-target numeric-state differences stay unproven and selection stays unchanged.

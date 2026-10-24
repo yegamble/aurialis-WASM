@@ -62,6 +62,16 @@ The fallback Node 24/pnpm 11 tool-bootstrap failure and first pinned configured 
 
 Full-chain native and actual GoJS 135-case comparisons against current e492 archives, original alias/partition/tail/repeat/reset/capacity/allocation gates, and a separate timing release remain pending. The existing steady 192 kHz deadline is RED. The 270 native/WASM numeric-state digest differences remain unproven; no new cross-target state, throughput, browser continuity or public-selection claim follows. The private candidate stays unselected and the whole product remains open.
 
+<!-- cspell:ignore GOARM -->
+
+### Full-chain node-visit runner source checkpoint
+
+**Status: reviewed source; open — awaiting merge.** The separate five-file `internal/audio/dsp/testdata/envelope_node_visit_graph/` runner passed seven synthetic contracts, Node 26 child syntax, unchanged source/inventory admission and configured spelling over all five files. The first source spelling failure for five legitimate Go environment names remains retained; a scoped Python directive corrected only those names. No production Go, candidate payload, frozen runner, historical proof or AR file changed.
+
+The source-only v2 index at `artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/source-v2/SOURCE-SHA256.json` has SHA-256 `c15f2e59f6eb42555b45800d78631a64f9a8dfcc77d9be465b69969cb178f9d3`; `SOURCE-PROVENANCE.json` has SHA-256 `0cdb915ecc432ca542a3ac062be221f652730b32b7fb6d16445cccf9ce6212fb`. Source-time environment queries observed and validated `GOARM64=v8.0` for both exact native/WASM environments. Every new runner source is bound in the source map.
+
+The producer prepares exactly four fresh modules sequentially: native baseline/candidate and GoJS baseline/candidate. Builds pin Go 1.26.10, Node 26.12.0, the accepted GoJS runtime, empty experiments, exact 6/7 mappings and effective environments/source sets, with a 25-second compiler watchdog and 16 MiB module cap. Build-only execution is separate from graph acceptance. Future semantic pairs must reproduce current e492 candidate native/WASM archives across five rates, preserving original recorder caps, raw outputs and all completion/cleanup receipts. The 20 semantic children, original contract gates and all timing remain separately unreleased at this source checkpoint. Steady 192 kHz remains RED; public selection stays unchanged and cross-target numeric-state differences remain unproven.
+
 ## Whole-product completion loop — October 22, 2026
 
 **Status: bounded wave locally verified; open — awaiting merge. Product incomplete.** The reviewed baseline `f5ec9ad` includes owner-merged PR #5. The older pending-merge entries below retain their historical status. The [current completion review](reviews/2026-10-22-war-room-completion.md) lists outstanding planned features and Round D rulings.

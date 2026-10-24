@@ -112,7 +112,8 @@ const MaxMemoryBytes int64 = 256 * 1024 * 1024
 // MaxRetainedJobs limits metadata and result retention independently of bytes.
 const MaxRetainedJobs = 64
 
-// Retention is the lifetime of completed, failed and canceled job records.
+// Retention is the maximum lifetime of terminal job records. Settled canceled
+// receipts may yield earlier when the retained-record cap needs a slot.
 const Retention = 15 * time.Minute
 
 // NewManager creates and starts a concurrent job manager with the given worker count.
@@ -255,17 +256,42 @@ func (m *Manager) admitReservationLocked(job *Job, reservation int64) error {
 	if m.closed {
 		return errors.New("job manager is closed")
 	}
-	m.pruneLocked(time.Now())
 	if reservation < 1 {
 		return errors.New("invalid job reservation")
 	}
-	if len(m.jobs) >= MaxRetainedJobs || reservation > MaxMemoryBytes-m.usedBytes {
+	m.pruneLocked(time.Now())
+	if reservation > MaxMemoryBytes-m.usedBytes {
+		return ErrQueueFull
+	}
+	m.retireCanceledAtCapacityLocked()
+	if len(m.jobs) >= MaxRetainedJobs {
 		return ErrQueueFull
 	}
 	job.reservedBytes = reservation
 	m.usedBytes += reservation
 	m.jobs[job.ID] = job
 	return nil
+}
+
+// Only actual worker settlement makes a canceled receipt eligible to yield.
+// Unclaimed results and canceled work still holding a reservation stay owned.
+func (m *Manager) retireCanceledAtCapacityLocked() {
+	if len(m.jobs) < MaxRetainedJobs {
+		return
+	}
+	var oldest *Job
+	for _, job := range m.jobs {
+		if job.Status != StatusCanceled || job.reservedBytes != 0 {
+			continue
+		}
+		if oldest == nil || job.UpdatedAt.Before(oldest.UpdatedAt) || job.UpdatedAt.Equal(oldest.UpdatedAt) && job.ID < oldest.ID {
+			oldest = job
+		}
+	}
+	if oldest != nil {
+		m.usedBytes -= retainedBytes(oldest)
+		delete(m.jobs, oldest.ID)
+	}
 }
 
 func newJobID() string {

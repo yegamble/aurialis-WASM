@@ -1,0 +1,61 @@
+{
+  "scope": "Exact one held Python identity observation, not normal/crash or retrospective old failure proof",
+  "sourceCommit": "d9bfc3b40a28fe465aae7a1c9099e492d57f5c89",
+  "originalRawRecordSHA256": "5f2605230f14773b759009d350a2f0a961553607499b8f8affa63719c44e3767",
+  "record": {
+    "kind": "static-command-before-parse",
+    "pid": 25619,
+    "expectedIdentity": {
+      "pid": 25619,
+      "ppid": 25608,
+      "pgid": 25619,
+      "start": "Fri Oct 23 23:24:05 2026",
+      "rssBytes": 16924672,
+      "state": "Ss",
+      "commandSHA256": "fc177a95aaecd9d14ce8cc37f15c61d27e73a34c5d81c1bd4aa5df42a3117bda"
+    },
+    "expectedExecutable": {
+      "path": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/bin/python3.9",
+      "bytes": 102352,
+      "sha256": "9ea22c79baac7ee6906d807799f351ae5de25b74be3ead66370714ea5348ca9f"
+    },
+    "before": {
+      "pid": 25619,
+      "ppid": 25608,
+      "pgid": 25619,
+      "start": "Fri Oct 23 23:24:05 2026",
+      "rssBytes": 16924672,
+      "state": "Ss"
+    },
+    "after": {
+      "pid": 25619,
+      "ppid": 25608,
+      "pgid": 25619,
+      "start": "Fri Oct 23 23:24:05 2026",
+      "rssBytes": 16891904,
+      "state": "Ss"
+    },
+    "rawCommandText": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python /Users/yosefgamble/.codex/worktrees/measured-analysis/Aurialis-WASM/internal/audio/steminfer/testdata/webgpu/attention/serve.py\n",
+    "rawCommandHex": null,
+    "rawCommandBytes": 257,
+    "rawCommandSHA256": "658226740d41105698ee820ff60c123871136ec08ed051549134c92fbd6759f0",
+    "rawCommandComplete": true,
+    "rawCommandTruncated": false,
+    "commandPrimary": null,
+    "commandCleanup": [],
+    "filePrimary": null,
+    "fileCleanup": [],
+    "kernelExecutable": {
+      "path": "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/Resources/Python.app/Contents/MacOS/Python",
+      "bytes": 101280,
+      "sha256": "0e0ee9e1b325a948d9d19344cffea41f5a59b42d63f1abcfc44d710ff827b21a",
+      "device": 16777230,
+      "inode": 318664981
+    },
+    "kernelPathMatchesExpected": false,
+    "kernelHashMatchesExpected": false,
+    "error": null,
+    "errors": [],
+    "authority": "Diagnostic only; does not replace strict executable-prefix/source-argv or OwnedGroups authority"
+  }
+}

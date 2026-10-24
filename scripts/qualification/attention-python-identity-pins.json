@@ -20,13 +20,13 @@
     },
     {
       "path": "scripts/qualification/attention_contract.py",
-      "bytes": 6015,
-      "sha256": "2908ec15393d029eabc7800ee573623d05ebcea5b2aa4b6f83b8a215bef6b457"
+      "bytes": 8184,
+      "sha256": "288e49cdac8e121ecb95bb9f6e41d911c7ede54fc2706bc7e05375f02d578226"
     },
     {
       "path": "scripts/qualification/attention-parent.py",
-      "bytes": 17227,
-      "sha256": "f0e90e4a9e7db009914d05e03716f589dbd0d48603301172c2797973cd96e22e"
+      "bytes": 17499,
+      "sha256": "6782f71caf430042378843210a7c446dfa6f21ee5f3e4d54a79f03bb603ff6e3"
     },
     {
       "path": "scripts/qualification/owned_groups.py",

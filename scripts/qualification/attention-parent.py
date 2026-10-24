@@ -12,7 +12,7 @@ import traceback
 from owned_groups import OwnedGroups, command_hash, snapshot
 from observed_process import ObservedProcess
 from attention_identity import RECORD_CAP, static_identity
-from attention_contract import ProbeState, check_browser_command, check_resources, final_empty, node_command, parse_actual_command
+from attention_contract import ProbeState, check_browser_command, check_resources, check_static_runtime, final_empty, node_command, parse_actual_command
 
 
 def read_metadata(path):
@@ -80,7 +80,7 @@ def main():
     if output.exists() or output.is_symlink() or output.parent.resolve() != output.parent:
         raise RuntimeError('Fresh non-symlink artifact output required')
     pins = json.loads((Path(__file__).parent / 'attention-launch-pins.json').read_text())
-    for key in ('node', 'python', 'brave', 'playwrightEntry', 'playwrightPackage', 'playwrightCore'):
+    for key in ('node', 'python', 'pythonRuntime', 'brave', 'playwrightEntry', 'playwrightPackage', 'playwrightCore'):
         pin = pins[key]
         path = Path(pin['path'])
         if path.is_symlink() or not path.is_file() or path.stat().st_size != pin['bytes'] or hashlib.sha256(path.read_bytes()).hexdigest() != pin['sha256']:
@@ -109,7 +109,7 @@ def main():
     child, owned, state = None, None, None
     primary, cleanup, final, post_crash = None, [], None, None
     browser_ack, server_ack, forced_crash = False, False, False
-    browser_command, server_command, profile = None, None, None
+    browser_command, server_command, profile, server_verification = None, None, None, None
     before, survivors, observations, command_observations = [], [], [], []
     def persist_command(record):
         if len(command_observations) >= 2:
@@ -159,10 +159,8 @@ def main():
                     observed = owned.observe()
                     state.admit_server(value, observed)
                     raw_static_command = static_identity(state.server, pins['python'], persist_command)
-                    server_command = parse_actual_command(raw_static_command, pins['python']['path'])
-                    expected = [pins['python']['path'], str(base / 'internal/audio/steminfer/testdata/webgpu/attention/serve.py')]
-                    if server_command != expected:
-                        raise RuntimeError('Actual static server executable/source mismatch')
+                    server_command = check_static_runtime(raw_static_command, command_observations[-1]['record'], pins['python'], pins['pythonRuntime'], str(base / 'internal/audio/steminfer/testdata/webgpu/attention/serve.py'), state.server)
+                    server_verification = {'launchExecutable': pins['python'], 'runtimeExecutable': pins['pythonRuntime'], 'rule': 'Fresh exact kernel path/bytes/hash and strict runtime-prefix plus exact source argv; no generic alias', 'commandObservation': command_observations[-1]['path']}
                     server_ack = True
                 requests = sorted(control.glob('before-worker-*.json'))
                 if len(requests) > 8:
@@ -237,7 +235,7 @@ def main():
             check_resources(final, len(owned.known) + 1, directory_bytes(output), disk.f_bavail * disk.f_frsize, time.monotonic() - started, supervisor.observe(snapshot()))
         except BaseException as error:
             cleanup.append({'phase': 'final-bounds-and-empty-observation', 'error': str(error)[:4096]})
-        result = {'version': 1, 'mode': args.mode, 'status': 'candidate-pass' if primary is None and not cleanup else 'fail', 'scope': 'actual normal/crash ownership only if separately released; no audio/GPU request', 'audioProcessing': False, 'gpuRequested': False, 'launch': launch, 'browserCommand': browser_command, 'staticServerCommand': server_command, 'staticCommandObservations': command_observations, 'profile': profile, 'primary': primary, 'cleanup': cleanup, 'exitCode': child.poll() if child else None, 'seconds': time.monotonic() - started, 'observations': observations, 'leaders': owned.leaders if owned else None, 'admissions': owned.admissions if owned else [], 'events': owned.events if owned else [], 'preCrashBrowserMembers': before, 'confirmedCrashSurvivors': survivors, 'postCrashObservation': post_crash, 'finalObservation': final, 'limits': {'wallSeconds': 60, 'workSeconds': 25, 'outputBytesIncludingScratch': 64 * 1024 ** 2, 'minimumFreeBytes': 6 * 1024 ** 3, 'unionRSSBytes': 4 * 1024 ** 3, 'liveProcesses': 256, 'knownIdentities': 4096}}
+        result = {'version': 1, 'mode': args.mode, 'status': 'candidate-pass' if primary is None and not cleanup else 'fail', 'scope': 'actual normal/crash ownership only if separately released; no audio/GPU request', 'audioProcessing': False, 'gpuRequested': False, 'launch': launch, 'browserCommand': browser_command, 'staticServerCommand': server_command, 'staticRuntimeVerification': server_verification, 'staticCommandObservations': command_observations, 'profile': profile, 'primary': primary, 'cleanup': cleanup, 'exitCode': child.poll() if child else None, 'seconds': time.monotonic() - started, 'observations': observations, 'leaders': owned.leaders if owned else None, 'admissions': owned.admissions if owned else [], 'events': owned.events if owned else [], 'preCrashBrowserMembers': before, 'confirmedCrashSurvivors': survivors, 'postCrashObservation': post_crash, 'finalObservation': final, 'limits': {'wallSeconds': 60, 'workSeconds': 25, 'outputBytesIncludingScratch': 64 * 1024 ** 2, 'minimumFreeBytes': 6 * 1024 ** 3, 'unionRSSBytes': 4 * 1024 ** 3, 'liveProcesses': 256, 'knownIdentities': 4096}}
         terminal_status = 'fail'
         receipt_hash = None
         try:

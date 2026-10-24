@@ -35,6 +35,34 @@ def parse_actual_command(text, executable):
     return [executable] + shlex.split(text[len(prefix):])
 
 
+def check_static_runtime(text, record, launch_pin, runtime_pin, source, expected):
+    """Exact named launch/runtime identities; no alias/realpath/basename rule."""
+    import hashlib
+    if record.get('expectedExecutable') != {key: launch_pin[key] for key in ('path', 'bytes', 'sha256')}:
+        raise RuntimeError('STATIC launch identity evidence changed')
+    if record.get('pid') != expected['pid'] or record.get('expectedIdentity') != expected:
+        raise RuntimeError('STATIC expected process evidence changed')
+    for key in ('before', 'after'):
+        row = record.get(key)
+        if not isinstance(row, dict) or any(row.get(field) != expected[field] for field in ('pid', 'ppid', 'pgid', 'start')) or not isinstance(row.get('state'), str) or 'Z' in row['state']:
+            raise RuntimeError('STATIC runtime process evidence changed')
+    if record.get('error') is not None or record.get('errors') != [] or record.get('commandCleanup') != [] or record.get('fileCleanup') != [] or record.get('commandPrimary') is not None or record.get('filePrimary') is not None:
+        raise RuntimeError('STATIC runtime evidence has unresolved errors')
+    raw = record.get('rawCommandText')
+    if not isinstance(raw, str) or record.get('rawCommandComplete') is not True or record.get('rawCommandTruncated') is not False or record.get('rawCommandHex') is not None:
+        raise RuntimeError('STATIC complete raw command evidence required')
+    encoded = raw.encode('utf8')
+    if not 0 < len(encoded) <= 16384 or record.get('rawCommandBytes') != len(encoded) or record.get('rawCommandSHA256') != hashlib.sha256(encoded).hexdigest() or text != raw.strip():
+        raise RuntimeError('STATIC raw command evidence checksum changed')
+    kernel = record.get('kernelExecutable')
+    if not isinstance(kernel, dict) or any(kernel.get(key) != runtime_pin[key] for key in ('path', 'bytes', 'sha256')):
+        raise RuntimeError('STATIC exact kernel runtime pin mismatch')
+    parts = parse_actual_command(text, runtime_pin['path'])
+    if parts != [runtime_pin['path'], source]:
+        raise RuntimeError('STATIC exact runtime/source argv mismatch')
+    return parts
+
+
 def check_browser_command(parts, brave, scratch):
     from pathlib import Path
     if not parts or parts[0] != brave:

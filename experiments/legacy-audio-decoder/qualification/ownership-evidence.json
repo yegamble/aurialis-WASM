@@ -1,0 +1,49 @@
+{
+  "scope": "private no-codec ownership evidence; malformed matrix generation only, no compressed parsing or audio decoding",
+  "files": [
+    {
+      "path": "/private/tmp/aurialis-private-decoder-ownership-source-02/source-lock.json",
+      "bytes": 1197,
+      "sha256": "21ff39fb556d1381c82ec4835dfc887d9ee38882a50e9b6b3e7474f8c92c5e89"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-ownership-normal-01/driver.json",
+      "bytes": 4787,
+      "sha256": "27e9f9c7ec58662ee49d6e7c14e51a64c0877172d750c2b844890efe9d019a1a"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-ownership-normal-02/driver.json",
+      "bytes": 7261,
+      "sha256": "108b8d1a627d260e85bec513645845340888bbd7f474650aedcf454cdcbebd19"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-ownership-crash-01/driver.json",
+      "bytes": 8491,
+      "sha256": "0bc9605758099af638119ee4445943bd734bf03087e7e0dd9271925c7a2f6a97"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-negative-fixtures-01/matrix.json",
+      "bytes": 36676,
+      "sha256": "a2d633783264f9510cdccb0bc22c7e912d35c4098facdf3cb5ce8d22921808cc"
+    }
+  ],
+  "normal02": {
+    "exitCode": 0,
+    "seconds": 1.066,
+    "sampledUnionRSSBytes": 426786816
+  },
+  "crash01": {
+    "expectedNodeExitCode": -9,
+    "seconds": 0.926,
+    "sampledUnionRSSBytes": 452984832,
+    "browserSignalObserved": false
+  },
+  "historicalPositiveRSSScope": "247119872 bytes Node process group only, unchanged",
+  "retainedFailure": "normal01 unproved-group-member, not a pass",
+  "open": [
+    "malformed parsing and cleanup",
+    "busy-codec cancellation",
+    "Go CDR publication",
+    "license/relink and clean reproducible build"
+  ]
+}

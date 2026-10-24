@@ -155,7 +155,7 @@ The next [steady function-attribution source checkpoint](docs/tasks.md#steady-fu
 
 The subsequently released [two-profile steady diagnostic](docs/tasks.md#steady-function-attribution-actual-diagnostic-checkpoint) reproduced both sealed verification streams and resolved actual WASM function samples. Requested sampling was 100 microseconds; observed medians were 153. Counts identify sampled paths without proving function cost or speedup; steady RED and candidate non-selection remain.
 
-A separate [bound-coordinate cache proposal](docs/tasks.md#bound-coordinate-cache-source-only-proposal) now reviews one exact conversion moved before traversal, including the extra unused conversion on a stale root. An inactive two-line payload and independent original control are now prepared with a fixed batch-state workload. The source checkpoint precedes its single authorized native build/direct unit; WASM, full-chain and performance qualification remain pending.
+A separate [bound-coordinate cache proposal](docs/tasks.md#bound-coordinate-cache-source-only-proposal) now reviews one exact conversion moved before traversal, including the extra unused conversion on a stale root. An inactive two-line payload and independent original control are now prepared with a fixed batch-state workload. Its first native build/direct oracle and allocation unit passed with fixed workload and clean receipts. A [source-only GoJS plan](docs/tasks.md#bound-coordinate-first-native-checkpoint) awaits separate release; WASM, full-chain and performance qualification remain pending.
 
 ## Verification status
 

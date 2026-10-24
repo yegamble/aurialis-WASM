@@ -1,0 +1,6 @@
+SOURCE PLAN ONLY — NOT AN EXECUTION RELEASE
+1. Prepare/freeze minimal closed GoJS host and exact source/runtime/compiler bindings; source/mock/syntax/spelling review first.
+2. After separate Chair release: one Go1.26.10 test -c candidate WASM compile with exact eight-entry overlay,25s owned guard,16MiB post-exit admission.
+3. Only if admitted: one Node26.12.0 --stack-size=8192 --max-old-space-size=192 closed log-only child selecting ^TestStudioEnvelopeBoundCoordinateOracleAndNoAlloc$, Go25s/parent28s.
+4. Read-only exact-name bound-body decode versus sealed baseline, preserving raw bodies, signed immediates, local mapping and control/math order.
+5. Stop/retain any RED; no retries, baseline build, graph/audio/profile/timing or source retuning.

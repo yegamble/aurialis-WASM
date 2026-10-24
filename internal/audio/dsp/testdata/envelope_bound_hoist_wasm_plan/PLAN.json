@@ -1,0 +1,157 @@
+{
+  "_cspell": "cspell:ignore GOMAXPROCS GOWORK GOEXPERIMENT GOWASM GOARM GOFLAGS GOVERSION GOTOOLDIR ",
+  "scope": "SOURCE PLAN ONLY; exactly one future candidate GoJS module build and one identical direct unit, then read-only normalized production-bound inspection; no current execution release",
+  "nativeCheckpoint": {
+    "sourceCommit": "343a95f735673d7090ba45e09057ff5fb2f66a44",
+    "BUILD": "artifacts/private-dsp/recovery-20261023/envelope-bound-hoist/bound-hoist-native-v2/BUILD.json",
+    "BUILD_SHA256": "dd08ea0709c3096cba91d7091839be10f0322c9f56dac517a20324cb05a55d64",
+    "NATIVE_SHA256": "d671be5fbd0161cad6a3b72bb3d0571d4d8b4580c86f3ca22e38c63011f35652",
+    "nativeModule": {
+      "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/envelope-bound-hoist/bound-hoist-native-v2/native-candidate.test",
+      "bytes": 6630066,
+      "sha256": "3d16714502cfeada97cf88e1c5e0e6d8a7db173eea1807721b369625c47b6328",
+      "overlaySHA256": "3b76dac787b9fa60680cc0a4d1c2ea878250f6edb9ef4fd0040d2aeaaa49b724",
+      "sourceSetSHA256": "836829b3d02306a3b4aae74a51f142e7deaf7ff308847fb81ae1153cda299dd9"
+    }
+  },
+  "source": {
+    "production": "internal/audio/dsp/testdata/envelope_bound_hoist/studio_gain_envelope.go.source",
+    "productionSHA256": "a5ff75b66b649116857effe11fde78749edad3201ed964741cdc137d7967018a",
+    "control": "internal/audio/dsp/testdata/envelope_bound_hoist/bound_query_test.go.source",
+    "controlSHA256": "b75da63d14fc66e0248150ef03c207ed16414c2fc079b4fdc6489b2d4ae67613",
+    "mapping": {
+      "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/internal/audio/dsp/studio_clipping_repair.go": "",
+      "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/internal/audio/dsp/studio_clipping_tone.go": "",
+      "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/internal/audio/dsp/studio_clipping_reflection.go": "",
+      "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/internal/audio/dsp/studio_clipping_repair_test.go": "",
+      "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/internal/audio/dsp/studio_clipping_resource_test.go": "",
+      "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/internal/audio/dsp/studio_clipping_quality_test.go": "",
+      "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/internal/audio/dsp/studio_gain_envelope.go": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/internal/audio/dsp/testdata/envelope_bound_hoist/studio_gain_envelope.go.source",
+      "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/internal/audio/dsp/studio_bound_hoist_control_test.go": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/internal/audio/dsp/testdata/envelope_bound_hoist/bound_query_test.go.source"
+    },
+    "effectiveSourceSetSHA256": "836829b3d02306a3b4aae74a51f142e7deaf7ff308847fb81ae1153cda299dd9",
+    "require": "Keep these exact production/control payloads and all original recorder/screen/18 unit functions. No shortening, cap/tolerance change or insertRange bundling. Freeze every new host/child/inspector input explicitly without modifying old manifests/inventory. Copy physical Go inputs only with .source suffix; verify the unchanged closed inventory after every freeze."
+  },
+  "baseline": {
+    "BUILD": {
+      "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/BUILD.json",
+      "sha256": "16aacd5935e4bee8c9e253d926f9fe2d5dfbc2179f68b62b5b7e3d1195fde6f8"
+    },
+    "wasm": {
+      "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/modules/wasm-baseline.wasm",
+      "bytes": 7568585,
+      "sha256": "f7f270e64ff525c12ef3c67eea786a794667df933a332a4ea02ba71090093d95",
+      "overlaySHA256": "f3a78ca5d10b09e5737378a82dfdd01edcc9fc8305991476071f04330b269a61",
+      "sourceSetSHA256": "dfcc5a16a4b1638ff4a22b672ae95048d545b01e475ab44ef979dc6ac2f7d94e",
+      "compilerProcessEnv": {
+        "GOOS": "js",
+        "GOARCH": "wasm",
+        "CGO_ENABLED": "0",
+        "GOMAXPROCS": "1",
+        "GOWORK": "off",
+        "GOEXPERIMENT": "",
+        "GOWASM": "",
+        "GOARM64": "v8.0",
+        "GOFLAGS": "-overlay=/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/baseline-overlay.json"
+      },
+      "effectiveGoEnv": {
+        "CGO_ENABLED": "0",
+        "GOARCH": "wasm",
+        "GOARM64": "v8.0",
+        "GOEXPERIMENT": "",
+        "GOFLAGS": "-overlay=/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/baseline-overlay.json",
+        "GOOS": "js",
+        "GOWASM": "",
+        "GOWORK": "off"
+      }
+    },
+    "runtime": {
+      "path": "/Users/yosefgamble/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.10.darwin-arm64/lib/wasm/wasm_exec.js",
+      "sha256": "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14"
+    },
+    "historicalToolchainLimitation": "Old BUILD pins version/effective flags/runtime but has no historical compiler/linker executable hashes; those stay unrecorded. New selected compiler/linker hashes must match the actual native selected-toolchain observation, not the Homebrew bootstrap."
+  },
+  "futureCompiler": {
+    "goVersion": "go1.26.10",
+    "selectedGoExecutable": "/Users/yosefgamble/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.10.darwin-arm64/bin/go",
+    "environment": {
+      "GOOS": "js",
+      "GOARCH": "wasm",
+      "CGO_ENABLED": "0",
+      "GOMAXPROCS": "1",
+      "GOWORK": "off",
+      "GOEXPERIMENT": "",
+      "GOWASM": "",
+      "GOARM64": "v8.0",
+      "GOFLAGS": "-overlay=<fresh exact eight-entry overlay>"
+    },
+    "observe": "Record actual GOVERSION/GOROOT/GOTOOLDIR/compiler/linker/driver/runtime hashes, all effective flags and exact source/module bytes. No baseline build."
+  },
+  "futureDirectUnit": {
+    "name": "TestStudioEnvelopeBoundCoordinateOracleAndNoAlloc",
+    "work": {
+      "allSignedResiduals": 4095,
+      "dirtyEpochDepthAndIEEE": 240,
+      "extremeSignedFrameCases": 64,
+      "mutationSequenceQueries": 512,
+      "noAllocationQueriesUpper": 576,
+      "totalQueryUpper": 5487,
+      "mutationResetEvents": 256,
+      "maximumNodesPerQuery": 12,
+      "frames": "Include every residual -2047..2047 and MinInt64/MaxInt64, negative epochs, both tree parities, chunk boundaries, >2^53 clocks, stale root and stale node at each depth, original reset/wrap and clipped rebuild.",
+      "noAllocation": "Query-only warmed allocation-count/byte gate must be zero; retain separate unchanged graph allocation gates.",
+      "scope": "Proposed direct-query bounds are separate from original27-case recorder frame counters. Keep original test assertions/tolerances unchanged. No bound increases or shortened cases after failure.",
+      "fullStateBatches": 562,
+      "fullStateScans": 1686,
+      "nodePairComparisons": 13811712,
+      "fieldComparisons": 41435136,
+      "scalarFieldReadsUpper": 82870272,
+      "snapshotCopyBytes": 110493696,
+      "pairedDirectQueries": 4911,
+      "totalBoundInvocations": 10398,
+      "nodeVisitsUpper": 124776,
+      "fullStatePerBatch": "Each of 562 setups/events compares all8192 nodes candidate/control before its read-only batch, then snapshots candidate state and compares both implementations to that snapshot after the batch. This checks epoch and exact slope/offset IEEE bits. No repeated full-state scan per pure query. Keep every4911 exact paired output and all576 additional allocation-gate invocations.",
+      "allocationBreakdown": "AllocsPerRun16 with16 queries per closure including one warm call:272 candidate +272 oracle; then16 byte-count queries per implementation:32. Total576 bound calls.",
+      "batchBreakdown": {
+        "residual": 1,
+        "dirtyIEEE": 240,
+        "extreme": 64,
+        "mutation": 256,
+        "allocation": 1
+      }
+    },
+    "node": "/Users/yosefgamble/.nvm/versions/node/v26.12.0/bin/node",
+    "nodeFlags": [
+      "--stack-size=8192",
+      "--max-old-space-size=192"
+    ],
+    "childBinding": "Prepare a small closed new child with explicit new metadata and exact test whitelist; preserve admitted unit-io.mjs, closed-fs.mjs and child-lifecycle.mjs byte-for-byte. Do not reuse old whitelist/manifests as if they admitted the new test, or substitute receipt argv. Closed log-only GoJS IO must show zero open attempts/data bytes, full Go exit/parent EOF and no primary/cleanup/IO error.",
+    "nativeOnlyResultsAreNotGoJSEvidence": true
+  },
+  "limits": {
+    "compileExternalSeconds": 25,
+    "unitGoSeconds": 25,
+    "unitParentSeconds": 28,
+    "logBytes": 262144,
+    "moduleBytes": 16777216,
+    "receiptBytes": 131072,
+    "nodeHeapMiB": 192,
+    "nodeStackKiB": 8192,
+    "observedLeaderRSSBytes": 1073741824,
+    "RSSScope": "sampled Node parent including WASM, not instantaneous or descendant-aggregate ceiling",
+    "children": "one compiler then one GoJS child, sequential/exclusive fresh IDs, no retry or bound retuning; stop on RED",
+    "recorderCounters": "not applicable to this direct unit; immutable4911 paired cases/562 state batches/576 allocation calls apply instead"
+  },
+  "inspection": {
+    "moduleAdmission": "regular file/no symlink, pre-stat and fstat16MiB cap before read; exact module header/hash; no instantiation for inspection",
+    "target": "Resolve the exact production studioGainEnvelope.bound name through WASM name/code sections, not a prefix, fixed index or boundXBits function. Preserve raw bytes/body hash/decoded locals and instructions.",
+    "decoderPins": {
+      "source": "artifacts/private-dsp/recovery-20261023/envelope-bound-hoist-proposal/source-v3/inspect-bound.py.source",
+      "sourceSHA256": "d08bb53eaa21e60ede7afd953df277597bb20897d06c2acc0d8b4e14937011fb",
+      "note": "Normalize only exact function/name mapping and documented local renaming; preserve opcode/control/math order. Reuse pinned Go emitter/signed-immediate decoding and constant-dispatch-aware analysis without altering the sealed inspector."
+    },
+    "compare": "Exact new candidate versus sealed qualified baseline module. Require conversion outside query traversal backward paths with unchanged multiply/add/max ordering and no arithmetic/state rewrite. Reject an ineffective identical/dynamic-conversion rewrite before full-chain consideration. Report unknown structure honestly.",
+    "limits": "Static code proves no V8 machine-code behavior or cost; V8 may already hoist original conversion. Native/direct GoJS passes alone justify no full-chain/timing/deadline claim."
+  },
+  "laterGates": "Only after independent source/native/actual-GoJS/normalized-code review decide whether to release135cases per backend across5rates and unchanged18 whole-unit tests on the new candidate. Existing steady RED and candidate non-selection remain. Timing/profile require separate review and quiet release."
+}

@@ -221,7 +221,7 @@ Shared Tailwind button variants, dialog surfaces, control groups and module disc
 
 ## Album cohort ownership — private integration checkpoint
 
-The QA listener probe owns its exact subprocess through bounded capture, cancellation and reap attempts. It uses PID-only output, preserves primary and cleanup failures separately and keeps the existing live service-group check. A late result cannot grant listener authority. This source-only correction does not qualify actual service or full-length Album execution; see [engineering controls](../scripts/qualification/README.md#bounded-listener-probe--sourceunit-only).
+The QA listener probe owns its exact subprocess through bounded capture, cancellation and reap attempts. It uses PID-only output, preserves primary and cleanup failures separately and keeps the existing live service-group check. A late result cannot grant listener authority. One actual no-audio owned-static control now passed this route alongside its tiny BrowserServer work; full-length Album execution remains open. See [engineering controls](../scripts/qualification/README.md#bounded-listener-probe--sourceunit-only).
 
 The actual `b47cf2f` direct-owned static attempt stopped at listener validation after 1.495 seconds, before browser/profile work. Source execution reached that pin after exact decoded identity, HTML and security checks, but listener output and successful framing-mode receipts were not published, so their cause/mode remain unproven. Service exit 130, empty terminal arrays and fresh independent empty task groups were retained with no cleanup error or profile deletion. Its 58-file RED/27 execution bindings remain separate from the `7855677` attempt and the older no-service controls.
 

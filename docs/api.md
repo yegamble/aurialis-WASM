@@ -11,7 +11,7 @@ API CI runs the complete Newman collection and raw security probes against the v
 
 ## Album orchestration — private integration checkpoint
 
-The QA listener check now uses one fixed PID-only command with bounded output and diagnostics. It still requires every listener to belong to the admitted live service group and adds no app endpoint. This correction has source/unit evidence only; actual service continuation remains open. [Engineering controls](../scripts/qualification/README.md#bounded-listener-probe--sourceunit-only) explain its failure and cleanup bounds.
+The QA listener check now uses one fixed PID-only command with bounded output and diagnostics. It still requires every listener to belong to the admitted live service group and adds no app endpoint. One actual no-audio owned-static control now passed its readiness, listener and tiny remote-download checks. This adds no audio or full-length qualification. [Engineering controls](../scripts/qualification/README.md#bounded-listener-probe--sourceunit-only) explain its failure and cleanup bounds.
 
 The separately released actual `b47cf2f` normal control reached listener validation after exact identity/HTML/security checks, then failed with listener unavailable in 1.495 seconds. The rejected listener bytes were not retained; the cause remains unknown. No browser/profile/Worker/download started. The service was reaped, fresh task groups were empty and no retry occurred. This retained 58-file RED does not qualify actual service continuation or change an app endpoint.
 

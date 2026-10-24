@@ -11,7 +11,7 @@ API CI runs the complete Newman collection and raw security probes against the v
 
 ## Album orchestration — private integration checkpoint
 
-The normal no-audio QA probe now includes a source-authored 257-byte local Blob Download over the connected BrowserServer public stream, with exact bounded verification and retained client bytes. Fourteen file/shared-stream controls passed; no actual remote download, browser or service was launched. This adds no application HTTP endpoint.
+The normal no-audio QA control passed once in 2.118 seconds, including the actual connected BrowserServer public-stream Download of a deterministic 257-byte local Blob, exact retained client verification and fresh-empty profile cleanup. One controlled crash passed in 1.677 seconds with exact known survivors, final empty groups and preserved diagnostic directories. Both parents settled with no primary/cleanup errors. These bounded process/transport controls add no application HTTP endpoint; external service routing and full-length audio remain open.
 
 Independent review caught stale process evidence at the QA success-cleanup gate. It now requires and records the immediate fresh observation before committing cleanup; nine focused injected parent controls passed after the old-source RED. No actual cleanup or HTTP behavior changes are qualified by those controls.
 

@@ -11,6 +11,8 @@ API CI runs the complete Newman collection and raw security probes against the v
 
 ## Album orchestration — private integration checkpoint
 
+The separately released actual `b47cf2f` normal control reached listener validation after exact identity/HTML/security checks, then failed with listener unavailable in 1.495 seconds. The rejected listener bytes were not retained; the cause remains unknown. No browser/profile/Worker/download started. The service was reaped, fresh task groups were empty and no retry occurred. This retained 58-file RED does not qualify actual service continuation or change an app endpoint.
+
 Selected readiness framing values now become known only after a complete header block passes defect/folding validation. A partial parse returned without an exception keeps both parsed flags false and skips extraction, so zero counts remain unknown. A real-parser malformed/folded regression failed twice against `abf5716`; the corrected source passed 86/86 pure controls. Diagnostics/body limits and deadlines stay unchanged; no actual rerun is implied.
 
 One actual directly owned static-service attempt at `7855677` failed its HTML framing readiness requirement after both GETs logged 200. Rejected headers were not retained, so the framing cause is unproven. It stopped before BrowserServer/Worker/download work, reaped the direct service and independently observed empty task groups; no retry followed. This retained RED adds no app endpoint and does not qualify actual service/browser continuation. The accepted earlier tiny normal/crash results below remain separate.

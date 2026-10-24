@@ -27,3 +27,9 @@ def union_rows(owned_rows, external=None):
             raise RuntimeError("Union process identity changed")
         result[external["pid"]] = external
     return list(result.values())
+
+
+def known_group_survivors(before, after, group):
+    """Only exact live identities admitted before the crash can prove survival."""
+    admitted = {row["pid"]: row for row in before if row["pgid"] == group and "Z" not in row["state"]}
+    return [dict(row) for row in after if row["pgid"] == group and "Z" not in row["state"] and row["pid"] in admitted and same(row, admitted[row["pid"]])]

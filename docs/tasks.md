@@ -510,3 +510,6 @@ Source-only Round D preparation records 28 preregistered cases under the32-case 
 
 
 - [ ] Private attention capture acquisition repair: independent factory-failure RED preserved; parent ownership now precedes sink construction, a synchronous managed cleanup handle precedes asynchronous acquisition, and unconfirmed cleanup retains the receipt. Close/file/directory cleanup is retryable, successful abort is idempotent, and owner-bound admission cannot refund another sink. Corrected source suite: 58/58 in 415.363417 milliseconds. No new raw copies, served assets, helper changes or actual server/browser/GPU/model execution. Independent source review and separate hardware/launcher gates remain open.
+
+
+Private attention launcher preparation now reuses the accepted Node admission helper and observed-survivor helper verbatim from `51d206c`. The shared OwnedGroups core remains SHA-256 `d5a9978835c7ebcd6fd9c30c6074f4e55b84ac26683b66c4f9198daf3dd08a40`; no group-membership or signaling framework was forked. Prior helper versions remain bound to their immutable indices, and current per-file hashes/origins are recorded in `scripts/qualification/provenance.json`. Three mocked Node admission controls passed in this source wave; they launch no browser and do not rerun or replace the earlier sixteen process controls. Actual launcher/hardware qualification remains held.

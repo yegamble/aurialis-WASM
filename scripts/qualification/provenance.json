@@ -1,21 +1,52 @@
 {
-  "sourceCommit": "188385980aea78aa180c883f6055d151b6af6add",
-  "policy": "Exact accepted shared helper files; no local edits or separate process framework. Actual browser normal/crash controls remain a separate gate.",
+  "sourceCommit": "51d206c2a520fe2db60cc0ee3f40c67715e5bcda",
+  "policy": "Exact accepted executable helper/test files, no local membership/signaling fork. OwnedGroups/ownership_test unchanged1883859; observed_process/observed_process_test and Node owned-browser/test verbatim51d206c. README is synchronized local documentation. Actual browser controls not executed for this source wave.",
+  "history": {
+    "priorSourceCommit": "188385980aea78aa180c883f6055d151b6af6add",
+    "priorFiles": [
+      {
+        "path": "scripts/qualification/README.md",
+        "bytes": 2114,
+        "sha256": "1163e1c2bb10f5f76d82b02f79491c6c6ffca3c1a7f0f0844ada7051aa67e12d"
+      },
+      {
+        "path": "scripts/qualification/observed_process.py",
+        "bytes": 1294,
+        "sha256": "cb7c231998b6770ff1cf05119a6b93215ccde500b0d26c86b2ac864a73826b0a"
+      },
+      {
+        "path": "scripts/qualification/observed_process_test.py",
+        "bytes": 1681,
+        "sha256": "3465eec03ce6e4e2be219ddc7bff9dbf544bce22b53ac2cc40c937223e20739e"
+      },
+      {
+        "path": "scripts/qualification/owned_groups.py",
+        "bytes": 7214,
+        "sha256": "d5a9978835c7ebcd6fd9c30c6074f4e55b84ac26683b66c4f9198daf3dd08a40"
+      },
+      {
+        "path": "scripts/qualification/ownership_test.py",
+        "bytes": 11107,
+        "sha256": "12a1a8bd1aa7cd48dd0f3e511d427f0dbd8bf8fe4535055cab5e3542a0a1be69"
+      }
+    ],
+    "note": "Prior 1883859 files remain bound to immutable earlier Git/proof indices. Exact accepted 51d206c observed-process addition and Node browser admission helper reused; OwnedGroups core unchanged."
+  },
   "files": [
     {
       "path": "scripts/qualification/README.md",
-      "bytes": 2114,
-      "sha256": "1163e1c2bb10f5f76d82b02f79491c6c6ffca3c1a7f0f0844ada7051aa67e12d"
+      "bytes": 2910,
+      "sha256": "797ac74d9c333c0943154c010dca54f00ef32022320e2ece7cc68aaa060bd11b"
     },
     {
       "path": "scripts/qualification/observed_process.py",
-      "bytes": 1294,
-      "sha256": "cb7c231998b6770ff1cf05119a6b93215ccde500b0d26c86b2ac864a73826b0a"
+      "bytes": 1686,
+      "sha256": "a4904130b5c125d3563868c1e9d69dc2cd9be07a105b1cf7250d914b15836df3"
     },
     {
       "path": "scripts/qualification/observed_process_test.py",
-      "bytes": 1681,
-      "sha256": "3465eec03ce6e4e2be219ddc7bff9dbf544bce22b53ac2cc40c937223e20739e"
+      "bytes": 2410,
+      "sha256": "075e2c9fbe37a2e1282d64b477c8290faf6ef71a2365205d42aac10099a04ea0"
     },
     {
       "path": "scripts/qualification/owned_groups.py",
@@ -26,6 +57,25 @@
       "path": "scripts/qualification/ownership_test.py",
       "bytes": 11107,
       "sha256": "12a1a8bd1aa7cd48dd0f3e511d427f0dbd8bf8fe4535055cab5e3542a0a1be69"
+    },
+    {
+      "path": "scripts/qualification/owned-browser.mjs",
+      "bytes": 3855,
+      "sha256": "093d935b01dafd316707ab65b2787de65c25b2d9f1c7c47185e16084e81dd965"
+    },
+    {
+      "path": "scripts/test-owned-browser.mjs",
+      "bytes": 3622,
+      "sha256": "2f1a2b2e22888e18106d144788ea4852b86944ef9abe5f91996ffb98cedbe41d"
     }
-  ]
+  ],
+  "origins": {
+    "scripts/qualification/README.md": "local documentation sync",
+    "scripts/qualification/observed_process.py": "51d206c2a520fe2db60cc0ee3f40c67715e5bcda",
+    "scripts/qualification/observed_process_test.py": "51d206c2a520fe2db60cc0ee3f40c67715e5bcda",
+    "scripts/qualification/owned_groups.py": "188385980aea78aa180c883f6055d151b6af6add",
+    "scripts/qualification/ownership_test.py": "188385980aea78aa180c883f6055d151b6af6add",
+    "scripts/qualification/owned-browser.mjs": "51d206c2a520fe2db60cc0ee3f40c67715e5bcda",
+    "scripts/test-owned-browser.mjs": "51d206c2a520fe2db60cc0ee3f40c67715e5bcda"
+  }
 }

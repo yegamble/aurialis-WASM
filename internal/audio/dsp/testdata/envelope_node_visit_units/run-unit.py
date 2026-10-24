@@ -1,6 +1,7 @@
 """SOURCE ONLY original invariant host; execution needs separate Chair release."""
-# cspell:ignore GOMAXPROCS killpg pidinfo taskinfo ctypes libproc argtypes restype PIDTASKINFO fstat
+# cspell:ignore GOMAXPROCS killpg pidinfo taskinfo ctypes libproc argtypes restype PIDTASKINFO fstat ESRCH waitpid
 import ctypes
+import errno
 import importlib.util
 import json
 import math
@@ -98,6 +99,8 @@ def bounded_unit(argv, directory, env, read_rss):
     # selector construction/registration. Setup failures also kill and reap.
     deadline = time.monotonic() + 28
     reason = primary = None
+    exit_observation = None
+    pipe_eof = False
     total = samples = maximum = 0
     group_signal = None
     process = watcher = out = None
@@ -140,15 +143,33 @@ def bounded_unit(argv, directory, env, read_rss):
                         samples += 1
                     check_rss(value)
                 except BaseException as cause:
-                    # Exit racing a query needs an earlier valid observation.
-                    if process.poll() is None or samples == 0 or isinstance(cause, MemoryError):
-                        reason = 'resident-monitor-' + type(cause).__name__
-                        primary = {'phase': 'resident-query', 'type': type(cause).__name__, 'message': str(cause)[:256]}
-                        break
+                    # ESRCH can precede waitpid visibility during actual exit.
+                    # Only a prior RSS sample plus one bounded direct wait may
+                    # confirm this race. All other query failures remain RED.
+                    if isinstance(cause, OSError) and cause.errno == errno.ESRCH and samples > 0 and exit_observation is None:
+                        wait_limit = min(POLL, max(0, deadline - time.monotonic()))
+                        exit_observation = {'errno': errno.ESRCH, 'priorRSSSamples': samples,
+                                            'waitLimitSeconds': wait_limit, 'confirmedExit': None,
+                                            'confirmationFailure': None, 'pipeEOF': False}
+                        if wait_limit > 0:
+                            try:
+                                exit_observation['confirmedExit'] = process.wait(timeout=wait_limit)
+                            except BaseException as confirmation:
+                                exit_observation['confirmationFailure'] = type(confirmation).__name__
+                            else:
+                                # The owned process was reaped. Continue normal
+                                # bounded pipe draining; do not signal its group.
+                                continue
+                        else:
+                            exit_observation['confirmationFailure'] = 'deadline-exhausted'
+                    reason = 'resident-monitor-' + type(cause).__name__
+                    primary = {'phase': 'resident-query', 'type': type(cause).__name__, 'message': str(cause)[:256]}
+                    break
             for key, _ in watcher.select(min(remaining, POLL)):
                 data = os.read(key.fileobj.fileno(), 16384)
                 if not data:
                     watcher.unregister(key.fileobj)
+                    pipe_eof = True
                     continue
                 if len(data) > LOG_CAP - total:
                     out.write(data[:LOG_CAP - total])
@@ -167,7 +188,10 @@ def bounded_unit(argv, directory, env, read_rss):
             if reason is not None:
                 stop_owned()
             try:
-                result = process.wait(timeout=1 if reason is not None else max(.01, deadline - time.monotonic()))
+                if exit_observation is not None and exit_observation['confirmedExit'] is not None:
+                    result = exit_observation['confirmedExit']
+                else:
+                    result = process.wait(timeout=1 if reason is not None else max(.01, deadline - time.monotonic()))
             except subprocess.TimeoutExpired:
                 reason = reason or 'external28s-wall-watchdog'
                 stop_owned()
@@ -193,7 +217,10 @@ def bounded_unit(argv, directory, env, read_rss):
         reason = 'resident-monitor-no-observation'
     if cleanup and reason is None:
         reason = 'supervisor-cleanup-failure'
+    if exit_observation is not None:
+        exit_observation['pipeEOF'] = pipe_eof
     receipt = {'argv': argv, 'spawned': process is not None, 'exit': result, 'failure': reason,
+               'stdoutEOF': pipe_eof, 'exitObservation': exit_observation,
                'primaryFailure': primary, 'logBytes': total, 'wallLimitSeconds': 28, 'logCapBytes': LOG_CAP,
                'processGroupSignal': group_signal, 'cleanupFailure': '; '.join(cleanup) if cleanup else None,
                'resident': {'scope': 'observed workload leader RSS; native process or Node GoJS parent including WASM', 'method': 'Darwin proc_pidinfo PROC_PIDTASKINFO pti_resident_size bytes', 'capBytes': RSS_CAP, 'pollSeconds': POLL, 'samples': samples, 'maxObservedBytes': maximum, 'instantaneousHardCeilingClaim': False}}
@@ -258,7 +285,14 @@ def admit_source(source_id):
 
 def validate_parent(receipt):
     resident = receipt.get('resident', {})
-    if (receipt.get('spawned') is not True or receipt.get('exit') != 0 or receipt.get('failure') is not None
+    observation = receipt.get('exitObservation')
+    if observation is not None and (observation.get('errno') != errno.ESRCH
+            or observation.get('priorRSSSamples', 0) < 1
+            or not 0 < observation.get('waitLimitSeconds', 0) <= POLL
+            or observation.get('confirmedExit') != receipt.get('exit')
+            or observation.get('confirmationFailure') is not None or observation.get('pipeEOF') is not True):
+        raise ValueError('unconfirmed resident exit observation refused')
+    if (receipt.get('stdoutEOF') is not True or receipt.get('spawned') is not True or receipt.get('exit') != 0 or receipt.get('failure') is not None
             or receipt.get('primaryFailure') is not None
             or receipt.get('cleanupFailure') is not None or receipt.get('processGroupSignal') is not None
             or receipt.get('wallLimitSeconds') != 28 or receipt.get('logCapBytes') != LOG_CAP

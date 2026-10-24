@@ -92,6 +92,18 @@ A reviewed setup gap was demonstrated by three pre-fix mocked controls: registra
 
 The frozen source index is `artifacts/private-dsp/recovery-20261023/envelope-node-visit-units/source-v5/SOURCE-SHA256.json`, SHA-256 `92b7bec913fa1882d08448ddca2ee5b9e692c172c396a09ce4d82c6618d9d648`, with 11 files/96,325 bytes. `source-check-v5/CHECKS-SHA256.json` has SHA-256 `9b0ab4b558612374d4747bd16618a7f7dd8dae17bf0bf5da2eb0c587198e2354`. Prior source freezes, spelling failures and all historical audio/timing proof remain retained. Chair execution release is still required. Cross-target full-state identity remains UNPROVEN, steady 192 kHz remains RED and the candidate remains unselected.
 
+### Original-unit exit-observation source revision
+
+<!-- cspell:ignore ESRCH -->
+
+**Open — one actual attempt is infrastructure RED; source revision only.** The released first-four preflight stopped after exactly one native-baseline `TestStudioExactExtremaBitContract` child. Go exited zero and the raw log contains its test PASS, but the source-v5 supervisor saw an RSS `ESRCH` before process-status visibility and stopped before terminal PASS/EOF. Its two RSS samples peaked at 5,324,800 bytes. Group signaling was denied during cleanup; this is retained cleanup uncertainty, not proof that descendants survived. Zero original-unit results are accepted. The other 71 combinations, retries, rebuilds and timing did not run.
+
+The unchanged eight-file/7,255-byte attempt index is `envelope-node-visit-units/source-v5/UNIT-ATTEMPT-RED-SHA256.json`, SHA-256 `94440d692e5e1740d4637e83b4f29d53416ee3f6dc58af80c60fb9c982de1c46`. The Chair authorized a source-only exit-observation revision. Only `errno.ESRCH` after prior valid RSS may perform one direct owned-process wait capped by 25 ms and the remaining deadline to confirm/reap exit. A separate receipt records that observation, and the pipe must still drain completely. A live wait timeout, wrong error, zero samples or memory overage remains RED. No original time/log/RSS cap, assertion, source input, module or test selection changes.
+
+Eighteen synthetic host contracts passed in 1.476 seconds, including confirmed-exit/full-log drain, live wait timeout, unrelated errors, zero observations, memory overage and the remaining-deadline bound. Both Node syntax checks and pinned configured six-file spelling passed. A synthetic pre-fix race control remains RED, index `1f819983f56c5f8414325127d65df6a2db47ca1537dacf0d7b8691c969dffbf7`. These source controls launched no original Go child or WASM instance.
+
+The new frozen `envelope-node-visit-units/source-v6/SOURCE-SHA256.json` is `7005fb5616e8ffa0f3dee593cc8159dd65898ff2420499d8f9a7c62bfaf59204` (11 files/104,071 bytes); `source-check-v6-final/CHECKS-SHA256.json` is `f13597f45288381b384f1fb7fe779b966d4f995403c870bca281218b3f221257` (21 files/4,476 bytes). Prior actual RED/source/check indices remain unchanged. The Chair must review and explicitly release any failed-test retry under new provenance and remaining original units. Cross-target full-state identity remains UNPROVEN, steady 192 kHz remains RED and the candidate remains unselected.
+
 ## Whole-product completion loop — October 22, 2026
 
 **Status: bounded wave locally verified; open — awaiting merge. Product incomplete.** The reviewed baseline `f5ec9ad` includes owner-merged PR #5. The older pending-merge entries below retain their historical status. The [current completion review](reviews/2026-10-22-war-room-completion.md) lists outstanding planned features and Round D rulings.

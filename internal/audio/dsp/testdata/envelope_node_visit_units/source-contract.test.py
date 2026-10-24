@@ -1,6 +1,7 @@
 """Synthetic source contracts only: no original Go/GoJS unit or WASM instance."""
-# cspell:ignore ctypes pidinfo argtypes restype
+# cspell:ignore ctypes pidinfo argtypes restype ESRCH esrch
 import copy
+import errno
 import importlib.util
 import pathlib
 import subprocess
@@ -220,6 +221,86 @@ console.log('synthetic log-only IO passed; no WASM instance');
                 self.assertEqual(receipt['failure'], 'supervisor-error-OSError')
                 stop.assert_not_called()
                 self.assertTrue((pathlib.Path(temporary) / 'parent-exit.json').is_file())
+
+    def exit_race(self, error, prior=True, confirms=True, remaining=.025):
+        watcher = FakeSelector()
+        state = {'exit': None, 'queries': 0}
+        stream = types.SimpleNamespace(fileno=lambda: 7, close=Mock())
+        def wait(timeout):
+            if timeout <= HOST.POLL:
+                if not confirms:
+                    raise subprocess.TimeoutExpired('/synthetic/no-module', timeout)
+                state['exit'] = 0
+                return 0
+            state['exit'] = -9
+            return -9
+        process = types.SimpleNamespace(pid=123, stdout=stream, poll=lambda: state['exit'], wait=Mock(side_effect=wait))
+        def resident(_pid):
+            state['queries'] += 1
+            if prior and state['queries'] == 1:
+                return 100
+            if isinstance(error, int):
+                return error
+            raise error
+        def stop(_process):
+            state['exit'] = -9
+            return 'sent'
+        times = iter([0, 0, 0, 28 - remaining])
+        def monotonic():
+            return next(times, 28 - remaining)
+        chunks = [b'=== RUN   ' + NAME.encode() + b'\n', b'--- PASS: ' + NAME.encode() + b' (0.00s)\nPASS\n', b'']
+        with tempfile.TemporaryDirectory(prefix='aurialis-exit-race-synthetic-') as temporary:
+            with patch.object(HOST.selectors, 'DefaultSelector', return_value=watcher), patch.object(HOST.subprocess, 'Popen', return_value=process), patch.object(HOST.os, 'read', side_effect=chunks), patch.object(HOST.time, 'monotonic', side_effect=monotonic), patch.object(HOST.SUPERVISOR, 'signal_group', side_effect=stop) as cleanup:
+                receipt = HOST.bounded_unit(['/synthetic/no-module'], pathlib.Path(temporary), {}, resident)
+                return receipt, (pathlib.Path(temporary) / 'child.log').read_text(), process.wait.call_args_list, cleanup.call_count
+
+    def test_esrch_confirmed_exit_drains_complete_pipe(self):
+        receipt, log, waits, cleanup = self.exit_race(ProcessLookupError(errno.ESRCH, 'synthetic exit observation'))
+        HOST.validate_parent(receipt)
+        self.assertEqual(log, LOG)
+        self.assertEqual(cleanup, 0)
+        observation = receipt['exitObservation']
+        self.assertEqual(observation['errno'], errno.ESRCH)
+        self.assertEqual(observation['confirmedExit'], 0)
+        self.assertGreaterEqual(observation['priorRSSSamples'], 1)
+        self.assertTrue(observation['pipeEOF'])
+        self.assertEqual(len(waits), 1)
+        self.assertLessEqual(waits[0].kwargs['timeout'], HOST.POLL)
+
+    def test_esrch_live_wait_timeout_stays_red(self):
+        receipt, _log, waits, cleanup = self.exit_race(ProcessLookupError(errno.ESRCH, 'synthetic live lookup'), confirms=False)
+        self.assertEqual(receipt['failure'], 'resident-monitor-ProcessLookupError')
+        self.assertEqual(receipt['exitObservation']['confirmationFailure'], 'TimeoutExpired')
+        self.assertIsNone(receipt['exitObservation']['confirmedExit'])
+        self.assertEqual(cleanup, 1)
+        self.assertEqual(len([call for call in waits if call.kwargs['timeout'] <= HOST.POLL]), 1)
+        with self.assertRaises(ValueError):
+            HOST.validate_parent(receipt)
+
+    def test_wrong_errno_and_memory_error_never_confirm_exit(self):
+        for error in (PermissionError(errno.EACCES, 'synthetic denied query'), HOST.RSS_CAP + 1):
+            receipt, _log, waits, cleanup = self.exit_race(error)
+            self.assertIsNone(receipt['exitObservation'])
+            self.assertIsNotNone(receipt['failure'])
+            self.assertEqual(cleanup, 1)
+            self.assertEqual(len([call for call in waits if call.kwargs['timeout'] <= HOST.POLL]), 0)
+            with self.assertRaises(ValueError):
+                HOST.validate_parent(receipt)
+
+    def test_esrch_without_prior_sample_stays_red(self):
+        receipt, _log, waits, cleanup = self.exit_race(ProcessLookupError(errno.ESRCH, 'synthetic early lookup'), prior=False)
+        self.assertIsNone(receipt['exitObservation'])
+        self.assertEqual(receipt['resident']['samples'], 0)
+        self.assertEqual(receipt['failure'], 'resident-monitor-ProcessLookupError')
+        self.assertEqual(cleanup, 1)
+        self.assertEqual(len([call for call in waits if call.kwargs['timeout'] <= HOST.POLL]), 0)
+
+    def test_exit_confirmation_wait_obeys_remaining_deadline(self):
+        receipt, log, waits, _cleanup = self.exit_race(ProcessLookupError(errno.ESRCH, 'synthetic near deadline'), remaining=.005)
+        HOST.validate_parent(receipt)
+        self.assertEqual(log, LOG)
+        self.assertEqual(len(waits), 1)
+        self.assertLessEqual(waits[0].kwargs['timeout'], .005000001)
 
     def test_source_bounds_and_old_proof_admission_only(self):
         snapshot = HOST.sources()

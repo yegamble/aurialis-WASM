@@ -153,6 +153,8 @@ The subsequent released untimed tranche passed exactly 20 semantic children: nat
 
 The next [steady function-attribution source checkpoint](docs/tasks.md#steady-function-attribution-host-source-checkpoint) implements a bounded diagnostic parser/host on the same module bytes and passes 21 synthetic/static controls. Actual profiling remains unreleased; no new candidate arithmetic or performance acceptance follows.
 
+The subsequently released [two-profile steady diagnostic](docs/tasks.md#steady-function-attribution-actual-diagnostic-checkpoint) reproduced both sealed verification streams and resolved actual WASM function samples. Requested sampling was 100 microseconds; observed medians were 153. Counts identify sampled paths without proving function cost or speedup; steady RED and candidate non-selection remain.
+
 ## Verification status
 
 Gate commands above are requirements, not claims of passing CI. See [`docs/tasks.md`](docs/tasks.md) and [the ledger](.claude/war-room/ledger.md) for current-session execution evidence and open blockers. The earlier blocked vulnerability lookup was superseded by a successful Go 1.26.10 `govulncheck ./...` run reporting no vulnerabilities. Final local results and failed attempts are recorded in the task tracker; remote PR checks and owner merge remain outstanding. A passing browser smoke test does not certify analog hardware fidelity, codec support, platform release compliance or all accessibility interactions.

@@ -155,6 +155,24 @@ The parser checks regular-file/no-symlink/module-size bounds before reading, wit
 
 All **21 controls passed in 1.867 seconds**: pure binary/profile fixtures, direct diagnostic-argv/receipt negatives, read-only exact source/module/prerequisite admission and five inherited mocked lifecycle/I/O controls. Python AST syntax passed. No diagnostic `prepare`/`run`, WASM instance, profile, fixture rerun, timing, build or optimization edit executed. The initial static-inspection Python compatibility failure and all historical REDs remain retained. Review and separate explicit release must precede actual diagnostics; steady 192 kHz RED remains open, cross-target full-state identity UNPROVEN and candidate unselected.
 
+### Steady function-attribution actual diagnostic checkpoint
+
+**Open — two diagnostic profiles admitted; steady RED, candidate unselected.** After one fresh source-only preparation and final coordinated quiet release, the unchanged host ran exactly baseline then candidate steady verification profiles on the existing modules, with no retry, build, fixture rerun, timing or optimization edit. Every parent/Go exit was zero, primary/failure/cleanup/signals null, stdout EOF complete and GoJS I/O closed. Each entire 68,134-byte output exactly matched its sealed source-v1 reference (`881abf9be492fdb4329d5ab0113dbaf0e91818dd03ce4e391f92fb6a3b69d067`). Per child: 24,576 base frames/98,304 high upper, 231,716 numeric words and 299 log bytes; no timed records.
+
+| Actual diagnostic | Baseline | Candidate |
+|---|---:|---:|
+| Profile bytes | 262,843 | 265,631 |
+| Nodes / all samples / graph samples | 1,227 / 1,827 / 1,046 | 1,235 / 1,867 / 1,059 |
+| Unresolved WASM nodes / graph samples | 0 / 0 | 0 / 0 |
+| Observed interval median / mean, microseconds | 153 / 160.596 | 153 / 159.022 |
+| Observed interval minimum / p90 / p99 / maximum, microseconds | 35 / 157 / 168 / 13,055 | 38 / 158 / 219 / 7,307 |
+
+The explicit diagnostic argv requested 100 microseconds, without assuming that resolution. Function-index self samples were `insertRange` 134/118, `bound` 76/78 and `insertLine` 47/38. Inclusive memberships were limiter 292/278 and saturation 252/287; these overlap and cannot be summed as exclusive cost. Actual module names/body hashes resolve the sampled paths, without source-line/instruction-cost, speedup, comparable timing, callback/physical deadline, headroom or physical steady-state proof. Whole verification remains before source wrap/EOF with no drain; cross-target full-state identity remains UNPROVEN.
+
+Original 25-second Go/28-second parent/256 KiB log, 16 MiB module and 8 MiB output caps remain. The unchanged Go test retains 200,000-base/800,000-high/16,777,216-word, 2 MiB graph/6 MiB preparation/320 KiB test-allowance gates. Aggregate profiles used 528,474 bytes, 2,462 nodes, 3,694 samples and 52,733 stack steps, below admitted 4 MiB/16,384/65,536/1,048,576 caps. Profile size is admitted after exit, without a hard preemptive write/V8/RSS ceiling. No Node heap/stack flags or RSS monitor were introduced; **no RSS observation or 1 GiB RSS gate passed in this diagnostic**. Earlier original-unit resident observations remain separate.
+
+`envelope-node-visit-screen-host/profile-node-visit-v1/PROFILE-SHA256.json` is `d5ae9935a2a9373ad70c97693aa664b8a107174c7e75aed32aa179e5df2f4677` (102 files/4,167,378 bytes); qualification is `29cc153cb0321a9af793bbc27e80a64f2b5b25cfd2a33bb6fa367dbc0b6d377c`, sampling summary `7105f2510f55e61f0f547e73a0531511d8c5d4e96f16b5b9d25acf81e54f059d`. All prepared proof, actual profiles/streams/counters/receipts and source identities were re-read/sealed. Both children and attribution postprocessing settled; the quiet window ended. Historical REDs remain retained; no further actual execution or arithmetic edit is released by these observations.
+
 ## Whole-product completion loop — October 22, 2026
 
 **Status: bounded wave locally verified; open — awaiting merge. Product incomplete.** The reviewed baseline `f5ec9ad` includes owner-merged PR #5. The older pending-merge entries below retain their historical status. The [current completion review](reviews/2026-10-22-war-room-completion.md) lists outstanding planned features and Round D rulings.

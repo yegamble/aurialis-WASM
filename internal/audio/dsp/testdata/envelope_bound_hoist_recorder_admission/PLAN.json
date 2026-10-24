@@ -1,0 +1,25 @@
+{
+  "scope": "SOURCE checker and concrete continuation plan only; no actual continuation driver or new child release",
+  "oldSevenFileFolder": "internal/audio/dsp/testdata/envelope_bound_hoist_qualification_host",
+  "oldChildSource": "artifacts/private-dsp/recovery-20261023/envelope-bound-hoist-qualification/source-v2/SOURCE.json",
+  "oldChildSourceSHA256": "66b73fb4c12f909e5395ec4c516964c7a54ae60248b1de1b9716eaf8d139ee73",
+  "oldInputCount": 56,
+  "oldTrancheREDIndexSHA256": "a973b6f5fef9c14afd0c64eb4f2d49a22522789453206e1dc43df1ae8ea01eb3",
+  "readOnlyAnalysis": "Retain old REJECTED and RED verbatim. A separately indexed result may apply this exact policy to the existing raw GoJS8000 receipt/counter/output plus immutable source/module/runtime/raw hashes. Do not rewrite receipt results, substitute argv, normalize raw data or pretend the old gate passed.",
+  "reusedActualEvidence": "All 36 exact original whole-unit children and both actual 8000 recorder children. No rerun of these 38 processes.",
+  "remainingJobs": [
+    "recorder-native-44100",
+    "recorder-wasm-44100",
+    "recorder-native-48000",
+    "recorder-wasm-48000",
+    "recorder-native-96000",
+    "recorder-wasm-96000",
+    "recorder-native-192000",
+    "recorder-wasm-192000"
+  ],
+  "futureBinding": "A separately reviewed tiny eight-job driver may freeze a fresh old-style child SOURCE containing the unchanged56 inputs. Additional driver/checker/source metadata must be separately pinned and reported as the actually executed host/policy. The old host run/next_job path must not be used to restart36 units or completed8000 recorders. Exact eight-job claims/order and exclusive output paths permit one attempt each, no generic resume or retry facility.",
+  "futureExecutionReuse": "Use the same two admitted modules in place, unchanged guard/GoJS recorder/closed FS/post-exit blocks, 25-second Go timeout, 28-second parent, 256 KiB log, 16 MiB module, 192 MiB heap, 8192 KiB stack and sampled 1 GiB leader. Original 27-case work/counters, 200,000 base frames, 800,000 high upper frames, 16,777,216 numeric words, 8 MiB output and 2 MiB graph plus 6 MiB scratch remain. Compare every entire output to both frozen own-backend archives.",
+  "resourceRule": "Before future actual release retain the existing complete conservative128073728B DSP ledger plus6576668672B physical floor, explicit other remaining demand and64MiB source/checkpoint allowance. New small driver/policy metadata must have explicit finite caps charged to that allowance; no module copies, expanded work or lower reserve. Fresh coordinated physical checks before child transactions and host publication remain required.",
+  "combinedQualification": "Label combined scoped qualification with exact provenance: original36 units/native8000 admitted under source-v2; WASM8000 old gateRED plus new read-only policy analysis; eight future recorder children under separately pinned driver/policy/source lineage. Never call it a uniform46-child single pass.",
+  "held": "No continuation implementation/execution, Go build, module copy, profile, timing, production selection or deadline acceptance follows from this source plan. Candidate unselected;192k steadyRED; cross-target fullstateUNPROVEN; historical baseline compiler hashesUNRECORDED."
+}

@@ -176,3 +176,6 @@ Gate commands above are requirements, not claims of passing CI. See [`docs/tasks
 - [`docs/tasks.md`](docs/tasks.md) — Developer task tracker synchronized by `aurialis-tech-writer`.
 - [`docs/design/aurialis-redesign.md`](docs/design/aurialis-redesign.md) — Warm editorial UI/UX & HCL/OKLCH design specification.
 
+
+
+The next DSP qualification attempt passed all 36 original native/GoJS units and the native 8 kHz recorder. Its GoJS 8 kHz output and counters matched both sealed references, but an overstrict host request check rejected a normal missing-file query. That historical gate remains RED. A separate source-only policy and eight-recorder continuation plan preserve the completed work; no completed child will be rerun to repair receipt analysis.

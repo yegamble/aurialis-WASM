@@ -1,5 +1,5 @@
 # Aurialis-WASM War-Room Ledger
-<!-- cspell:words Embedder -->
+<!-- cspell:words Embedder untimed -->
 
 Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-room-loop` iterations. The Chair updates this file after every Round D ruling and every Round E verification pass. One row per item; never delete a row — move completed items to **Verified & Merged** with commit/PR and test evidence, or to **Declined** with the reason.
 
@@ -579,3 +579,19 @@ The actual GoJS/WASM original/candidate comparison passed 135 cases per side acr
 Native/WASM diagnostic parsing found equal raw PCM, exact 16/24-bit WAV and other fields in this finite corpus, with 270 unequal numeric-state digest payloads. Their cause is unproven. The first Node-exit-1 invocation remains RED; its successful host-lifecycle retry used the same modules without relabeling the earlier failure. The native recorder race timeout, earlier Nyquist and 33.2 kHz transparency failures, Newton peak-search limitation and unqualified repair work remain retained and open.
 
 **Round D follow-up:** permit source preparation of the simpler fixed-count paired-module performance screen, with the same test source, exact original/candidate overlays and separate baseline-before/candidate/baseline-after Node children. Do not copy 13 graph functions. Compilation and performance execution require subsequent source review and a coordinated quiet window. The source-only screen now has ten passing synthetic parser/admission checks, but no compiled or timed result. Both source modes stop before wrap or EOF. No new headroom threshold is adopted. The reference baseline's 192 kHz cost remains 0.8013–0.8219 ms per 128 frames against 0.666667 ms; candidate performance, browser continuity and public activation remain open. README, API, architecture, tasks and this ledger are synchronized for this private checkpoint; historical records are preserved.
+
+
+### Untimed paired-module follow-up — 2026-10-23
+
+At source `b562e50`, both bounded GoJS modules compiled successfully. Each new module's 27-case 192 kHz recorder reproduced its archived 2,389,200-byte stream exactly. Four separate steady/peaky baseline/candidate verification children passed paired PCM and numeric-state digest equality, both finite/repeat configurations, after 64 warm and 32 verification blocks. All six Go/Node exits were zero, with no IO/supervisor/cleanup failure. The recorder ran once per new module. No timed child ran; no throughput, zero-allocation, deadline or browser continuity result is claimed.
+
+The immutable private snapshot `extrema-paired-screen/screen-b562-v1/UNTIMED-SHA256.json` indexes 55 files, 20,360,661 bytes; SHA-256 `2890fbfcc05608876eeb0cab5278e9e92e0ab3da9af1f99d767c0e3fdcd3fa30`. `BUILD.json` has SHA-256 `f38115c13c792c0280084342affa6e5fab732ba66a16a2c9acc3b96d8c5b02ec`. It binds exact source, modules, compiler flags, overlays and runtime. Prior evidence indices and historical REDs remain intact. The source clock stops before EOF/wrap; timings require a separate coordinated quiet release. Candidate selection, the 192 kHz deadline and public algorithm-2 activation remain open.
+
+
+### First paired 192 kHz timing — deadline remains RED
+
+The Chair released exactly six fresh fixed-count children, using the same two modules and source. All Go/Node exits were zero, with no IO/supervisor/cleanup failure. Actual paired verification/timed PCM and state digests matched, including each child's reset verification. All twelve mode batches observed zero changes in Go allocation counts and allocated bytes. No additional tranche ran.
+
+Steady finite/repeat ms per 128 frames: baseline before **0.841256/0.862528**, candidate **0.800752/0.748520**, baseline after **0.838176/0.806768**. Peaky: before **0.716648/0.689784**, candidate **0.623640/0.611544**, after **0.667272/0.668776**. The two steady candidate means still exceed **0.666667 ms**. Lower peaky means and before/after drift are retained as observed. There is no overhead subtraction, filtering, repeat, new threshold or worst-callback claim.
+
+Immutable `FIRST-TIMED-SHA256.json` under the same private evidence directory indexes 91 files, 21,245,213 bytes; SHA-256 `1b93d8de3abea0fe1cdfd359c9f22735b311a49e31b9fe6ac4750ba6d888620f`. It retains all raw bytes/receipts and prior untimed proof. Candidate selection, the 192 kHz deadline and public activation remain open. A bounded current-graph gain-planner/envelope/saturation profile is proposed only; no x-bit/ADAA/rate-policy fusion or new measurement is authorized. The next chair must review and dispatch that scope separately.

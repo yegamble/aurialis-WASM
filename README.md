@@ -1,5 +1,5 @@
 # Aurialis-WASM
-<!-- cspell:words Embedder buildmode trimpath goroutines scrutinise -->
+<!-- cspell:words Embedder buildmode trimpath goroutines scrutinise untimed -->
 
 **Single-Binary Go 1.26 + Next.js 16 + WebAssembly (WASM) Audio Mastering Workstation**
 
@@ -145,7 +145,7 @@ The Go/WASM job reuses FFmpeg when it is already available. Otherwise, a separat
 
 ## Private DSP research checkpoint
 
-The private exact-extrema graph has passed a bounded GoJS/WASM comparison: 135 cases per side produced identical PCM, encoded WAV and numeric-state digest records within that target. This does not select the candidate or enable algorithm 2. The fixed-count performance screen is source-only; compilation and timing remain pending. The 192 kHz processing deadline, browser continuity and cross-target state differences remain open. See the [private qualification record](docs/tasks.md#private-gojs-graph-checkpoint--october-23-2026) for source, evidence and retained failures.
+The private exact-extrema graph has passed a bounded GoJS/WASM comparison: 135 cases per side produced identical PCM, encoded WAV and numeric-state digest records within that target. This does not select the candidate or enable algorithm 2. The later fixed-count screen passed its two module builds and untimed 192 kHz recorder/verification gates; its first paired timing screen retained a steady-source 192 kHz deadline failure, and the candidate remains unselected. The 192 kHz processing deadline, browser continuity and cross-target state differences remain open. See the [private qualification record](docs/tasks.md#private-gojs-graph-checkpoint--october-23-2026) for source, evidence and retained failures.
 
 ## Verification status
 

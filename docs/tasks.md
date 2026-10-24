@@ -1,5 +1,5 @@
 # Aurialis-WASM task tracker
-<!-- cspell:words testdata -->
+<!-- cspell:words testdata untimed -->
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
@@ -15,7 +15,34 @@ A separate native/WASM parser covered every stream section. All raw PCM, final 1
 
 The first actual WASM invocation completed Go processing but exited Node with code 1 after a queued runtime timer. Its raw bytes, old runner and receipts remain a failed checkpoint. The successful host-only revision closes output and receipts before explicit Node exit, using the same two modules. The full native recorder race watchdog failure, earlier Nyquist and 33.2 kHz transparency failures, Newton peak-search limitation and unqualified repair work remain open. The reference graph's measured 192 kHz cost remains 0.8013–0.8219 ms per 128 frames against a 0.666667 ms deadline. No candidate performance or public algorithm-2 activation is claimed.
 
-Next: review a source-only fixed-count paired-module performance screen. The original and candidate use the same test entry and exact frozen overlays; baseline-before/candidate/baseline-after run in separate pinned Node processes. No copied graph implementation, new performance threshold, rate policy or execution release is implied. The prior 104-file evidence index remains immutable. The screen source is prepared in `internal/audio/dsp/testdata/extrema_screen/` and `studio_extrema_screen_test.go`; ten synthetic parser/admission checks passed without compiling or running Go DSP. Both finite/repeat configurations stop before source wrap or EOF. Actual module compilation, new-module recorder verification and timings remain pending.
+Next: review a source-only fixed-count paired-module performance screen. The original and candidate use the same test entry and exact frozen overlays; baseline-before/candidate/baseline-after run in separate pinned Node processes. No copied graph implementation, new performance threshold, rate policy or execution release is implied. The prior 104-file evidence index remains immutable. The screen source is prepared in `internal/audio/dsp/testdata/extrema_screen/` and `studio_extrema_screen_test.go`; ten synthetic parser/admission checks passed without compiling or running Go DSP. Both finite/repeat configurations stop before source wrap or EOF. Module compilation and new-module recorder verification were pending at that source checkpoint; the observed follow-up below does not release timing.
+
+### Untimed paired-module gate
+
+Source `b562e50` passed both bounded GoJS test-module builds and the untimed 192 kHz gates. Each new module reproduced its corresponding archived 27-case recorder stream exactly: 2,389,200 bytes per module. Four additional baseline/candidate steady/peaky children passed 32 verification blocks after 64 warm blocks in each finite/repeat configuration. Each processed 24,576 base frames, a 98,304 high-frame upper and 231,716 numeric words. All six Go/Node exits were zero, with no IO, supervisor or cleanup failure. The recorder ran once per new module; the second workload rechecked its retained bytes and receipts.
+
+The evidence directory is `artifacts/private-dsp/recovery-20261023/extrema-paired-screen/screen-b562-v1/`. `BUILD.json` SHA-256 is `f38115c13c792c0280084342affa6e5fab732ba66a16a2c9acc3b96d8c5b02ec`. Its immutable `UNTIMED-SHA256.json` indexes 55 files totaling 20,360,661 bytes; index SHA-256 is `2890fbfcc05608876eeb0cab5278e9e92e0ab3da9af1f99d767c0e3fdcd3fa30`. Module hashes, exact compiler/source/overlay/runtime inputs and actual receipts are retained there. Prior 104/71/30-file evidence indices remain unchanged.
+
+No timed child ran; the analysis timing arrays are empty. Allocation, throughput, callback deadline and browser continuity remain unqualified. Both modes stop before source EOF or wrap; no drain is measured. The 192 kHz reference deadline failure and every earlier limitation above remain open. Public algorithm 2 is still rejected.
+
+### First paired 192 kHz screen — deadline remains open
+
+The separately authorized quiet window ran exactly six fresh Node children, with the same two modules and fixed settings. Both source triplets passed actual verification and timed PCM/state equality, including each child's own reset verification. All Go/Node exits were zero, with no IO/supervisor/cleanup failure. All twelve measured batches showed zero changes in allocation counts and allocated bytes. These are bounded Go observations, not universal runtime or browser allocation guarantees.
+
+| Source | Child | Finite ms/128 | Repeat ms/128 |
+| --- | --- | ---: | ---: |
+| Steady | Baseline before | 0.841256 | 0.862528 |
+| Steady | Candidate | 0.800752 | 0.748520 |
+| Steady | Baseline after | 0.838176 | 0.806768 |
+| Peaky | Baseline before | 0.716648 | 0.689784 |
+| Peaky | Candidate | 0.623640 | 0.611544 |
+| Peaky | Baseline after | 0.667272 | 0.668776 |
+
+The 192 kHz deadline is 0.666667 ms per 128 frames. Both steady-source candidate means remain above it. The lower peaky means describe only those fixed 32-block batches; before/after drift is retained. No values were discarded, subtracted or rerun. The candidate remains unselected and public algorithm 2 remains rejected.
+
+Each child processed 49,152 base frames including warm, verification and reset-warm work; each workload triplet processed 147,456, with a 589,824 high-frame upper. Only 8,192 frames per child were inside the two measured batches. The source clock stops before EOF/wrap/drain. No browser continuity or worst-callback result is claimed, and no new headroom threshold is adopted.
+
+The same evidence directory's immutable `FIRST-TIMED-SHA256.json` indexes 91 files, 21,245,213 bytes; SHA-256 `1b93d8de3abea0fe1cdfd359c9f22735b311a49e31b9fe6ac4750ba6d888620f`. It includes all six raw outputs/receipts, both complete paired reports and the unchanged untimed snapshot. The next bounded profile is a source-only proposal; no further measurement is released. All historical failures and the unrelated 270 cross-target state-digest differences remain open.
 
 ## Whole-product completion loop — October 22, 2026
 

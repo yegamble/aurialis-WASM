@@ -1,5 +1,5 @@
 # Aurialis-WASM architecture
-<!-- cspell:words buildmode Hann steganography testdata -->
+<!-- cspell:words buildmode Hann steganography testdata untimed -->
 
 This describes current implementation boundaries. [`AGENTS.md`](../AGENTS.md) and [`docs/tasks.md`](tasks.md) retain the full product requirements. Implementation on a branch is not verified delivery or a merge to main.
 
@@ -19,7 +19,7 @@ Commits `d0dd195` and `cb83d68` add a bounded, opt-in GoJS/WASM test harness. Th
 
 Each rate runs in a fresh child with a closed fixture filesystem, exclusive outputs, a 25-second Go watchdog and a 28-second parent watchdog. Frame, output, log and operation bounds apply before writes. These are trusted-harness limits, not an untrusted-code sandbox or a Go/V8 process-memory guarantee. Five rates passed 135 cases per side with identical within-target output bytes.
 
-The separate native/WASM comparison found identical raw PCM and encoded 16/24-bit WAV sections in this finite corpus, but all 270 numeric-state digests differed. Their cause is unproven. The original Node-exit failure and full native recorder race timeout remain retained failures. A separate fixed-count performance screen is prepared in `internal/audio/dsp/testdata/extrema_screen/`, with one opt-in Go test and unchanged production source. Its deterministic verification, source-clock and output gates require review before compilation; no timing has run. Performance screening, browser continuity, the 192 kHz deadline and public activation remain open; the [task checkpoint](tasks.md#private-gojs-graph-checkpoint--october-23-2026) records the immutable evidence index.
+The separate native/WASM comparison found identical raw PCM and encoded 16/24-bit WAV sections in this finite corpus, but all 270 numeric-state digests differed. Their cause is unproven. The original Node-exit failure and full native recorder race timeout remain retained failures. A separate fixed-count performance screen is prepared in `internal/audio/dsp/testdata/extrema_screen/`, with one opt-in Go test and unchanged production source. At source `b562e50`, its two compiled modules each reproduced their archived 192 kHz recorder stream. Four untimed steady/peaky verification children then passed paired PCM/state-digest equality. All six Go/Node children exited zero; no timed child ran. Both configurations stop at frame 12,288 of 16,777,216, before wrap or EOF. A later six-child paired timing screen passed actual PCM/state equality and recorded zero Go allocation deltas, but both steady-source candidate batch means exceeded the 192 kHz deadline. All before/after drift remains visible. These are fixed-history batch observations, not browser or worst-callback certification. Browser continuity, the 192 kHz deadline and public activation remain open; the [task checkpoint](tasks.md#private-gojs-graph-checkpoint--october-23-2026) records the immutable evidence index.
 
 ## Build and serving
 

@@ -174,6 +174,17 @@ func DecodeAndDisarm(filename string, raw []byte) (*Buffer, error) {
 		return decodeAndDisarmWAV(raw)
 	case len(raw) >= 12 && string(raw[0:4]) == "FORM" && string(raw[8:12]) == "AIFF":
 		return decodeAndDisarmAIFF(raw)
+	}
+	// FLAC and MP3 may be preceded by ID3v2 tags; detection uses the stream behind them.
+	stream, err := stripID3v2(raw)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case len(stream) >= 4 && string(stream[:4]) == "fLaC":
+		return decodeAndDisarmFLAC(raw)
+	case isMP3(stream):
+		return decodeAndDisarmMP3(raw)
 	default:
 		return nil, fmt.Errorf("%w: unrecognized or spoofed audio container magic bytes", ErrCorruptContainer)
 	}

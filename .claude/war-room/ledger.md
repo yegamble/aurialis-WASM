@@ -744,3 +744,10 @@ Read-only exact-name inspection retained both raw bodies and complete decoded co
 ### Bound-coordinate full candidate qualification plan
 
 **Round E next source plan only; open — awaiting merge.** A separate three-file `envelope_bound_hoist_qualification_plan` proposes36 unchanged original-unit children and10 original recorder children on the same two candidate modules, with same-backend frozen comparisons, unchanged work/caps and no baseline rebuild or automatic timing. It implements no adapter and remains held for review.
+
+
+### Bound-coordinate qualification adapter source
+
+**Open — source/mock checkpoint only; all46 actual children unreleased.** The closed seven-file adapter binds56 source inputs and reuses the same two admitted modules, original18 whole-unit assertions/work and original27-case recorder at five rates. Literal GoJS execution/post-exit blocks, whitelist, owned RSS/lifecycle guard, IO and counters remain unchanged. The fixed276-file ledger reserves128,073,728 bytes, covering output/log caps plus receipts, claims, results, source, indices, journal, allocation rounding and overhead. A fresh physical check before each child transaction and subsequent host publication requires6,576,668,672 bytes plus complete remaining DSP demand, explicit other demand and at least64 MiB for concurrent source writes. Internal raw writes use their pre-admitted transaction. Only observed available blocks count; no OS reservation is claimed.
+
+All11 source/static/pure/mocked controls passed, including exact execution-block identity, closed job order, disk boundaries, wrong provenance/argv/IO, and primary/secondary publication/cleanup preservation on Python3.9. Node26.12/pnpm10.33 syntax and scoped spelling checks passed; initial spelling diagnostics remain retained. No actual compiler, original-unit/recorder child, module copy, profile or timing occurred. Historical baseline compiler hashes remain unrecorded, cross-target full-state identity UNPROVEN, candidate unselected, existing192k steady RED and earlier failures retained. Later main integration/fresh final-head gates and protected merge remain open.

@@ -507,3 +507,6 @@ Source-only Round D preparation records 28 preregistered cases under the32-case 
 
 
 - [ ] Private attention capture source: one pinned local File, closed GET/HEAD assets, phase-exclusive capture budgets, exact-run settlement and parent closed-file hash acknowledgement implemented; 49 Node units and three pure handler tests passed. No server/browser/GPU/model execution. Shared helper source reused exactly with provenance; actual launcher, normal/crash process ownership, real adapter/compilation and 28 existing hardware cases remain separately gated. No public activation.
+
+
+- [ ] Private attention capture acquisition repair: independent factory-failure RED preserved; parent ownership now precedes sink construction, a synchronous managed cleanup handle precedes asynchronous acquisition, and unconfirmed cleanup retains the receipt. Close/file/directory cleanup is retryable, successful abort is idempotent, and owner-bound admission cannot refund another sink. Corrected source suite: 58/58 in 415.363417 milliseconds. No new raw copies, served assets, helper changes or actual server/browser/GPU/model execution. Independent source review and separate hardware/launcher gates remain open.

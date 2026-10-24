@@ -4,14 +4,21 @@ import{recordFor}from'./runtime-contract.mjs';import{shapePlan}from'./contract.m
 import{CAPTURE_ABI,MAX_NEW_OUTPUT_BYTES,validateHeader,validateChunk}from'./capture-contract.mjs';
 export function preflightBatch(names){if(!Array.isArray(names)||names.length<1||names.length>4||new Set(names).size!==names.length)throw new Error('At most4 distinct fixtures per60second batch');let bytes=0;for(const name of names){const pin=recordFor(name);bytes+=shapePlan(pin.m,pin.n).stageBytes+16384;}if(bytes>MAX_NEW_OUTPUT_BYTES)throw new Error('Batch output cap');return Object.freeze({cases:names.length,maximumOutputBytes:bytes,maximumWallMilliseconds:60000,processGuardRequired:true});}
 export async function captureFromPage(page,makeSink,{signal=new AbortController().signal}={}){
- let header,sink,committed=false,closed=false,cancellation;
+ let header,sink,constructionStarted=false,committed=false,closed=false,cancellation;
  const call=(method,message)=>page.call(method,message);
  const check=()=>signal.throwIfAborted();
  const abort=()=>{cancellation??=call('cancelActive').catch(()=>{});};
  signal.addEventListener('abort',abort,{once:true});
  try{
   check();header=await call('startSelected');validateHeader(header);check();
-  sink=await makeSink(header);check();await call('open',{abi:CAPTURE_ABI,id:header.id,kind:'open',total:header.total,hash:header.hash});
+  // Parent ownership precedes even factory invocation. The cleanup handle must
+  // exist synchronously before any acquisition task can create a resource.
+  await call('open',{abi:CAPTURE_ABI,id:header.id,kind:'open',total:header.total,hash:header.hash});check();
+  constructionStarted=true;const candidate=makeSink(header);
+  if(candidate&&typeof candidate.then==='function'){Promise.resolve(candidate).catch(()=>{});throw new Error('Capture factory must return a synchronous managed handle');}
+  if(!candidate||['acquire','write','finish','abort'].some(name=>typeof candidate[name]!=='function'))throw new Error('Capture managed handle incomplete');
+  sink=Object.freeze(Object.fromEntries(['acquire','write','finish','abort'].map(name=>[name,candidate[name].bind(candidate)])));
+  check();await sink.acquire();check();
   let sequence=0,offset=0;
   while(offset<header.total){
    check();const packet=await call('chunk',{abi:CAPTURE_ABI,id:header.id,kind:'next',sequence,offset,total:header.total});
@@ -31,7 +38,8 @@ export async function captureFromPage(page,makeSink,{signal=new AbortController(
   if(!committed){
    // No parent-close assertion until pending writes/hash/close/unlink actually
    // settle. A failed cleanup retains the page receipt rather than inventing it.
-   if(sink){await sink.abort();closed=true;}else closed=true;
+   if(sink){const result=await sink.abort();closed=result?.closed===true;if(!closed)throw new Error('Capture cleanup closure unconfirmed');}
+   else closed=!constructionStarted;
    if(closed){try{const state=await call('cancelActive');const id=state?.id??header?.id;if(id)await call('abortClosed',{abi:CAPTURE_ABI,id,kind:'aborted',closed:true});}catch{ /* Closed/terminated page is separately verified by the external process guard. */ }}
   }
  }

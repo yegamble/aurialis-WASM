@@ -1,35 +1,55 @@
 /** Device-local numerical evidence only, random private files; no process/network. */
 import{mkdtemp,chmod,open,rename,unlink,rmdir,statfs}from'node:fs/promises';import{constants}from'node:fs';import path from'node:path';import{createHash}from'node:crypto';
 import{MAX_NEW_OUTPUT_BYTES,validateHeader}from'./capture-contract.mjs';
-export function createFileSinkFactory(root){
+const nativeIO=Object.freeze({mkdtemp,chmod,open,rename,unlink,rmdir,statfs});
+/** The optional, closed I/O table is injected only by source-controlled units. */
+export function createFileSinkFactory(root,operations=nativeIO){
  if(typeof root!=='string'||!path.isAbsolute(root)||!Number.isInteger(constants.O_NOFOLLOW))throw new Error('Private absolute output root/no-follow support required');
- let active=false,retainedBytes=0;const seen=new Set();
- return async header=>{
+ const names=Object.keys(nativeIO);if(!operations||Object.keys(operations).length!==names.length||names.some(name=>typeof operations[name]!=='function'))throw new Error('Closed file I/O operations required');
+ const io=Object.freeze(Object.fromEntries(names.map(name=>[name,operations[name]])));
+ let active,retainedBytes=0;const seen=new Set();
+ return header=>{
   validateHeader(header);if(active||seen.has(header.name))throw new Error('One capture file active; duplicate fixture refused');
-  const reservation=header.total+16384;if(retainedBytes+reservation>MAX_NEW_OUTPUT_BYTES)throw new Error('Capture output admission exceeded');
-  active=true;retainedBytes+=reservation;let directory,handle,pending=Promise.resolve(),position=0,closed=false,renamed=false,aborted=false,writing=false,finishing=false,abortTask,finalHash;const hash=createHash('sha256');
-  const intrinsicLength=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Uint8Array.prototype),'byteLength').get;
-  const remove=async name=>{try{await unlink(name);}catch(error){if(error.code!=='ENOENT')throw error;}};
-  try{
-   const free=await statfs(root,{bigint:true});if(free.bavail*free.bsize<6n*1024n**3n)throw new Error('Capture free-disk reserve unavailable');
-   directory=await mkdtemp(path.join(root,'attention-capture-'));await chmod(directory,0o700);
-   handle=await open(path.join(directory,'stages.bin.part'),constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);
-  }catch(error){if(handle)await handle.close();if(directory){await remove(path.join(directory,'stages.bin.part'));await rmdir(directory);}retainedBytes-=reservation;active=false;throw error;}
-  return Object.freeze({
-   async write(buffer,offset){const bytes=Buffer.isBuffer(buffer)?Reflect.apply(intrinsicLength,buffer,[]):0;if(closed||aborted||writing||finishing||!Buffer.isBuffer(buffer)||bytes<1||bytes>2048||offset!==position||position+bytes>header.total)throw new Error('Capture file write geometry/order changed');
-    // Set pending before the first await. Abort waits this exact operation.
+  const total=header.total,expectedHash=header.hash,name=header.name,reservation=total+16384,owner=Symbol('capture-file');
+  if(retainedBytes+reservation>MAX_NEW_OUTPUT_BYTES)throw new Error('Capture output admission exceeded');
+  let directory,writer,reader,pending=Promise.resolve(),position=0,started=false,acquired=false,renamed=false,aborted=false,writing=false,finishing=false,abortTask,settled=false,finalHash;
+  const hash=createHash('sha256'),intrinsicLength=Object.getOwnPropertyDescriptor(Object.getPrototypeOf(Uint8Array.prototype),'byteLength').get;
+  const remove=async filename=>{try{await io.unlink(filename);}catch(error){if(error.code!=='ENOENT')throw error;}};
+  const removeDirectory=async()=>{try{await io.rmdir(directory);}catch(error){if(error.code!=='ENOENT')throw error;}};
+  const part=()=>path.join(directory,'stages.bin.part'),final=()=>path.join(directory,'stages.bin');
+  // Construction performs no I/O. The driver receives this complete cleanup
+  // handle before acquire starts; failed acquisition retains its exact task.
+  const sink=Object.freeze({
+   acquire(){
+    if(started||aborted)throw new Error('Capture file acquisition already started/aborted');started=true;
+    const task=(async()=>{const free=await io.statfs(root,{bigint:true});if(free.bavail*free.bsize<6n*1024n**3n)throw new Error('Capture free-disk reserve unavailable');
+     if(aborted)throw new Error('Capture file acquisition aborted');
+     directory=await io.mkdtemp(path.join(root,'attention-capture-'));if(aborted)throw new Error('Capture file acquisition aborted');
+     await io.chmod(directory,0o700);if(aborted)throw new Error('Capture file acquisition aborted');
+     writer=await io.open(part(),constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,0o600);
+     if(aborted)throw new Error('Capture file acquisition aborted');acquired=true;
+    })();pending=task;return task;
+   },
+   async write(buffer,offset){const bytes=Buffer.isBuffer(buffer)?Reflect.apply(intrinsicLength,buffer,[]):0;if(!acquired||!writer||aborted||writing||finishing||!Buffer.isBuffer(buffer)||bytes<1||bytes>2048||offset!==position||position+bytes>total)throw new Error('Capture file write geometry/order changed');
     const snapshot=Buffer.allocUnsafeSlow(bytes);for(let i=0;i<bytes;i++)snapshot[i]=buffer[i];
-    writing=true;const task=(async()=>{let written=0;while(written<bytes){const result=await handle.write(snapshot,written,bytes-written,position+written);if(result.bytesWritten<1||result.bytesWritten>bytes-written)throw new Error('Capture file write stalled');written+=result.bytesWritten;}hash.update(snapshot);position+=bytes;})();pending=task;try{await task;}finally{writing=false;}
+    writing=true;const task=(async()=>{let written=0;while(written<bytes){const result=await writer.write(snapshot,written,bytes-written,position+written);if(result.bytesWritten<1||result.bytesWritten>bytes-written)throw new Error('Capture file write stalled');written+=result.bytesWritten;}hash.update(snapshot);position+=bytes;})();pending=task;try{await task;}finally{writing=false;}
    },
    async finish(){
-    if(closed||aborted||writing||finishing||position!==header.total)throw new Error('Capture file truncated/closed');finishing=true;
-    const task=(async()=>{finalHash=hash.digest('hex');if(finalHash!==header.hash)throw new Error('Capture final file checksum changed');await handle.close();closed=true;
-    const reader=await open(path.join(directory,'stages.bin.part'),constants.O_RDONLY|constants.O_NOFOLLOW);
-    try{const state=await reader.stat();if(!state.isFile()||state.size!==header.total)throw new Error('Closed capture file geometry changed');const observed=createHash('sha256'),chunk=Buffer.allocUnsafeSlow(2048);let offset=0;while(offset<header.total){const read=await reader.read(chunk,0,Math.min(2048,header.total-offset),offset);if(read.bytesRead<1)throw new Error('Closed capture file truncated');observed.update(chunk.subarray(0,read.bytesRead));offset+=read.bytesRead;}if(observed.digest('hex')!==header.hash)throw new Error('Closed capture file checksum changed');}finally{await reader.close();}
-    await rename(path.join(directory,'stages.bin.part'),path.join(directory,'stages.bin'));renamed=true;if(aborted)throw new Error('Capture file aborted');active=false;seen.add(header.name);return Object.freeze({path:path.join(directory,'stages.bin'),bytes:position,hash:finalHash,closed:true});})();pending=task;return task;
+    if(!acquired||!writer||aborted||writing||finishing||position!==total)throw new Error('Capture file truncated/closed');finishing=true;
+    const task=(async()=>{finalHash=hash.digest('hex');if(finalHash!==expectedHash)throw new Error('Capture final file checksum changed');await writer.close();writer=undefined;
+     reader=await io.open(part(),constants.O_RDONLY|constants.O_NOFOLLOW);
+     try{const state=await reader.stat();if(!state.isFile()||state.size!==total)throw new Error('Closed capture file geometry changed');const observed=createHash('sha256'),chunk=Buffer.allocUnsafeSlow(2048);let offset=0;while(offset<total){const read=await reader.read(chunk,0,Math.min(2048,total-offset),offset);if(read.bytesRead<1)throw new Error('Closed capture file truncated');observed.update(chunk.subarray(0,read.bytesRead));offset+=read.bytesRead;}if(observed.digest('hex')!==expectedHash)throw new Error('Closed capture file checksum changed');}finally{await reader.close();reader=undefined;}
+     await io.rename(part(),final());renamed=true;if(aborted)throw new Error('Capture file aborted');if(active===owner)active=undefined;seen.add(name);return Object.freeze({path:final(),bytes:position,hash:finalHash,closed:true});})();pending=task;return task;
    },
-   abort(){if(abortTask)return abortTask;aborted=true;abortTask=(async()=>{try{await pending;}catch{}if(!closed){await handle.close();closed=true;}await remove(path.join(directory,renamed?'stages.bin':'stages.bin.part'));await rmdir(directory);retainedBytes-=reservation;seen.delete(header.name);active=false;})();return abortTask;}
-
+   abort(){
+    if(abortTask)return abortTask;aborted=true;
+    const task=(async()=>{try{await pending;}catch{}if(reader){await reader.close();reader=undefined;}if(writer){await writer.close();writer=undefined;}
+     if(directory){await remove(renamed?final():part());await removeDirectory();directory=undefined;}
+     if(!settled){settled=true;retainedBytes-=reservation;seen.delete(name);if(active===owner)active=undefined;}
+     return Object.freeze({closed:true});
+    })();abortTask=task;void task.catch(()=>{if(abortTask===task)abortTask=undefined;});return task;
+   }
   });
+  active=owner;retainedBytes+=reservation;return sink;
  };
 }

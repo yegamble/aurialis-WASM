@@ -18,10 +18,10 @@ const next=(o,h,sequence,offset)=>o.chunk({abi:CAPTURE_ABI,id:h.id,kind:'next',s
 const ack=(o,p)=>o.ack({abi:CAPTURE_ABI,id:p.id,kind:'written',sequence:p.sequence,offset:p.offset,total:p.total,bytes:p.data.length,hash:p.hash});
 const abort=(o,h)=>o.abortClosed({abi:CAPTURE_ABI,id:h.id,kind:'aborted',closed:true});
 function adapter(f,intercept=()=>{}){return{async call(method,message){const result=method==='startSelected'?await f.owner.start(file()):method==='cancelActive'?await f.owner.cancel(f.owner.status().id):await f.owner[method](message);return intercept(method,result)??result;}};}
-function memorySink(){const parts=[];let closed=false,aborted=false;return{parts,get aborted(){return aborted;},async write(b,offset){assert.equal(offset,parts.reduce((n,x)=>n+x.length,0));parts.push(Buffer.from(b));},async finish(){closed=true;const bytes=Buffer.concat(parts);return{closed,bytes:bytes.length,hash:createHash('sha256').update(bytes).digest('hex')};},async abort(){aborted=true;closed=true;}};}
+function memorySink(){const parts=[];let closed=false,aborted=false;return{async acquire(){},parts,get aborted(){return aborted;},async write(b,offset){assert.equal(offset,parts.reduce((n,x)=>n+x.length,0));parts.push(Buffer.from(b));},async finish(){closed=true;const bytes=Buffer.concat(parts);return{closed,bytes:bytes.length,hash:createHash('sha256').update(bytes).digest('hex')};},async abort(){aborted=true;closed=true;return{closed:true};}};}
 test('exclusive preparation/chunk ledgers fit existing slack and no full JSON reference is needed',async()=>{
  assert.equal(CHUNK_BYTES,2048);assert.equal(capturePhaseBytes,243712);assert.equal(capturePlan(shapePlan(8,1723)).hashPhaseBytes,298272);assert.equal(capturePlan(shapePlan(8,1723)).remainingAfterMaximumPhase,4832);
- const f=fixtureOwner(),sink=memorySink(),r=await captureFromPage(adapter(f),async()=>sink);assert.equal(validateHeader(r.header).stageBytes,plan.stageBytes);assert.deepEqual(Buffer.concat(sink.parts),Buffer.from(f.original));assert.equal(f.disposed,1);assert.equal(f.owner.status().phase,'idle');
+ const f=fixtureOwner(),sink=memorySink(),r=await captureFromPage(adapter(f),()=>sink);assert.equal(validateHeader(r.header).stageBytes,plan.stageBytes);assert.deepEqual(Buffer.concat(sink.parts),Buffer.from(f.original));assert.equal(f.disposed,1);assert.equal(f.owner.status().phase,'idle');
 });
 test('one chunk in flight, exact offsets/hashes, stale requests and duplicate/closed captures reject',async()=>{
  const f=fixtureOwner(),h=await f.owner.start(file());open(f.owner,h);
@@ -36,25 +36,57 @@ test('early run rejection cannot release selected-file session before exact run 
 });
 test('parent cancellation waits in-flight write, hash and file cleanup before disposal',async()=>{
  const f=fixtureOwner(),sink=memorySink(),controller=new AbortController();let finishWrite,writing=false;const write=sink.write;sink.write=async(...args)=>{writing=true;await new Promise(resolve=>{finishWrite=resolve;});return write(...args);};
- const pending=captureFromPage(adapter(f),async()=>sink,{signal:controller.signal});while(!writing)await tick();controller.abort();await tick();assert.equal(f.disposed,0);assert.equal(sink.aborted,false);finishWrite();await assert.rejects(pending,{name:'AbortError'});assert.equal(sink.aborted,true);assert.equal(f.disposed,1);
+ const pending=captureFromPage(adapter(f),()=>sink,{signal:controller.signal});while(!writing)await tick();controller.abort();await tick();assert.equal(f.disposed,0);assert.equal(sink.aborted,false);finishWrite();await assert.rejects(pending,{name:'AbortError'});assert.equal(sink.aborted,true);assert.equal(f.disposed,1);
 });
 test('truncated reordered corrupted and stale packets cannot commit and cleanup remains honest',async()=>{
  for(const mutate of [p=>({...p,sequence:p.sequence+1}),p=>({...p,offset:p.offset+1}),p=>({...p,id:'stale'}),p=>({...p,data:p.data.slice(1)}),p=>({...p,data:p.data.map((b,i)=>i?b:b^1)})]){
-  const f=fixtureOwner(),sink=memorySink();await assert.rejects(captureFromPage(adapter(f,(method,result)=>method==='chunk'?mutate(result):undefined),async()=>sink));assert.equal(sink.aborted,true);assert.equal(f.disposed,1);
+  const f=fixtureOwner(),sink=memorySink();await assert.rejects(captureFromPage(adapter(f,(method,result)=>method==='chunk'?mutate(result):undefined),()=>sink));assert.equal(sink.aborted,true);assert.equal(f.disposed,1);
  }
- const f=fixtureOwner(),sink=memorySink();sink.finish=async()=>({closed:false,bytes:0,hash:'0'.repeat(64)});await assert.rejects(captureFromPage(adapter(f),async()=>sink),/closure/);assert.equal(f.disposed,1);
+ const f=fixtureOwner(),sink=memorySink();sink.finish=async()=>({closed:false,bytes:0,hash:'0'.repeat(64)});await assert.rejects(captureFromPage(adapter(f),()=>sink),/closure/);assert.equal(f.disposed,1);
 });
 test('failed parent cleanup never invents a close acknowledgement or releases receipt',async()=>{
- const f=fixtureOwner(),sink=memorySink();sink.write=async()=>{throw new Error('write failed');};sink.abort=async()=>{throw new Error('cleanup unconfirmed');};await assert.rejects(captureFromPage(adapter(f),async()=>sink),/cleanup unconfirmed/);assert.equal(f.disposed,0);const state=f.owner.status();await f.owner.abortClosed({abi:CAPTURE_ABI,id:state.id,kind:'aborted',closed:true});assert.equal(f.disposed,1);
+ const f=fixtureOwner(),sink=memorySink();sink.write=async()=>{throw new Error('write failed');};sink.abort=async()=>{throw new Error('cleanup unconfirmed');};await assert.rejects(captureFromPage(adapter(f),()=>sink),/cleanup unconfirmed/);assert.equal(f.disposed,0);const state=f.owner.status();await f.owner.abortClosed({abi:CAPTURE_ABI,id:state.id,kind:'aborted',closed:true});assert.equal(f.disposed,1);
 });
 test('headers are closed and bounded before serialization; exact source/model and parent hash required',async()=>{
  const f=fixtureOwner(),h=await f.owner.start(file());
  try{
   for(const mutate of [h=>({...h,hash:'invalid'}),h=>({...h,summary:{...h.summary,extra:new Uint8Array(16)}}),h=>({...h,summary:{...h.summary,model:'wrong'}}),h=>({...h,summary:{...h.summary,capability:{...h.summary.capability,extra:'x'}}}),h=>({...h,summary:{...h.summary,capability:{...h.summary.capability,description:'x'.repeat(513)}}}),h=>({...h,summary:{...h.summary,capability:{...h.summary.capability,adapterFeatures:Array(33).fill('x')}}})])assert.throws(()=>validateHeader(mutate(h)));
  }finally{await f.owner.cancel(h.id);}
- const g=fixtureOwner(),sink=memorySink();await assert.rejects(captureFromPage(adapter(g,(method,result)=>method==='startSelected'?{...result,id:'stale'}:undefined),async()=>sink));assert.equal(g.disposed,1);
+ const g=fixtureOwner(),sink=memorySink();await assert.rejects(captureFromPage(adapter(g,(method,result)=>method==='startSelected'?{...result,id:'stale'}:undefined),()=>sink));assert.equal(g.disposed,1);
 });
 
 test('four-fixture batch admission and literal page methods have no browser/process launcher',()=>{
  const names=FIXTURES.slice(0,4).map(x=>x.name),plan=preflightBatch(names);assert.equal(plan.cases,4);assert.equal(plan.maximumWallMilliseconds,60000);assert.equal(plan.processGuardRequired,true);for(const values of [[],[...names,names[0]],[names[0],names[0]],['unknown']])assert.throws(()=>preflightBatch(values));const adapter=playwrightPageAdapter({evaluate(){throw new Error('No browser may execute in source unit');}});assert.throws(()=>adapter.call('constructor'),/Unknown/);
+});
+
+
+test('parent opens before construction; rejected or asynchronous factories retain unconfirmed ownership',async()=>{
+ for(const make of [()=>{throw new Error('setup cleanup failed');},async()=>{throw new Error('setup cleanup failed');},()=>({})]){
+  const f=fixtureOwner(),base=adapter(f);let entered=false,opened=false;
+  const page={async call(method,message){const result=await base.call(method,message);if(method==='open')opened=true;return result;}};
+  await assert.rejects(captureFromPage(page,h=>{entered=true;assert.equal(opened,true);return make(h);}));
+  assert.equal(entered,true);assert.equal(f.disposed,0);assert.notEqual(f.owner.status().phase,'idle');
+  await tick();await f.owner.abortClosed({abi:CAPTURE_ABI,id:f.owner.status().id,kind:'aborted',closed:true});
+ }
+});
+test('managed acquisition failure and delayed cleanup withhold acknowledgement until actual settlement',async()=>{
+ const f=fixtureOwner(),sink=memorySink();let acquired=false,completeCleanup,cleaning=false;
+ sink.acquire=async()=>{acquired=true;throw new Error('setup failed after partial file');};
+ sink.abort=async()=>{cleaning=true;await new Promise(resolve=>{completeCleanup=resolve;});return{closed:true};};
+ const pending=captureFromPage(adapter(f),()=>sink);const rejection=assert.rejects(pending,/partial file/);
+ while(!cleaning)await tick();assert.equal(acquired,true);assert.equal(f.disposed,0);assert.notEqual(f.owner.status().phase,'idle');
+ completeCleanup();await rejection;assert.equal(f.disposed,1);
+});
+test('cancellation while acquiring retains the exact handle and rejects an unconfirmed abort result',async()=>{
+ const f=fixtureOwner(),sink=memorySink(),controller=new AbortController();let completeAcquire,acquiring=false,aborts=0;
+ sink.acquire=()=>{acquiring=true;return new Promise(resolve=>{completeAcquire=resolve;});};
+ sink.abort=async()=>{aborts++;return{closed:false};};
+ const pending=captureFromPage(adapter(f),()=>sink,{signal:controller.signal});const rejection=assert.rejects(pending,/closure unconfirmed/);
+ while(!acquiring)await tick();controller.abort();await tick();assert.equal(f.disposed,0);assert.equal(aborts,0);
+ completeAcquire();await rejection;assert.equal(aborts,1);assert.equal(f.disposed,0);
+ await f.owner.abortClosed({abi:CAPTURE_ABI,id:f.owner.status().id,kind:'aborted',closed:true});
+});
+test('managed methods are captured before acquisition can mutate caller-visible methods',async()=>{
+ const f=fixtureOwner(),sink=memorySink();sink.acquire=async()=>{sink.write=()=>{throw new Error('mutated write');};sink.finish=()=>{throw new Error('mutated finish');};sink.abort=()=>{throw new Error('mutated abort');};};
+ const result=await captureFromPage(adapter(f),()=>sink);assert.equal(result.closed,true);assert.equal(f.disposed,1);
 });

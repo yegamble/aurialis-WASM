@@ -177,3 +177,6 @@ The private attention receipt follow-up closes independently reproduced disposal
 
 
 A private source-only attention capture harness now has 49 passing Node units and three pure handler tests. It selects one pinned local fixture, captures raw stages through bounded 2 KiB chunks and retains memory ownership until parent writing/hashing/closure settles. No server, browser, adapter, GPU or model ran. Shared process helpers are copied exactly with provenance; the actual launcher/hardware gate remains open.
+
+
+Independent QA reopened that capture source gate: a sink factory could fail after partial acquisition before returning its cleanup handle, while the old driver falsely acknowledged closure. The source-only repair opens parent ownership first and obtains a synchronous managed handle before asynchronous acquisition. Missing handles or failed cleanup retain the receipt. All 58 corrected Node source units passed in 415.363417 milliseconds; the original peer RED and controlled old-driver RED remain preserved. No server/browser/GPU/model ran. The [private guide](internal/audio/steminfer/testdata/webgpu/attention/README.md#capture-acquisition-ownership-repair) records the new boundary; independent review and hardware remain open.

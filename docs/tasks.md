@@ -744,3 +744,20 @@ Verification: full local Chromium suite **53/53 passed (2.3 minutes)**; TypeScri
 ### Concurrent reader-guide integration
 
 Main advanced through reader-guide PR #10 at `bbc254a` while Simple PR #11 was being published. The Simple branch merges that documentation-only update and preserves the readable README, first-use and developer guides, with current Simple styles and the device-local hosting decision added. Runtime source remains identical to the 82-case passing `adf0032` checkpoint; exact merged-head CI remains required. The earlier README claim review is historical and does not verify the newer Simple controls.
+
+## Opt-in true-peak limiter (algorithm 2) — 2026-10-24
+
+Algorithm 2 adds a lookahead limiter that bounds the meter's own 4× reconstructed peak. Algorithm 1 is unchanged and keeps zero latency. Algorithm 2 buffers `round(1.5 ms × rate) + 11` frames (83 at 48 kHz). `dsp.RenderLatencyCompensated` realigns and drains `RenderBufferContext`, `RenderScriptContext` and `RenderScriptV2Context`. Reference guards still require algorithm 1, and live playback, the worklet and the TypeScript validators still accept algorithm 1 only.
+
+Evidence (`unit`): `truepeak_test.go` checks fs/4, hot-noise and near-Nyquist square fixtures at 44.1/48/96/192 kHz with ceilings of −0.1/−1/−6 dBTP. Every case measured at or below the ceiling. At −1 dBTP, algorithm 2 measured −1.043 dBTP; algorithm 1 measured up to +2.48 dBTP. The tests also cover:
+
+- bit-identical aligned output against v1 below the ceiling;
+- delayed bit-identical bypass;
+- 127-frame streaming plus partial `Drain` matching the offline render;
+- short inputs;
+- gain-reduction reporting, version-switch and `Reset` clearing;
+- zero allocations.
+
+Setting the lookahead support to 0 made 21 bound cases fail. `gofmt`, `go vet` (native, js/wasm), `staticcheck -checks all`, js/wasm and wasip1 builds and `go test -race ./...` passed. `golangci-lint` could not run because the installed binary was built with Go 1.25.
+
+Open: the browser export does not request algorithm 2 yet. This is bounded by the finite meter and is not formal true-peak certification. Earlier rulings reserved "algorithm 2" for the studio compressor bundle; that bundle would now take the next unused ID. Status: **open — awaiting merge**.

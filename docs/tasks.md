@@ -766,4 +766,10 @@ Correction (independent reference): the first version reused the 49-tap 4× mete
 
 Setting the lookahead support to 0 made 21 bound cases fail. `gofmt`, `go vet` (native, js/wasm), `staticcheck -checks all`, js/wasm and wasip1 builds and `go test -race ./...` passed. `golangci-lint` could not run because the installed binary was built with Go 1.25.
 
-Open: the browser export does not request algorithm 2 yet. This is bounded by the finite meter and is not formal true-peak certification. Earlier rulings reserved "algorithm 2" for the studio compressor bundle; that bundle would now take the next unused ID. Status: **open — awaiting merge**.
+Superseded below: browser exports now request algorithm 2. This is bounded by the finite meter and is not formal true-peak certification. Earlier rulings reserved "algorithm 2" for the studio compressor bundle; that bundle would now take the next unused ID. Status: merged in PR #20.
+
+### Exports use algorithm 2 — 2026-10-24
+
+The WAV download, album render (and the measurement that sizes it) and the release check now send `algorithmVersion: 2` with `limiter.truePeak: true`. Applied Deep scripts are copied with those chain settings; the stored script and its revision are unchanged. ScriptV2 validation accepts the true-peak limiter only with algorithm 2. Previews and live playback stay on algorithm 1, so on content with intersample peaks an export limits harder than the audition.
+
+Evidence (`unit`, in-process HTTP handler): `TestExportRenderWithTruePeakAlgorithm` renders a quarter-rate tone sampled 45° off its peaks with +12 dB input gain and a −1 dBTP ceiling through `/api/master/render`. Algorithm 1 measured +1.15 dBTP; algorithm 2 stayed at or below −1 dBTP as parameters and as a script, at the source rate and length. A first run sent only `algorithmVersion: 2` and measured +1.15 dBTP, identical to v1, because algorithm 2 engages its limiter only with `limiter.truePeak`; the export helpers now set both. `export-params.test.ts` and the release-check test cover the request shape.

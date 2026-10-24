@@ -15,6 +15,7 @@ import {
   type StereoPCM,
 } from "@/lib/browser-engine";
 import { reserveBrowserAudioMemory } from "@/lib/browser-jobs";
+import { exportParams, exportScript } from "@/lib/engine-params";
 import { downloadLocalBlob } from "@/lib/download";
 import { clearNextPlaybackHandoff, reconcileNextPlaybackHandoff, stageNextPlaybackHandoff, takeNextPlaybackHandoff } from "@/lib/playback-handoff";
 import { bindPlaybackControls } from "@/lib/media-session";
@@ -837,8 +838,8 @@ function MasterView({ trackId }: { trackId: string }) {
     setMessage("Rendering WAV from the uploaded source…");
     try {
       const blob = track.deepMastering?.applied
-        ? await serverRenderScript(sourceBlob, track.deepMastering.applied, bitDepth, controller.signal)
-        : await serverRender(sourceBlob, engineParams(track.advanced), bitDepth, controller.signal);
+        ? await serverRenderScript(sourceBlob, exportScript(track.deepMastering.applied), bitDepth, controller.signal)
+        : await serverRender(sourceBlob, exportParams(track.advanced), bitDepth, controller.signal);
       if (controller.signal.aborted || renderAbort.current !== controller) return;
       const url = URL.createObjectURL(blob),
         anchor = document.createElement("a");
@@ -1714,13 +1715,13 @@ function AlbumView({ albumId }: { albumId: string }) {
                 const file = await getAudio(audioKey(track));
                 if (!file) throw new Error(`The source for “${track.title}” is missing. Import it again.`);
                 const advanced = await normalizeSimpleAudio(file, track.advanced, -14, controller.signal);
-                const measurement = await measureAudio(file, engineParams(advanced), controller.signal);
+                const measurement = await measureAudio(file, exportParams(advanced), controller.signal);
                 const expectedBytes = totalBytes + measurement.frames * 6 + 44;
                 if (expectedBytes > 128 * 1024 * 1024) throw new Error("The rendered album exceeds the 128 MiB download cache. Export a smaller sequence or render tracks individually.");
                 // Claim the final retained allocation before rendering; no gap while
                 // the worker result becomes its downloadable Blob.
                 memory.update(expectedBytes);
-                const blob = await serverRender(file, engineParams(advanced), 24, controller.signal);
+                const blob = await serverRender(file, exportParams(advanced), 24, controller.signal);
                 if (controller.signal.aborted) return;
                 totalBytes += blob.size;
                 memory.update(totalBytes);

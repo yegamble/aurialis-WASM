@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 import { readFile } from "node:fs/promises";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { engineParams } from "../src/lib/browser-engine";
+import { exportParams } from "../src/lib/engine-params";
 import type { Track } from "../src/lib/types";
 import { decode } from "./audio-fixture";
 import { meanOutputLevel, observeOutput, outputLevel } from "./live-output";
@@ -65,7 +65,7 @@ for (const control of ["Metal", "Jazz", "Organic", "Precise", "Elevated", "Depth
     await page.getByRole("button", { name: control, exact: true }).click();
     await expect(page.getByRole("button", { name: control.endsWith(" off") ? control.replace(" off", " on") : control, exact: true })).toHaveAttribute("aria-pressed", "true");
     const afterTrack = await saved(page), after = await exported(page);
-    const native = await request.post("/api/master/render", { multipart: { file: { name: "source.wav", mimeType: "audio/wav", buffer: source }, params: JSON.stringify(engineParams(afterTrack.advanced)), bitDepth: "32" } });
+    const native = await request.post("/api/master/render", { multipart: { file: { name: "source.wav", mimeType: "audio/wav", buffer: source }, params: JSON.stringify(exportParams(afterTrack.advanced)), bitDepth: "32" } });
     expect(native.ok()).toBe(true); const expected = decode(await native.body());
     expect(after.left).toEqual(expected.left); expect(after.right).toEqual(expected.right);
     let difference = 0; for (let i = 0; i < before.left.length; i++) difference = Math.max(difference, Math.abs((before.left.at(i) ?? 0) - (after.left.at(i) ?? 0)), Math.abs((before.right.at(i) ?? 0) - (after.right.at(i) ?? 0)));

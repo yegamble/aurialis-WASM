@@ -23,7 +23,7 @@ import (
 const MaxScriptV2Bytes = 2 * 1024 * 1024
 
 // ScriptV2 is a source-bound measured mastering proposal with an explicit static baseline.
-// Schema version 2.0 is independent of the supported DSP algorithm version 1.
+// Schema version 2.0 is independent of the DSP algorithm version (1, or 2 for exports).
 type ScriptV2 struct {
 	Version       string            `json:"version"`
 	Source        SourceIdentity    `json:"source"`
@@ -162,8 +162,11 @@ func ValidateScriptV2Context(ctx context.Context, script *ScriptV2, deviceRate i
 	if err != nil || profile != script.Profile {
 		return nil, errors.New("canonical profile required")
 	}
-	if script.ChainParams.Repair.Enabled || (script.ChainParams.Limiter.Enabled && script.ChainParams.Limiter.TruePeak) {
-		return nil, errors.New("ScriptV2 requires the supported sample-peak limiter and disabled repair")
+	// Algorithm 1 only supports the sample-peak limiter; algorithm 2 (exports)
+	// selects its lookahead true-peak limiter with TruePeak.
+	legacyTruePeak := script.ChainParams.Limiter.TruePeak && script.ChainParams.AlgorithmVersion != dsp.TruePeakAlgorithmVersion
+	if script.ChainParams.Repair.Enabled || (script.ChainParams.Limiter.Enabled && legacyTruePeak) {
+		return nil, errors.New("ScriptV2 requires disabled repair and, before algorithm 2, the sample-peak limiter")
 	}
 	if err := dsp.ValidateParams(script.ChainParams); err != nil {
 		return nil, err

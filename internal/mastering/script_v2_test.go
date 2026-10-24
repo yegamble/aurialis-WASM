@@ -149,5 +149,9 @@ func TestPublicScriptV2ProposalsAvoidUnsupportedProcessing(t *testing.T) {
 		if _, err := ValidateScriptV2Context(context.Background(), unsupported, 8000); err == nil {
 			t.Fatal("unsupported true-peak limiter accepted")
 		}
+		unsupported.ChainParams.AlgorithmVersion = dsp.TruePeakAlgorithmVersion
+		if _, err := ValidateScriptV2Context(context.Background(), unsupported, 8000); err != nil {
+			t.Fatal("algorithm 2 rejected its true-peak limiter:", err)
+		}
 	}
 }

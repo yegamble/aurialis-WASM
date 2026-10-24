@@ -87,7 +87,9 @@ test("applied Deep revisions are idempotent and Advanced edits, export, Detach a
   });
   const downloaded = page.waitForEvent("download"); await dialog.getByRole("button", { name: "Render & download WAV", exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as Window & { exportFields?: { keys: string[] } }).exportFields?.keys)).toEqual(["file", "script", "bitDepth"]);
-  expect(await page.evaluate(() => (window as Window & { exportFields?: { script: unknown } }).exportFields?.script)).toEqual(edited.deepMastering?.applied);
+  // Export renders a copy of the applied script with the algorithm 2 true-peak limiter.
+  const applied = edited.deepMastering?.applied; if (!applied) throw new Error("Missing applied script");
+  expect(await page.evaluate(() => (window as Window & { exportFields?: { script: unknown } }).exportFields?.script)).toEqual({ ...applied, chainParams: { ...applied.chainParams, algorithmVersion: 2, limiter: { ...applied.chainParams.limiter, truePeak: true } } });
   const download = await downloaded; expect(await download.failure()).toBeNull(); const path = await download.path(); if (!path) throw new Error("Missing applied script export");
   const pcm = decode(await readFile(path)); expect(pcm.left.length).toBe(3 * 48000); expect(pcm.rate).toBe(48000); expect(pcm.bits).toBe(32);
   await page.keyboard.press("Escape");

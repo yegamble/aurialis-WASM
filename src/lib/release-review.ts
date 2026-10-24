@@ -1,5 +1,6 @@
-import { engineParams, measureAudio, serverRender, serverRenderScript } from "./browser-engine";
+import { measureAudio, serverRender, serverRenderScript } from "./browser-engine";
 import { reserveBrowserAudioMemory } from "./browser-jobs";
+import { engineParams, exportParams, exportScript } from "./engine-params";
 import { inspectEncodedWAV } from "./encoded-inspection";
 import { verifyCanonicalSource } from "./project-import";
 import { releaseProfiles, type EncodedInspection, type OutputBits, type ReleasePlatform } from "./release-policy";
@@ -56,8 +57,8 @@ export async function collectReleaseReview(source: Blob, track: Track, bits: Out
     const outputBytes = 44 + identity.frames * bits / 4;
     if (source.size !== 44 + identity.frames * 8) throw new Error("The stored source layout changed. Restore the matching source in Library.");
     owned.update(source.size * 3 + outputBytes);
-    const params = engineParams(track.advanced);
-    const script = track.deepMastering?.applied ? structuredClone(track.deepMastering.applied) : undefined;
+    const params = exportParams(track.advanced);
+    const script = track.deepMastering?.applied ? exportScript(track.deepMastering.applied) : undefined;
     const title = track.title, sourceRevision = track.sourceRevision ?? 0;
     const bindingHash = await releaseBindingHash(track, bits, signal);
     await verifyCanonicalSource(source, identity, signal);

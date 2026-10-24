@@ -4,6 +4,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { decode, fixture } from "./audio-fixture";
 import { uploadProject } from "./workflow-fixture";
+import { exportScript } from "../src/lib/engine-params";
 import type { ReleaseReport } from "../src/lib/release-review";
 import type { Track } from "../src/lib/types";
 
@@ -82,7 +83,7 @@ test("Release uses the acknowledged Deep script and produces the exact native sc
   const applied = (await project(page)).deepMastering?.applied; if (!applied) throw new Error("Missing accepted script");
   await page.goto(`/release-check/${id}`); await run(page); const receipt = await report(page), actual = await download(page, "Download measured WAV");
   expect(receipt.scriptRevision).toBe(applied.revision);
-  const native = await request.post("/api/master/render", { multipart: { file: { name: "source.wav", mimeType: "audio/wav", buffer: fixture() }, script: JSON.stringify(applied), bitDepth: "24" } });
+  const native = await request.post("/api/master/render", { multipart: { file: { name: "source.wav", mimeType: "audio/wav", buffer: fixture() }, script: JSON.stringify(exportScript(applied)), bitDepth: "24" } });
   expect(native.ok()).toBe(true); expect(actual).toEqual(await native.body());
 });
 

@@ -1,7 +1,8 @@
 import { Blob as NativeBlob } from "node:buffer";
 import { createHash, webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { engineParams, measureAudio, previewWAV, serverRender, serverRenderScript } from "../browser-engine";
+import { measureAudio, previewWAV, serverRender, serverRenderScript } from "../browser-engine";
+import { engineParams, exportParams } from "../engine-params";
 import { reserveBrowserAudioMemory } from "../browser-jobs";
 import type { ScriptV2 } from "../deep-mastering";
 import { collectReleaseReview, readReleaseReport, releaseBindingHash, reserveReleaseReviewMemory } from "../release-review";
@@ -30,7 +31,7 @@ describe("encoded release artifacts and saved receipts", () => {
   it("renders once, measures the final encoded file in bypass, and retains its exact bytes/hash", async () => {
     const blob = source(), abort = signal();
     const result = await collectReleaseReview(blob, track, 32, "Spotify", abort);
-    expect(serverRender).toHaveBeenCalledExactlyOnceWith(blob, engineParams(track.advanced), 32, abort);
+    expect(serverRender).toHaveBeenCalledExactlyOnceWith(blob, exportParams(track.advanced), 32, abort);
     expect(measureAudio).toHaveBeenCalledExactlyOnceWith(result.wav, { bypass: true }, abort);
     expect(result.report.output.sha256).toBe(createHash("sha256").update(new Uint8Array(await result.wav.arrayBuffer())).digest("hex"));
     expect(result.report.bindingHash).toBe(await releaseBindingHash(track, 32, abort));
@@ -41,6 +42,7 @@ describe("encoded release artifacts and saved receipts", () => {
     const applied = script(), deep: Track = { ...track, deepMastering: { sourceRevision: 4, proposal: applied, applied, targets: [] } };
     const result = await collectReleaseReview(source(), deep, 32, "Podcast", signal());
     expect(serverRenderScript).toHaveBeenCalledOnce(); expect(result.report.scriptRevision).toBe(1);
+    expect(vi.mocked(serverRenderScript).mock.calls[0]?.[1].chainParams).toMatchObject({ algorithmVersion: 2, limiter: { truePeak: true } });
     const changed = structuredClone(deep); const point = changed.deepMastering?.applied?.moves[0]?.points[0]; if (!point) throw new Error("Missing point"); point.value = 3;
     expect(await releaseBindingHash(changed, 32, signal())).not.toBe(result.report.bindingHash);
     expect(await releaseBindingHash(deep, 24, signal())).not.toBe(result.report.bindingHash);

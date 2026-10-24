@@ -61,3 +61,22 @@ export function engineParams(advanced: AdvancedParams) {
     ditherBits: 0,
   };
 }
+
+/** DSP algorithm for offline exports: the lookahead true-peak limiter, which
+ * algorithm 2 selects with limiter.truePeak. Live playback stays on algorithm 1
+ * because the worklet cannot absorb the limiter's latency. */
+export const EXPORT_ALGORITHM_VERSION = 2;
+
+function withExportLimiter<T extends { limiter: object }>(params: T): T & { algorithmVersion: number } {
+  return { ...params, limiter: { ...params.limiter, truePeak: true }, algorithmVersion: EXPORT_ALGORITHM_VERSION };
+}
+
+export function exportParams(advanced: AdvancedParams) {
+  return withExportLimiter(engineParams(advanced));
+}
+
+/** Copy of an applied script whose render uses the export algorithm. */
+export function exportScript<T extends { chainParams: { limiter: object } }>(script: T): T {
+  const copy = structuredClone(script);
+  return { ...copy, chainParams: withExportLimiter(copy.chainParams) };
+}

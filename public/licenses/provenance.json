@@ -62,6 +62,15 @@
       "sha256": "60e0b68c0f35c078eef3a5d29419d0b03ff84ec1df9c3f9d6e39a519a5ae7985"
     },
     {
+      "name": "go-mp3 (modified copy in internal/third_party/gomp3)",
+      "version": "v0.3.4",
+      "license": "Apache-2.0",
+      "upstream": "https://github.com/hajimehoshi/go-mp3",
+      "installedSource": "internal/third_party/gomp3/LICENSE",
+      "notice": "go-mp3-Apache-2.0.txt",
+      "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+    },
+    {
       "name": "Go standard library and JavaScript runtime",
       "version": "go1.26.10",
       "license": "BSD-3-Clause",

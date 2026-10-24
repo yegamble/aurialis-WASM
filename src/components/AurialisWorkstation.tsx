@@ -67,7 +67,7 @@ import {
   StatusBadge,
 } from "./shared/Primitives";
 
-import { readStoredSource, prepareProjectFile, importedTrack } from "@/lib/project-import";
+import { readStoredSource, prepareProjectFile, importedTrack, isSourceFileName, SOURCE_ACCEPT } from "@/lib/project-import";
 import { LibraryView } from "./shared/LibraryView";
 import { SourceRelink } from "./shared/LibraryTools";
 import { useTransportScrub } from "@/lib/use-transport-scrub";
@@ -390,7 +390,7 @@ function HomeView() {
     const onPaste = (event: ClipboardEvent) => {
       const target = event.target;
       if (target instanceof HTMLElement && (target.isContentEditable || target.closest("input, textarea, [contenteditable]"))) return;
-      const files = Array.from(event.clipboardData?.files ?? []).filter((item) => item.type.startsWith("audio/") || /\.wav$/iu.test(item.name));
+      const files = Array.from(event.clipboardData?.files ?? []).filter((item) => item.type.startsWith("audio/") || isSourceFileName(item.name));
       if (files.length) { event.preventDefault(); void importFiles(files); }
     };
     document.addEventListener("paste", onPaste);
@@ -442,7 +442,7 @@ function HomeView() {
             ref={inputRef}
             type="file"
             multiple
-            accept="audio/wav,.wav"
+            accept={SOURCE_ACCEPT}
             hidden
             aria-label="Upload audio file"
             onChange={(event) => {
@@ -459,7 +459,7 @@ function HomeView() {
             {message ||
               "Drop audio here, paste it, or choose a file from your device."}
           </p>
-          <span className="file-types">PCM WAV · up to 128 MiB · 16,777,216 frames maximum</span>
+          <span className="file-types">WAV, FLAC or MP3 · up to 128 MiB · 16,777,216 frames maximum</span>
           <Button
             variant="primary"
             icon={<Icon name="file-audio" />}
@@ -485,7 +485,7 @@ function HomeView() {
             View library <Icon name="arrow-right" />
           </Link>
         </div>
-        {state.tracks.length === 0 && <p className="empty-state">Your library starts with your own audio. Import a WAV to create your first project.</p>}
+        {state.tracks.length === 0 && <p className="empty-state">Your library starts with your own audio. Import a WAV, FLAC or MP3 to create your first project.</p>}
         <div className="track-row-grid">
           {state.tracks.slice(0, 3).map((track, index) => (
             <TrackCard key={track.id} track={track} index={index} />
@@ -894,7 +894,7 @@ function MasterView({ trackId }: { trackId: string }) {
         <div className="workspace-track">
           <h1>{track.title}</h1>
           <p>
-            {formatTime(track.duration)} · {track.sampleRate / 1000} kHz · WAV
+            {formatTime(track.duration)} · {track.sampleRate / 1000} kHz · {track.format}
           </p>
         </div>
         <div className="mode-tabs" role="tablist" aria-label="Mastering mode">

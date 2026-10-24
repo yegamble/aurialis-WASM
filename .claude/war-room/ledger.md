@@ -11,6 +11,10 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## MP3 and FLAC import — 2026-10-24
+
+`open — awaiting merge (claude/project-thread-93831i)`. Go CDR decodes FLAC (stdlib) and MP3 (vendored, modified go-mp3 with float output, gapless trim and a fixed short-block M/S defect) for native and browser WASM import. Multichannel FLAC is rejected like WAV. Evidence tiers: `unit` (bit-exact FLAC, FFmpeg-oracle MP3 ≤1e-5, payload/corruption cases, fuzz) and `playwright-a11y-responsive` static browser suite 13/13 including real-WASM FLAC/MP3 import. Not done: QA/Devil's Advocate seat review, compressed legacy-library recovery.
+
 ## Protected merge and verified public domains — 2026-10-23
 
 **Round E — bounded corrections verified and merged.** [PR #18](https://github.com/yegamble/aurialis-WASM/pull/18) merged normally at `043906fb712b3e26f324194c072e6a97da6fa2e5` from reviewed head `7de3bb1`, after all 14 jobs and app-bound GitGuardian passed in [run 40033188638](https://github.com/yegamble/aurialis-WASM/actions/runs/40033188638). Raw logs record 480 units/42 files, native shards 37/37/37 in 3.9/2.0/2.4 minutes, static 12/12 in 57.3 seconds, 13 oracles with maximum whitelisted error 7.105427357601002e-15, Newman 34/39 and raw security probes. Protection was rechecked; reviewed/merged trees matched and the branch was deleted. Post-merge [main run 40034009933](https://github.com/yegamble/aurialis-WASM/actions/runs/40034009933) also succeeded with all 14 jobs; raw main per-test counts were not separately inspected.

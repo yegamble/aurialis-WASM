@@ -805,11 +805,12 @@ func (e *Engine) processBlock(inL, inR, outL, outR []float32, lanes *automationL
 
 		// Stage 6: v1 sample-peak limiter with optional cubic inter-sample estimate,
 		// or the v2 lookahead limiter against reconstructed (true) peaks.
-		if truePeakV2 {
+		switch {
+		case truePeakV2:
 			l, r, rawL, rawR = e.processTruePeakStage(l, r, rawL, rawR, limActive)
-		} else if limActive {
+		case limActive:
 			l, r = e.processLimiterSample(l, r)
-		} else {
+		default:
 			e.lastLimGRDB = 0
 		}
 		outL[i], outR[i] = e.finishSample(l, r, rawL, rawR, limActive)

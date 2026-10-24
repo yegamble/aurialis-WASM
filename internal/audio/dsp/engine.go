@@ -311,7 +311,7 @@ func (e *Engine) SetParams(next Params) {
 	prev := e.params
 	e.params = next
 	if algorithmOf(prev) != algorithmOf(next) {
-		// Latency changes with the algorithm; never mix delayed and undelayed frames.
+		// Latency changes with the algorithm; never mix delayed and immediate frames.
 		e.truePeak.reset()
 	}
 	if prev.Compressor != next.Compressor || prev.Saturation != next.Saturation || prev.Stereo != next.Stereo || prev.Limiter != next.Limiter || prev.Repair != next.Repair || prev.DeHarsh != next.DeHarsh || prev.Multiband != next.Multiband {

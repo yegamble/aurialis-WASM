@@ -27,7 +27,7 @@ type truePeakLimiter struct {
 	// Frames Drain still owes: the full latency after any input, else zero.
 	pending int
 
-	// Monotonic min-hold deque over the last H requirements.
+	// Monotonic min-hold queue over the last H requirements.
 	minValue [truePeakRing]float64
 	minStep  [truePeakRing]int
 	minHead  int

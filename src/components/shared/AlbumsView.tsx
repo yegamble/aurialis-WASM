@@ -3,9 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "@/lib/store";
 import type { Album, Track } from "@/lib/types";
-import { AlbumBatch, albumCohortKey, albumTarget, type AlbumProgress, type AlbumReport } from "@/lib/album-batch";
+import { AlbumBatch, albumCohortKey, albumTarget, downloadAlbumReport, type AlbumProgress, type AlbumReport } from "@/lib/album-batch";
+import { AlbumRecipeBinding } from "@/lib/album-binding";
+import { albumCleanupStatus, retryAlbumCleanup } from "@/lib/album-cleanup";
+import { AlbumSpool } from "@/lib/album-spool";
+import { injectedProcessingIdentity } from "@/lib/processing-identity";
 import { albumTargets, summarizeAlbum } from "@/lib/album-consistency";
-import { downloadLocalBlob } from "@/lib/download";
 import { reserveBrowserAudioMemory } from "@/lib/browser-jobs";
 import { prepareProjectFile, importedTrack } from "@/lib/project-import";
 import { saveAudio, discardStagedAudio } from "@/lib/db";
@@ -21,35 +24,46 @@ function binding(album: Album, tracks: Track[]) {
   try { return { key: albumCohortKey(album, tracks), error: "" }; }
   catch (cause) { return { key: "", error: cause instanceof Error ? cause.message : "The album settings are unavailable." }; }
 }
-function useSavedReport(album: Album, key: string) {
+function useSavedReport(album: Album, tracks: Track[], key: string) {
   const [basis, setBasis] = useState<{ key: string; hash: string } | null>(null);
   useEffect(() => {
-    let active = true;
-    void crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)).then((bytes) => {
-      if (active) setBasis({ key, hash: Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("") });
-    }).catch(() => undefined);
-    return () => { active = false; };
-  }, [key]);
+    const identity = injectedProcessingIdentity(); if (!album.report || !identity || !key) return;
+    let active = true, bound: AlbumRecipeBinding | undefined;
+    const controller = new AbortController();
+    try {
+      bound = new AlbumRecipeBinding(album, tracks, reserveBrowserAudioMemory);
+      void bound.digest(identity.fingerprint, controller.signal, () => active).then((hash) => {
+        if (active) setBasis({ key, hash });
+      }).catch(() => undefined).finally(() => { bound?.dispose(); });
+    } catch { bound?.dispose(); }
+    return () => { active = false; controller.abort(); bound?.dispose(); };
+  }, [album, tracks, key]);
   return key && basis?.key === key && album.report?.bindingHash === basis.hash ? album.report : null;
 }
 
 export function AlbumsView() {
   const { state, dispatch } = useStore();
   const [editing, setEditing] = useState<Album | null>(null), [name, setName] = useState("");
-  const [deleting, setDeleting] = useState<Album | null>(null);
+  const [deleting, setDeleting] = useState<Album | null>(null), [deleteBusy, setDeleteBusy] = useState(false), [deleteError, setDeleteError] = useState("");
+  async function removeAlbum() {
+    if (!deleting || deleteBusy) return; const expected = deleting; setDeleteBusy(true); setDeleteError("");
+    try { await retryAlbumCleanup(expected.id); await AlbumSpool.clearStored(expected.id); dispatch({ type: "DELETE_ALBUM", id: expected.id }); setDeleting(null); }
+    catch (cause) { setDeleteError(cause instanceof Error ? cause.message : "Stored album masters could not be removed. Retry before deleting the album."); }
+    finally { setDeleteBusy(false); }
+  }
   function create() {
     dispatch({ type: "ADD_ALBUM", album: { id: `album-${crypto.randomUUID()}`, title: `Untitled sequence ${String(state.albums.length + 1)}`, artist: "", target: "−14 LUFS", trackIds: [], mastered: false, gainMode: "relationships", offsets: {}, updatedAt: new Date().toISOString() } });
   }
   return <div className="page"><PageTitle eyebrow="Sequence and consistency" title="Albums" copy="Shape a collection as one listening experience." action={<Button icon={<Icon name="plus" />} onClick={create}>New album</Button>} />
     {!state.albums.length ? <div className="album-empty paper-panel"><div className="album-art-large"><Icon name="disc" /></div><div><span className="eyebrow">Your first sequence</span><h2>Bring the songs into one room.</h2><p>Create an album to compare loudness, tone, and crest factor across your library.</p><Button onClick={create}>Create an album</Button></div></div>
-      : <div className="album-grid">{state.albums.map((album, index) => <AlbumCard key={album.id} album={album} tracks={cohort(album, state.tracks)} index={index} onRename={() => { setEditing(album); setName(album.title); }} onDelete={() => { setDeleting(album); }} />)}</div>}
+      : <div className="album-grid">{state.albums.map((album, index) => <AlbumCard key={album.id} album={album} tracks={cohort(album, state.tracks)} index={index} onRename={() => { setEditing(album); setName(album.title); }} onDelete={() => { if (!deleteBusy) { setDeleteError(""); setDeleting(album); } }} />)}</div>}
     <Modal open={editing !== null} title="Rename album" onClose={() => { setEditing(null); }} actions={<><Button variant="secondary" onClick={() => { setEditing(null); }}>Cancel</Button><Button disabled={!name.trim()} onClick={() => { if (editing) dispatch({ type: "UPDATE_ALBUM", id: editing.id, patch: { title: name.trim() } }); setEditing(null); }}>Save name</Button></>}><label className="control-label">Album name<input className="min-h-[44px] w-full" maxLength={256} value={name} onChange={(event) => { setName(event.target.value); }} /></label></Modal>
-    <Modal open={deleting !== null} title="Delete this album?" onClose={() => { setDeleting(null); }} actions={<><Button variant="secondary" onClick={() => { setDeleting(null); }}>Keep album</Button><Button variant="danger" onClick={() => { if (deleting) dispatch({ type: "DELETE_ALBUM", id: deleting.id }); setDeleting(null); }}>Delete album</Button></>}><p>Remove “{deleting?.title}” and its saved report. Your library tracks and audio stay available.</p></Modal>
+    <Modal open={deleting !== null} title="Delete this album?" onClose={() => { if (!deleteBusy) setDeleting(null); }} actions={<><Button variant="secondary" disabled={deleteBusy} onClick={() => { setDeleting(null); }}>Keep album</Button><Button variant="danger" disabled={deleteBusy} onClick={() => void removeAlbum()}>{deleteBusy ? "Removing stored masters…" : "Delete album"}</Button></>}><p>Remove “{deleting?.title}”, its saved report and locally stored album masters. Your library tracks and original audio stay available.</p>{deleteError && <p role="alert">{deleteError}</p>}</Modal>
   </div>;
 }
 function AlbumCard({ album, tracks, index, onRename, onDelete }: { album: Album; tracks: Track[]; index: number; onRename: () => void; onDelete: () => void }) {
   const key = useMemo(() => binding(album, tracks).key, [album, tracks]);
-  const report = useSavedReport(album, key), summary = report?.tracks.length ? summarizeAlbum(report.tracks) : null;
+  const report = useSavedReport(album, tracks, key), summary = report?.tracks.length ? summarizeAlbum(report.tracks) : null;
   return <article className="album-card"><Link href={`/albums/${album.id}`} className="block min-h-[44px]"><div className={`album-art album-art--${String(index % 3)}`}><span>{String(index + 1).padStart(2, "0")}</span></div><span className="eyebrow">{album.trackIds.length} tracks</span><h2>{album.title}</h2><p>Target {album.target}</p></Link>
     <div className="album-score"><span>Measured loudness spread</span><strong>{summary?.loudnessSpreadLu?.toFixed(1) ?? "—"}{summary?.loudnessSpreadLu !== null && summary?.loudnessSpreadLu !== undefined ? " LU" : ""}</strong></div>
     <p className="disclosure">{report ? `${String(report.tracks.length)}/${String(report.cohortIds.length)} measured masters` : "Render the current sequence to measure its spread."}</p>
@@ -65,25 +79,59 @@ export function AlbumView({ albumId }: { albumId: string }) {
 function AlbumWorkspace({ album, tracks }: { album: Album; tracks: Track[] }) {
   const { state, dispatch } = useStore();
   const current = useMemo(() => binding(album, tracks), [album, tracks]);
-  const saved = useSavedReport(album, current.key);
+  const saved = useSavedReport(album, tracks, current.key);
   const latest = useRef({ album, tracks, key: current.key }); latest.current = { album, tracks, key: current.key };
   const session = useRef<AlbumBatch | null>(null), importing = useRef<AbortController | null>(null);
   const fileInput = useRef<HTMLInputElement>(null), dragged = useRef<string | null>(null);
   const [busy, setBusy] = useState(false), [importBusy, setImportBusy] = useState(false), [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(""), [downloadBusy, setDownloadBusy] = useState(false), [clearing, setClearing] = useState(false);
+  const closing = useRef<Promise<void>>(Promise.resolve()), mounted = useRef(true), intent = useRef(0);
   const [progress, setProgress] = useState<AlbumProgress | null>(null);
   const [retained, setRetained] = useState<{ key: string; report: AlbumReport | null; files: ReturnType<AlbumBatch["getFiles"]> } | null>(null);
   useEffect(() => {
-    session.current?.dispose(); session.current = null;
+    intent.current++; const previous = session.current; session.current = null;
+    if (previous) closing.current = previous.dispose(true).catch((cause: unknown) => {
+      if (mounted.current) setError(cause instanceof Error ? cause.message : "Previous stored masters could not be removed. Retry cleanup before rendering."); throw cause;
+    });
+    // Keep rejection observed while allowing the next explicit action to surface it.
+    void closing.current.catch(() => undefined);
     importing.current?.abort(); importing.current = null;
-    setRetained(null); setProgress(null); setBusy(false); setImportBusy(false);
-    return () => { session.current?.dispose(); session.current = null; importing.current?.abort(); importing.current = null; };
+    setRetained(null); setProgress(null); setBusy(false); setImportBusy(false); setDownloadBusy(false);
   }, [current.key]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false; intent.current++; const owner = session.current; session.current = null;
+      if (owner) { closing.current = owner.dispose(); void closing.current.catch(() => undefined); }
+      importing.current?.abort(); importing.current = null;
+    };
+  }, []);
   const owned = retained?.key === current.key ? retained : null, report = owned?.report ?? saved;
   const summary = report?.tracks.length ? summarizeAlbum(report.tracks) : null;
-  function download(blob: Blob, filename: string) {
-    try { downloadLocalBlob(blob, filename); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "The download could not be started."); }
+  async function downloadReport() {
+    if (!report || busy || downloadBusy) return;
+    const expectedKey = current.key; setDownloadBusy(true); setError("");
+    try { await downloadAlbumReport(report, reserveBrowserAudioMemory); }
+    catch (cause) { if (mounted.current && latest.current.key === expectedKey) setError(cause instanceof Error ? cause.message : "The metadata report could not be downloaded."); }
+    finally { if (mounted.current && latest.current.key === expectedKey) setDownloadBusy(false); }
+  }
+  async function downloadMaster(index: number) {
+    const owner = session.current; if (!owner || downloadBusy || busy) return; setDownloadBusy(true); setError("");
+    const owns = () => session.current === owner && latest.current.key === owner.key;
+    try { await owner.download(index, owns); }
+    catch (cause) { if (owns()) { setRetained({ key: owner.key, report: owner.getReport(), files: owner.getFiles() }); setError(cause instanceof Error ? cause.message : "The verified WAV could not be downloaded."); } }
+    finally { if (owns()) setDownloadBusy(false); }
+  }
+  async function clearStored() {
+    const ticket = ++intent.current, expectedKey = current.key, owns = () => mounted.current && ticket === intent.current && latest.current.key === expectedKey, owner = session.current; session.current = null; setDownloadBusy(true); setError("");
+    try {
+      if (owner) await owner.dispose(true); await retryAlbumCleanup(album.id); await closing.current.catch(() => undefined);
+      if (!owns()) return;
+      await AlbumSpool.clearStored(album.id);
+      if (!owns()) return;
+      setRetained(null); setProgress(null); setClearing(false); setMessage("Stored album masters removed. Your library tracks and saved metadata report remain available."); closing.current = Promise.resolve();
+    } catch (cause) { if (owns()) setError(cause instanceof Error ? cause.message : "Stored album cleanup failed. Retry before rendering."); }
+    finally { if (owns()) setDownloadBusy(false); }
   }
   function patch(value: Partial<Album>) { dispatch({ type: "UPDATE_ALBUM", id: album.id, patch: value }); }
   function move(id: string, destination: number) {
@@ -92,10 +140,17 @@ function AlbumWorkspace({ album, tracks }: { album: Album; tracks: Track[] }) {
     next.splice(index, 1); next.splice(destination, 0, id); patch({ trackIds: next });
   }
   async function run() {
-    setError("");
+    const ticket = ++intent.current, expectedKey = current.key, currentIntent = () => mounted.current && ticket === intent.current && latest.current.key === expectedKey;
+    setError(""); setBusy(true);
     let batch = session.current;
     try {
-      if (!batch || !batch.canResume() || batch.key !== current.key) { batch?.dispose(); batch = new AlbumBatch(album, tracks, reserveBrowserAudioMemory); session.current = batch; }
+      if (albumCleanupStatus(album.id)?.pending) throw new Error("Finish the previous album cleanup with Clear stored album masters before rendering again.");
+      await closing.current;
+      if (!currentIntent()) return;
+      batch = session.current;
+      if (!batch || !batch.canResume() || batch.key !== current.key) { if (batch) await batch.dispose(true);
+        if (!currentIntent()) return;
+        batch = new AlbumBatch(album, tracks, reserveBrowserAudioMemory); session.current = batch; }
       const owner = batch; setBusy(true);
       const owns = () => session.current === owner && latest.current.key === owner.key;
       const update = (value: AlbumProgress) => {
@@ -104,14 +159,14 @@ function AlbumWorkspace({ album, tracks }: { album: Album; tracks: Track[] }) {
       };
       try {
         const result = await owner.run(owns, update);
-        if (owns()) { setRetained({ key: owner.key, report: result, files: owner.getFiles() }); setMessage("All final 24-bit WAV masters are measured and ready. Save a metadata report or download each retained WAV."); }
+        if (owns()) { setRetained({ key: owner.key, report: result, files: owner.getFiles() }); setMessage("All final 24-bit WAV masters are measured and ready. Save a metadata report or download each verified WAV stored on this device."); }
       } catch (cause) {
         if (owns()) {
           setRetained({ key: owner.key, report: owner.getReport(), files: owner.getFiles() });
           setError(cause instanceof Error && cause.name !== "AbortError" ? cause.message : "Album render canceled. Verified completed masters remain available; retry continues this unchanged cohort.");
         }
       } finally { if (owns()) setBusy(false); }
-    } catch (cause) { setBusy(false); setError(cause instanceof Error ? cause.message : "The album could not be prepared."); }
+    } catch (cause) { if (mounted.current && ticket === intent.current) { setBusy(false); setError(cause instanceof Error ? cause.message : "The album could not be prepared."); } }
   }
   async function importFiles(files: readonly File[]) {
     if (!files.length) return;
@@ -147,7 +202,7 @@ function AlbumWorkspace({ album, tracks }: { album: Album; tracks: Track[] }) {
       if (importing.current === controller) { importing.current = null; setImportBusy(false); }
     }
   }
-  const active = busy || importBusy;
+  const active = busy || importBusy || downloadBusy, cleanupStatus = albumCleanupStatus(album.id);
   return <div className="page"><h1 className="sr-only">Album mastering workspace</h1>
     <section className="album-hero"><div className="album-art-large"><Icon name="disc" /></div><div><span className="eyebrow">Album workspace</span>
       <input className="title-input" aria-label="Album title" maxLength={256} value={album.title} onChange={(event) => { patch({ title: event.target.value }); }} />
@@ -159,14 +214,17 @@ function AlbumWorkspace({ album, tracks }: { album: Album; tracks: Track[] }) {
       <label className="control-label">Gain mode<select className="min-h-[44px] w-full min-w-0 max-w-full" aria-label="Album gain mode" value={album.gainMode ?? "relationships"} onChange={(event) => { const value = event.target.value; if (value === "relationships" || value === "normalize" || value === "manual") patch({ gainMode: value }); }}><option value="relationships">Preserve level relationships (shared gain)</option><option value="normalize">Normalize tracks individually (optional)</option><option value="manual">Manual offsets only (no loudness normalization)</option></select></label>
     </div><p className="disclosure">Default shared gain moves the median track toward your target while preserving level differences. The target is capped by the tightest finite peak estimate at −1 dBTP with 0.01 dB encoding margin; supported gain is ±36 dB. A capped target may remain unmet. No tone, compression or limiting is added.</p>
     <p className="disclosure">Each accepted full chain, including applied Deep automation, is rendered before album gain. Individual mastering settings stay unchanged. Silent or shorter-than-0.4-second tracks are excluded from the loudness basis; manual offsets remain available.</p></section>
+    {cleanupStatus?.pending && <p className="disclosure" role="alert">Previous album cleanup needs attention. Choose Clear stored album masters to retry the same owner. {cleanupStatus.message}</p>}
     {busy && <Button variant="secondary" onClick={() => { session.current?.cancel(); setMessage("Canceling the current track…"); }}>Cancel album render</Button>}
     {importBusy && <Button variant="secondary" onClick={() => { importing.current?.abort(); setImportBusy(false); }}>Cancel album import</Button>}
     <p className="disclosure" role={error || current.error ? "alert" : "status"}>{current.error || error || message || "Render the sequence to measure final encoded WAVs, then review each transition."}</p>
     {progress && <p className="disclosure" aria-live="polite">{progress.completed} of {progress.total} verified masters. {busy ? progress.stage : ""}</p>}
-    {report && <section className="paper-panel p-5 space-y-3" aria-label="Rendered album downloads"><h2>{report.complete ? "Your album masters" : "Verified partial sequence"}</h2><p className="disclosure">{owned?.files.length ? "Downloads use the exact retained measured WAVs. Cancel or retry keeps this verified prefix while the entire cohort remains unchanged." : "Saved measurements restored. Render again to restore WAV downloads; a saved report contains metadata only."}</p>
+    <Button variant="ghost" disabled={active} onClick={() => { setClearing(true); }}>Clear stored album masters</Button>
+    <Modal open={clearing} title="Clear stored album masters?" onClose={() => { if (!downloadBusy) setClearing(false); }} actions={<><Button variant="secondary" disabled={downloadBusy} onClick={() => { setClearing(false); }}>Keep stored masters</Button><Button variant="danger" disabled={downloadBusy} onClick={() => void clearStored()}>Clear stored masters</Button></>}><p>Remove this album’s locally stored rendered WAVs. Your library sources, individual settings and saved metadata report stay available.</p></Modal>
+    {report && <section className="paper-panel p-5 space-y-3" aria-label="Rendered album downloads"><h2>{report.complete ? "Your album masters" : "Verified partial sequence"}</h2><p className="disclosure">{owned?.files.length ? "Downloads reverify the exact measured WAVs stored on this device. Cancel or retry keeps this verified prefix while the entire cohort remains unchanged." : "Saved measurements restored. Render again to restore WAV downloads; a saved report contains metadata only."}</p>
       {report.commonGainDb !== null && <p className="disclosure">Shared gain: {report.commonGainDb.toFixed(2)} dB. Planning median track: {report.medianTrackLufs?.toFixed(2) ?? "Unavailable"} LUFS (not album-integrated).</p>}
-      <div className="flex flex-wrap gap-2">{owned?.files.map((file) => <Button key={file.id} variant="secondary" className="max-w-full whitespace-normal [overflow-wrap:anywhere]" onClick={() => { download(file.wav, `${file.title.replace(/[^a-zA-Z0-9_-]/gu, "-") || "aurialis"}-album-master.wav`); }}>Download {file.title}</Button>)}
-        <Button variant="secondary" onClick={() => { download(new Blob([JSON.stringify({ ...report, measurementBasis: "decoded final 24-bit encoded WAVs", limitations: "Finite reconstructed-peak estimates; descriptive 2 LU and 3 dB working flags. No certification, automatic tone/dynamics change, resampling, metadata, codec or DDP delivery." }, null, 2)], { type: "application/json" }), "aurialis-album-report.json"); }}>Download album JSON report</Button>
+      <div className="flex flex-wrap gap-2">{owned?.files.map((file) => <Button key={file.id} variant="secondary" className="max-w-full whitespace-normal [overflow-wrap:anywhere]" disabled={active} onClick={() => void downloadMaster(file.index)}>Download {file.title}</Button>)}
+        <Button variant="secondary" disabled={active} onClick={() => void downloadReport()}>Download album JSON report</Button>
         <Button variant="secondary" disabled={active} onClick={() => { dispatch({ type: "SAVE_ALBUM_REPORT", expected: album, tracks, report }); }}>Save album report</Button>
       </div></section>}
     <div className="album-layout"><section className="paper-panel"><div className="section-heading"><div><span className="eyebrow">Running order</span><h2>The sequence</h2></div></div>
@@ -180,7 +238,7 @@ function AlbumWorkspace({ album, tracks }: { album: Album; tracks: Track[] }) {
       })}</div>
       <div className="add-tracks"><span className="eyebrow">Add from library</span>{state.tracks.filter((track) => !album.trackIds.includes(track.id)).map((track) => <button type="button" key={track.id} className="max-w-full whitespace-normal [overflow-wrap:anywhere]" disabled={active || album.trackIds.length >= 64} onClick={() => { patch({ trackIds: [...album.trackIds, track.id] }); }}><Icon name="plus" />{track.title}</button>)}
         <input ref={fileInput} type="file" hidden accept="audio/wav,.wav" aria-label="Import album audio" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void importFiles(files); }} /><Button variant="secondary" disabled={active || album.trackIds.length >= 64} onClick={() => { fileInput.current?.click(); }}>Import a WAV to this album</Button>
-      </div><p className="disclosure">Drag tracks to reorder on desktop, or use the move buttons with keyboard or touch. Up to 64 tracks and 128 MiB of retained 24-bit masters (about 7.8 minutes total at 48 kHz stereo). For longer releases, export smaller sequences or individual tracks. Rendering runs one track at a time; device memory can require a smaller cohort.</p>
+      </div><p className="disclosure">Drag tracks to reorder on desktop, or use the move buttons with keyboard or touch. Up to 64 tracks, each within the source limit, with exact 24-bit masters stored only in this browser. All albums share a 6 GiB encoded disk limit; browser quota may be smaller. Rendering and downloads load one track at a time, and device memory can decline a long track. Cancel keeps verified masters and releases unused disk demand. After reload, rendering rerenders and compares every stored prefix before restoring downloads.</p>
     </section><AlbumConsistencyChart readings={report?.tracks ?? []} /></div>
   </div>;
 }

@@ -76,6 +76,9 @@ function freezeRecipe(value: unknown): void {
   for (const item of Object.values(value)) freezeRecipe(item);
   Object.freeze(value);
 }
+export class AlbumRecipeMismatchError extends Error {
+  constructor() { super("The full track recipe changed. Plan the complete album again."); this.name = "AlbumRecipeMismatchError"; }
+}
 /** Store references supply CAS; each hashed render packet is separately detached under a lease. */
 export class AlbumRecipeBinding {
   private albumRecord: Album | null;
@@ -133,14 +136,14 @@ export class AlbumRecipeBinding {
     } finally { this.finish(); }
   }
   /** Recapture, hash and compare one detached packet; consumers must render this same packet. */
-  async withTrackRecipe<T>(index: number, processingBuild: string, signal: AbortSignal, isCurrent: () => boolean, consume: (recipe: AlbumTrackRecipe) => Promise<T>): Promise<T> {
+  async withTrackRecipe<T>(index: number, processingBuild: string, signal: AbortSignal, isCurrent: () => boolean, consume: (recipe: AlbumTrackRecipe, digest: string) => Promise<T>): Promise<T> {
     const track = this.tracks.at(index), expected = this.digests?.at(index);
     if (this.disposed || this.active || !Number.isSafeInteger(index) || index < 0 || !track || !expected || this.processingBuild !== processingBuild) throw new Error("The album track needs its current whole-cohort binding before rendering.");
     this.active = true;
     try {
       return await this.withRecipe(() => this.trackRecipe(track), signal, isCurrent, (recipe, recipeDigest) => {
-        if (recipeDigest !== expected) { this.dispose(); throw new Error("The full track recipe changed. Plan the complete album again."); }
-        return consume(recipe);
+        if (recipeDigest !== expected) { this.dispose(); throw new AlbumRecipeMismatchError(); }
+        return consume(recipe, recipeDigest);
       });
     } finally { this.finish(); }
   }

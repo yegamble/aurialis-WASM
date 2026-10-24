@@ -52,6 +52,10 @@ async function withVerifiedSource<T>(recipe: AlbumTrackRecipe, ctx: AlbumRenderC
     return await consume(blob);
   } finally { blob = null; owner.dispose(); }
 }
+/** Fresh immutable-key verification without a caller-side decoded master. */
+export async function verifyAlbumTrackSource(recipe: AlbumTrackRecipe, ctx: AlbumRenderContext): Promise<void> {
+  await withVerifiedSource(recipe, ctx, () => Promise.resolve(undefined)); ctx.check();
+}
 /** First pass measures the accepted chain without retaining a float master. */
 export async function measureAlbumTrack(recipe: AlbumTrackRecipe, ctx: AlbumRenderContext) {
   const measured = await withVerifiedSource(recipe, ctx, async (blob) => {

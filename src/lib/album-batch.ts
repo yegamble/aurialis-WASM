@@ -1,13 +1,17 @@
-import { engineParams, measureAudio, measureScriptAudio, serverRender, serverRenderScript } from "./browser-engine";
-import { getAudio } from "./db";
+import { markAlbumCleanup, completeAlbumCleanup, type AlbumCleanupCapability } from "./album-cleanup";
+import { AlbumRecipeBinding, AlbumRecipeMismatchError, albumRecordKey, type AlbumTrackRecipe } from "./album-binding";
+import { AlbumSpool, maximumAlbumSpoolBytes, type AlbumSpoolOutput } from "./album-spool";
+import { AlbumSourceMismatchError, measureAlbumTrack, renderAlbumTrack, verifyAlbumTrackSource, type AlbumRenderContext } from "./album-render";
 import { inspectEncodedWAV } from "./encoded-inspection";
-import { analyzeSourceFeatures, type FeatureMeasurements } from "./feature-analysis";
 import { audioKey } from "./library";
-import { verifyCanonicalSource } from "./project-import";
-import { albumLinearParams, albumTargets, planAlbumGain, type AlbumGainMode, type AlbumGainPlan, type AlbumReading } from "./album-consistency";
+import { downloadLocalBlobAndWait } from "./download";
+import { qualifyProcessingBuild } from "./processing-build";
+import { ProcessingBuildMismatchError } from "./processing-identity";
+import { boundedMetadata } from "./script-metadata";
+import { albumTargets, planAlbumGain, type AlbumGainMode, type AlbumGainPlan, type AlbumReading } from "./album-consistency";
+import type { FeatureMeasurements } from "./feature-analysis";
 import type { Album, MeasuredAudioMetrics, SourceIdentity, Track } from "./types";
 
-const maxCacheBytes = 128 * 1024 * 1024;
 const metricKeys = ["integratedLufs", "shortTermLufs", "truePeakDbtp", "samplePeakDbfs", "dynamicRangeDb", "correlation", "lowBassCorrelation", "dcLeftDbfs", "dcRightDbfs", "clippingSamples", "gainReductionDb"] as const;
 type AlbumMemoryOwner = Readonly<{ update: (bytes: number) => void; dispose: () => void }>;
 export type AlbumMemoryFactory = (bytes: number) => AlbumMemoryOwner;
@@ -23,168 +27,273 @@ export type AlbumReport = {
   medianTrackLufs: number | null; commonGainDb: number | null; complete: boolean; tracks: AlbumOutputRow[];
 };
 export type AlbumProgress = { stage: string; completed: number; total: number; report: AlbumReport | null };
-
+type AlbumMasterFile = { id: string; title: string; index: number; bytes: number };
 export function albumTarget(album: Album): number {
   const value = Number(album.target.replace("−", "-").replace(/\s*LUFS\s*$/u, ""));
   return albumTargets.some((target) => target === value) ? value : -14;
 }
-/** Only report metadata is excluded: saving a report cannot change audible processing. */
-export function albumCohortKey(album: Album, tracks: readonly Track[]): string {
-  const { report: _report, ...record } = album;
-  return JSON.stringify({ album: record, tracks: tracks.map((track) => ({ id: track.id, title: track.title,
-    audioKey: audioKey(track), source: track.sourceIdentity, sourceRevision: track.sourceRevision ?? 0,
-    sampleRate: track.sampleRate, duration: track.duration, params: engineParams(track.advanced),
-    script: track.deepMastering?.applied ?? null })), bits: 24 });
-}
-async function hashText(value: string, signal: AbortSignal): Promise<string> {
-  signal.throwIfAborted();
-  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  signal.throwIfAborted();
-  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-function identity(track: Track): SourceIdentity {
-  const source = track.sourceIdentity;
-  if (typeof track.title !== "string" || !track.title.trim() || track.title.length > 1024
-    || !Number.isFinite(track.duration) || track.duration <= 0 || !Number.isSafeInteger(track.sourceRevision ?? 0) || (track.sourceRevision ?? 0) < 0
-    || !source || !Number.isSafeInteger(source.frames) || source.frames < 1 || source.frames > 16_777_216
-    || !Number.isSafeInteger(source.sampleRate) || source.sampleRate !== track.sampleRate || source.sampleRate < 8000 || source.sampleRate > 192000
-    || !/^[a-f0-9]{64}$/u.test(source.pcmHash) || Math.abs(source.frames / source.sampleRate - track.duration) > 0.001)
-    throw new Error(`Restore the matching source for “${track.title}” in Library before rendering this sequence.`);
-  return source;
-}
-function assertLayout(measured: { frames: number; sampleRate: number }, source: SourceIdentity) {
-  if (measured.frames !== source.frames || measured.sampleRate !== source.sampleRate)
-    throw new Error("A rendered track changed its sample count or sample rate. No new master was retained.");
-}
+/** Process-local CAS token; deterministic persisted binding is computed sequentially under metadata ownership. */
+export const albumCohortKey = albumRecordKey;
 export { albumLinearParams } from "./album-consistency";
-
-/** Own one unchanged cohort and its verified completed prefix. Audio never enters a saved report. */
+class AlbumCohortMismatchError extends Error {
+  constructor(cause?: unknown) { super("The sequence, source or full settings changed. Plan the complete album again.", { cause }); this.name = "AlbumCohortMismatchError"; }
+}
+class AlbumStoredMismatchError extends Error {
+  constructor() { super("The freshly rendered master does not match the stored album output. No stored output was authorized. Render the complete sequence again."); this.name = "AlbumStoredMismatchError"; }
+}
+function admitReportMetadata(album: Album, tracks: readonly Track[]): void {
+  // A 32-ASCII-character placeholder exceeds finite binary64 JSON width, including fixed decimals. Original strings are referenced, never copied here.
+  const metric = "0".repeat(32), metrics = Object.fromEntries(metricKeys.map((key) => [key, metric]));
+  const rows = tracks.map((track) => {
+    const source = track.sourceIdentity; if (!source) throw new Error("Restore every album source before rendering.");
+    return { id: track.id, title: track.title, duration: track.duration, source, sourceRevision: track.sourceRevision ?? 0, audioKey: audioKey(track),
+      beforeMetrics: metrics, metrics, processingHash: "f".repeat(64), scriptRevision: Number.MAX_SAFE_INTEGER,
+      bands: Array.from({ length: 5 }, () => ({ lowHz: metric, highHz: metric, usableHighHz: metric, powerDb: metric, valid: false })),
+      gain: { id: track.id, gainDb: metric, requestedLufs: metric, limitedBy: "gain-range", measurable: false },
+      output: { sha256: "f".repeat(64), bytes: 44 + source.frames * 6, encoding: { frames: source.frames, sampleRate: source.sampleRate, channels: 2, bitDepth: 24,
+        fullScaleFrames: source.frames, leadingSilenceFrames: source.frames, trailingSilenceFrames: source.frames, silenceThresholdDbfs: -60 } } };
+  });
+  const template = { version: 1, createdAt: "2026-10-23T00:00:00.000Z", albumId: album.id, title: album.title, artist: album.artist, bindingHash: "f".repeat(64),
+    target: albumTarget(album), mode: album.gainMode ?? "relationships", cohortIds: tracks.map((track) => track.id), medianTrackLufs: metric, commonGainDb: metric, complete: false, tracks: rows };
+  try {
+    if (boundedMetadata(template, 256 * 1024) * 2 + 256 * 1024 > 2 * 1024 * 1024) throw new Error("Report capacity");
+  } catch (cause) { throw new Error("This sequence exceeds the bounded album report metadata capacity. Shorten its labels or use a smaller sequence.", { cause }); }
+}
+/** Metadata-only session. Encoded files remain in the dedicated local spool between sequential phases. */
 export class AlbumBatch {
   readonly key: string;
-  private readonly album: Album;
-  private readonly tracks: Track[];
-  private readonly reserve: AlbumMemoryFactory;
-  private readonly prefixMemory: AlbumMemoryOwner;
-  private prefixBytes = 0;
+  private readonly binding: AlbumRecipeBinding;
+  private readonly receiptMemory: AlbumMemoryOwner;
+  private tracks: readonly Track[];
+  private album: Album;
+  private readonly albumId: string;
+  private readonly cleanupCapability: AlbumCleanupCapability = Object.freeze({ retry: () => this.dispose(true) });
   private disposed = false;
+  private discardStored = false;
   private active: AbortController | null = null;
-  private readings: AlbumReading[] | null = null;
-  private plan: AlbumGainPlan | null = null;
+  private activeWork: Promise<void> | null = null;
+  private closing: Promise<void> | null = null;
+  private terminalStarted = false;
+  private spool: AlbumSpool | null = null;
+  private spoolBound = false;
+  private pauseFailed = false;
+  private processingBuild: string | null = null;
+  private bindingHash: string | null = null;
+  private planHash: string | null = null;
   private report: AlbumReport | null = null;
-  private readonly outputs: { id: string; title: string; wav: Blob }[] = [];
-  constructor(album: Album, tracks: readonly Track[], reserve: AlbumMemoryFactory) {
-    if (!tracks.length || tracks.length > 64 || tracks.length !== album.trackIds.length
-      || tracks.some((track, index) => track.id !== album.trackIds.at(index))
-      || new Set(tracks.map((track) => track.id)).size !== tracks.length) throw new Error("Choose between one and 64 different, available album tracks.");
-    if (typeof album.title !== "string" || !album.title.trim() || album.title.length > 1024 || typeof album.artist !== "string" || album.artist.length > 1024)
-      throw new Error("Give the album and every track a name before rendering.");
+  private outputs: { file: AlbumMasterFile; stored: AlbumSpoolOutput }[] = [];
+  constructor(album: Album, tracks: readonly Track[], private readonly reserve: AlbumMemoryFactory) {
+    this.album = album; this.albumId = album.id;
+    if (!tracks.length || tracks.length > 64) throw new Error("Choose between one and 64 available album tracks.");
     const target = Number(album.target.replace("−", "-").replace(/\s*LUFS\s*$/u, ""));
-    if (!albumTargets.some((item) => item === target)) throw new Error("Choose a supported album target before rendering.");
-    if (tracks.some((track) => { const offset = album.offsets?.[track.id] ?? 0; return !Number.isFinite(offset) || Math.abs(offset) > 6; }))
-      throw new Error("Choose manual offsets within six dB.");
-    let expectedBytes = 0;
-    for (const track of tracks) expectedBytes += identity(track).frames * 6 + 44;
-    if (expectedBytes > maxCacheBytes) throw new Error("This sequence exceeds the 128 MiB encoded download cache. Use a smaller album or export tracks individually.");
-    this.key = albumCohortKey(album, tracks); this.album = structuredClone(album); this.tracks = structuredClone([...tracks]);
-    this.reserve = reserve; this.prefixMemory = reserve(0);
+    if (!albumTargets.some((value) => value === target)) throw new Error("Choose a supported album target before rendering.");
+    this.binding = new AlbumRecipeBinding(album, tracks, reserve);
+    let receiptOwner: AlbumMemoryOwner | null = null;
+    try {
+      this.receiptMemory = receiptOwner = reserve(2 * 1024 * 1024); // Two bounded report graphs plus manifest/descriptors and publication metadata.
+      admitReportMetadata(album, tracks);
+      this.key = albumRecordKey(album, tracks); this.tracks = [...tracks];
+    } catch (cause) { receiptOwner?.dispose(); this.binding.dispose(); throw cause; }
   }
   canResume() { return !this.disposed; }
-  getFiles() { return this.outputs.map((item) => ({ ...item })); }
+  getFiles(): AlbumMasterFile[] { return this.outputs.map((entry) => ({ ...entry.file })); }
   getReport() { return this.report; }
   cancel() { this.active?.abort(); }
-  dispose() {
-    this.disposed = true; this.cancel(); this.outputs.length = 0; this.report = null; this.readings = null;
-    this.prefixBytes = 0; this.prefixMemory.dispose();
+  /** UI authority vanishes now; lock/leases outlive every actual phase and storage/URL settlement. */
+  dispose(discardStored = false): Promise<void> {
+    this.disposed = true; this.discardStored ||= discardStored; this.cancel(); this.clearAuthority();
+    if (this.closing) {
+      if (discardStored && this.terminalStarted && this.spool) void this.spool.clear().catch(() => undefined);
+      return this.closing;
+    }
+    markAlbumCleanup(this.albumId, this.cleanupCapability);
+    const attempt = (async () => {
+      await this.activeWork;
+      const spool = this.spool; this.terminalStarted = true;
+      let retiredFailure: Error | undefined;
+      if (spool) {
+        try { if (this.spoolBound && this.discardStored) await spool.clear(); else await spool.close(); }
+        catch (cause) { if (!spool.isClosed()) throw cause; retiredFailure = cause instanceof Error ? cause : new Error("The previous album cleanup owner was retired.", { cause }); }
+      }
+      this.spool = null; this.binding.dispose(); this.receiptMemory.dispose(); this.tracks = [];
+      this.album = { id: this.albumId, title: "", artist: "", target: "", trackIds: [], mastered: false };
+      completeAlbumCleanup(this.albumId, this.cleanupCapability);
+      if (retiredFailure !== undefined) throw retiredFailure;
+    })();
+    this.closing = attempt.catch((cause: unknown) => { this.closing = null; markAlbumCleanup(this.albumId, this.cleanupCapability, cause); throw cause; });
+    return this.closing;
   }
-  async run(isCurrent: () => boolean, onProgress: (value: AlbumProgress) => void): Promise<AlbumReport> {
-    if (this.disposed || this.active) throw new Error("This album job is no longer available or is already running.");
+  private clearAuthority() { this.outputs = []; this.report = null; }
+  private check(signal: AbortSignal, isCurrent: () => boolean) {
+    signal.throwIfAborted(); if (this.disposed || !isCurrent()) throw new AlbumCohortMismatchError();
+  }
+  private launch<T>(isCurrent: () => boolean, operation: (ctx: AlbumRenderContext) => Promise<T>): Promise<T> {
+    if (this.disposed || this.active) return Promise.reject(new Error("This album owner is unavailable or another operation is still settling."));
     const controller = new AbortController(), signal = controller.signal;
-    const work = this.reserve(0);
     this.active = controller;
-    const check = () => { signal.throwIfAborted(); if (this.disposed || !isCurrent()) { this.dispose(); throw new Error("The sequence, source or settings changed. Render the updated album again."); } };
-    const progress = (stage: string) => { check(); onProgress({ stage, completed: this.outputs.length, total: this.tracks.length, report: this.report }); };
+    const work = operation({ reserve: this.reserve, processingBuild: this.processingBuild ?? "", signal, check: () => { this.check(signal, isCurrent); } });
+    const settled = work.then(() => undefined, () => undefined); this.activeWork = settled;
+    return work.then(async (result) => {
+      if (this.disposed) { await this.dispose(this.discardStored); signal.throwIfAborted(); }
+      return result;
+    }, async (cause: unknown) => {
+      if (this.isFatal(cause, isCurrent)) {
+        try { await this.dispose(true); }
+        catch (cleanup) { throw new AggregateError([cause, cleanup], "The album changed and its owned stored output could not be removed. Retry cleanup before rendering again."); }
+      } else if (this.disposed) await this.dispose(this.discardStored);
+      throw cause;
+    }).finally(() => { if (this.active === controller) this.active = null; if (this.activeWork === settled) this.activeWork = null; });
+  }
+  private isFatal(cause: unknown, isCurrent: () => boolean) {
+    return cause instanceof AlbumRecipeMismatchError || cause instanceof AlbumSourceMismatchError || cause instanceof ProcessingBuildMismatchError || cause instanceof AlbumCohortMismatchError || cause instanceof AlbumStoredMismatchError || !isCurrent();
+  }
+  private async qualify(ctx: AlbumRenderContext): Promise<string> {
+    ctx.check(); const current = await qualifyProcessingBuild(ctx.signal); ctx.check();
+    if (this.processingBuild !== null && current !== this.processingBuild) throw new ProcessingBuildMismatchError();
+    this.processingBuild = current; ctx.processingBuild = current; return current;
+  }
+  private async hashSmall(value: object, ctx: AlbumRenderContext): Promise<string> {
+    const owner = this.reserve(1024 * 1024);
+    let text: string | undefined, bytes: Uint8Array<ArrayBuffer> | undefined;
     try {
-      check();
-      const bindingHash = await hashText(this.key, signal); check();
-      if (!this.readings) {
+      boundedMetadata(value, 256 * 1024); text = JSON.stringify(value); bytes = new TextEncoder().encode(text);
+      const digest = await crypto.subtle.digest("SHA-256", bytes); ctx.check();
+      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    } finally { text = undefined; bytes = undefined; owner.dispose(); }
+  }
+  private async withTrack<T>(index: number, ctx: AlbumRenderContext, consume: (recipe: AlbumTrackRecipe, digest: string) => Promise<T>): Promise<T> {
+    return this.binding.withTrackRecipe(index, ctx.processingBuild, ctx.signal, () => { ctx.check(); return true; }, consume);
+  }
+  private progress(stage: string, ctx: AlbumRenderContext, onProgress: (value: AlbumProgress) => void) {
+    ctx.check(); onProgress({ stage, completed: this.outputs.length, total: this.tracks.length, report: this.report });
+  }
+  run(isCurrent: () => boolean, onProgress: (value: AlbumProgress) => void): Promise<AlbumReport> {
+    return this.launch(isCurrent, (ctx) => this.process(ctx, onProgress).then(async (report) => {
+      await this.pauseStorage(); return report;
+    }, async (cause: unknown) => {
+      if (!this.isFatal(cause, isCurrent)) {
+        try { await this.pauseStorage(); }
+        catch (cleanup) { throw new AggregateError([cause, cleanup], "Album storage cleanup failed. Retry this unchanged album to finish cleanup before new work."); }
+      }
+      throw cause;
+    }));
+  }
+  private async pauseStorage(): Promise<void> {
+    if (this.spoolBound && this.spool && !this.disposed) {
+      try { await this.spool.pause(); this.pauseFailed = false; }
+      catch (cause) { this.pauseFailed = true; throw new Error("Album storage cleanup failed. Retry this unchanged album before new work.", { cause }); }
+    }
+  }
+  private async process(ctx: AlbumRenderContext, onProgress: (value: AlbumProgress) => void): Promise<AlbumReport> {
+        this.spool ??= await AlbumSpool.claim(this.albumId, this.cleanupCapability); ctx.check();
+        if (this.pauseFailed) { await this.spool.pause(); this.pauseFailed = false; ctx.check(); }
+        const processingBuild = await this.qualify(ctx), bindingHash = await this.binding.digest(processingBuild, ctx.signal, () => { ctx.check(); return true; }); ctx.check();
+        if (this.bindingHash !== null && this.bindingHash !== bindingHash) throw new AlbumCohortMismatchError();
+        this.bindingHash = bindingHash;
         const readings: AlbumReading[] = [];
-        for (const track of this.tracks) {
-          const source = identity(track), canonicalBytes = 44 + source.frames * 8;
-          // Source Blob, verification arrayBuffer and WebCrypto input snapshot; workers reserve their own job/clone bytes.
-          work.update(canonicalBytes * 3); progress(`Measuring accepted chain ${String(readings.length + 1)} of ${String(this.tracks.length)}: ${track.title}`);
-          const blob = await this.verifiedSource(track, signal, check);
-          const applied = track.deepMastering?.applied;
-          const measurement = applied ? await measureScriptAudio(blob, applied, signal) : await measureAudio(blob, engineParams(track.advanced), signal);
-          check(); assertLayout(measurement, source); await verifyCanonicalSource(blob, source, signal); check();
-          readings.push({ id: track.id, title: track.title, duration: track.duration, metrics: measurement.afterMetrics, bands: [] });
-          work.update(0);
+        for (let index = 0; index < this.tracks.length; index++) {
+          this.progress(`Measuring accepted chain ${String(index + 1)} of ${String(this.tracks.length)}`, ctx, onProgress);
+          readings.push(await this.withTrack(index, ctx, async (recipe) => {
+            const measured = await measureAlbumTrack(recipe, ctx); ctx.check();
+            return { id: recipe.id, title: recipe.title, duration: recipe.duration, metrics: measured.afterMetrics, bands: [] };
+          }));
         }
-        this.readings = readings;
-      }
-      else {
-        // Resume only after re-verifying every source, including the retained completed prefix.
-        for (const track of this.tracks) {
-          const expected = identity(track); work.update((44 + expected.frames * 8) * 3);
-          await this.verifiedSource(track, signal, check); check(); work.update(0);
+        const mode = this.album.gainMode ?? "relationships", target = albumTarget(this.album);
+        const plan = planAlbumGain(readings, target, mode, this.tracks.map((track) => this.album.offsets?.[track.id] ?? 0));
+        const planHash = await this.hashSmall({ version: 1, bindingHash, plan }, ctx); ctx.check();
+        if (this.planHash !== null && this.planHash !== planHash) throw new AlbumCohortMismatchError();
+        this.planHash = planHash;
+        const expectedBytes = this.tracks.reduce((sum, track) => sum + 44 + (track.sourceIdentity?.frames ?? 0) * 6, 0);
+        if (expectedBytes > maximumAlbumSpoolBytes) throw new Error("This album exceeds the encoded disk limit.");
+        if (!this.spoolBound) {
+          await this.spool.bind({ albumId: this.album.id, bindingHash, processingBuild, planHash, expectedBytes, totalTracks: this.tracks.length }); this.spoolBound = true; ctx.check();
         }
-      }
-      const mode = this.album.gainMode ?? "relationships", target = albumTarget(this.album);
-      this.plan ??= planAlbumGain(this.readings, target, mode, this.tracks.map((track) => this.album.offsets?.[track.id] ?? 0));
-      this.report ??= { version: 1, createdAt: new Date().toISOString(), albumId: this.album.id, title: this.album.title, artist: this.album.artist,
-        bindingHash, target, mode, cohortIds: this.tracks.map((track) => track.id), medianTrackLufs: this.plan.medianTrackLufs,
-        commonGainDb: this.plan.commonGainDb, complete: false, tracks: [] };
-      for (let index = this.outputs.length; index < this.tracks.length; index++) {
-        const track = this.tracks.at(index), gain = this.plan.tracks.at(index), before = this.readings.at(index);
-        if (!track || !gain || !before) throw new Error("The planned sequence is incomplete.");
-        const source = identity(track), canonicalBytes = 44 + source.frames * 8, encodedBytes = 44 + source.frames * 6;
-        // Conservatively covers original source, full-chain and final canonical Blobs (3*C),
-        // source verification arrayBuffer + WebCrypto snapshot (2*C), and encoded Blob/scan/hash copies (3*E).
-        // Prefix and worker job/clone owners overlap this reservation until every async operation returns.
-        work.update(canonicalBytes * 5 + encodedBytes * 3);
-        progress(`Rendering and verifying ${String(index + 1)} of ${String(this.tracks.length)}: ${track.title}`);
-        const result = await this.renderTrack(track, gain, before, source, signal, check);
-        check();
-        this.prefixMemory.update(this.prefixBytes + result.wav.size);
-        this.prefixBytes += result.wav.size;
-        this.outputs.push({ id: track.id, title: track.title, wav: result.wav });
-        this.report = { ...this.report, tracks: [...this.report.tracks, result.row], complete: this.outputs.length === this.tracks.length };
-        work.update(0); progress(this.report.complete ? "All measured masters are ready." : `${String(this.outputs.length)} verified master(s) retained.`);
-      }
-      check(); return this.report;
-    } finally {
-      work.dispose(); if (this.active === controller) this.active = null;
-    }
+        await this.spool.resume(); ctx.check();
+        const prefix = this.spool.prefix();
+        if (JSON.stringify(prefix) !== JSON.stringify(this.outputs.map((entry) => entry.stored))) {
+          // Persisted descriptors are cache only. Withhold every recovered row until ALL rerenders match.
+          this.clearAuthority(); const recovered: AlbumOutputRow[] = [];
+          for (const stored of prefix) {
+            this.progress(`Verifying stored master ${String(stored.index + 1)} of ${String(prefix.length)}`, ctx, onProgress);
+            recovered.push(await this.renderOne(stored.index, readings, plan, ctx, stored));
+          }
+          ctx.check(); this.report = this.newReport(bindingHash, plan, recovered);
+          this.outputs = prefix.map((stored, index) => ({ stored, file: this.file(index, stored) }));
+          this.progress("Stored prefix freshly rendered and verified.", ctx, onProgress);
+        }
+        this.report ??= this.newReport(bindingHash, plan, []);
+        for (let index = this.outputs.length; index < this.tracks.length; index++) {
+          this.progress(`Rendering and verifying ${String(index + 1)} of ${String(this.tracks.length)}`, ctx, onProgress);
+          const row = await this.renderOne(index, readings, plan, ctx); ctx.check();
+          const stored = this.spool.prefix().at(index); if (!stored) throw new AlbumStoredMismatchError();
+          this.report = this.newReport(bindingHash, plan, [...this.report.tracks, row]);
+          this.outputs.push({ stored, file: this.file(index, stored) });
+          this.progress(this.report.complete ? "All measured masters are ready." : "Verified master stored on this device.", ctx, onProgress);
+        }
+        ctx.check(); return this.report;
   }
-  private async verifiedSource(track: Track, signal: AbortSignal, check: () => void): Promise<Blob> {
-    const blob = await getAudio(audioKey(track)); check();
-    if (!blob) { this.dispose(); throw new Error(`The source for “${track.title}” is missing. Restore it in Library.`); }
-    const expected = identity(track);
-    if (blob.size !== 44 + expected.frames * 8) {
-      this.dispose(); throw new Error(`The stored source for “${track.title}” has an unexpected length. Restore the matching source in Library.`);
-    }
-    try { await verifyCanonicalSource(blob, expected, signal); }
-    catch (cause) { if (!signal.aborted) this.dispose(); throw cause; }
-    check(); return blob;
+  private newReport(bindingHash: string, plan: AlbumGainPlan, tracks: AlbumOutputRow[]): AlbumReport {
+    const report: AlbumReport = { version: 1, createdAt: this.report?.createdAt ?? new Date().toISOString(), albumId: this.album.id, title: this.album.title, artist: this.album.artist,
+      bindingHash, target: albumTarget(this.album), mode: this.album.gainMode ?? "relationships", cohortIds: this.tracks.map((track) => track.id), medianTrackLufs: plan.medianTrackLufs,
+      commonGainDb: plan.commonGainDb, complete: tracks.length === this.tracks.length, tracks };
+    if (!readAlbumReport(report)) throw new Error("The measured album report exceeds its bounded metadata contract."); return report;
   }
-  private async renderTrack(track: Track, gain: GainRow, before: AlbumReading, source: SourceIdentity, signal: AbortSignal, check: () => void) {
-    const blob = await this.verifiedSource(track, signal, check);
-    const applied = track.deepMastering?.applied, params = engineParams(track.advanced);
-    const chain = applied ? await serverRenderScript(blob, applied, 32, signal) : await serverRender(blob, params, 32, signal);
-    check();
-    await inspectEncodedWAV(chain, 32, source, signal); check();
-    const wav = await serverRender(chain, albumLinearParams(gain.gainDb), 24, signal); check();
-    const output = await inspectEncodedWAV(wav, 24, source, signal); check();
-    const measured = await measureAudio(wav, { bypass: true }, signal); check(); assertLayout(measured, source);
-    const canonical = await serverRender(wav, { bypass: true }, 32, signal); check();
-    const features = await analyzeSourceFeatures(canonical, signal, () => undefined); check(); assertLayout(features.source, source);
-    await verifyCanonicalSource(canonical, features.source, signal); check();
-    await verifyCanonicalSource(blob, source, signal); check();
-    const processingHash = await hashText(JSON.stringify({ params, script: applied ?? null, gainDb: gain.gainDb }), signal); check();
-    if (!validBands(features.bands)) throw new Error("The final audio features contain invalid spectral coverage.");
-    const row: AlbumOutputRow = { id: track.id, title: track.title, duration: track.duration, source: { ...source }, sourceRevision: track.sourceRevision ?? 0,
-      audioKey: audioKey(track), beforeMetrics: { ...before.metrics }, metrics: measured.afterMetrics, bands: features.bands,
-      processingHash, scriptRevision: applied?.revision ?? null, gain: { ...gain }, output: { ...output, bytes: wav.size } };
-    return { wav, row };
+  private file(index: number, stored: AlbumSpoolOutput): AlbumMasterFile {
+    const track = this.tracks.at(index); if (!track) throw new AlbumStoredMismatchError();
+    return { id: track.id, title: track.title, index, bytes: stored.bytes };
+  }
+  private async verifyStored(stored: AlbumSpoolOutput, expected: AlbumOutputRow, recipe: AlbumTrackRecipe, ctx: AlbumRenderContext): Promise<void> {
+    if (stored.frames !== recipe.source.frames || stored.sampleRate !== recipe.source.sampleRate || stored.bytes !== expected.output.bytes || stored.sha256 !== expected.output.sha256 || !this.spool) throw new AlbumStoredMismatchError();
+    const owner = this.reserve(stored.bytes * 3);
+    try {
+      await this.spool.withOutput(stored, ctx.signal, async (blob) => {
+        const inspected = await inspectEncodedWAV(blob, 24, recipe.source, ctx.signal); ctx.check();
+        if (inspected.sha256 !== expected.output.sha256 || JSON.stringify(inspected.encoding) !== JSON.stringify(expected.output.encoding)) throw new AlbumStoredMismatchError();
+        owner.update(stored.bytes); await verifyAlbumTrackSource(recipe, ctx); ctx.check();
+      });
+    } finally { owner.dispose(); }
+  }
+  private async renderOne(index: number, readings: AlbumReading[], plan: AlbumGainPlan, ctx: AlbumRenderContext, recovered?: AlbumSpoolOutput): Promise<AlbumOutputRow> {
+    const before = readings.at(index), gain = plan.tracks.at(index), spool = this.spool; if (!before || !gain || !spool) throw new Error("The complete album plan is unavailable.");
+    return this.withTrack(index, ctx, async (recipe, recipeDigest) => {
+      let rendered: Awaited<ReturnType<typeof renderAlbumTrack>> | null = null;
+      try {
+        rendered = await renderAlbumTrack(recipe, gain.gainDb, ctx); ctx.check();
+        const processingHash = await this.hashSmall({ version: 1, recipeDigest, gainDb: gain.gainDb, processingBuild: ctx.processingBuild, encoding: recipe.encoding }, ctx); ctx.check();
+        const row: AlbumOutputRow = { id: recipe.id, title: recipe.title, duration: recipe.duration, source: { ...recipe.source }, sourceRevision: recipe.sourceRevision, audioKey: recipe.audioKey,
+          beforeMetrics: { ...before.metrics }, metrics: { ...rendered.metrics }, bands: rendered.bands.map((band) => ({ ...band })), processingHash, scriptRevision: recipe.script?.revision ?? null,
+          gain: { ...gain }, output: { sha256: rendered.output.sha256, encoding: { ...rendered.output.encoding }, bytes: rendered.master.blob.size } };
+        let stored = recovered;
+        if (!stored) {
+          rendered.master.owner.update(row.output.bytes * 2); // Immutable Blob and possible storage copy coexist through transaction settlement.
+          stored = await spool.stage(rendered.master.blob, { index, sha256: row.output.sha256, frames: recipe.source.frames, sampleRate: recipe.source.sampleRate }, ctx.signal); ctx.check();
+        }
+        const owner = rendered.master.owner; rendered = null; owner.dispose();
+        await this.verifyStored(stored, row, recipe, ctx); ctx.check();
+        if (!recovered) { await spool.promote(stored.assetId, ctx.signal); ctx.check(); }
+        return row;
+      } finally { const owner = rendered?.master.owner; rendered = null; owner?.dispose(); }
+    });
+  }
+  download(index: number, isCurrent: () => boolean): Promise<void> {
+    if (this.pauseFailed) return Promise.reject(new Error("Retry album storage cleanup before downloading."));
+    return this.launch(isCurrent, async (ctx) => {
+      const selected = this.outputs.at(index), expected = this.report?.tracks.at(index), spool = this.spool;
+      if (!selected || !expected || !spool || !this.spoolBound) throw new Error("Render and verify the current album before downloading its stored WAVs.");
+      await this.qualify(ctx);
+      for (let track = 0; track < this.tracks.length; track++) await this.withTrack(track, ctx, async (recipe) => { await verifyAlbumTrackSource(recipe, ctx); });
+      const owner = this.reserve(selected.stored.bytes * 3);
+      try {
+        await spool.withOutput(selected.stored, ctx.signal, async (blob) => {
+          const inspected = await inspectEncodedWAV(blob, 24, expected.source, ctx.signal); ctx.check();
+          if (inspected.sha256 !== expected.output.sha256 || JSON.stringify(inspected.encoding) !== JSON.stringify(expected.output.encoding)) throw new AlbumStoredMismatchError();
+          owner.update(selected.stored.bytes);
+          await this.withTrack(index, ctx, async (recipe) => { await verifyAlbumTrackSource(recipe, ctx); });
+          await this.qualify(ctx); ctx.check();
+          await downloadLocalBlobAndWait(blob, `${selected.file.title.replace(/[^a-zA-Z0-9_-]/gu, "-") || "aurialis"}-album-master.wav`); ctx.check();
+        });
+      } finally { owner.dispose(); }
+    });
   }
 }
 
@@ -209,7 +318,7 @@ function validBands(value: unknown): value is FeatureMeasurements["bands"] {
 export function readAlbumReport(value: unknown): AlbumReport | undefined {
   const report = record(value);
   if (!report) return undefined;
-  try { if (JSON.stringify(report).length > 262_144) return undefined; } catch { return undefined; }
+  try { boundedMetadata(report, 262_144); } catch { return undefined; }
   const hash = (candidate: unknown) => typeof candidate === "string" && /^[a-f0-9]{64}$/u.test(candidate);
   const text = (candidate: unknown) => typeof candidate === "string" && candidate.length > 0 && candidate.length <= 1024;
   const finite = (candidate: unknown): candidate is number => typeof candidate === "number" && Number.isFinite(candidate);
@@ -236,4 +345,16 @@ export function readAlbumReport(value: unknown): AlbumReport | undefined {
       || ![encoding.fullScaleFrames, encoding.leadingSilenceFrames, encoding.trailingSilenceFrames].every((count) => whole(count) && count >= 0 && whole(source.frames) && count <= source.frames)) return undefined;
   }
   return structuredClone(report) as unknown as AlbumReport;
+}
+
+/** Metadata export reserves before validation copies, serialization and Blob creation. */
+export async function downloadAlbumReport(report: AlbumReport, reserve: AlbumMemoryFactory): Promise<void> {
+  const owner = reserve(2 * 1024 * 1024);
+  let validated: AlbumReport | undefined, text: string | undefined, blob: Blob | null = null;
+  try {
+    if (boundedMetadata(report, 256 * 1024) + 4 * 256 * 1024 > 2 * 1024 * 1024) throw new Error("This saved report exceeds the metadata download memory bound.");
+    validated = readAlbumReport(report); if (!validated) throw new Error("The album report metadata is invalid.");
+    text = JSON.stringify(validated); blob = new Blob([text], { type: "application/json" }); validated = undefined; text = undefined;
+    await downloadLocalBlobAndWait(blob, "aurialis-album-report.json");
+  } finally { validated = undefined; text = undefined; blob = null; owner.dispose(); }
 }

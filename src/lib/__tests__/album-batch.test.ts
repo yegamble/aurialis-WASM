@@ -1,9 +1,12 @@
 import { Blob as NativeBlob } from "node:buffer";
+import { IDBFactory } from "fake-indexeddb";
 import { createHash, webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AlbumBatch, albumCohortKey, albumLinearParams, readAlbumReport, type AlbumMemoryFactory } from "../album-batch";
 import { clampAdvancedToSampleRate } from "../audio-dsp";
-import { engineParams, measureAudio, measureScriptAudio, previewWAV, serverRender, serverRenderScript } from "../browser-engine";
+import { engineParams, measureAudio, measureScriptAudio, previewWAV, serverRenderOwned } from "../browser-engine";
+import { downloadLocalBlobAndWait } from "../download";
+import { qualifyProcessingBuild } from "../processing-build";
 import { getAudio } from "../db";
 import { analyzeSourceFeatures } from "../feature-analysis";
 import { normalizeHydratedState, reduceStoreState } from "../store";
@@ -12,24 +15,32 @@ import { testStore } from "./fixtures";
 
 vi.mock("../db", () => ({ getAudio: vi.fn() }));
 vi.mock("../feature-analysis", () => ({ analyzeSourceFeatures: vi.fn() }));
-vi.mock("../browser-engine", async (original) => ({ ...await original<typeof import("../browser-engine")>(), measureAudio: vi.fn(), measureScriptAudio: vi.fn(), serverRender: vi.fn(), serverRenderScript: vi.fn() }));
+vi.mock("../browser-engine", async (original) => ({ ...await original<typeof import("../browser-engine")>(), measureAudio: vi.fn(), measureScriptAudio: vi.fn(), serverRenderOwned: vi.fn() }));
+vi.mock("../processing-build", () => ({ qualifyProcessingBuild: vi.fn() }));
+vi.mock("../download", () => ({ downloadLocalBlobAndWait: vi.fn() }));
+let renderMemory: AlbumMemoryFactory;
+const batches: AlbumBatch[] = [];
+function makeBatch(...args: ConstructorParameters<typeof AlbumBatch>) { const batch = new AlbumBatch(...args); batches.push(batch); return batch; }
+function locks() { const held = new Set<string>(); return { request: async (name: string, _options: unknown, action: (lock: { name: string } | null) => Promise<void>) => { if (held.has(name)) return action(null); held.add(name); try { await action({ name }); } finally { held.delete(name); } } }; }
 const rate = 8000, frames = 4096;
 const paths = new Map<string, Blob>();
 const edges = [20, 120, 500, 2000, 6000, 20000];
 const bands = edges.slice(0, -1).map((lowHz, index) => ({ lowHz, highHz: edges.at(index + 1) ?? 0,
   usableHighHz: Math.max(lowHz, Math.min(rate / 2, edges.at(index + 1) ?? 0)), powerDb: -20, valid: lowHz < rate / 2 }));
 function memory(budget = 1024 * 1024 * 1024) {
+  let limit = budget;
   const owners: { bytes: number; disposed: boolean }[] = [];
   const reserve: AlbumMemoryFactory = (initial) => {
     const owner = { bytes: 0, disposed: false };
     const update = (bytes: number) => {
-      if (owner.disposed || bytes + owners.filter((item) => item !== owner && !item.disposed).reduce((sum, item) => sum + item.bytes, 0) > budget) throw new Error("Device memory budget exceeded.");
+      if (owner.disposed || bytes + owners.filter((item) => item !== owner && !item.disposed).reduce((sum, item) => sum + item.bytes, 0) > limit) throw new Error("Device memory budget exceeded.");
       owner.bytes = bytes;
     };
-    owners.push(owner); update(initial);
+    update(initial); owners.push(owner);
     return { update, dispose: () => { owner.disposed = true; owner.bytes = 0; } };
   };
-  return { reserve, owners, total: () => owners.filter((item) => !item.disposed).reduce((sum, item) => sum + item.bytes, 0) };
+  renderMemory = reserve;
+  return { reserve, owners, setLimit: (value: number) => { limit = value; }, total: () => owners.filter((item) => !item.disposed).reduce((sum, item) => sum + item.bytes, 0) };
 }
 async function sourceIdentity(blob: Blob): Promise<SourceIdentity> {
   const bytes = await blob.arrayBuffer(), view = new DataView(bytes), sampleRate = view.getUint32(24, true), count = (bytes.byteLength - 44) / 8;
@@ -80,122 +91,101 @@ async function fixture() {
   return { album, tracks };
 }
 beforeEach(() => {
-  vi.stubGlobal("Blob", NativeBlob); vi.stubGlobal("crypto", webcrypto);
+  vi.stubGlobal("Blob", NativeBlob); vi.stubGlobal("crypto", webcrypto); vi.stubGlobal("indexedDB", new IDBFactory()); vi.stubGlobal("navigator", { locks: locks() });
+  vi.mocked(qualifyProcessingBuild).mockResolvedValue("a".repeat(64)); vi.mocked(downloadLocalBlobAndWait).mockResolvedValue(undefined);
   vi.mocked(getAudio).mockImplementation((id) => Promise.resolve(paths.get(id)));
-  vi.mocked(serverRender).mockImplementation((blob, params, bits) => encode(blob, bits, (params as { inputGainDb?: number }).inputGainDb ?? 0));
-  vi.mocked(serverRenderScript).mockImplementation((blob, script, bits) => encode(blob, bits, script.moves.at(0)?.points.at(0)?.value ?? 0));
+  vi.mocked(serverRenderOwned).mockImplementation(async (blob, processing, layout) => {
+    const gain = "script" in processing ? processing.script.moves.at(0)?.points.at(0)?.value ?? 0 : (processing.params as { inputGainDb?: number }).inputGainDb ?? 0;
+    const wav = await encode(blob, layout.bitDepth, gain), owner = renderMemory(wav.size);
+    return { blob: wav, owner, dispose: owner.dispose };
+  });
   vi.mocked(measureAudio).mockImplementation(async (blob) => { const measured = await metrics(blob); return { sampleRate: rate, frames, duration: frames / rate, beforeMetrics: measured, afterMetrics: measured }; });
   vi.mocked(measureScriptAudio).mockImplementation((blob) => measureAudio(blob));
   vi.mocked(analyzeSourceFeatures).mockImplementation(async (blob) => ({ source: await sourceIdentity(blob), bands, sections: [{ id: "all", name: "All", startFrame: 0, endFrame: frames, confidence: 0 }], warnings: [] }));
 });
-afterEach(() => { paths.clear(); vi.restoreAllMocks(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
+afterEach(async () => { for (const batch of batches.splice(0)) await batch.dispose().catch(() => undefined); paths.clear(); vi.restoreAllMocks(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
 
 describe("album batch ownership and final encoded measurement", () => {
-  it("plans the complete cohort before rendering, applies a separate pure-gain stage, and measures the exact retained 24-bit WAV", async () => {
-    const { album, tracks } = await fixture(), owners = memory(), batch = new AlbumBatch(album, tracks, owners.reserve);
-    const original = structuredClone(tracks), stages: string[] = [];
+  it("plans the whole cohort, applies pure gain, and downloads the exact inspected measured 24-bit bytes", async () => {
+    const { album, tracks } = await fixture(), owners = memory(), batch = makeBatch(album, tracks, owners.reserve), original = structuredClone(tracks), stages: string[] = [];
     const report = await batch.run(() => true, (value) => { stages.push(value.stage); });
     expect(stages.slice(0, 2).every((stage) => stage.startsWith("Measuring accepted chain"))).toBe(true);
-    expect(report.complete).toBe(true); expect(report.tracks).toHaveLength(2); expect(readAlbumReport(report)).toEqual(report);
-    const files = batch.getFiles(); expect(files).toHaveLength(2);
-    for (const [index, file] of files.entries()) {
-      const row = report.tracks.at(index); if (!row) throw new Error("Missing row");
-      expect(row.output.sha256).toBe(createHash("sha256").update(new Uint8Array(await file.wav.arrayBuffer())).digest("hex"));
-      expect(row.metrics).toEqual(await metrics(file.wav)); expect(row.output.encoding).toMatchObject({ frames, sampleRate: rate, bitDepth: 24 });
-      expect(vi.mocked(measureAudio).mock.calls.some((call) => call[0] === file.wav && JSON.stringify(call[1]) === '{"bypass":true}')).toBe(true);
+    expect(report.complete).toBe(true); expect(readAlbumReport(report)).toEqual(report);
+    const files = batch.getFiles(); expect(files).toHaveLength(2); expect(files.every((file) => !("wav" in file))).toBe(true);
+    for (const [index] of files.entries()) {
+      await batch.download(index, () => true); const wav = vi.mocked(downloadLocalBlobAndWait).mock.calls.at(-1)?.[0], row = report.tracks.at(index); if (!wav || !row) throw new Error("Missing verified download");
+      expect(row.output.sha256).toBe(createHash("sha256").update(new Uint8Array(await wav.arrayBuffer())).digest("hex"));
+      expect(row.metrics).toEqual(await metrics(wav)); expect(row.output.encoding).toMatchObject({ frames, sampleRate: rate, bitDepth: 24 });
+      const bypass = vi.mocked(measureAudio).mock.calls.filter((call) => JSON.stringify(call[1]) === '{"bypass":true}');
+      expect((await Promise.all(bypass.map(async (call) => createHash("sha256").update(new Uint8Array(await call[0].arrayBuffer())).digest("hex")))).includes(row.output.sha256)).toBe(true);
     }
-    const gainStages = vi.mocked(serverRender).mock.calls.filter((call) => call[2] === 24);
-    expect(gainStages).toHaveLength(2); expect(gainStages.every((call) => JSON.stringify(call[1]) === JSON.stringify(albumLinearParams(report.tracks[0]?.gain.gainDb ?? 0)))).toBe(true);
-    expect(tracks).toEqual(original); expect(owners.total()).toBe(files.reduce((sum, file) => sum + file.wav.size, 0));
-    batch.dispose(); expect(owners.total()).toBe(0); expect(batch.getFiles()).toHaveLength(0); expect(owners.owners.every((owner) => owner.disposed)).toBe(true);
+    const gains = vi.mocked(serverRenderOwned).mock.calls.filter((call) => call[2].bitDepth === 24);
+    expect(gains).toHaveLength(2); expect(gains.every((call) => JSON.stringify(call[1]) === JSON.stringify({ params: albumLinearParams(report.tracks[0]?.gain.gainDb ?? 0) }))).toBe(true);
+    expect(tracks).toEqual(original); await batch.dispose(); expect(owners.total()).toBe(0); expect(batch.getFiles()).toHaveLength(0);
   });
-  it("retains a verified prefix after cancellation and retries only the unfinished outputs after full source re-verification", async () => {
-    const { album, tracks } = await fixture(), owners = memory(), batch = new AlbumBatch(album, tracks, owners.reserve);
+  it("keeps only a verified metadata prefix on Cancel and retries unfinished outputs after fresh whole-cohort measurements", async () => {
+    const { album, tracks } = await fixture(), owners = memory(), batch = makeBatch(album, tracks, owners.reserve);
     await expect(batch.run(() => true, (value) => { if (value.completed === 1) batch.cancel(); })).rejects.toMatchObject({ name: "AbortError" });
-    const first = batch.getFiles().at(0)?.wav; expect(first).toBeDefined(); expect(batch.getReport()?.complete).toBe(false);
-    expect(owners.owners.filter((owner) => !owner.disposed)).toHaveLength(1);
-    const report = await batch.run(() => true, () => undefined);
-    expect(report.complete).toBe(true); expect(batch.getFiles()[0]?.wav).toBe(first);
-    expect(vi.mocked(serverRender).mock.calls.filter((call) => call[2] === 24)).toHaveLength(2);
-    expect(getAudio).toHaveBeenCalledTimes(6); // Initial two measurements, two renders, all two sources checked again on resume.
-    batch.dispose();
+    const first = batch.getFiles().at(0); expect(first).toBeDefined(); expect(batch.getReport()?.complete).toBe(false); const loads = vi.mocked(getAudio).mock.calls.length;
+    const report = await batch.run(() => true, () => undefined); expect(report.complete).toBe(true); expect(batch.getFiles().at(0)).toEqual(first);
+    expect(vi.mocked(serverRenderOwned).mock.calls.filter((call) => call[2].bitDepth === 24)).toHaveLength(2); expect(vi.mocked(getAudio).mock.calls.length).toBeGreaterThan(loads + tracks.length);
+    await batch.dispose(); expect(owners.total()).toBe(0);
   });
-  it("rejects late stale cohort work, cancellation during a current track and all late publication", async () => {
-    const { album, tracks } = await fixture(), owners = memory(), batch = new AlbumBatch(album, tracks, owners.reserve);
-    let current = true;
-    vi.mocked(serverRender).mockImplementationOnce(async (blob, _params, bits) => { current = false; return encode(blob, bits); });
-    await expect(batch.run(() => current, () => undefined)).rejects.toThrow(/changed/u);
-    expect(batch.getFiles()).toHaveLength(0); expect(owners.total()).toBe(0);
-    await expect(batch.run(() => true, () => undefined)).rejects.toThrow(/no longer/u);
-    const next = new AlbumBatch(album, tracks, owners.reserve);
-    vi.mocked(serverRender).mockImplementationOnce(async (blob, _params, bits) => { next.cancel(); return encode(blob, bits); });
-    await expect(next.run(() => true, () => undefined)).rejects.toMatchObject({ name: "AbortError" });
-    expect(next.getFiles()).toHaveLength(0); next.dispose(); expect(owners.total()).toBe(0);
+  it("rejects stale work and drops every late owned result after a current-track Cancel", async () => {
+    const { album, tracks } = await fixture(), owners = memory(), batch = makeBatch(album, tracks, owners.reserve);
+    const render = vi.mocked(serverRenderOwned).getMockImplementation(); if (!render) throw new Error("Missing renderer"); let current = true;
+    vi.mocked(serverRenderOwned).mockImplementationOnce(async (...args) => { const result = await render(...args); current = false; return result; });
+    await expect(batch.run(() => current, () => undefined)).rejects.toThrow(/changed/u); expect(batch.getFiles()).toHaveLength(0); expect(owners.total()).toBe(0);
+    await expect(batch.run(() => true, () => undefined)).rejects.toThrow(/unavailable/u);
+    const next = makeBatch(album, tracks, owners.reserve); vi.mocked(serverRenderOwned).mockImplementationOnce(async (...args) => { const result = await render(...args); next.cancel(); return result; });
+    await expect(next.run(() => true, () => undefined)).rejects.toMatchObject({ name: "AbortError" }); expect(next.getFiles()).toHaveLength(0); await next.dispose(); expect(owners.total()).toBe(0);
   });
-  it("rejects memory/cache/track-limit jobs before audio allocation and disposes failed transient owners", async () => {
-    const { album, tracks } = await fixture(), owners = memory(1000), batch = new AlbumBatch(album, tracks, owners.reserve);
-    await expect(batch.run(() => true, () => undefined)).rejects.toThrow(/memory/u); expect(getAudio).not.toHaveBeenCalled();
-    expect(owners.total()).toBe(0); expect(owners.owners.filter((owner) => !owner.disposed)).toHaveLength(1); batch.dispose();
+  it("bounds tracks and metadata before audio without an aggregate encoded-RAM cache limit", async () => {
+    const { album, tracks } = await fixture(), small = memory(1000);
+    expect(() => makeBatch(album, tracks, small.reserve)).toThrow(/memory/u); expect(getAudio).not.toHaveBeenCalled(); expect(small.total()).toBe(0);
     const huge = tracks.map((track) => ({ ...track, duration: 16_777_216 / rate, sourceIdentity: { pcmHash: "a".repeat(64), frames: 16_777_216, sampleRate: rate } }));
-    expect(() => new AlbumBatch(album, huge, memory().reserve)).toThrow(/128 MiB/u);
-    expect(() => new AlbumBatch({ ...album, trackIds: Array.from({ length: 65 }, (_, i) => `x${String(i)}`) }, Array.from({ length: 65 }, (_, i) => ({ ...tracks[0] as Track, id: `x${String(i)}` })), memory().reserve)).toThrow(/64/u);
+    const metadataOnly = makeBatch(album, huge, memory().reserve); expect(metadataOnly.getFiles()).toEqual([]); await metadataOnly.dispose();
+    expect(() => makeBatch({ ...album, trackIds: Array.from({ length: 65 }, (_, i) => `x${String(i)}`) }, Array.from({ length: 65 }, (_, i) => ({ ...tracks[0] as Track, id: `x${String(i)}` })), memory().reserve)).toThrow(/64/u);
   });
-  it("reserves first-use source hash copies before reading and counts a retained prefix alongside another active owner", async () => {
-    const { album, tracks } = await fixture(), canonicalBytes = 44 + frames * 8, encodedBytes = 44 + frames * 6;
-    const blob = paths.get(tracks[0]?.id ?? ""); if (!blob) throw new Error("Missing source");
-    const read = vi.spyOn(blob, "arrayBuffer");
-    const tooSmall = memory(canonicalBytes * 3 - 1), denied = new AlbumBatch(album, tracks, tooSmall.reserve);
-    await expect(denied.run(() => true, () => undefined)).rejects.toThrow(/memory/u);
-    expect(getAudio).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled(); denied.dispose();
-    const renderBytes = canonicalBytes * 5 + encodedBytes * 3;
-    const owners = memory(renderBytes + encodedBytes), batch = new AlbumBatch(album, tracks, owners.reserve);
-    let external: ReturnType<AlbumMemoryFactory> | undefined;
-    await expect(batch.run(() => true, (progress) => { if (progress.completed === 1) external = owners.reserve(1); })).rejects.toThrow(/memory/u);
-    expect(batch.getFiles()).toHaveLength(1); expect(getAudio).toHaveBeenCalledTimes(3);
-    expect(owners.total()).toBe(encodedBytes + 1); expect(owners.owners.filter((owner) => !owner.disposed)).toHaveLength(2);
-    external?.dispose(); batch.dispose(); expect(owners.total()).toBe(0);
+  it("charges packet and source-hash copies before IO and counts another owner alongside a metadata-only prefix", async () => {
+    const { album, tracks } = await fixture(), canonicalBytes = 44 + frames * 8, owners = memory(), batch = makeBatch(album, tracks, owners.reserve), baseline = owners.total();
+    const blob = paths.get(tracks[0]?.id ?? ""); if (!blob) throw new Error("Missing source"); const read = vi.spyOn(blob, "arrayBuffer");
+    await expect(batch.run(() => true, (value) => { if (value.stage.startsWith("Measuring")) owners.setLimit(baseline + 32 * 1024 * 1024 + canonicalBytes * 3 - 1); })).rejects.toThrow(/memory/u);
+    expect(getAudio).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled(); await batch.dispose(); expect(owners.total()).toBe(0);
+    const nextOwners = memory(), next = makeBatch(album, tracks, nextOwners.reserve), nextBaseline = nextOwners.total(); let external: ReturnType<AlbumMemoryFactory> | undefined, loads = 0;
+    await expect(next.run(() => true, (value) => { if (value.completed === 1 && !external) { loads = vi.mocked(getAudio).mock.calls.length; nextOwners.setLimit(nextBaseline + 32 * 1024 * 1024 + canonicalBytes * 3); external = nextOwners.reserve(1); } })).rejects.toThrow(/memory/u);
+    expect(next.getFiles()).toHaveLength(1); expect(vi.mocked(getAudio).mock.calls.length).toBe(loads); expect(nextOwners.total()).toBe(nextBaseline + 1);
+    external?.dispose(); await next.dispose(); expect(nextOwners.total()).toBe(0);
   });
-  it("preserves the full accepted Deep script and binds every authored point, title, source and album setting", async () => {
-    const { album, tracks } = await fixture(), first = tracks[0]; if (!first?.sourceIdentity) throw new Error("Missing source");
-    const measurement = await metrics(paths.get(first.id) as Blob);
+  it("preserves the full applied Deep packet and invalidates every point, title, source and album recipe edit", async () => {
+    const { album, tracks } = await fixture(), first = tracks[0]; if (!first?.sourceIdentity) throw new Error("Missing source"); const measurement = await metrics(paths.get(first.id) as Blob);
     const script = { version: "2.0" as const, source: first.sourceIdentity, revision: 1, profile: "Warm Analog" as const, summary: "Applied plan", chainParams: engineParams(first.advanced),
       sections: [{ id: "all", name: "All", roleHint: "unknown" as const, startFrame: 0, endFrame: frames, confidence: 0 }],
       moves: [{ id: "gain", sectionId: "all", reason: "Lift", target: "inputGainDb" as const, operation: "add" as const, points: [{ frame: 0, value: 2 }, { frame: frames, value: 2 }], fadeFrames: 0, muted: false }], findings: [], beforeMetrics: measurement };
-    first.deepMastering = { sourceRevision: 2, proposal: script, applied: script, targets: [] };
-    const original = structuredClone(tracks), batch = new AlbumBatch(album, tracks, memory().reserve);
-    const report = await batch.run(() => true, () => undefined);
-    expect(serverRenderScript).toHaveBeenCalledWith(paths.get(first.id), script, 32, expect.any(AbortSignal)); expect(measureScriptAudio).toHaveBeenCalled();
+    first.deepMastering = { sourceRevision: 2, proposal: script, applied: script, targets: [] }; const original = structuredClone(tracks), batch = makeBatch(album, tracks, memory().reserve);
+    const report = await batch.run(() => true, () => undefined); expect(vi.mocked(serverRenderOwned).mock.calls.some((call) => "script" in call[1] && JSON.stringify(call[1].script) === JSON.stringify(script))).toBe(true); expect(measureScriptAudio).toHaveBeenCalled();
     expect(report.tracks[0]?.scriptRevision).toBe(1); expect(tracks).toEqual(original);
     const key = albumCohortKey(album, tracks), changed = structuredClone(tracks), point = changed[0]?.deepMastering?.applied?.moves[0]?.points[0]; if (!point) throw new Error("Missing point"); point.value = 3;
     expect(albumCohortKey(album, changed)).not.toBe(key);
     for (const updated of [{ ...album, target: "−23 LUFS" }, { ...album, artist: "Other" }, { ...album, trackIds: [...album.trackIds].reverse() }, { ...album, offsets: { [first.id]: 1 } }]) expect(albumCohortKey(updated, tracks)).not.toBe(key);
-    expect(albumCohortKey({ ...album, report }, tracks)).toBe(key); batch.dispose();
+    expect(albumCohortKey({ ...album, report }, tracks)).toBe(key); await batch.dispose();
   });
-  it("refuses malformed final artifacts, layout drift and changed source bytes without publishing an unverified file", async () => {
-    const { album, tracks } = await fixture();
-    const original = vi.mocked(serverRender).getMockImplementation(); if (!original) throw new Error("Missing renderer");
-    vi.mocked(serverRender).mockImplementation((blob, params, bits, signal) => bits === 24 ? Promise.resolve(new Blob(["bad output"])) : original(blob, params, bits, signal));
-    const batch = new AlbumBatch(album, tracks, memory().reserve);
-    await expect(batch.run(() => true, () => undefined)).rejects.toThrow(/layout|length/u); expect(batch.getFiles()).toHaveLength(0); batch.dispose();
-    vi.mocked(serverRender).mockImplementation(original);
-    const second = new AlbumBatch(album, tracks, memory().reserve);
-    await expect(second.run(() => true, (value) => { if (value.completed === 1) second.cancel(); })).rejects.toMatchObject({ name: "AbortError" });
-    paths.set(tracks[0]?.id ?? "", previewWAV({ sampleRate: rate, left: new Float32Array(frames), right: new Float32Array(frames) }));
-    await expect(second.run(() => true, () => undefined)).rejects.toThrow(/PCM differs/u); expect(second.getFiles()).toHaveLength(0); expect(second.getReport()).toBeNull();
+  it("refuses malformed final bytes and discards a prior prefix when any stored source changes", async () => {
+    const { album, tracks } = await fixture(), render = vi.mocked(serverRenderOwned).getMockImplementation(); if (!render) throw new Error("Missing renderer");
+    vi.mocked(serverRenderOwned).mockImplementation(async (...args) => { if (args[2].bitDepth !== 24) return render(...args); const blob = new Blob(["bad output"]), owner = renderMemory(blob.size); return { blob, owner, dispose: owner.dispose }; });
+    const batch = makeBatch(album, tracks, memory().reserve); await expect(batch.run(() => true, () => undefined)).rejects.toThrow(/layout|length/u); expect(batch.getFiles()).toHaveLength(0); await batch.dispose();
+    vi.mocked(serverRenderOwned).mockImplementation(render); const second = makeBatch(album, tracks, memory().reserve);
+    await expect(second.run(() => true, (value) => { if (value.completed === 1) second.cancel(); })).rejects.toMatchObject({ name: "AbortError" }); paths.set(tracks[0]?.id ?? "", previewWAV({ sampleRate: rate, left: new Float32Array(frames), right: new Float32Array(frames) }));
+    await expect(second.run(() => true, () => undefined)).rejects.toMatchObject({ name: "AlbumSourceMismatchError" }); expect(second.getFiles()).toHaveLength(0); expect(second.getReport()).toBeNull();
   });
   it("rejects an unexpectedly sized stored source before allocating its hash buffer", async () => {
-    const { album, tracks } = await fixture(), source = new Blob([new Uint8Array(44 + frames * 8 + 8)]), owners = memory();
-    const read = vi.spyOn(source, "arrayBuffer"); paths.set(tracks[0]?.id ?? "", source);
-    const batch = new AlbumBatch(album, tracks, owners.reserve);
-    await expect(batch.run(() => true, () => undefined)).rejects.toThrow(/unexpected length/u);
-    expect(read).not.toHaveBeenCalled(); expect(measureAudio).not.toHaveBeenCalled(); expect(serverRender).not.toHaveBeenCalled();
-    expect(owners.total()).toBe(0); expect(batch.canResume()).toBe(false); expect(batch.getFiles()).toHaveLength(0);
+    const { album, tracks } = await fixture(), source = new Blob([new Uint8Array(44 + frames * 8 + 8)]), owners = memory(); const read = vi.spyOn(source, "arrayBuffer"); paths.set(tracks[0]?.id ?? "", source);
+    const batch = makeBatch(album, tracks, owners.reserve); await expect(batch.run(() => true, () => undefined)).rejects.toMatchObject({ name: "AlbumSourceMismatchError" });
+    expect(read).not.toHaveBeenCalled(); expect(measureAudio).not.toHaveBeenCalled(); expect(serverRenderOwned).not.toHaveBeenCalled(); expect(owners.total()).toBe(0); expect(batch.canResume()).toBe(false);
   });
-  it("discards every completed output if any source changes between cohort planning and its render", async () => {
-    const { album, tracks } = await fixture(), owners = memory(), batch = new AlbumBatch(album, tracks, owners.reserve);
-    await expect(batch.run(() => true, (value) => {
-      if (value.completed === 1) paths.set(tracks[1]?.id ?? "", previewWAV({ sampleRate: rate, left: new Float32Array(frames), right: new Float32Array(frames) }));
-    })).rejects.toThrow(/PCM differs/u);
+  it("discards every completed output when a source changes between planning and its render", async () => {
+    const { album, tracks } = await fixture(), owners = memory(), batch = makeBatch(album, tracks, owners.reserve);
+    await expect(batch.run(() => true, (value) => { if (value.completed === 1) paths.set(tracks[1]?.id ?? "", previewWAV({ sampleRate: rate, left: new Float32Array(frames), right: new Float32Array(frames) })); })).rejects.toMatchObject({ name: "AlbumSourceMismatchError" });
     expect(batch.getFiles()).toHaveLength(0); expect(batch.getReport()).toBeNull(); expect(owners.total()).toBe(0); expect(batch.canResume()).toBe(false);
   });
   it("keeps a saved import visible in Library when a queued album change wins the full-record attach CAS", async () => {
@@ -208,7 +198,7 @@ describe("album batch ownership and final encoded measurement", () => {
     expect(added.albums[0]).toMatchObject({ gainMode: "relationships", offsets: {} }); expect(typeof added.albums[0]?.updatedAt).toBe("string");
   });
   it("saves metadata with a complete cohort CAS and drops malformed optional receipts while preserving legacy albums/settings", async () => {
-    const { album, tracks } = await fixture(), batch = new AlbumBatch(album, tracks, memory().reserve), report = await batch.run(() => true, () => undefined);
+    const { album, tracks } = await fixture(), batch = makeBatch(album, tracks, memory().reserve), report = await batch.run(() => true, () => undefined);
     const state = { tracks, albums: [album], stems: [] };
     const saved = reduceStoreState(state, { type: "SAVE_ALBUM_REPORT", expected: album, tracks, report });
     expect(saved.albums[0]?.report).toBe(report); expect(saved.tracks).toBe(tracks); expect(saved.albums[0]?.updatedAt).toBe(album.updatedAt);
@@ -221,6 +211,6 @@ describe("album batch ownership and final encoded measurement", () => {
       expect(hydrated?.albums[0]?.report).toBeUndefined(); expect(hydrated?.albums[0]?.title).toBe(album.title); expect(hydrated?.tracks[0]?.advanced).toEqual(tracks[0]?.advanced);
     }
     const cyclic: { value?: unknown } = {}; cyclic.value = cyclic; expect(readAlbumReport(cyclic)).toBeUndefined();
-    expect(readAlbumReport(report)).toEqual(report); batch.dispose();
+    expect(readAlbumReport(report)).toEqual(report); await batch.dispose();
   });
 });

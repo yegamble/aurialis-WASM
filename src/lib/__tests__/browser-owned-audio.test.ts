@@ -32,6 +32,27 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(
 const active = async (index = 0) => { await waitFor(() => { expect(OwnedWorker.all.at(index)?.message).toBeDefined(); }); const worker = OwnedWorker.all.at(index); if (!worker) throw new Error("Missing worker"); return worker; };
 
 describe("explicit owned binary result handoff", () => {
+  it.each([
+    { device: 8, extra: 0, admitted: true },
+    { device: 8, extra: 5_312_248, admitted: true },
+    { device: 8, extra: 5_312_249, admitted: false },
+    { device: 4, extra: 0, admitted: false },
+  ])("counts a three-minute 48 kHz Album phase with 64 MiB cohort metadata, 32 MiB packet and 2 MiB receipts on device class $device / extra $extra", async ({ device, extra, admitted }) => {
+    const { deviceOwnedAudioRequest, reserveBrowserAudioMemory } = await transport(); vi.stubGlobal("navigator", { deviceMemory: device });
+    const frames = 180 * 48000, bytes = 44 + frames * 8, header = wav().slice(0, 44), view = new DataView(header);
+    view.setUint32(4, bytes - 8, true); view.setUint32(24, 48000, true); view.setUint32(28, 48000 * 8, true); view.setUint32(40, bytes - 44, true);
+    // Capacity-only File: actual full-source clone deliberately stops before allocation, not DSP/scale proof.
+    const file = new File([header], "three-minute.wav"); Object.defineProperty(file, "size", { value: bytes });
+    const read = vi.spyOn(file, "arrayBuffer").mockRejectedValue(new Error("Admitted full-song clone boundary"));
+    const form = new FormData(); form.append("file", file); form.append("bitDepth", "32");
+    const metadata = reserveBrowserAudioMemory(64 * mib), packet = reserveBrowserAudioMemory(32 * mib), receipt = reserveBrowserAudioMemory(2 * mib), source = reserveBrowserAudioMemory(bytes), other = reserveBrowserAudioMemory(extra);
+    try {
+      const pending = deviceOwnedAudioRequest("/api/master/render", { method: "POST", body: form }, { frames, sampleRate: 48000, bitDepth: 32 });
+      await expect(pending).rejects.toThrow(admitted ? /clone boundary/u : /memory budget/u);
+      expect(read).toHaveBeenCalledTimes(admitted ? 1 : 0); expect(OwnedWorker.all).toHaveLength(0); expect(fetch).not.toHaveBeenCalled();
+    } finally { metadata.dispose(); packet.dispose(); receipt.dispose(); source.dispose(); other.dispose(); }
+    reserveBrowserAudioMemory((device >= 8 ? 960 : 448) * mib).dispose();
+  });
   it("clears event audio and keeps the exact returned Blob charged until its adopted owner is disposed", async () => {
     const { deviceOwnedAudioRequest, reserveBrowserAudioMemory } = await transport();
     const pending = deviceOwnedAudioRequest("/api/master/render", { method: "POST", body: body() }, layout), worker = await active();

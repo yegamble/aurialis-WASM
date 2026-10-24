@@ -9,6 +9,7 @@ import { fixture, decode } from "../e2e/audio-fixture";
 import { engineParams } from "../src/lib/browser-engine";
 import type { AdvancedParams, MeasuredAudioMetrics, Track } from "../src/lib/types";
 import type { ReleaseReport } from "../src/lib/release-review";
+import { albumLinearParams, type AlbumReport } from "../src/lib/album-batch";
 import type { ScriptV2 } from "../src/lib/deep-mastering";
 import { captureDeepDevice, capturedDevice, capturedProgress } from "../e2e/deep-capture";
 
@@ -34,13 +35,13 @@ async function settings(page: Page, id: string) {
     return track.advanced;
   }, id);
 }
-async function nativeRender(info: TestInfo, source: Buffer, advanced: AdvancedParams, bitDepth: number, script?: ScriptV2) {
-  const directory = info.outputPath(`native-oracle-${String(bitDepth)}`);
-  await mkdir(directory, { recursive: true });
-  await writeFile(directory + "/source.wav", source);
-  await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", ...(script ? { script: JSON.stringify(script) } : { params: JSON.stringify(engineParams(advanced)) }), bitDepth }));
+async function nativeRequest(info: TestInfo, source: Buffer, request: { operation: "render"; params?: string; script?: string; bitDepth: number }, label: string) {
+  const directory = info.outputPath(label); await mkdir(directory, { recursive: true }); await writeFile(directory + "/source.wav", source); await writeFile(directory + "/request.json", JSON.stringify(request));
   execFileSync("go", ["test", "./internal/browserjobs", "-run", "^TestWriteBrowserOracle$", "-count=1"], { env: { ...process.env, AURIALIS_BROWSER_ORACLE_DIR: directory }, stdio: "pipe" });
   return { audio: await readFile(directory + "/native.wav"), metadata: JSON.parse(await readFile(directory + "/native.json", "utf8")) as { afterMetrics: { integratedLufs: number; samplePeakDbfs: number } } };
+}
+async function nativeRender(info: TestInfo, source: Buffer, advanced: AdvancedParams, bitDepth: number, script?: ScriptV2) {
+  return nativeRequest(info, source, { operation: "render", ...(script ? { script: JSON.stringify(script) } : { params: JSON.stringify(engineParams(advanced)) }), bitDepth }, `native-oracle-${String(bitDepth)}`);
 }
 async function downloadBytes(page: Page, name: string): Promise<Buffer> {
   const event = page.waitForEvent("download");
@@ -138,10 +139,12 @@ test("album WAVs and release measurements run on the device without an audio ser
   if (!path) throw new Error("Missing local album master");
   const rendered = await readFile(path);
   expect(decode(rendered).bits).toBe(24);
-  const native = await nativeRender(info, source, await settings(page, id), 24);
-  expect(rendered).toEqual(native.audio);
+  const receipt = JSON.parse((await downloadBytes(page, "Download album JSON report")).toString("utf8")) as AlbumReport, row = receipt.tracks[0]; if (!row) throw new Error("Missing measured album output");
+  const advanced = await settings(page, id), chain = await nativeRender(info, source, advanced, 32);
+  const native = await nativeRequest(info, chain.audio, { operation: "render", params: JSON.stringify(albumLinearParams(row.gain.gainDb)), bitDepth: 24 }, "native-album-linear-gain");
+  expect(rendered).toEqual(native.audio); expect(createHash("sha256").update(rendered).digest("hex")).toBe(row.output.sha256);
   await page.goto(`/release-check/${id}`);
-  await reviewEncoded(page, info, rendered, "album-24");
+  const individual = await nativeRender(info, source, advanced, 24); await reviewEncoded(page, info, individual.audio, "individual-after-album-24");
   await assertPrivate(info, requests);
 });
 

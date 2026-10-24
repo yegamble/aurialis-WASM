@@ -5,7 +5,9 @@
     "src/app/**/layout.tsx",
     "src/**/__tests__/*.{ts,tsx}",
     "e2e/**/*.spec.ts",
-    "scripts/*.mjs"
+    "scripts/*.mjs",
+    "scripts/qualification/*.mjs",
+    "e2e/album-scale*.cases.ts"
   ],
   "project": [
     "src/**/*.{ts,tsx}",

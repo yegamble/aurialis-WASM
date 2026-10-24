@@ -4,6 +4,14 @@
     "incremental": false,
     "plugins": []
   },
-  "include": ["./**/*.ts", "../playwright.browser.config.ts"],
-  "exclude": ["../node_modules"]
+  "include": [
+    "./**/*.ts",
+    "../playwright.browser.config.ts",
+    "../e2e/album-scale*.ts",
+    "../e2e/album-consistency.spec.ts",
+    "../playwright.album-scale.config.ts"
+  ],
+  "exclude": [
+    "../node_modules"
+  ]
 }

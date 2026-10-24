@@ -1,0 +1,79 @@
+{
+  "scope": "ONE SOURCE-ONLY proposal; no current Go/candidate payload edit, new compilation, unit/WASM/profile/timing execution or optimization admission.",
+  "candidate": "Cache the unchanged bounded signed query coordinate as float64 once before bound traversal; substitute only that operand in the existing multiply/add.",
+  "basis": {
+    "qualifiedProductionCommit": "e4921560a63666ac230bb578d5381886b266d968",
+    "originalProductionSourceSHA256": "9ceee3af867bc992d89dfdd8a778c35648fd140a0a5a84bdfecf2d0ed3d19c5d",
+    "proposedProductionSourceSHA256": "a5ff75b66b649116857effe11fde78749edad3201ed964741cdc137d7967018a",
+    "originalBoundFunctionSHA256": "2d002e48796f84f97500c5c486285f1a0957a3caaa05dd7defe87683b4e7b44b",
+    "proposedBoundFunctionSHA256": "3de1c7c7e0b906e8ad94dc0b0fa2ab2ecdc1ad1466adaaefa8a2b5d9b92c30df",
+    "profileIndexSHA256": "d5ae9935a2a9373ad70c97693aa664b8a107174c7e75aed32aa179e5df2f4677",
+    "measuredBoundSelfSamples": {
+      "baseline": 76,
+      "unselectedInsertRangeCandidate": 78
+    },
+    "evidenceLimit": "Sample attribution motivates investigation only, not cost, speedup or deadline proof. Existing insertRange candidate remains separate and unselected; proposed production source is derived only from qualified original source bytes, without that change."
+  },
+  "exactChange": {
+    "insertAfter": "x := int(frame % studioEnvelopeChunk)",
+    "insert": "xFloat := float64(x)",
+    "replaceOnly": "n.slope*float64(x)+n.offset -> n.slope*xFloat+n.offset",
+    "noPayloadWritten": "Only a reviewable unified diff is written; proposed full source exists solely as an in-memory string for its intended hash. No overlay exists."
+  },
+  "semantics": {
+    "coordinate": "Keep signed frame/2048, frame%2048, epoch&1 and integer x exactly unchanged. Remainder x lies in [-2047,2047], including negative frames; do not mask/clamp or change the tree path.",
+    "float": "Every integer in that range is exactly representable as float64. Each existing conversion produces the same finite bits; integer zero converts to positive zero. Hoisting only reuses those bits. Slope multiply, offset addition, damage comparisons, studioExactMax fallback/NaN/tie behavior and final1-damage remain in exactly the same source order.",
+    "readsAndState": "Keep all node addresses, epoch tests, node visit order, low/high/index/mid branches and early breaks unchanged. bound writes no node. No insertRange or line insertion, ADAA, extrema, state layout or public ABI change is included.",
+    "dirtyRootWorkDifference": "The proposal computes one exact integer-to-float conversion before traversal, including when the first epoch check immediately breaks; the original performs none in that case. Conversion cannot trap for bounded integer x. Work placement differs while output/state and node-read order should remain identical; this may add work on a dirty root and is no speedup guarantee.",
+    "compilerLimit": "Existing identical928-byte bound bodies retain AF64ConvertI64S at body+384, followed by multiply/add, within a constant-dispatch-aware call-free static cycle. Go-emitted bytecode has no cached float64 query operand there. Static inspection does not observe V8 optimized code: it may already hoist/recompute this conversion. Candidate compiler output must be inspected after separately released compilation; reject if emitted work is unchanged, remains in the traversal, or changes arithmetic/state semantics."
+  },
+  "futureIndependentControls": {
+    "status": "TEST PLAN ONLY; no new tests implemented or executed. Separate source admission must precede every build/run.",
+    "frozenControl": "Copy original qualified envelope/control bytes with the pinned original SHA-256, preserving every original method and type layout under an independent control type. Do not copy optimized bound logic into the oracle.",
+    "sourceContract": "Removing exactly the new cache declaration and reversing only its single expression substitution must reconstruct all original3627 source bytes. Every insertion/control-flow/math expression outside that operand remains identical.",
+    "queryCases": {
+      "allSignedResiduals": 4095,
+      "dirtyEpochDepthAndIEEE": 240,
+      "extremeSignedFrameCases": 64,
+      "mutationSequenceQueries": 512,
+      "noAllocationQueriesUpper": 576,
+      "totalQueryUpper": 5487,
+      "mutationResetEvents": 256,
+      "maximumNodesPerQuery": 12,
+      "fullStatePerOperation": "Before/after every one of the 4,911 direct oracle queries and 256 events, compare all 8,192 nodes: epoch plus Float64bits(slope/offset), with pre/post immutability and exact output IEEE bits. The separate 576-query allocation batch compares complete state before/after the measured batch to keep its allocation observation query-only. Preserve negative-zero, subnormal, infinity and multiple signed NaN payload cases.",
+      "frames": "Include every residual -2047..2047 and MinInt64/MaxInt64, negative epochs, both tree parities, chunk boundaries, >2^53 clocks, stale root and stale node at each depth, original reset/wrap and clipped rebuild.",
+      "noAllocation": "Query-only warmed allocation-count/byte gate must be zero; retain separate unchanged graph allocation gates.",
+      "scope": "Proposed direct-query bounds are separate from original27-case recorder frame counters. Keep original test assertions/tolerances unchanged. No bound increases or shortened cases after failure."
+    },
+    "compiledCodeContract": "Inspect fresh candidate native/WASM emitted code after a separate release. Require unchanged multiply/add/max order and bit/state proof before any timing proposal; cancel a compiler-only source rewrite that leaves the conversion dynamic or code identical. V8 behavior remains unproven without further separately reviewed diagnostics."
+  },
+  "efficientFutureQualification": {
+    "frozenBaselineModules": {
+      "native": {
+        "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/modules/native-baseline.test",
+        "bytes": 6611490,
+        "sha256": "2597fd60ee3809e2b633abee0a48ac01cf40fd15b2bc40a99d4b931b822c3759",
+        "sourceSetSHA256": "dfcc5a16a4b1638ff4a22b672ae95048d545b01e475ab44ef979dc6ac2f7d94e",
+        "overlaySHA256": "f3a78ca5d10b09e5737378a82dfdd01edcc9fc8305991476071f04330b269a61"
+      },
+      "wasm": {
+        "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/modules/wasm-baseline.wasm",
+        "bytes": 7568585,
+        "sha256": "f7f270e64ff525c12ef3c67eea786a794667df933a332a4ea02ba71090093d95",
+        "sourceSetSHA256": "dfcc5a16a4b1638ff4a22b672ae95048d545b01e475ab44ef979dc6ac2f7d94e",
+        "overlaySHA256": "f3a78ca5d10b09e5737378a82dfdd01edcc9fc8305991476071f04330b269a61"
+      }
+    },
+    "reuseCondition": "Reuse these already sealed original baseline modules, streams and original-unit results only after matching exact baseline source set, six AR exclusions, Go1.26.10 compiler flags/effective environment/runtime/test contracts/module hashes and actual receipts to the frozen BUILD. Do not relabel a changed baseline or manufacture missing test functions.",
+    "compileOnly": "After separate source/build release, compile only one new candidate native module and one new candidate GoJS/WASM module; no new baseline pair by default. Retain each partial/failure and original25-second/16MiB build limits.",
+    "independentTestAddition": "A proposed test-only overlay may embed the copied-original controls/new query tests in that candidate pair, explicitly indexed as an extra test source and mapping beyond the one production bound replacement. The frozen baseline need not contain those new test names. This exact test/source-set plan requires review; no silently changed baseline contract or old runner assumptions.",
+    "semanticGates": "Compare new candidate135cases across all5rates per backend to exact sealed baseline streams and accepted e492 archives within that same backend. Reuse baseline original-unit evidence only when contracts match; rerun all required new-candidate original alias/partition/tail/wrap/reset/capacity/noalloc tests on the new pair. No cross-target fullstate identity claim.",
+    "executionBounds": "Future original tests keep their immutable whole-unit literals and admitted separate work bounds; original 25-second Go / 28-second parent / 256 KiB log / 16 MiB module limits and reviewed owned cleanup/closedIO remain. Direct new controls require their own explicit bounded release.",
+    "timing": "No timing is released. New actual semantic/control/admission gates and separate Chair quiet-window release must precede any future screen. Existing steady192k RED remains open.",
+    "exactCompilerBuildContract": {
+      "file": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/BUILD.json",
+      "sha256": "16aacd5935e4bee8c9e253d926f9fe2d5dfbc2179f68b62b5b7e3d1195fde6f8",
+      "require": "Match the complete frozen compiler-process/effective-environment/runtime/source/test objects in this exact BUILD; module hashes alone do not permit a changed baseline."
+    }
+  }
+}

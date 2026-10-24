@@ -1,0 +1,231 @@
+{
+  "scope": "Read-only static existing code inspection only; no candidate/compiler/WASM execution or V8 machine-code attribution.",
+  "bodyEqualAcrossExistingModules": true,
+  "pinnedGoEmitterSources": {
+    "/Users/yosefgamble/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.10.darwin-arm64/src/cmd/internal/obj/wasm/a.out.go": "f4222ffd6a7206e0f16585e93a75a551ed3b5edcf575de64badfeafd17ab3425",
+    "/Users/yosefgamble/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.10.darwin-arm64/src/cmd/internal/obj/wasm/wasmobj.go": "a7b2be5e09e1f73496c4eb4258bab63428d5e4cdafd045c96b87b9163ea31942"
+  },
+  "decoderSourceSHA256": "d08bb53eaa21e60ede7afd953df277597bb20897d06c2acc0d8b4e14937011fb",
+  "fullInspectionSHA256": "8dc0bd7726738367eaf222728232bccd8d5229087142178096cde24ac42be82e",
+  "reports": [
+    {
+      "label": "baseline",
+      "moduleSHA256": "f7f270e64ff525c12ef3c67eea786a794667df933a332a4ea02ba71090093d95",
+      "functionIndex": 3683,
+      "functionName": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGainEnvelope_.bound",
+      "body": {
+        "offset": 4015666,
+        "bytes": 928,
+        "sha256": "fe04af89713f1e82fbd07bfc7aabfb7115aa0cc8146917c4719a5b7d8bd2eeab"
+      },
+      "instructionCount": 440,
+      "conversionInstruction": {
+        "offset": 4016050,
+        "relative": 384,
+        "opcode": "0xb9",
+        "name": "AF64ConvertI64S",
+        "args": []
+      },
+      "conversionInputPreviousInstruction": {
+        "offset": 4016048,
+        "relative": 382,
+        "opcode": "0x20",
+        "name": "ALocalGet",
+        "args": [
+          3
+        ]
+      },
+      "conversionContext": [
+        {
+          "offset": 4016042,
+          "relative": 376,
+          "opcode": "0x20",
+          "name": "ALocalGet",
+          "args": [
+            9
+          ]
+        },
+        {
+          "offset": 4016044,
+          "relative": 378,
+          "opcode": "0xa7",
+          "name": "AI32WrapI64",
+          "args": []
+        },
+        {
+          "offset": 4016045,
+          "relative": 379,
+          "opcode": "0x2b",
+          "name": "AF64Load",
+          "args": [
+            3,
+            0
+          ]
+        },
+        {
+          "offset": 4016048,
+          "relative": 382,
+          "opcode": "0x20",
+          "name": "ALocalGet",
+          "args": [
+            3
+          ]
+        },
+        {
+          "offset": 4016050,
+          "relative": 384,
+          "opcode": "0xb9",
+          "name": "AF64ConvertI64S",
+          "args": []
+        },
+        {
+          "offset": 4016051,
+          "relative": 385,
+          "opcode": "0xa2",
+          "name": "AF64Mul",
+          "args": []
+        },
+        {
+          "offset": 4016052,
+          "relative": 386,
+          "opcode": "0x20",
+          "name": "ALocalGet",
+          "args": [
+            9
+          ]
+        },
+        {
+          "offset": 4016054,
+          "relative": 388,
+          "opcode": "0x42",
+          "name": "AI64Const",
+          "args": [
+            8
+          ]
+        },
+        {
+          "offset": 4016056,
+          "relative": 390,
+          "opcode": "0x7c",
+          "name": "AI64Add",
+          "args": []
+        }
+      ],
+      "conversionReachablePCValues": [
+        2,
+        4
+      ],
+      "callFreeCycleInstructionCount": 141
+    },
+    {
+      "label": "candidate",
+      "moduleSHA256": "d7f415cb7962687b8c77b590d85a098b2fa0c287bed00542d8180cdad0dec0d3",
+      "functionIndex": 3683,
+      "functionName": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGainEnvelope_.bound",
+      "body": {
+        "offset": 4015666,
+        "bytes": 928,
+        "sha256": "fe04af89713f1e82fbd07bfc7aabfb7115aa0cc8146917c4719a5b7d8bd2eeab"
+      },
+      "instructionCount": 440,
+      "conversionInstruction": {
+        "offset": 4016050,
+        "relative": 384,
+        "opcode": "0xb9",
+        "name": "AF64ConvertI64S",
+        "args": []
+      },
+      "conversionInputPreviousInstruction": {
+        "offset": 4016048,
+        "relative": 382,
+        "opcode": "0x20",
+        "name": "ALocalGet",
+        "args": [
+          3
+        ]
+      },
+      "conversionContext": [
+        {
+          "offset": 4016042,
+          "relative": 376,
+          "opcode": "0x20",
+          "name": "ALocalGet",
+          "args": [
+            9
+          ]
+        },
+        {
+          "offset": 4016044,
+          "relative": 378,
+          "opcode": "0xa7",
+          "name": "AI32WrapI64",
+          "args": []
+        },
+        {
+          "offset": 4016045,
+          "relative": 379,
+          "opcode": "0x2b",
+          "name": "AF64Load",
+          "args": [
+            3,
+            0
+          ]
+        },
+        {
+          "offset": 4016048,
+          "relative": 382,
+          "opcode": "0x20",
+          "name": "ALocalGet",
+          "args": [
+            3
+          ]
+        },
+        {
+          "offset": 4016050,
+          "relative": 384,
+          "opcode": "0xb9",
+          "name": "AF64ConvertI64S",
+          "args": []
+        },
+        {
+          "offset": 4016051,
+          "relative": 385,
+          "opcode": "0xa2",
+          "name": "AF64Mul",
+          "args": []
+        },
+        {
+          "offset": 4016052,
+          "relative": 386,
+          "opcode": "0x20",
+          "name": "ALocalGet",
+          "args": [
+            9
+          ]
+        },
+        {
+          "offset": 4016054,
+          "relative": 388,
+          "opcode": "0x42",
+          "name": "AI64Const",
+          "args": [
+            8
+          ]
+        },
+        {
+          "offset": 4016056,
+          "relative": 390,
+          "opcode": "0x7c",
+          "name": "AI64Add",
+          "args": []
+        }
+      ],
+      "conversionReachablePCValues": [
+        2,
+        4
+      ],
+      "callFreeCycleInstructionCount": 141
+    }
+  ],
+  "limits": "Static control graph tracks constant local0 dispatch, but other branch conditions remain abstract. The emitted query expression still directly converts integer local3 before multiply/add; this is not proof of dynamic instruction counts, V8 hoisting behavior or cost. V8 may already hoist the conversion."
+}

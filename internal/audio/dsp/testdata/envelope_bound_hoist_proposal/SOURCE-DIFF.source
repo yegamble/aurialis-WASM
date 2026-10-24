@@ -1,0 +1,7 @@
+--- qualified-e492/internal/audio/dsp/studio_gain_envelope.go
++++ PROPOSAL-ONLY/internal/audio/dsp/studio_gain_envelope.go
+@@ -103,0 +104 @@
++	xFloat := float64(x)
+@@ -110 +111 @@
+-		damage = studioExactMax(damage, n.slope*float64(x)+n.offset)
++		damage = studioExactMax(damage, n.slope*xFloat+n.offset)

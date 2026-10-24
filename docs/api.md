@@ -152,3 +152,5 @@ The separately released first same-module timing screen retained six clean measu
 The next same-module steady function-attribution host passed 21 synthetic/static controls without launching a WASM/profile child. It adds no product API or ABI. Separate source review/release precedes its proposed two diagnostic children; the steady RED and candidate non-selection remain unchanged.
 
 The later released two-child steady diagnostic reproduced the exact sealed verification bytes and clean closed-I/O receipts. Actual function sampling changes no API/ABI, candidate selection or performance guarantee. Its requested 100-microsecond interval yielded 153-microsecond medians; overlapping attribution counts establish no cost or speedup. See the [diagnostic record](tasks.md#steady-function-attribution-actual-diagnostic-checkpoint).
+
+The bound-coordinate cache follow-up is source proposal only: one exact integer-to-float conversion would move before query traversal, including an extra unused conversion on a stale root. No source/payload/API/ABI or candidate selection changed; no proposed candidate was built or executed.

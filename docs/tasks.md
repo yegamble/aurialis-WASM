@@ -744,3 +744,7 @@ Verification: full local Chromium suite **53/53 passed (2.3 minutes)**; TypeScri
 ### Concurrent reader-guide integration
 
 Main advanced through reader-guide PR #10 at `bbc254a` while Simple PR #11 was being published. The Simple branch merges that documentation-only update and preserves the readable README, first-use and developer guides, with current Simple styles and the device-local hosting decision added. Runtime source remains identical to the 82-case passing `adf0032` checkpoint; exact merged-head CI remains required. The earlier README claim review is historical and does not verify the newer Simple controls.
+
+## MP3 and FLAC import — 2026-10-24
+
+**Open — awaiting merge.** Browser and native import now decode FLAC and MP3 in Go CDR. FLAC is a standard-library decoder (CRC-8/16 and MD5 verified, mono/stereo, 4–32-bit, 8–192 kHz). MP3 uses a modified vendored go-mp3 (`internal/third_party/gomp3`) with float output, gapless LAME/Lavc trimming and a fixed upstream short-block M/S defect. The unmerged `codex/legacy-audio-decoder` FFmpeg-to-WASM experiment was not reused (`distributionApproved: false`, C toolchain). Evidence: `unit` FLAC bit-exact to source WAV and FFmpeg across 5 encoder variants; MP3 within 1e-5 of FFmpeg `mp3float` across 7 variants plus a 0 dBFS short-block oracle; 1.9M fuzz executions; `playwright` real-WASM FLAC/MP3 import with zero audio requests. Measured decode of a 5-minute stereo 44.1 kHz track in Node Go/WASM: FLAC ≈4 s, 320 kb/s MP3 ≈10 s. Legacy recovery of old compressed originals remains a separate open item.

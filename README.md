@@ -16,7 +16,7 @@
 
 <p align="center"><strong>Bring a mix. Shape its sound. Keep it local.</strong></p>
 
-Aurialis is an audio mastering workstation that runs on your computer and opens in your browser. Start with a WAV file, adjust its tone, dynamics and stereo image, listen against the original, then export a new WAV. Mastering is the final shaping of a finished mix before you share it.
+Aurialis is an audio mastering workstation that runs on your computer and opens in your browser. Start with a WAV, FLAC or MP3 file, adjust its tone, dynamics and stereo image, listen against the original, then export a new WAV. Mastering is the final shaping of a finished mix before you share it.
 
 <p align="center">
   <a href="#run-the-studio">Get started</a> ·
@@ -30,7 +30,7 @@ Aurialis is an audio mastering workstation that runs on your computer and opens 
 ## A small studio, one clear path
 
 ```text
-Your WAV  →  Choose a direction  →  Listen and refine  →  Download a WAV
+Your audio  →  Choose a direction  →  Listen and refine  →  Download a WAV
                  Simple               Advanced             Export
 ```
 
@@ -70,7 +70,7 @@ The build embeds the interface, fonts, audio modules and worklets in one `aurial
 
 ## Your first master
 
-1. **Import a WAV.** Start with a short mono or stereo file. The first imported track opens in Advanced; select **Simple** for guided controls. You can import multiple files in one queue and find the others in Library.
+1. **Import a WAV, FLAC or MP3.** Start with a short mono or stereo file. The first imported track opens in Advanced; select **Simple** for guided controls. You can import multiple files in one queue and find the others in Library.
 2. **Choose a direction.** Adjust genre, tone, style, modifiers and intensity. These update the shared settings while retaining explicit input gain and output targets. Elevated checks the rendered candidate before accepting it.
 3. **Listen.** Press Play and switch between **A Processed** and **B Original**. Volume controls listening level, not export gain. A louder result can sound more impressive, so judge tone and dynamics as well as loudness.
 4. **Set loudness when needed.** Choose a target and press **Set target loudness** to measure the current settings and adjust input gain. Selecting a target alone does not normalize the track.
@@ -98,7 +98,7 @@ The first public-domain trial was rolled back after Cloudflare injected an exter
 
 | Area | Current boundary |
 | --- | --- |
-| Import | Mono/stereo WAV: 8/16/24/32-bit integer PCM or 32-bit float, 8–192 kHz. Compressed formats such as MP3, AAC and FLAC need conversion first. The API also accepts limited AIFF input; the browser import accepts WAV. |
+| Import | Mono/stereo WAV: 8/16/24/32-bit integer PCM or 32-bit float, 8–192 kHz. Mono/stereo FLAC (4–32-bit, 8–192 kHz, CRC and MD5 verified) and MPEG-1/2 Layer III MP3 (16–48 kHz, LAME/Lavc gapless trimming, decoded to float without clipping). AAC, Ogg, M4A, MPEG-2.5 and free-format MP3 need conversion first. The API also accepts limited AIFF input. |
 | Track size | At most **128 MiB + 44 bytes** and **16,777,216 decoded frames**. The frame cap is about **5 min 50 s at 48 kHz**, or **2 min 55 s at 96 kHz**; file size can limit you sooner. |
 | Processing | One expensive browser job and at most one waiting job, with both inputs charged against memory. Browser memory preflight may reject smaller files, and retained masters also need memory; use the local executable within its own limits. The local server also bounds admission. |
 | Albums | Individual 24-bit WAVs in a **128 MiB temporary output cache**, charged against browser memory. Download them before leaving the album page or changing settings/order. Download URLs remain charged until revoked. There is no persistent mastered-output store or ZIP export. |

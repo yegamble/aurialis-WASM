@@ -67,6 +67,7 @@ linters:
     generated: lax
     paths:
       - vendor
+      - internal/third_party
       - node_modules
       - .next
       - out

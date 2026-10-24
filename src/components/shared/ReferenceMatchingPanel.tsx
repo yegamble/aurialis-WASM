@@ -80,7 +80,7 @@ export function ReferenceMatchingPanel({ trackId }: { trackId: string }) {
     setPending({ expected: track, next: original.advanced, restoring: true });
     dispatch({ type: "APPLY_REFERENCE", expected: track, advanced: original.advanced, restore: { mode: original.mode, ...(original.simpleCustom !== undefined ? { simpleCustom: original.simpleCustom } : {}), ...(original.shortcutUndo ? { shortcutUndo: original.shortcutUndo } : {}) } });
   }
-  if (!track) return <div className="page"><PageTitle eyebrow="Measured Reference" title="Choose your audio first" copy="Import a source and a reference WAV to compare their measured tonal balance." /><WorkspaceLink className={buttonClassName()} href="/">Import audio</WorkspaceLink></div>;
+  if (!track) return <div className="page"><PageTitle eyebrow="Measured Reference" title="Choose your audio first" copy="Import a source and a reference track to compare their measured tonal balance." /><WorkspaceLink className={buttonClassName()} href="/">Import audio</WorkspaceLink></div>;
   const blocked = hasAppliedDeep(track);
   const unavailable = !track.sourceIdentity || !reference?.sourceIdentity;
   const result = review?.proposal;

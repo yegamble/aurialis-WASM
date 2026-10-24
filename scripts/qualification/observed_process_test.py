@@ -1,7 +1,7 @@
 """Synthetic identity/RSS union controls; no browser, model or audio work."""
 import unittest
 from unittest import mock
-from observed_process import ObservedProcess, union_rows
+from observed_process import ObservedProcess, union_rows, known_group_survivors
 
 
 class Observation(unittest.TestCase):
@@ -29,6 +29,19 @@ class Observation(unittest.TestCase):
             process = ObservedProcess(10)
         with self.assertRaisesRegex(RuntimeError, "exited"):
             process.observe({})
+
+    def test_known_browser_child_can_survive_after_its_leader_exits(self):
+        leader = self.row(10)
+        child = {**self.row(11), "ppid": 10, "pgid": 10}
+        after = {**child, "ppid": 1}
+        self.assertEqual(known_group_survivors([leader, child], [after], 10), [after])
+
+    def test_no_unseen_reused_changed_group_or_zombie_can_prove_survival(self):
+        child = {**self.row(11), "ppid": 10, "pgid": 10}
+        cases = [[], [{**child, "pid": 12}], [{**child, "start": "reused"}], [{**child, "pgid": 12}], [{**child, "state": "Z"}]]
+        for after in cases:
+            with self.subTest(after=after):
+                self.assertEqual(known_group_survivors([child], after, 10), [])
 
 
 if __name__ == "__main__":

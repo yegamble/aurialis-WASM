@@ -168,3 +168,6 @@ Gate commands above are requirements, not claims of passing CI. See [`docs/tasks
 ## Private attention research checkpoint
 
 The isolated stem-research branch adds 28 bounded, device-local CPU attention fixtures, preserving every key through N=1723. Actual native Go, original Attend math/CPU SDPA and unfused probes remain distinct; eight small contract tests passed. The mandatory FTZ resurrection case remains limited even though its CPU final value is normal. There is no attention GPU dispatch, model forward, endpoint or public capability. [Private design and evidence](internal/audio/steminfer/testdata/webgpu/attention/README.md) states the resource conventions and remaining gates. This older branch's historical product documentation is not a replacement for newer main documentation.
+
+
+Private attention source checkpoint: an isolated eight-pass all-key shader and disposable fixture Worker now have 33 CPU/source units and a propagated audit of the unchanged 28 CPU probes (25 ordinary-input diagnostics, three LIMITED). No attention GPU operation, model forward or public feature was enabled. The [private guide](internal/audio/steminfer/testdata/webgpu/attention/README.md#source-only-eight-stage-bridge-checkpoint) records ownership, full uncertainty, retained failures and independent/hardware review still pending.

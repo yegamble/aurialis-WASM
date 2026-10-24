@@ -171,3 +171,10 @@ Live playback meters are computed from actual audible blocks: sample peak dBFS, 
 ## Private attention fixture boundary
 
 The test-only attention recorder adds no HTTP endpoint or public ABI. Its 28 closed synthetic cases record actual native Go, original Attend math/CPU SDPA and separate unfused probes without audio or model loading. GPU execution, ownership and full propagated-stage bounds remain unqualified. [The private fixture contract](../internal/audio/steminfer/testdata/webgpu/attention/README.md) records exact provenance, binary layout and coarse work-count conventions; these results do not activate trained separation.
+
+
+### Private attention fixture bridge — no public API
+
+The private fixture bridge now defines eight stored all-key stages and a pinned one-shot Worker ABI. It adds no HTTP endpoint, application import, model download or trained separation capability. Thirty-three source units and a new propagated audit of unchanged CPU probes passed; no actual attention GPU operation occurred. Readable fixture receipts retain memory admission until disposal detaches their buffers. Source/ownership/numeric review and authorized hardware qualification remain open. See the [private contract guide](../internal/audio/steminfer/testdata/webgpu/attention/README.md#source-only-eight-stage-bridge-checkpoint).
+
+<!-- cspell:words WGSL -->

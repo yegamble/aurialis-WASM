@@ -1,0 +1,6 @@
+/** Offline source-only audit of unchanged pinned CPU stage probes, never GPU. */
+import {readFile}from'node:fs/promises';import{createHash}from'node:crypto';import path from'node:path';
+import{FIXTURES}from'./fixture-index.mjs';import{parseFixture}from'./contract.mjs';import{analyzeStages,STAGES}from'./propagated.mjs';
+const root=process.argv[2];if(!root)throw new Error('Provide accepted original-v1 directory');
+const cases=[];for(const pin of FIXTURES){const raw=await readFile(path.join(root,pin.name));if(raw.byteLength!==pin.bytes||createHash('sha256').update(raw).digest('hex')!==pin.sha256)throw new Error('Pinned fixture changed');const fixture=parseFixture(raw.buffer.slice(raw.byteOffset,raw.byteOffset+raw.byteLength)),packed=new Float32Array(fixture.plan.stageCells);let offset=0;for(const name of STAGES){packed.set(fixture.arrays[name],offset);offset+=fixture.arrays[name].length;}const r=analyzeStages(fixture,packed.buffer);cases.push({name:pin.name,sha256:pin.sha256,classification:r.classification,reasons:r.reasons,termVisits:r.termVisits,referenceCoarseUnits:r.referenceCoarseUnits,validationFloatVisits:r.validationFloatVisits,maximumOutputIntervalWidth:r.maximumOutputIntervalWidth});}
+console.log(JSON.stringify({scope:'new source checker against unchanged unfused CPU probes; zero GPU/model/audio operations',cases},null,2));

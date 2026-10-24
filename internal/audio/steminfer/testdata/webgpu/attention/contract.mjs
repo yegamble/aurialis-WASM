@@ -1,4 +1,4 @@
-/** Private CPU admission/numeric design. No Worker, GPU dispatch or app import. */
+/** Private CPU admission/numeric design. No GPU calls or app import. */
 export const ABI = "aurialis-private-attention-stages-1";
 export const DIMENSION = 64;
 export const MIN_NORMAL = 2 ** -126;
@@ -32,8 +32,9 @@ export function shapePlan(m, n, dimension = DIMENSION) {
   // more machine operations. Payload scan count is separately disclosed below.
   const referenceWork = 2 * m * n * DIMENSION + 12 * cells + 2048 * m;
   const paddedKeys64 = Math.ceil(n / 64) * 64, paddedKeys256 = Math.ceil(n / 256) * 256;
-  // GPU units count scalar arithmetic/comparison operations, with a dot term
-  // charged twice (multiply+add), and all padded invocations conservatively.
+  // GPU units count floating data arithmetic/reduction comparisons, with a dot term
+  // charged twice (multiply+add), and all padded invocations conservatively. Integer indexing/control is
+  // separately bounded by allocationPlan, not included in this FP budget.
   const gpuStages = Object.freeze({
     raw: 2 * m * paddedKeys64 * DIMENSION,
     scaled: m * paddedKeys64,
@@ -101,7 +102,7 @@ export function ulp32Upper(value) {
   if (exponent === 255) throw new Error("Float32 ULP overflow");
   return 2 ** (exponent - 127 - 23);
 }
-function dyadicQuantum(value) {
+export function dyadicQuantum(value) {
   if (value === 0) return Infinity;
   words.setFloat32(0, Math.abs(value), false);
   const bits = words.getUint32(0, false), exponent = (bits >>> 23) & 255;
@@ -109,12 +110,13 @@ function dyadicQuantum(value) {
   while ((significand & 1) === 0) { significand >>>= 1; trailing++; }
   return (exponent ? exponent - 127 - 23 : -149) + trailing;
 }
-export function dotDiagnostic(left, right, count, leftOffset = 0, rightOffset = 0, rightStride = 1) {
+export function dotDiagnostic(left, right, count, leftOffset = 0, rightOffset = 0, rightStride = 1, visit) {
   if (!Number.isSafeInteger(count) || count < 1 || count > 1723 || leftOffset < 0 || rightOffset < 0 || !Number.isSafeInteger(rightStride) || rightStride < 1
     || leftOffset + count > left.length || rightOffset + (count - 1) * rightStride >= right.length) throw new Error("Unsafe compensated dot geometry");
   let sum = 0, correction = 0, absolute = 0, absoluteCorrection = 0, limited = false, quantum = Infinity;
   for (let i = 0; i < count; i++) {
     const a = finite(left[leftOffset + i]), b = finite(right[rightOffset + i * rightStride]), product = finite(a * b);
+    if (visit) visit(a, b, product, i);
     let next = sum + product;
     correction += Math.abs(sum) >= Math.abs(product) ? (sum - next) + product : (product - next) + sum;
     sum = next;

@@ -1,7 +1,7 @@
 {
   "harness.mjs": {
-    "bytes": 2521,
-    "sha256": "3ae4bc5ed5fafce188f6cb2300971bf755fc95c580c9525d4f143fa85fc98d51",
+    "bytes": 2613,
+    "sha256": "d8baf52f5812d4300b87824ac542d835addf4b94cde72a2eedbce719034653f0",
     "mime": "text/javascript; charset=utf-8"
   },
   "capture.mjs": {
@@ -50,8 +50,8 @@
     "mime": "text/javascript; charset=utf-8"
   },
   "gpu-runner.mjs": {
-    "bytes": 8425,
-    "sha256": "d00b12b1fced51fafc4e1a07e00c50040006de6c2aec8b7fc072aa081bb265f1",
+    "bytes": 10041,
+    "sha256": "8c45b56d78916220d953117087c68e96ee17c638f045e560084cd38a91e53c8e",
     "mime": "text/javascript; charset=utf-8"
   },
   "index.html": {

@@ -29,6 +29,51 @@ class Contract(unittest.TestCase):
             spec.loader.exec_module(module)
         self.assertTrue(callable(module.main))
 
+    def test_fresh_same_snapshot_resources_precede_every_ack(self):
+        spec = importlib.util.spec_from_file_location('attention_parent_ack_unit', Path(__file__).with_name('attention-parent.py'))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        rows = {10: row(10), 20: row(20), 99: row(99)}
+        owned = mock.Mock(known={10: rows[10], 20: rows[20]}, leaders={'node': rows[10], 'browser': rows[20]})
+        owned.observe.return_value = {'liveMembers': [rows[10], rows[20]]}
+        supervisor = mock.Mock()
+        supervisor.observe.return_value = rows[99]
+        disk = mock.Mock(f_bavail=7 * 1024 ** 3, f_frsize=1)
+        events = []
+        def sample(*args, **kwargs):
+            events.append('fresh-sample')
+            return module.sample_resources(*args, **kwargs, observer=lambda: rows, disk_reader=lambda _: disk, byte_counter=lambda _: 128, clock=lambda: 2)
+        for phase in ('node', 'browser', 'work'):
+            history = []
+            module.checked_ack(Path('/not-written'), {'phase': phase}, owned, supervisor, '/base', '/output', 1, history, validate=lambda observed: events.append('validate'), sampler=sample, writer=lambda *_: events.append('write'))
+            self.assertEqual(events[-3:], ['fresh-sample', 'validate', 'write'])
+            self.assertEqual(history[0]['outputBytes'], 128 + 4096)
+            self.assertEqual(history[0]['rssBytes'], 3072)
+            self.assertIs(owned.observe.call_args.args[0], rows)
+            self.assertIs(supervisor.observe.call_args.args[0], rows)
+        for change in ('rss', 'free', 'disk', 'wall', 'known', 'missing-leader', 'validation'):
+            with self.subTest(change=change):
+                writer = mock.Mock()
+                owned.known = {10: rows[10], 20: rows[20]}
+                owned.observe.return_value = {'liveMembers': [rows[10], rows[20]]}
+                disk.f_bavail = 7 * 1024 ** 3
+                if change == 'rss':
+                    owned.observe.return_value = {'liveMembers': [row(10, rss=4 * 1024 ** 3), rows[20]]}
+                if change == 'free':
+                    disk.f_bavail = 6 * 1024 ** 3
+                if change == 'known':
+                    owned.known = dict.fromkeys(range(4096))
+                if change == 'missing-leader':
+                    owned.observe.return_value = {'liveMembers': [rows[10]]}
+                def failing_sample(*args, **kwargs):
+                    return module.sample_resources(*args, **kwargs, observer=lambda: rows, disk_reader=lambda _: disk, byte_counter=lambda _: 64 * 1024 ** 2 if change == 'disk' else 128, clock=lambda: 62 if change == 'wall' else 2)
+                def validate(_):
+                    if change == 'validation':
+                        raise RuntimeError('Fresh work identity refused')
+                with self.assertRaises(RuntimeError):
+                    module.checked_ack(Path('/not-written'), {}, owned, supervisor, '/base', '/output', 1, [], validate=validate, sampler=failing_sample, writer=writer)
+                writer.assert_not_called()
+
     def test_node_memory_flags_and_unreleased_modes(self):
         self.assertEqual(node_command('/node', '/launcher', 'normal', '/control'), ['/node', '--max-old-space-size=192', '--stack-size=8192', '/launcher', 'normal', '/control'])
         with self.assertRaises(ValueError):
@@ -97,6 +142,17 @@ class Contract(unittest.TestCase):
         for changed in ({'gpuRequested': False}, {'audioProcessing': True}, {'mode': 'normal'}):
             with self.assertRaises(RuntimeError):
                 state.ready({**ready, **changed}, 'metadata')
+
+    def test_first_four_requires_exactly_four_case_acknowledgments(self):
+        state, observed = self.state()
+        ready = {'token': 'token', 'nodePID': 10, 'browserPID': 20, 'serverPID': 30, 'status': 'pass', 'mode': 'first-four', 'ownershipAcknowledgedBeforeWorker': True, 'audioProcessing': False, 'gpuRequested': True}
+        for i in range(4):
+            with self.assertRaises(RuntimeError):
+                state.ready(ready, 'first-four')
+            state.admit_work({**self.work(), 'id': f'{i:08d}-1234-1234-1234-123456789abc'}, observed)
+        state.ready(ready, 'first-four')
+        with self.assertRaises(RuntimeError):
+            state.admit_work({**self.work(), 'id': '00000004-1234-1234-1234-123456789abc'}, observed)
 
     def test_crash_only_exact_pre_admitted_live_survivor_and_final_empty(self):
         state, _ = self.state()

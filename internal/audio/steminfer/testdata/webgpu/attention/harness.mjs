@@ -11,6 +11,7 @@ picker.addEventListener('change',()=>{
 });
 const bridge=Object.freeze({
  status:()=>owner.status(),
+ selectionStatus:()=>selected?Object.freeze({name:selected.name,bytes:selected.size}):null,
  metadataStatus:()=>metadata.status(),
  startAdapterMetadata:()=>metadata.start(),openMetadata:message=>metadata.open(message),metadataChunk:message=>metadata.chunk(message),ackMetadata:message=>metadata.ack(message),closeMetadata:message=>metadata.close(message),abortMetadataClosed:message=>metadata.abortClosed(message),
  cancelMetadata:()=>{const state=metadata.status();return state.phase==='idle'?state:metadata.cancel(state.id);},

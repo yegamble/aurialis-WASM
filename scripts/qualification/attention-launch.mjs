@@ -2,11 +2,13 @@
 import {createHash} from 'node:crypto';
 import {readFile,lstat,writeFile} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
+import {constants} from 'node:fs';
+import {createFirstFourController,createCDPSelection,createFirstFourNetwork} from './attention-first-four.mjs';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
-import {metadataFromOwnedPage,playwrightPageAdapter} from '../../internal/audio/steminfer/testdata/webgpu/attention/capture-driver.mjs';
-import {createMetadataSinkFactory} from '../../internal/audio/steminfer/testdata/webgpu/attention/capture-files.mjs';
+import {captureFromPage,metadataFromOwnedPage,playwrightPageAdapter} from '../../internal/audio/steminfer/testdata/webgpu/attention/capture-driver.mjs';
+import {createFileSinkFactory,createMetadataSinkFactory} from '../../internal/audio/steminfer/testdata/webgpu/attention/capture-files.mjs';
 import {admittedBrowser,beforeOwnedWork,exclusiveJSON} from './owned-browser.mjs';
 
 export function launchOptions(pins){
@@ -15,7 +17,7 @@ export function launchOptions(pins){
 }
 const errorView=error=>error instanceof AggregateError?{message:String(error.message).slice(0,512),causes:error.errors.slice(0,4).map(cause=>String(cause?.stack??cause).slice(0,512))}:String(error?.stack??error).slice(0,2048);
 export async function runOwnershipProbe(mode,deps){
- if(!['normal','crash','metadata'].includes(mode))throw new Error('Only normal/crash/metadata source commands exist');
+ if(!['normal','crash','metadata','first-four'].includes(mode))throw new Error('Only normal/crash/metadata source commands exist');
  let server,host,browser,context,primary=null,details=null;const cleanup=[];
  try{
   server=await deps.admit(launchOptions(deps.pins));
@@ -23,10 +25,10 @@ export async function runOwnershipProbe(mode,deps){
   // The managed host exists BEFORE its spawn/acquisition task starts.
   host=deps.prepareHost();await host.acquire();const endpoint=await host.ready();
   await deps.publish('static-server',{serverPID:host.pid(),url:endpoint.url});
-  await deps.beforeWork();if(deps.stopping())throw new Error('Stopped before acknowledged work');
+  if(mode!=='first-four')await deps.beforeWork();if(deps.stopping())throw new Error('Stopped before acknowledged work');
   browser=await deps.connect(server);context=await browser.newContext();
   details=await deps.probe(context,browser,endpoint.url);
-  await deps.publish('probe-ready',{status:'pass',mode,serverPID:host.pid(),ownershipAcknowledgedBeforeWorker:true,audioProcessing:false,gpuRequested:mode==='metadata'});
+  await deps.publish('probe-ready',{status:'pass',mode,serverPID:host.pid(),ownershipAcknowledgedBeforeWorker:true,audioProcessing:false,gpuRequested:mode==='metadata'||mode==='first-four'});
   if(mode==='crash')await deps.waitForStop();
   if(deps.stopping())throw new Error('Owned no-audio root stopped');
  }catch(error){primary=errorView(error);}
@@ -35,7 +37,7 @@ export async function runOwnershipProbe(mode,deps){
    try{await operation();}catch(error){cleanup.push({phase,error:errorView(error)});}
   }
  }
- return Object.freeze({mode,status:primary===null&&!cleanup.length?'pass':'fail',primary,cleanup,details,audioProcessing:false,gpuRequested:mode==='metadata'});
+ return Object.freeze({mode,status:primary===null&&!cleanup.length?'pass':'fail',primary,cleanup,details,audioProcessing:false,gpuRequested:mode==='metadata'||mode==='first-four'});
 }
 
 /** No child exists at construction; failed acquisition keeps this exact handle. */
@@ -71,7 +73,7 @@ export function prepareStaticHost(python,serveFile,environment){
 }
 async function verifyFile(pin){const info=await lstat(pin.path);if(!info.isFile()||info.isSymbolicLink()||info.size!==pin.bytes)throw new Error('Pinned runtime file geometry changed');const bytes=await readFile(pin.path);if(createHash('sha256').update(bytes).digest('hex')!==pin.sha256)throw new Error('Pinned runtime digest changed');}
 async function realMain(){
- const [mode,output]=process.argv.slice(2);if(!['normal','crash','metadata'].includes(mode)||!output||!path.isAbsolute(output))throw new Error('Closed normal/crash mode and absolute private output required');
+ const [mode,output]=process.argv.slice(2);if(!['normal','crash','metadata','first-four'].includes(mode)||!output||!path.isAbsolute(output))throw new Error('Closed normal/crash mode and absolute private output required');
  const pins=JSON.parse(await readFile(new URL('./attention-launch-pins.json',import.meta.url),'utf8'));
  if(process.version!==pins.nodeVersion||process.execPath!==pins.node.path)throw new Error('Pinned Node26 entry required');
  for(const key of ['brave','python','playwrightEntry','playwrightPackage','playwrightCore'])await verifyFile(pins[key]);
@@ -91,8 +93,30 @@ async function realMain(){
   connect:server=>chromium.connect(server.wsEndpoint(),{timeout:5000}),
   async publish(kind,value){await exclusiveJSON(path.join(output,kind+'.json'),{token,nodePID:process.pid,browserPID:Number(process.env.AURIALIS_OWNED_BROWSER_PID),...value});},
   async probe(context,browser,url){
-   const inventory=[],violations=[];let routeOverflow=false;
-   await context.route('**/*',async route=>{const request=route.request(),target=new URL(request.url());if(target.protocol==='blob:'&&request.method()==='GET'&&!request.postDataBuffer()){await route.continue();return;}const allowed=target.origin===url&&['GET','HEAD'].includes(request.method())&&!request.postDataBuffer()&&(target.pathname==='/'||Object.hasOwn(assets,target.pathname.slice(1)))&&!target.search&&!target.hash;if(inventory.length+violations.length>=256){routeOverflow=true;await route.abort();return;}if(!allowed){violations.push({url:request.url().slice(0,2048),method:request.method()});await route.abort();return;}inventory.push({url:request.url().slice(0,2048),method:request.method(),bodyBytes:0});await route.continue();});
+   const inventory=[],violations=[];let routeOverflow=false;const network=mode==='first-four'?createFirstFourNetwork(assets,url):null;
+   await context.route('**/*',async route=>{const request=route.request(),target=new URL(request.url());if(target.protocol==='blob:'&&request.method()==='GET'&&!request.postDataBuffer()){await route.continue();return;}const allowed=target.origin===url&&['GET','HEAD'].includes(request.method())&&!request.postDataBuffer()&&(target.pathname==='/'||Object.hasOwn(assets,target.pathname.slice(1)))&&!target.search&&!target.hash;if(network){if(!allowed){network.refuse(request.url(),request.method());await route.abort();return;}if(!network.record(target.pathname,request.method())){await route.abort();return;}}else{if(inventory.length+violations.length>=256){routeOverflow=true;await route.abort();return;}if(!allowed){violations.push({url:request.url().slice(0,2048),method:request.method()});await route.abort();return;}inventory.push({url:request.url().slice(0,2048),method:request.method(),bodyBytes:0});}await route.continue();});
+   if(mode==='first-four'){
+    const page=await context.newPage();await page.goto(url,{waitUntil:'load',timeout:5000});await page.waitForFunction(()=>globalThis.aurialisPrivateAttentionCapture?.status().phase==='idle',{},{timeout:5000});
+    const cdp=await context.newCDPSession(page),selection=createCDPSelection(cdp),sink=createFileSinkFactory(output);let charged=0;
+    const check=()=>{if(stopping)throw new Error('First-four source command stopped');};let capturePrimary;
+    try{
+     const controller=createFirstFourController({directory:path.join(root,'artifacts/private-stems/recovery-20261023/attention-cpu-20261023-v1/original'),check,
+      reserve(bytes){if(charged||bytes>16*1024*1024)throw new Error('First-four application budget denied');charged=bytes;let closed=false;return{release(){if(!closed){closed=true;charged=0;}}};},
+      beforeWork:()=>beforeOwnedWork(()=>stopping),
+      async select(file,pin){await selection.select(file,pin);const handle=await page.waitForFunction(({name,bytes})=>{const s=globalThis.aurialisPrivateAttentionCapture?.selectionStatus();return s?.name===name&&s.bytes===bytes;},{name:pin.name,bytes:pin.bytes},{timeout:5000});await handle.dispose();},
+      async clearSelection(){await selection.clear();const handle=await page.waitForFunction(()=>globalThis.aurialisPrivateAttentionCapture?.selectionStatus()===null,{},{timeout:5000});await handle.dispose();},
+      capture:(_pin,signal)=>captureFromPage(playwrightPageAdapter(page),sink,{signal}),
+      async record(pin,index,result){
+       const relative=path.relative(output,result.file.path);if(relative.startsWith('..')||path.isAbsolute(relative)||relative.length>1024)throw new Error('Case output path changed');
+       const value={scope:'private numeric component diagnostic; no model/audio/performance claim',name:pin.name,sourceFixtureSHA256:pin.sha256,stages:{path:relative,bytes:result.file.bytes,sha256:result.file.hash,closed:true},summary:result.header.summary};
+       const text=JSON.stringify(value);if(text.length>10922||Buffer.byteLength(text)>32768)throw new Error('Case receipt representation cap');
+       const filename='case-'+index+'-'+pin.name.replace('.bin','.json'),target=path.join(output,filename);await writeFile(target,text,{flag:constants.O_CREAT|constants.O_EXCL|constants.O_WRONLY|constants.O_NOFOLLOW,mode:0o600});const state=await lstat(target);if(!state.isFile()||state.isSymbolicLink()||state.size!==Buffer.byteLength(text))throw new Error('Case receipt file geometry');const saved=await readFile(target);const sha256=createHash('sha256').update(saved).digest('hex');if(sha256!==createHash('sha256').update(text).digest('hex'))throw new Error('Closed case receipt changed');
+       return{name:pin.name,record:filename,sha256,closed:true};
+      }});
+     const result=await controller.run();if(network.failed||charged!==0)throw new Error('First-four closure/network/resource check failed');await exclusiveJSON(path.join(output,'probe-details.json'),{scope:'first-four component diagnostics only',cases:result.cases,requests:network.requests,violations:0,closed:true});
+     await exclusiveJSON(path.join(output,'first-four-network.json'),{scope:'aggregated closed asset GET/HEAD counts, not an ordered whole-machine trace',...network.summary()});return{kind:'first-four',cases:result.cases.length,closed:true,requests:network.requests};
+    }catch(error){capturePrimary=error;throw error;}finally{try{await cdp.detach();}catch(error){if(capturePrimary)throw new AggregateError([capturePrimary,error],'First-four primary and CDP cleanup failure');throw error;}}
+   }
    if(mode==='metadata'){
     const page=await context.newPage();await page.goto(url,{waitUntil:'load',timeout:5000});await page.waitForFunction(()=>globalThis.aurialisPrivateAttentionCapture?.status().phase==='idle',{},{timeout:5000});
     // Fresh shared-helper ACK precedes the sole metadata command. No File,

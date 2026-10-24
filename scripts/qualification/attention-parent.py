@@ -62,6 +62,33 @@ def directory_bytes(root):
     return total
 
 
+
+def sample_resources(owned, supervisor, base, output, started, pending_bytes=0, observer=None, disk_reader=None, byte_counter=None, clock=None):
+    """One fresh process snapshot supplies both owned groups and QA parent."""
+    rows = (observer or snapshot)()
+    observed = owned.observe(rows)
+    parent = supervisor.observe(rows)
+    disk = (disk_reader or os.statvfs)(base)
+    size = (byte_counter or directory_bytes)(output)
+    check = check_resources(observed, len(owned.known) + 1, size + pending_bytes, disk.f_bavail * disk.f_frsize - pending_bytes, (clock or time.monotonic)() - started, parent)
+    return observed, check
+
+
+def checked_ack(path, value, owned, supervisor, base, output, started, observations, validate=None, sampler=None, writer=None):
+    """No ACK may be written from an earlier admission-loop observation."""
+    if len(observations) >= 512:
+        raise RuntimeError('Observation record cap')
+    observed, check = (sampler or sample_resources)(owned, supervisor, base, output, started, pending_bytes=4096)
+    live = {row['pid'] for row in observed['liveMembers']}
+    if any(leader['pid'] not in live for leader in owned.leaders.values()):
+        raise RuntimeError('ACK requires every admitted leader LIVE')
+    if validate is not None:
+        validate(observed)
+    observations.append(check)
+    (writer or write_metadata)(path, value)
+    return observed
+
+
 def actual_command(pid, executable):
     text = subprocess.check_output(['/bin/ps', '-p', str(pid), '-o', 'command='], text=True, timeout=3).strip()
     return parse_actual_command(text, executable)
@@ -70,7 +97,7 @@ def actual_command(pid, executable):
 def main():
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--mode', choices=['normal', 'crash', 'metadata'], required=True)
+    parser.add_argument('--mode', choices=['normal', 'crash', 'metadata', 'first-four'], required=True)
     parser.add_argument('--output', required=True)
     args = parser.parse_args()
     base = Path(__file__).resolve().parents[2]
@@ -131,7 +158,7 @@ def main():
             child = subprocess.Popen(launch, env=environment, start_new_session=True, stdout=log, stderr=subprocess.STDOUT)
             owned = OwnedGroups(child.pid, os.getpid(), token)
             state = ProbeState(token, child.pid)
-            write_metadata(control / 'node-ack.json', {'token': token, 'nodePID': child.pid, 'parentPID': os.getpid(), 'phase': 'node-admitted'})
+            checked_ack(control / 'node-ack.json', {'token': token, 'nodePID': child.pid, 'parentPID': os.getpid(), 'phase': 'node-admitted'}, owned, supervisor, base, output, started, observations)
             while True:
                 current_rows = snapshot()
                 observed = owned.observe(current_rows)
@@ -149,7 +176,7 @@ def main():
                     browser_command = actual_command(value['browserPID'], pins['brave']['path'])
                     profile = check_browser_command(browser_command, pins['brave']['path'], scratch)
                     state.browser_admitted(value['browserPID'])
-                    write_metadata(control / 'ack.json', {**acknowledgement, 'parentPID': os.getpid()})
+                    checked_ack(control / 'ack.json', {**acknowledgement, 'parentPID': os.getpid()}, owned, supervisor, base, output, started, observations)
                     browser_ack = True
                 server = control / 'static-server.json'
                 if not server_ack and server.exists():
@@ -171,11 +198,7 @@ def main():
                     value = read_metadata(request)
                     if request.name != 'before-worker-' + value.get('id', '') + '.json':
                         raise RuntimeError('Prework filename identity mismatch')
-                    observed = owned.observe()
-                    state.admit_work(value, observed)
-                    disk = os.statvfs(base)
-                    check_resources(observed, len(owned.known) + 1, directory_bytes(output), disk.f_bavail * disk.f_frsize, time.monotonic() - started, supervisor.observe(snapshot()))
-                    write_metadata(request.with_name(request.stem + '-ack.json'), value)
+                    checked_ack(request.with_name(request.stem + '-ack.json'), value, owned, supervisor, base, output, started, observations, validate=lambda current: state.admit_work(value, current))
                 ready = control / 'probe-ready.json'
                 if args.mode == 'crash' and not forced_crash and ready.exists():
                     state.ready(read_metadata(ready), args.mode)
@@ -235,7 +258,7 @@ def main():
             check_resources(final, len(owned.known) + 1, directory_bytes(output), disk.f_bavail * disk.f_frsize, time.monotonic() - started, supervisor.observe(snapshot()))
         except BaseException as error:
             cleanup.append({'phase': 'final-bounds-and-empty-observation', 'error': str(error)[:4096]})
-        result = {'version': 1, 'mode': args.mode, 'status': 'candidate-pass' if primary is None and not cleanup else 'fail', 'scope': 'normal/crash ownership or metadata-only source command, each requiring separate release; no device/fixture/audio/model', 'audioProcessing': False, 'gpuRequested': args.mode == 'metadata', 'launch': launch, 'browserCommand': browser_command, 'staticServerCommand': server_command, 'staticRuntimeVerification': server_verification, 'staticCommandObservations': command_observations, 'profile': profile, 'primary': primary, 'cleanup': cleanup, 'exitCode': child.poll() if child else None, 'seconds': time.monotonic() - started, 'observations': observations, 'leaders': owned.leaders if owned else None, 'admissions': owned.admissions if owned else [], 'events': owned.events if owned else [], 'preCrashBrowserMembers': before, 'confirmedCrashSurvivors': survivors, 'postCrashObservation': post_crash, 'finalObservation': final, 'limits': {'wallSeconds': 60, 'workSeconds': 25, 'outputBytesIncludingScratch': 64 * 1024 ** 2, 'minimumFreeBytes': 6 * 1024 ** 3, 'unionRSSBytes': 4 * 1024 ** 3, 'liveProcesses': 256, 'knownIdentities': 4096}}
+        result = {'version': 1, 'mode': args.mode, 'status': 'candidate-pass' if primary is None and not cleanup else 'fail', 'scope': ('first-four component numerical fixtures only; no model/audio/performance qualification' if args.mode == 'first-four' else 'normal/crash ownership or metadata-only source command, each requiring separate release; no device/fixture/audio/model'), 'audioProcessing': False, 'gpuRequested': args.mode in ('metadata', 'first-four'), 'launch': launch, 'browserCommand': browser_command, 'staticServerCommand': server_command, 'staticRuntimeVerification': server_verification, 'staticCommandObservations': command_observations, 'profile': profile, 'primary': primary, 'cleanup': cleanup, 'exitCode': child.poll() if child else None, 'seconds': time.monotonic() - started, 'observations': observations, 'leaders': owned.leaders if owned else None, 'admissions': owned.admissions if owned else [], 'events': owned.events if owned else [], 'preCrashBrowserMembers': before, 'confirmedCrashSurvivors': survivors, 'postCrashObservation': post_crash, 'finalObservation': final, 'limits': {'wallSeconds': 60, 'workSeconds': 25, 'outputBytesIncludingScratch': 64 * 1024 ** 2, 'minimumFreeBytes': 6 * 1024 ** 3, 'unionRSSBytes': 4 * 1024 ** 3, 'liveProcesses': 256, 'knownIdentities': 4096}}
         terminal_status = 'fail'
         receipt_hash = None
         try:

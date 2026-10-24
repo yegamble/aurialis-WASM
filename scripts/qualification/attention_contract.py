@@ -9,7 +9,7 @@ MAX_KNOWN = 4096
 
 
 def node_command(node, launcher, mode, control):
-    if mode not in ('normal', 'crash', 'metadata'):
+    if mode not in ('normal', 'crash', 'metadata', 'first-four'):
         raise ValueError('Only normal/crash/metadata source commands exist')
     return [node, '--max-old-space-size=192', '--stack-size=8192', launcher, mode, control]
 
@@ -116,8 +116,10 @@ class ProbeState:
 
     def ready(self, value, mode):
         expected = {'token', 'nodePID', 'browserPID', 'serverPID', 'status', 'mode', 'ownershipAcknowledgedBeforeWorker', 'audioProcessing', 'gpuRequested'}
-        if set(value) != expected or not self.server or not self.work or value['token'] != self.token or value['nodePID'] != self.node or value['browserPID'] != self.browser or value['serverPID'] != self.server['pid'] or value['status'] != 'pass' or value['mode'] != mode or value['ownershipAcknowledgedBeforeWorker'] is not True or value['audioProcessing'] is not False or value['gpuRequested'] is not (mode == 'metadata'):
-            raise RuntimeError('Readiness lacks exact no-audio/no-GPU acknowledged authority')
+        if set(value) != expected or not self.server or not self.work or value['token'] != self.token or value['nodePID'] != self.node or value['browserPID'] != self.browser or value['serverPID'] != self.server['pid'] or value['status'] != 'pass' or value['mode'] != mode or value['ownershipAcknowledgedBeforeWorker'] is not True or value['audioProcessing'] is not False or value['gpuRequested'] is not (mode in ('metadata', 'first-four')):
+            raise RuntimeError('Readiness lacks exact acknowledged source authority')
+        if mode == 'first-four' and len(self.work) != 4:
+            raise RuntimeError('Exactly four fresh fixture ACKs required')
 
     def crash_survivors(self, before, after):
         survivors = known_group_survivors(before, after, self.browser)

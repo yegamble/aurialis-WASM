@@ -37,7 +37,7 @@
   "ownedGroupsSHA256": "d5a9978835c7ebcd6fd9c30c6074f4e55b84ac26683b66c4f9198daf3dd08a40",
   "observedProcessSHA256": "a4904130b5c125d3563868c1e9d69dc2cd9be07a105b1cf7250d914b15836df3",
   "ownedBrowserSHA256": "093d935b01dafd316707ab65b2787de65c25b2d9f1c7c47185e16084e81dd965",
-  "contract": "attention-ownership-metadata-source-4",
+  "contract": "attention-first-four-source-5",
   "helpers": [
     {
       "path": "scripts/qualification/owned_groups.py",

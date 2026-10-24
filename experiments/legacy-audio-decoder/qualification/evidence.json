@@ -1,0 +1,84 @@
+{
+  "status": "private23positivePASS+1diagnostic-uncovered",
+  "tier": "actual-browser-worker-native9-pcm-comparison",
+  "audioSource": "our generated deterministic signals only",
+  "positiveCount": 23,
+  "diagnosticUncovered": [
+    "adts-he-1"
+  ],
+  "network": {
+    "requests": 168,
+    "methods": [
+      "GET"
+    ],
+    "external": 0,
+    "blocked": 0
+  },
+  "lossyCriteria": {
+    "maxAbsolute": 2e-05,
+    "rms": 2e-06
+  },
+  "positiveObserved": {
+    "maxAbsolute": 5.960464477539063e-08,
+    "rms": 4.3283845294915466e-09,
+    "losslessSourceBitExact": true
+  },
+  "historicalRetainedComparisonBytes": 36261945,
+  "scopeExcludes": [
+    "malformed/polyglot qualification",
+    "full lifecycle",
+    "actual GoCDR",
+    "durable publication",
+    "license/relink approval",
+    "second clean reproducible build",
+    "public activation"
+  ],
+  "receipts": [
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/matrix.json",
+      "bytes": 93375,
+      "sha256": "9e3fd822baf0b42cde54250a28a24f3a2c05d6999623376550e9362a5945c91b"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/native-results.json",
+      "bytes": 48143,
+      "sha256": "bb970fe720d04e585045bcfa76776ba22f8b27d91a6cf62561ad7f2e69f57a76"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/run-status.json",
+      "bytes": 47658,
+      "sha256": "8669a628cab391d735594561774b4d6b2d12d800beee6ab5d504fb256b975563"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/wasm-results.json",
+      "bytes": 135030,
+      "sha256": "84e790e28631008d85aef79bd277de9cd57aafd275976085e783d06245daae0d"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01-supervisor/driver.json",
+      "bytes": 998,
+      "sha256": "5a0b3e56f8f02dcc8659f1085ca8a63046752fcdafc13ec07b4b2c6889464b1c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-04/generation-red.json",
+      "bytes": 265,
+      "sha256": "9b373c32427aff0f897fac903345cda76d9ce3e292f8ac67b1212b4f96466789"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-04/settlement-observation.json",
+      "bytes": 368,
+      "sha256": "0fa42f9346be51fa3bae809194b4bb99e88612e846a65fcdf71e1c651aadd81a"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-06/result.json",
+      "bytes": 1953,
+      "sha256": "4f5922373c1c3d9c09feefe62d86740512a8077e6bcd369ba91e17b7570aab63"
+    }
+  ],
+  "browserResourceEvidence": {
+    "sampledNodeGroupRSSBytes": 247119872,
+    "aggregateBrowserRSS": "unproved: detached Chromium is outside NodePGID",
+    "normalBrowserContextClose": "passed",
+    "nodeCrashDetachedBrowserCleanup": "open; next-run public BrowserServer ownership correction required"
+  }
+}

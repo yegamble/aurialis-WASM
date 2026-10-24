@@ -1,0 +1,2104 @@
+{
+  "status": "immutable-private-positive-checkpoint",
+  "positivePass": 23,
+  "diagnosticUncovered": [
+    "adts-he-1"
+  ],
+  "matrixSHA256": "9e3fd822baf0b42cde54250a28a24f3a2c05d6999623376550e9362a5945c91b",
+  "sourceCheckpoint": "bf72384 before additive source/Writer sync",
+  "records": [
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/bin/vorbis-fixture-encoder",
+      "bytes": 35992,
+      "sha256": "28bc64949c1dfd52a149c5971a97c39e975a9f7e5474f9209cdea518195d843b"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidate-results.json",
+      "bytes": 52264,
+      "sha256": "ff404271092c1e8284cc88e5fe3e6b499967db7cf6f9d2e03d636ddea1204ecc"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/alac-1.m4a",
+      "bytes": 94283,
+      "sha256": "45099da857ab8de8988fc8c6a07829bbe722629cf9b4c787cedbd41e0fd0bdbe"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/alac-2.m4a",
+      "bytes": 197004,
+      "sha256": "de9dedf9600d22e3a3fc8642b9e5ffed70cd6d836c2406285798bd2c969e7bf7"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/flac-1.flac",
+      "bytes": 75364,
+      "sha256": "4596d06ef5af71157af1bab1b1fd36a0b27dbde089868f5b5b5b51ef25157ffd"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/flac-2.flac",
+      "bytes": 146494,
+      "sha256": "33c9720f52ca777bb9c9e15fe45a3ea772e1c9ab4725fc7724764aa65fa9e179"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/flac-rate-192000.flac",
+      "bytes": 479100,
+      "sha256": "d6f197a95f40f74771edebb894ed7fb15bb927f31fe6e407608dd337d8149544"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/flac-rate-22050.flac",
+      "bytes": 61321,
+      "sha256": "c4b6f50d85b50c07aaaff81c4cb16116fc2e9f972f9682d433b3e6dcae2f4945"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/flac-rate-8000.flac",
+      "bytes": 19636,
+      "sha256": "95600982e0474f157a96947dc26f997f651101387e3cbc4ba01e3167aae3c287"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/flac-rate-88200.flac",
+      "bytes": 221657,
+      "sha256": "b48b5ebaa203b7f81946f2bbcf461956389bf72a8fae31d7bc2ad290381bfbf5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/mp3-1.mp3",
+      "bytes": 16718,
+      "sha256": "2de9843e14dd3e61039fda66c201443d5b5ee46efa71d90f667e00a5c5217f72"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/mp3-2.mp3",
+      "bytes": 17135,
+      "sha256": "632cd6beabdd762eb3b3820bd119a11403a6d802fa8af73f03eb7813344d5a14"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/mp3-valid-shorter.mp3",
+      "bytes": 8359,
+      "sha256": "7156b5a8f26493fefa5d2fed0c4c7dce30ce65b12529467d66455ce44306594f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/opus-1.ogg",
+      "bytes": 8402,
+      "sha256": "21ca6ad4b8b886943ef5899f9aff35b08d67d69cbc2bd048266e41c78bce54a4"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/opus-2.ogg",
+      "bytes": 16613,
+      "sha256": "ca017eb65bb9da27b9f439d44870b369ccce53de22ee14d51c095ab49dd50546"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/vorbis-1.ogg",
+      "bytes": 18519,
+      "sha256": "e48b1ee1c4d939bd7611ffd805a7726fdff5c77e71b04d63d55512559d07c804"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/candidates/vorbis-2.ogg",
+      "bytes": 32168,
+      "sha256": "7d84a31cf9539b172751538c6d2750c20ea59e4d3390574497cb404774cac3c2"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/commands.json",
+      "bytes": 34919,
+      "sha256": "3bdd392f74d199c18e26614ca5293da0023ea668e0df2aa407a5e04da2cb502c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/compile-vorbis-fixture.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/compile-vorbis-fixture.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-adts-he-1.stderr",
+      "bytes": 458,
+      "sha256": "2fc40db5a4e65b66c66914edc92f689e80589231a7075240361c912c34cf3a1a"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-adts-he-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-adts-he-2.stderr",
+      "bytes": 458,
+      "sha256": "4915d0eb3f400695f333585e75723cad8f3995f768ea3832d7ba90fe42ab2e47"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-adts-he-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-adts-hev2-stereo.stderr",
+      "bytes": 474,
+      "sha256": "7c2f4f9331b11e51a7a747224dbae8fcc84f326ccb99d38fe897384d673c9c96"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-adts-hev2-stereo.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-adts-lc-1.stderr",
+      "bytes": 461,
+      "sha256": "5bf9daf2a391c7778d2a05d1823d8e2d4df1b6a5827420d1bf213c79a124a830"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-adts-lc-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-adts-lc-2.stderr",
+      "bytes": 461,
+      "sha256": "135c5f4fdd4e8fdbcc6502c80386502c8d978fedf667d6dc97327230dc6d2a8a"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-adts-lc-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-alac-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-alac-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-alac-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-alac-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-flac-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-flac-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-flac-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-flac-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-flac-rate-192000.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-flac-rate-192000.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-flac-rate-22050.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-flac-rate-22050.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-flac-rate-8000.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-flac-rate-8000.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-flac-rate-88200.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-flac-rate-88200.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-m4a-edit-stereo.stderr",
+      "bytes": 467,
+      "sha256": "5229a843fd0ab980046e1681111d63863e10bec31f1f0c26496305c632f80cc2"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-m4a-edit-stereo.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-m4a-lc-1.stderr",
+      "bytes": 460,
+      "sha256": "ca1ddbfc859ff2ea3b26326bdfbd0eba456fdb96e87f948bad8f4697fbd77289"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-m4a-lc-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-m4a-lc-2.stderr",
+      "bytes": 460,
+      "sha256": "e6a8273ab537663c6c0efe1a6683151eb1791c197f27914cca9b91aa810e267c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-m4a-lc-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-mp3-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-mp3-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-mp3-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-mp3-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-opus-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-opus-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-opus-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-opus-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-vorbis-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-vorbis-1.stdout",
+      "bytes": 126,
+      "sha256": "b6f3de8ea6aecabd41e794cb4a101a7a2f1804500ad00d13d666b9db2f27b7c2"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-vorbis-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/encode-vorbis-2.stdout",
+      "bytes": 126,
+      "sha256": "1ab9d31d9ca65cfcada5b896cb3a3860f51bc49cb4cff77708e341725a61e8d5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-alac-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-alac-1.stdout",
+      "bytes": 343,
+      "sha256": "7bf21866f2341bbaf8e5d24883f10b18268dc02b09783f9c3dc55a1f227208b7"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-alac-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-alac-2.stdout",
+      "bytes": 343,
+      "sha256": "cac256313fed08b31daecdfd26e1f6f03adf40ff7d71a1be850a6f1cf1329046"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-flac-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-flac-1.stdout",
+      "bytes": 312,
+      "sha256": "1492074ab984638843febe02c59043a4ae14556ff5650dac544d0434234fba3b"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-flac-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-flac-2.stdout",
+      "bytes": 312,
+      "sha256": "350312c2033aaed9dfa34b4e4b103bc564fc2eeb8125e84d080b311903af08e7"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-flac-rate-192000.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-flac-rate-192000.stdout",
+      "bytes": 313,
+      "sha256": "be20d1f9982ae86888cda0cd09efc6ea77fc1211a4239409b8a29245fee0f304"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-flac-rate-22050.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-flac-rate-22050.stdout",
+      "bytes": 312,
+      "sha256": "a780f218e0f4a8f41df2d0f240131772b4617823fdb43e7be5a6dcad1a8fe23c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-flac-rate-8000.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-flac-rate-8000.stdout",
+      "bytes": 311,
+      "sha256": "888fc8d77dab43e7fdf6f51e2de9883de9aac866db379de3c6bab639c0aeac9b"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-flac-rate-88200.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-flac-rate-88200.stdout",
+      "bytes": 312,
+      "sha256": "0430db7cd1c29b758bc338fb26639099b39ca53617a02bfcdcd61ca2c53488fa"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-mp3-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-mp3-1.stdout",
+      "bytes": 270,
+      "sha256": "23a748d24aa06f84ad871b685816f9a08ea495f44241bfd2dfd515e4e17c3100"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-mp3-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-mp3-2.stdout",
+      "bytes": 270,
+      "sha256": "866aedf129d084c918a53a02615cdd4e9b611c08f74cba218f9306b36b64d00e"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-mp3-valid-shorter.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-mp3-valid-shorter.stdout",
+      "bytes": 270,
+      "sha256": "be7632ebd0b9744e3b6df12c3c69384a55949a1ca6faf3b43dc78c5f36ca7271"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-opus-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-opus-1.stdout",
+      "bytes": 271,
+      "sha256": "e17fdcda152ee9f13366cdf25fbaf91a185b732f94f4d1220c94666f4d3b2815"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-opus-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-opus-2.stdout",
+      "bytes": 271,
+      "sha256": "cbcb4c021116a3f5ae98d469e0158a960681877a57cf37b2a2053d3c32f02d90"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-vorbis-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-vorbis-1.stdout",
+      "bytes": 273,
+      "sha256": "70af9169824e94c61ed28e4aa3e7b9f22a9a22c14d9f634c1565c580d29e388c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-vorbis-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/metadata-vorbis-2.stdout",
+      "bytes": 273,
+      "sha256": "1fd37506d7d70bb0ba0603baf6eb6ae01ca90cfff45d6f490e7604634f3ea954"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/packet-boundaries-mp3-valid-shorter.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/logs/packet-boundaries-mp3-valid-shorter.stdout",
+      "bytes": 2997,
+      "sha256": "365f6665309a97d841b450ba0a11b81af98716dd7f03405b66322ab12a4d3905"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/preregistered-matrix.json",
+      "bytes": 19164,
+      "sha256": "be8b43082c88a6abd3b19e3a4c4e847d2461753fc35b03315421465337461fbb"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/provenance.json",
+      "bytes": 737,
+      "sha256": "135efbde60a04364d2c459d12965c56e86e5004e534d161559d4513c9058c347"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/result.json",
+      "bytes": 435,
+      "sha256": "1be327d5f75a8ece5f390292bff2d4680b5729dd30585b2c50e37f5cfe6b9ec2"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-192000-1ch-24bit.f32le",
+      "bytes": 768196,
+      "sha256": "400e1d648418a8e35633f36c8d72cdb4c0daaddf42362a7088d380b3e5d3a744"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-192000-1ch-24bit.wav",
+      "bytes": 576191,
+      "sha256": "586cd5106422785457323ec056c91ec1f42f0af3a20353c34b7ba5404fd1dcf1"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-22050-1ch-24bit.f32le",
+      "bytes": 88396,
+      "sha256": "a95b7489f013fb55e022196351fb92d35552c5a5a18932bd9d66c6ce90e67c1f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-22050-1ch-24bit.wav",
+      "bytes": 66341,
+      "sha256": "6f70cf0676f0dd2de8ae5fcdb31fe16e962141301098666f74d6d3735f16880f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-44100-1ch-16bit.f32le",
+      "bytes": 176596,
+      "sha256": "164a6aa4757eb20bf5cc93fde102aec9e2b9a686ffc0d77f54b970e66f0e7ff6"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-44100-1ch-16bit.wav",
+      "bytes": 88342,
+      "sha256": "0857f072f72100bf87a7cc5bb778a9806228cf0d7cbd90523c9f9844bde21c06"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-44100-1ch-24bit.f32le",
+      "bytes": 176596,
+      "sha256": "bda10033014d9ab413dab2349a4b9b22878be676753830ddfbe2b830883c25df"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-44100-1ch-24bit.wav",
+      "bytes": 132491,
+      "sha256": "d1195c079998325f75f0fb1c7c1a75a9cb9ef66858426324f44f71b557db21f4"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-44100-2ch-16bit.f32le",
+      "bytes": 353192,
+      "sha256": "c3904b3d9bb8dd9a5fb813f54d8b268939593ed44c26eb5c2fecceb7111af21c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-44100-2ch-16bit.wav",
+      "bytes": 176640,
+      "sha256": "001a3e39580781f619fc1b4aa67b23f47b75b43ebc34b5b1396cb6ff0b976dc2"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-44100-2ch-24bit.f32le",
+      "bytes": 353192,
+      "sha256": "ed16347674466e17e6764a2f8be13967f076848c288627715eea516f6acc608d"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-44100-2ch-24bit.wav",
+      "bytes": 264938,
+      "sha256": "d3aa9679a3db6d777cbb0eb3c7e00a81582de77ad45b573b3f97b4734d6a0cb0"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-48000-1ch-16bit.f32le",
+      "bytes": 192196,
+      "sha256": "5394fcb5f400e97f628c4410f835f7429a7f725494d5eabc067ae957ffec82e6"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-48000-1ch-16bit.wav",
+      "bytes": 96142,
+      "sha256": "99de1b049d6f7cc06c6c8843fbd62230542d2d67788dfadf10503010ad9f9b43"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-48000-2ch-16bit.f32le",
+      "bytes": 384392,
+      "sha256": "f5fd1dc93bbe17fd3dee412782e33b28015ba403db0b1956daccee3e068ae048"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-48000-2ch-16bit.wav",
+      "bytes": 192240,
+      "sha256": "5f059feb7b3e7eab40297c302e8a903cdfb4395409969b4e2abf6ff9ec29a91c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-8000-1ch-16bit.f32le",
+      "bytes": 32196,
+      "sha256": "e1e5cf5c6fda1bf9cae21b5d45ac4698a0493a4800eeb27047f6f1b0e2c96d29"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-8000-1ch-16bit.wav",
+      "bytes": 16142,
+      "sha256": "c7e3ebe8938e86b66cdaa259d12137c03e85dfe4a78445f37c9456134c51fb40"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-88200-1ch-32bit.f32le",
+      "bytes": 352996,
+      "sha256": "4c406af7bbff27759b1c7a03efc16747b42d0c7b15886050b09953525b40bba5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-01/sources/generated-88200-1ch-32bit.wav",
+      "bytes": 353040,
+      "sha256": "4ab09a3f61ac987b08f920e34a9c9a40b283287027ff0ab792dee0b923fa6df7"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/candidate-results.json",
+      "bytes": 67194,
+      "sha256": "7a7d550e680b0774628bc8d39ae3a2e3b6af28606006d082827ba0c35b03eb47"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/candidates/adts-he-1.aac",
+      "bytes": 5893,
+      "sha256": "f6fb4ca7c1e98cbbba2dd7ea4041280f52e5b31d556e73078cda2a19bba6faf3"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/candidates/adts-he-2.aac",
+      "bytes": 9285,
+      "sha256": "52b0d8ec6d3265bf4da09d2c37f0643063aa8ec386b226aa0ca9d6f2eb3c2cb4"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/candidates/adts-hev2-stereo.aac",
+      "bytes": 4737,
+      "sha256": "c366723babdc4cbe38106d508482a9e545c0e99def69b14a92398d34affd3d79"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/candidates/adts-lc-1.aac",
+      "bytes": 17374,
+      "sha256": "5d92eeeba250dfe1c46d2e9345e63e85546bfaa91141050c1994b4323b2c4f32"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/candidates/adts-lc-2.aac",
+      "bytes": 17297,
+      "sha256": "078f16fee3eba365310b1e7436c7a734fff4d70c2864782a731bd36a0e4884de"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/candidates/adts-valid-shorter.aac",
+      "bytes": 8716,
+      "sha256": "6a916e6c97d07874d2ea9be6e405b6a3963dc36907a55e0125f5a94d4e09a048"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/candidates/m4a-edit-stereo.m4a",
+      "bytes": 17963,
+      "sha256": "bd378a38c0009d5fb3028675d003e41940a59f576080094fc2ab38847f6f6792"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/candidates/m4a-lc-1.m4a",
+      "bytes": 18028,
+      "sha256": "4476c50f5b93dea1d861544a262a8c5254f696bd7fbff0e684190ce867918678"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/candidates/m4a-lc-2.m4a",
+      "bytes": 17951,
+      "sha256": "026126dbe02156863d42b50d44c73a4e0bfcbd76608bcac081976960a1cea22a"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/commands.json",
+      "bytes": 15983,
+      "sha256": "6c8f33b8fccacd311c64301f517d68c7f85c61697e72ae2fd4692b065ff7bbcf"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-adts-he-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-adts-he-1.stdout",
+      "bytes": 305,
+      "sha256": "87ab583fc541957ee5b131d303cbe07af9c025919c6106547c10a26a73fdba8c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-adts-he-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-adts-he-2.stdout",
+      "bytes": 303,
+      "sha256": "25b41a9b9610cbeec99f6b88e63837094c4e5af6f5f44e9ac92ae0fd65fdbad9"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-adts-hev2-stereo.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-adts-hev2-stereo.stdout",
+      "bytes": 305,
+      "sha256": "1b4db579afe5046afd6664f5064209e7e69b9da327d93a02d2ba68c01a407d73"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-adts-lc-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-adts-lc-1.stdout",
+      "bytes": 299,
+      "sha256": "06a9a4a1ffadf986a0f55a4a702b3821a2b93268dbec5a97f6132dfdc3adc4e7"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-adts-lc-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-adts-lc-2.stdout",
+      "bytes": 299,
+      "sha256": "50c645e967dfe41daabab8e6bc3fa433b74eaf435489a2b7e81e034453cba2c6"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-adts-valid-shorter.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-adts-valid-shorter.stdout",
+      "bytes": 299,
+      "sha256": "5e9ceaa0b59ed55ce72cbda23bb52e0211839ea018b3cbbc991eec51df2cf337"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-m4a-edit-stereo.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-m4a-edit-stereo.stdout",
+      "bytes": 330,
+      "sha256": "567bf5300ce9e06d6320b0f7a568ad10b5bed0a4644ef7ee2d5279b8e7174c2b"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-m4a-lc-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-m4a-lc-1.stdout",
+      "bytes": 330,
+      "sha256": "c272d75c1e9b52e61abb019f560f2212ca88cf4dda48dd975946ec1c470aaf40"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-m4a-lc-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/metadata-m4a-lc-2.stdout",
+      "bytes": 330,
+      "sha256": "ed150c670a6d7aee51c1f0fceb9d2f7395b591e8e1af2838fa5adc5e9be6ab1f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-adts-he-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-adts-he-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-adts-he-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-adts-he-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-adts-hev2-stereo.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-adts-hev2-stereo.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-adts-lc-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-adts-lc-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-adts-lc-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-adts-lc-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-m4a-edit-stereo.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-m4a-edit-stereo.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-m4a-lc-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-m4a-lc-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-m4a-lc-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/numeric-profile-m4a-lc-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/packet-boundaries-adts-valid-shorter.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/logs/packet-boundaries-adts-valid-shorter.stdout",
+      "bytes": 3742,
+      "sha256": "dd02ec9a8a030b9a47f4bdc54557afb321b34e31c75bdf485d6076de6323e25a"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/preregistered-retry.json",
+      "bytes": 8522,
+      "sha256": "0040c51094cce2584a5d22ab601149be81b28c726334f70d024c20d23ea7609c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-02/result.json",
+      "bytes": 283,
+      "sha256": "5b52ecb6931073fec4c088f33d29cf7c0825563c63c5733383c27122c2ee2d1a"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-03/candidate-results.json",
+      "bytes": 67259,
+      "sha256": "97637e8b66c4c3d1c4a7cb1542ffff75a6bd0f6a3d75a8cc8def6b2eb33caea1"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-03/candidates/flac-rate-88200.flac",
+      "bytes": 298860,
+      "sha256": "8547a5cf401b4f7fce78dfe9a6737fe51cb43ec483bb463a37c2c70adf8d8d99"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-03/commands.json",
+      "bytes": 885,
+      "sha256": "50546ede29425ae9057d00bae56246635484996a8bdb8796655119789816453c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-03/logs/encode-flac32-existing-xiph.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-03/logs/encode-flac32-existing-xiph.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-03/preregistered-flac32.json",
+      "bytes": 14636,
+      "sha256": "4ed874a9128374e4321344381d77d31e5ddbe03f81c0a8185d2dbd0e46c32587"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-03/result.json",
+      "bytes": 319,
+      "sha256": "d020e93ba6513fbdfcd62badb908e1d0308c39c19e36c3e1bc062209fd58498b"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-03/sources/expected-88200-1ch.f32le",
+      "bytes": 352996,
+      "sha256": "81fdf926fee166745f76cd061630e3fdfc1166cafef188259f7bf6014feb9a76"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-03/sources/generated-88200-1ch-s32le.raw",
+      "bytes": 352996,
+      "sha256": "2d8400745864ba4438227c04b022c390846cc7374d5386a6bb946422ae4e1a59"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-04/candidates/flac-2.flac",
+      "bytes": 289137,
+      "sha256": "9a7129f3cdc76915bbba201ab31b9a5e90aa458ef7c974308b711934eb322fa5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-04/generation-red.json",
+      "bytes": 265,
+      "sha256": "9b373c32427aff0f897fac903345cda76d9ce3e292f8ac67b1212b4f96466789"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-04/logs/encode-flac96-existing-generator.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-04/logs/encode-flac96-existing-generator.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-04/preregistered-flac96.json",
+      "bytes": 4145,
+      "sha256": "8979f40d0945426eaf36ca5644e1d2d828375c9b5bd4740178f3ee93e4da34e6"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-04/settlement-observation.json",
+      "bytes": 368,
+      "sha256": "0fa42f9346be51fa3bae809194b4bb99e88612e846a65fcdf71e1c651aadd81a"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-04/sources/generated-96000-2ch-16bit.f32le",
+      "bytes": 768392,
+      "sha256": "e5dd073bb274d0503fd9e689fb00557e92aa9b67018d1a5f81768f5ca332aab5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-04/sources/generated-96000-2ch-16bit.wav",
+      "bytes": 384240,
+      "sha256": "ce20e777f2fe7ddfa6497bbe45e346291cc56733a9138b4f52e78f8f3c5c4dc4"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-05/candidate-results.json",
+      "bytes": 68602,
+      "sha256": "e33dc052a223963a6e5e0acbd546edbf8c6117b7b147335e3b4b30212479a89f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-05/candidates/flac-2.flac",
+      "bytes": 289137,
+      "sha256": "9a7129f3cdc76915bbba201ab31b9a5e90aa458ef7c974308b711934eb322fa5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-05/commands.json",
+      "bytes": 1070,
+      "sha256": "9b0c57c8ffbd71bc0469553fc5818517e8746e4f0d042d75c72915bca680faaf"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-05/logs/encode-flac96-existing-generator.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-05/logs/encode-flac96-existing-generator.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-05/preregistered-flac96.json",
+      "bytes": 4145,
+      "sha256": "2e84e678a7c4947209cc4bc14fdf7ef9aeb6663c5d52e9ed52f2341986dea1c8"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-05/result.json",
+      "bytes": 316,
+      "sha256": "51f92bbf1bb56d1cfc4f3aad7ad3350aff8338695d0793ca9537264ab9ed1a6e"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-05/sources/generated-96000-2ch-16bit.f32le",
+      "bytes": 768392,
+      "sha256": "e5dd073bb274d0503fd9e689fb00557e92aa9b67018d1a5f81768f5ca332aab5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-05/sources/generated-96000-2ch-16bit.wav",
+      "bytes": 384240,
+      "sha256": "ce20e777f2fe7ddfa6497bbe45e346291cc56733a9138b4f52e78f8f3c5c4dc4"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-06/candidates/adts-he-1-96kbps.aac",
+      "bytes": 5893,
+      "sha256": "f6fb4ca7c1e98cbbba2dd7ea4041280f52e5b31d556e73078cda2a19bba6faf3"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-06/commands.json",
+      "bytes": 1964,
+      "sha256": "7bfe0ba51514970216995761a9dfc5987c69268bb94454febd09e0ca06af3ecc"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-06/logs/encode-he-mono96-existing-generator.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-06/logs/encode-he-mono96-existing-generator.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-06/logs/metadata-he-mono96.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-06/logs/metadata-he-mono96.stdout",
+      "bytes": 305,
+      "sha256": "87ab583fc541957ee5b131d303cbe07af9c025919c6106547c10a26a73fdba8c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-06/preregistered-he-mono.json",
+      "bytes": 2009,
+      "sha256": "bba6cba01d7227ced6b6d98fe0fb293797d2feade6fd72794aa0b8df791d2cf5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-fixtures-06/result.json",
+      "bytes": 1953,
+      "sha256": "4f5922373c1c3d9c09feefe62d86740512a8077e6bcd369ba91e17b7570aab63"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/adts-he-1.aac",
+      "bytes": 5893,
+      "sha256": "f6fb4ca7c1e98cbbba2dd7ea4041280f52e5b31d556e73078cda2a19bba6faf3"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/adts-he-2.aac",
+      "bytes": 9285,
+      "sha256": "52b0d8ec6d3265bf4da09d2c37f0643063aa8ec386b226aa0ca9d6f2eb3c2cb4"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/adts-hev2-stereo.aac",
+      "bytes": 4737,
+      "sha256": "c366723babdc4cbe38106d508482a9e545c0e99def69b14a92398d34affd3d79"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/adts-lc-1.aac",
+      "bytes": 17374,
+      "sha256": "5d92eeeba250dfe1c46d2e9345e63e85546bfaa91141050c1994b4323b2c4f32"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/adts-lc-2.aac",
+      "bytes": 17297,
+      "sha256": "078f16fee3eba365310b1e7436c7a734fff4d70c2864782a731bd36a0e4884de"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/adts-valid-shorter.aac",
+      "bytes": 8716,
+      "sha256": "6a916e6c97d07874d2ea9be6e405b6a3963dc36907a55e0125f5a94d4e09a048"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/alac-1.m4a",
+      "bytes": 94283,
+      "sha256": "45099da857ab8de8988fc8c6a07829bbe722629cf9b4c787cedbd41e0fd0bdbe"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/alac-2.m4a",
+      "bytes": 197004,
+      "sha256": "de9dedf9600d22e3a3fc8642b9e5ffed70cd6d836c2406285798bd2c969e7bf7"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/flac-1.flac",
+      "bytes": 75364,
+      "sha256": "4596d06ef5af71157af1bab1b1fd36a0b27dbde089868f5b5b5b51ef25157ffd"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/flac-2.flac",
+      "bytes": 289137,
+      "sha256": "9a7129f3cdc76915bbba201ab31b9a5e90aa458ef7c974308b711934eb322fa5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/flac-rate-192000.flac",
+      "bytes": 479100,
+      "sha256": "d6f197a95f40f74771edebb894ed7fb15bb927f31fe6e407608dd337d8149544"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/flac-rate-22050.flac",
+      "bytes": 61321,
+      "sha256": "c4b6f50d85b50c07aaaff81c4cb16116fc2e9f972f9682d433b3e6dcae2f4945"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/flac-rate-8000.flac",
+      "bytes": 19636,
+      "sha256": "95600982e0474f157a96947dc26f997f651101387e3cbc4ba01e3167aae3c287"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/flac-rate-88200.flac",
+      "bytes": 298860,
+      "sha256": "8547a5cf401b4f7fce78dfe9a6737fe51cb43ec483bb463a37c2c70adf8d8d99"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/m4a-edit-stereo.m4a",
+      "bytes": 17963,
+      "sha256": "bd378a38c0009d5fb3028675d003e41940a59f576080094fc2ab38847f6f6792"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/m4a-lc-1.m4a",
+      "bytes": 18028,
+      "sha256": "4476c50f5b93dea1d861544a262a8c5254f696bd7fbff0e684190ce867918678"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/m4a-lc-2.m4a",
+      "bytes": 17951,
+      "sha256": "026126dbe02156863d42b50d44c73a4e0bfcbd76608bcac081976960a1cea22a"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/mp3-1.mp3",
+      "bytes": 16718,
+      "sha256": "2de9843e14dd3e61039fda66c201443d5b5ee46efa71d90f667e00a5c5217f72"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/mp3-2.mp3",
+      "bytes": 17135,
+      "sha256": "632cd6beabdd762eb3b3820bd119a11403a6d802fa8af73f03eb7813344d5a14"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/mp3-valid-shorter.mp3",
+      "bytes": 8359,
+      "sha256": "7156b5a8f26493fefa5d2fed0c4c7dce30ce65b12529467d66455ce44306594f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/opus-1.ogg",
+      "bytes": 8402,
+      "sha256": "21ca6ad4b8b886943ef5899f9aff35b08d67d69cbc2bd048266e41c78bce54a4"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/opus-2.ogg",
+      "bytes": 16613,
+      "sha256": "ca017eb65bb9da27b9f439d44870b369ccce53de22ee14d51c095ab49dd50546"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/vorbis-1.ogg",
+      "bytes": 18519,
+      "sha256": "e48b1ee1c4d939bd7611ffd805a7726fdff5c77e71b04d63d55512559d07c804"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/inputs/vorbis-2.ogg",
+      "bytes": 32168,
+      "sha256": "7d84a31cf9539b172751538c6d2750c20ea59e4d3390574497cb404774cac3c2"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/matrix.json",
+      "bytes": 93375,
+      "sha256": "9e3fd822baf0b42cde54250a28a24f3a2c05d6999623376550e9362a5945c91b"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/recipe/collector-test.mjs",
+      "bytes": 4291,
+      "sha256": "8bbabfc3660519b714f8f9693478d9e453dd272a1fb2fa38ead5264d4b919b00"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/recipe/compare-pcm.mjs",
+      "bytes": 2756,
+      "sha256": "db02170664de200ff1fcf46aca8050213681c6ce5a40c71385afa15b3832556d"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/recipe/decode-page.mjs",
+      "bytes": 4071,
+      "sha256": "2f4ffc42fc5af212c8a7b488277b3808f5a383fee865ebd81ecd8e7a634144d8"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/recipe/freeze-matrix.py",
+      "bytes": 8563,
+      "sha256": "a6aabbdbf5baff1dd4097e148265679fdeaca209d32b5901c85ea671d4b1b905"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/recipe/native-batch.py",
+      "bytes": 8140,
+      "sha256": "cfeb75996160b695202459073d537af0a07165e0d1f360aca7f5963e57b54c98"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/recipe/native-test.py",
+      "bytes": 2996,
+      "sha256": "a9f1b0b6360e35766551e97238352a77a59d26e668cd788c7f7695c6931ce1c4"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/recipe/run-browser.py",
+      "bytes": 4659,
+      "sha256": "2a5272c439efe92fc9e0b15f90e719990fc2844eaaff13e3aa1cb5de816c13e1"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/recipe/run-native.py",
+      "bytes": 11481,
+      "sha256": "f1dcdec5a79a4d9b3df5c3c386a6f4db6c9dcf716faaba45ff3aa16829db39eb"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/recipe/run-wasm.mjs",
+      "bytes": 12200,
+      "sha256": "69334f3edc88d3444f25c9ff3fb9b3b62eeb2435193e7e81bc14e1dea77e5802"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/recipe/supervisor-test.py",
+      "bytes": 1219,
+      "sha256": "934a0ed0dae28222f88cb61fedd028eeaf6601f51aeb2ab6e75b69124088606f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/references/alac-1.f32le",
+      "bytes": 176596,
+      "sha256": "bda10033014d9ab413dab2349a4b9b22878be676753830ddfbe2b830883c25df"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/references/alac-2.f32le",
+      "bytes": 353192,
+      "sha256": "ed16347674466e17e6764a2f8be13967f076848c288627715eea516f6acc608d"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/references/flac-1.f32le",
+      "bytes": 192196,
+      "sha256": "5394fcb5f400e97f628c4410f835f7429a7f725494d5eabc067ae957ffec82e6"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/references/flac-2.f32le",
+      "bytes": 768392,
+      "sha256": "e5dd073bb274d0503fd9e689fb00557e92aa9b67018d1a5f81768f5ca332aab5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/references/flac-rate-192000.f32le",
+      "bytes": 768196,
+      "sha256": "400e1d648418a8e35633f36c8d72cdb4c0daaddf42362a7088d380b3e5d3a744"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/references/flac-rate-22050.f32le",
+      "bytes": 88396,
+      "sha256": "a95b7489f013fb55e022196351fb92d35552c5a5a18932bd9d66c6ce90e67c1f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/references/flac-rate-8000.f32le",
+      "bytes": 32196,
+      "sha256": "e1e5cf5c6fda1bf9cae21b5d45ac4698a0493a4800eeb27047f6f1b0e2c96d29"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-comparison-fixtures-01/references/flac-rate-88200.f32le",
+      "bytes": 352996,
+      "sha256": "81fdf926fee166745f76cd061630e3fdfc1166cafef188259f7bf6014feb9a76"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-he-1.f32le",
+      "bytes": 442368,
+      "sha256": "ca187d1d183511fcc3b1872cf50c21a22ec27f33d0bf0441966be02966fba0bb"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-he-1.jsonl",
+      "bytes": 8327,
+      "sha256": "fd4a860f0a8c47d5991246fa4f8fe560d5fc515eb34243220ed0b5c48bcde0f4"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-he-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-he-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-he-2.f32le",
+      "bytes": 442368,
+      "sha256": "65e5dee4228e35f73df465c227649926c4daf553f8a39d87d847569d3e594fdf"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-he-2.jsonl",
+      "bytes": 8325,
+      "sha256": "daf9823947c9073fe25ca2d03fe28c00a67457c97109c866230d70f35801c691"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-he-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-he-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-hev2-stereo.f32le",
+      "bytes": 442368,
+      "sha256": "345d9696a8182693448d36efab936795d11b72b457cd07f9e4bc5f996dba2832"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-hev2-stereo.jsonl",
+      "bytes": 8354,
+      "sha256": "cb3b120a0500e7e24a917046fdf360f09c63106b87d19a3d05cc1f6c2283411b"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-hev2-stereo.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-hev2-stereo.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-lc-1.f32le",
+      "bytes": 204800,
+      "sha256": "0914a3cee98ff81ddfbe8e73a1aa391b627c1bcf0259b3987aab18ab4ec19105"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-lc-1.jsonl",
+      "bytes": 14993,
+      "sha256": "9b9c8c6e570e1c85af0674321541393efd91d1badd2563ef52ac419eacad4d63"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-lc-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-lc-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-lc-2.f32le",
+      "bytes": 409600,
+      "sha256": "09660370f6afa1665a6514eaf8dd90076e62a66280a3b38f0d33163fd6c65ccb"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-lc-2.jsonl",
+      "bytes": 15104,
+      "sha256": "804ead4bf1eec4c43ffd29a704580c8d8378fe9230b3c33fd94906df38e3c737"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-lc-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-lc-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-valid-shorter.f32le",
+      "bytes": 102400,
+      "sha256": "72716b32bf81417a496c8845d340db34f1712c2c0b29ceddf4aa0daa77939530"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-valid-shorter.jsonl",
+      "bytes": 7666,
+      "sha256": "70455bf98d829a5d34d97dd5ad0b636a89e2c1fd156878c4fd13f459adfdfde5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-valid-shorter.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/adts-valid-shorter.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/alac-1.f32le",
+      "bytes": 176596,
+      "sha256": "bda10033014d9ab413dab2349a4b9b22878be676753830ddfbe2b830883c25df"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/alac-1.jsonl",
+      "bytes": 3470,
+      "sha256": "a6ab2a4d1c62ded10b434f7c2b3edb75493224b2b3d311c567552de1a293b62c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/alac-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/alac-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/alac-2.f32le",
+      "bytes": 353192,
+      "sha256": "ed16347674466e17e6764a2f8be13967f076848c288627715eea516f6acc608d"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/alac-2.jsonl",
+      "bytes": 3512,
+      "sha256": "59abb3a92e9c0128194bd45478fa2243796f7f183803c9677f45a7cbf2433e81"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/alac-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/alac-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/container-inspect.json",
+      "bytes": 7120,
+      "sha256": "e43835cd78c2dc5f29ee21070ec4ae7d1d2c7b8a89fa98ffb5bdd201706cd200"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-1.f32le",
+      "bytes": 192196,
+      "sha256": "5394fcb5f400e97f628c4410f835f7429a7f725494d5eabc067ae957ffec82e6"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-1.jsonl",
+      "bytes": 3465,
+      "sha256": "3ce06bc4c4cab142e5005c06d32eef610760c7ea27b6e2e5074797ea45789dd8"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-2.f32le",
+      "bytes": 768392,
+      "sha256": "e5dd073bb274d0503fd9e689fb00557e92aa9b67018d1a5f81768f5ca332aab5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-2.jsonl",
+      "bytes": 3796,
+      "sha256": "5091f71e2890d76fb1d0a8f14485b2850850c55241fea8d66d3e9af617ee7c15"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-192000.f32le",
+      "bytes": 768196,
+      "sha256": "400e1d648418a8e35633f36c8d72cdb4c0daaddf42362a7088d380b3e5d3a744"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-192000.jsonl",
+      "bytes": 3815,
+      "sha256": "7d6c4a4c96de19418740ee232889a007b2092e444f6c80a18e4c6f837599127e"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-192000.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-192000.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-22050.f32le",
+      "bytes": 88396,
+      "sha256": "a95b7489f013fb55e022196351fb92d35552c5a5a18932bd9d66c6ce90e67c1f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-22050.jsonl",
+      "bytes": 3176,
+      "sha256": "b82cef921d445aecf19a759462b46dc5a20847b9e31c51788df8b0768a0ee775"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-22050.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-22050.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-8000.f32le",
+      "bytes": 32196,
+      "sha256": "e1e5cf5c6fda1bf9cae21b5d45ac4698a0493a4800eeb27047f6f1b0e2c96d29"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-8000.jsonl",
+      "bytes": 4233,
+      "sha256": "40339219ccd247c5f2c656d09a785c8972feb402587ebf89cebe94c249e24efd"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-8000.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-8000.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-88200.f32le",
+      "bytes": 352996,
+      "sha256": "81fdf926fee166745f76cd061630e3fdfc1166cafef188259f7bf6014feb9a76"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-88200.jsonl",
+      "bytes": 6603,
+      "sha256": "be29b4674779a3386196cdeb0cef94c169bb764b9b5cc531ea2864a0a5aa46db"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-88200.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/flac-rate-88200.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/m4a-edit-stereo.f32le",
+      "bytes": 409600,
+      "sha256": "09660370f6afa1665a6514eaf8dd90076e62a66280a3b38f0d33163fd6c65ccb"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/m4a-edit-stereo.jsonl",
+      "bytes": 14500,
+      "sha256": "17d40df360ebf8356524b2adbd92dbbe0d6c964ad98ff49778b07ff478574344"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/m4a-edit-stereo.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/m4a-edit-stereo.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/m4a-lc-1.f32le",
+      "bytes": 192512,
+      "sha256": "754330e765274b909521e64c7841a0c4798dc217a6d5aa282578b073c40abeb6"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/m4a-lc-1.jsonl",
+      "bytes": 14073,
+      "sha256": "fb22c41b01d5183d6789f0e7f9ea0d401f72da07d436e9e33eac37bb3720dbd7"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/m4a-lc-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/m4a-lc-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/m4a-lc-2.f32le",
+      "bytes": 385024,
+      "sha256": "7e5ea245cc25c044c6493b31b00550c17f138ee6e408348c9f72b8ce27ebf5a5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/m4a-lc-2.jsonl",
+      "bytes": 14180,
+      "sha256": "9a149f332eae1b9077c2c344408589c4abc7b862fa5b783afa1c011e8864262e"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/m4a-lc-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/m4a-lc-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/mp3-1.f32le",
+      "bytes": 184320,
+      "sha256": "485db2b8fdd4af698fa87ddade8ccde94bfe64b89df24ac6651ba48f0d8b1da9"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/mp3-1.jsonl",
+      "bytes": 11830,
+      "sha256": "64ceb46f9b9aa325f9d0ce6b81dd7802832a2ed2361bcd2c523bbd77524dbf7f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/mp3-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/mp3-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/mp3-2.f32le",
+      "bytes": 353192,
+      "sha256": "daf72c476bdd1833520bb3416f8d46ff42d9181de459748105cf29de802cef6b"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/mp3-2.jsonl",
+      "bytes": 11926,
+      "sha256": "b506f14f3a3b7a93e8e0bab693b64312f48843c36adad48f0903f349b4772455"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/mp3-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/mp3-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/mp3-valid-shorter.f32le",
+      "bytes": 92160,
+      "sha256": "daf6ff7764f9a292dd5c37fa214c63a529813e243a8a7e0aaf48d2c6d4886f57"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/mp3-valid-shorter.jsonl",
+      "bytes": 6075,
+      "sha256": "4fe6283ad18df0d7a6f3842706bb8d94eba4c5e725999bd3cb7fe357c3c8aafa"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/mp3-valid-shorter.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/mp3-valid-shorter.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/native-batch.log",
+      "bytes": 60,
+      "sha256": "23e911918e236569a0f73d060089c138f16e41b1d36cbda54219724925dc093e"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/native-results.json",
+      "bytes": 48143,
+      "sha256": "bb970fe720d04e585045bcfa76776ba22f8b27d91a6cf62561ad7f2e69f57a76"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/opus-1.f32le",
+      "bytes": 192196,
+      "sha256": "c87095ac4f4bc3ef0a0a5ede53b662d7a52e39695573c72f6428839c139e4943"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/opus-1.jsonl",
+      "bytes": 14675,
+      "sha256": "4aaa517e84a3e716dbb1bc13cd8db6471d3bc3af939cc3db3445f04bef569a90"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/opus-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/opus-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/opus-2.f32le",
+      "bytes": 384392,
+      "sha256": "331d4cec149fbaefae57538cc98a2aacb9f68fb84860c8282ca6398dc72f666f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/opus-2.jsonl",
+      "bytes": 14792,
+      "sha256": "0770f6294a76c2cd295b195b579aa264832e2267addf9cd11ed0d9acba7177db"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/opus-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/opus-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/run-status.json",
+      "bytes": 47658,
+      "sha256": "8669a628cab391d735594561774b4d6b2d12d800beee6ab5d504fb256b975563"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/vorbis-1.f32le",
+      "bytes": 192196,
+      "sha256": "b0c325f4f35e433ee6d6d66a7134a3eb141e96b491a4769c8ea49d9e2ad19b40"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/vorbis-1.jsonl",
+      "bytes": 15706,
+      "sha256": "02002c96b3faaeb0fa79cccb1ac201165bb5bf9b395e36ae3045a9ccdc1670ce"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/vorbis-1.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/vorbis-1.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/vorbis-2.f32le",
+      "bytes": 384392,
+      "sha256": "72994d088f87c5b7d20014868885381af714e1e235a14f8f46f3d69f0c319a2e"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/vorbis-2.jsonl",
+      "bytes": 15822,
+      "sha256": "013af6a7e3dd2a18a0a7fef58631aaffa7021828780aa24a9828e53c267cd442"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/vorbis-2.stderr",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-results-01/vorbis-2.stdout",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/adts-he-1.f32le",
+      "bytes": 442368,
+      "sha256": "e5d20c73599768337e40b3fd68383dbb2cfb428a87695141052b3270276c5c17"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/adts-he-2.f32le",
+      "bytes": 442368,
+      "sha256": "65e5dee4228e35f73df465c227649926c4daf553f8a39d87d847569d3e594fdf"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/adts-hev2-stereo.f32le",
+      "bytes": 442368,
+      "sha256": "6b0c6081ffba57d888d1a7d87781a6c443e9de5ccf241c0c32fb89186265d349"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/adts-lc-1.f32le",
+      "bytes": 409600,
+      "sha256": "ca97a9e3a7f2ebfe3aa1f41dcbf0d3f197870bd2fef8a23d6508c67b9ec12e8c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/adts-lc-2.f32le",
+      "bytes": 409600,
+      "sha256": "1bfa8256432eabdca37165bd1047f6fa274c6816e7af65f8003b95f8204bb1d9"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/adts-valid-shorter.f32le",
+      "bytes": 204800,
+      "sha256": "c76449a0fde19f08bbadcf1fe4b538914d6d0e5deee18d4bc4032e3002a32939"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/alac-1.f32le",
+      "bytes": 353192,
+      "sha256": "c0846f9a4adf72b0b26c317f854f4b0e1cfe2d13b1c2e8602543a14aff4836d9"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/alac-2.f32le",
+      "bytes": 353192,
+      "sha256": "ed16347674466e17e6764a2f8be13967f076848c288627715eea516f6acc608d"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/flac-1.f32le",
+      "bytes": 384392,
+      "sha256": "c9c80b423f966c40b36874a896af14253754498bc1c781abdcc7338840308eb8"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/flac-2.f32le",
+      "bytes": 768392,
+      "sha256": "e5dd073bb274d0503fd9e689fb00557e92aa9b67018d1a5f81768f5ca332aab5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/flac-rate-192000.f32le",
+      "bytes": 1536392,
+      "sha256": "bd787a37ec39dd0cb401c7dc79ae6699e08c9f83c49a2d2aaeeebc2897eaa375"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/flac-rate-22050.f32le",
+      "bytes": 176792,
+      "sha256": "7bf176480b566dc4720c225e454bc17a15d07581c0c35dcbe985a2693070c6a0"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/flac-rate-8000.f32le",
+      "bytes": 64392,
+      "sha256": "42348d13815f0a9f1d36e6e6d375c089db6170e52a2940d92cc7527a7023660e"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/flac-rate-88200.f32le",
+      "bytes": 705992,
+      "sha256": "58249a1333486c80d961926c683d93a611de0229b667a49f504b4eb0bcc18709"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/m4a-edit-stereo.f32le",
+      "bytes": 409600,
+      "sha256": "1bfa8256432eabdca37165bd1047f6fa274c6816e7af65f8003b95f8204bb1d9"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/m4a-lc-1.f32le",
+      "bytes": 385024,
+      "sha256": "6b6cbfb93bf1bae882025dc405e58c429af4bf987d009f7113dc89471f43ab07"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/m4a-lc-2.f32le",
+      "bytes": 385024,
+      "sha256": "2ae76a0f83dea23b2f972c28bc0352cd4a7aa88043b46dfc03812f69cbc576d8"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/mp3-1.f32le",
+      "bytes": 368640,
+      "sha256": "42bca2637b3c455a596cea041ce985f0f6cc7fa5fa3a3c5cdf991522e6f4e80f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/mp3-2.f32le",
+      "bytes": 353192,
+      "sha256": "daf72c476bdd1833520bb3416f8d46ff42d9181de459748105cf29de802cef6b"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/mp3-valid-shorter.f32le",
+      "bytes": 184320,
+      "sha256": "41e0d2f68406a1e5a3c7266389fca0302b2545c67f6a40acdef353051f5399fe"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/opus-1.f32le",
+      "bytes": 384392,
+      "sha256": "a64d6a427c45a81af702117284b8cef1af48744e4e954c6eadc22735c184e39f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/opus-2.f32le",
+      "bytes": 384392,
+      "sha256": "331d4cec149fbaefae57538cc98a2aacb9f68fb84860c8282ca6398dc72f666f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/vorbis-1.f32le",
+      "bytes": 384392,
+      "sha256": "3b03853f550ec2323f0f612e61e18d9c92b6f3e13253df727f50d9153b0a90d6"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/vorbis-2.f32le",
+      "bytes": 384392,
+      "sha256": "72994d088f87c5b7d20014868885381af714e1e235a14f8f46f3d69f0c319a2e"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01/wasm-results.json",
+      "bytes": 135030,
+      "sha256": "84e790e28631008d85aef79bd277de9cd57aafd275976085e783d06245daae0d"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01-supervisor/driver.json",
+      "bytes": 998,
+      "sha256": "5a0b3e56f8f02dcc8659f1085ca8a63046752fcdafc13ec07b4b2c6889464b1c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01-supervisor/stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-wasm-results-01-supervisor/stdout.log",
+      "bytes": 65,
+      "sha256": "eb021dabd1e83597a1273174b430ebe101a2f7bdfd38d7e2e2f9c379cb763d9b"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/native02-source-frozen/build-container.sh",
+      "bytes": 1785,
+      "sha256": "435377b8dad0bcd5159eba607277bcab326793dd3ac661dccf5a95e7b0787adc"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/native02-source-frozen/build.sh",
+      "bytes": 1303,
+      "sha256": "36269003357433b3384079bf3f1f0ca77f8a913b5a9d1c5d4313bfd967b36655"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/native02-source-frozen/check-profile.py",
+      "bytes": 1072,
+      "sha256": "dcb4f7b22d88287d09aae1d2f06c14f05f0d0b2deb61950e34a83e834437c75c"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/native02-source-frozen/copy-native-inputs.py",
+      "bytes": 2906,
+      "sha256": "53f0ad930c754dc2d46001d1e5c839058595dfe85f3c8cbe3017d5632fe19862"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/native02-source-frozen/oracle.c",
+      "bytes": 16431,
+      "sha256": "13c60094a47dafd391cd74517a2d1ef1dee5bcc2bdafcb88048b6041e52b77c1"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/native02-source-frozen/relink-container.sh",
+      "bytes": 778,
+      "sha256": "930c15d209dbbbe87a190ba050f6a88a97f15b7a8215b73588246e07cdcd88ea"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/native02-source-frozen/reuse-native01.json",
+      "bytes": 1829,
+      "sha256": "9651ce143b8f9b780556a9f7982235fa050864b06c1875176cd276f9d4fb2f93"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/native02-source-frozen/run-build.py",
+      "bytes": 7145,
+      "sha256": "2becfeca1a85a6f76a480f3b349625759d516c71e7831c57b70f79ace1a4084a"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/existing-fixture-tools.json",
+      "bytes": 10973,
+      "sha256": "c42a70c2ec9b498615fc4149f23a4499c490085da5b5db6e457cb74a97c2e8da"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/vorbis-generator-provenance.json",
+      "bytes": 1821,
+      "sha256": "6ca02c06a68305e4264f64e4eda8939c7c37c02e5b34574a2f88a8d3ba35d8cf"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/apple-fixture-metadata.json",
+      "bytes": 1715,
+      "sha256": "44f3fb077f8e117e9ec1d98d62096672db95e6bc3d4817b23f8ba0c315451ee8"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/flac-fixture-provenance.json",
+      "bytes": 9262,
+      "sha256": "a04a0948ea7187d38c018e32f9e85b0a5672c0413720b244dc029ce870d9fdb2"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/source-provenance.json",
+      "bytes": 861,
+      "sha256": "45928a6104551a69b4ed3a7ebe1de48db11b6875be9c48691cbcc45ac49228ff"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/image-provenance.json",
+      "bytes": 1665,
+      "sha256": "cb5fa753924404443700e0a1ddaf12dc8b3884622e2d7b7dab4ad4f220df83dc"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/original-generator-reconstruction.json",
+      "bytes": 479,
+      "sha256": "f10757b6e5a678f0351c361d5af6a212b7165afd03279eaafca3474c8fb9abe1"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/generate-fixtures-original01.py",
+      "bytes": 13142,
+      "sha256": "797d6151714e8f8a4384632781f476c29124907926a6bd4358665aa8bedc12ae"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/generate-fixtures.py",
+      "bytes": 13954,
+      "sha256": "61b6c31689195c6bbb55376e96fa54f25c101bc378812621829065276078475b"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/retry-aac-fixtures.py",
+      "bytes": 5203,
+      "sha256": "8903d63819fe05ccf42784d8b05f23bb3c24871be45dc52d6c5533f9b3b54742"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/retry-flac32.py",
+      "bytes": 4961,
+      "sha256": "2a4a46b7ff0cc679b2c1007c17ac46c793dbd044f0aa2a7f66903e737bfc5c28"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/retry-flac96.py",
+      "bytes": 3343,
+      "sha256": "ba4114938e4716efa5a9f9ee7cfca4e7ac07ece59411b0b3270a79368799ebb5"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/retry-flac96-02.py",
+      "bytes": 3343,
+      "sha256": "05e2a90604fa76c3fef7f0ac1585b79d60a44c55b029dcac5c7847eb6bf63109"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/retry-he-mono.py",
+      "bytes": 3589,
+      "sha256": "50a29e693691c341f96114bf8b35c01bc40eff22bc269057f3664f9d6a2aca5f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/vorbis-fixture-encoder.c",
+      "bytes": 8573,
+      "sha256": "e648540b29196db30631212631e0a207177b9cfe151e0d7ccd66e7c001fe5c1d"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/qualification-README.md",
+      "bytes": 7889,
+      "sha256": "e87a37de78eaf2a1899483e714a87cb4cfb0f0073edc0e66254a311ac3df6f53"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-setup/qualification-evidence.json",
+      "bytes": 2834,
+      "sha256": "0159f6fd4de208d3b9ed7b002aa729a7eff1612f7c3ba0e80f718835ec7e1690"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-01/build-status.json",
+      "bytes": 25630,
+      "sha256": "0f7fddd820d0de8951db88e2cc7b0db8ff7b5426c308e5ab39b5fb26a1688759"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-02/build-status.json",
+      "bytes": 25646,
+      "sha256": "799755230f79098529b10ec8e694474f3321d2457ddeb4e086807d0d1009172d"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-03/build-status.json",
+      "bytes": 25644,
+      "sha256": "8ab93b89ac6c0a3df83348a566e93b05db7f61d61890c93c17c2a8969fe72e0b"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-04/build-status.json",
+      "bytes": 25644,
+      "sha256": "01a44a2274ba9a4bbc00fb788f2d67ae8b5cde3a2c71129e1b37ea4fbe063902"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-05/build-status.json",
+      "bytes": 26588,
+      "sha256": "a8e982650119d76ba509b918e4e9ece40693e06d923655dfe2872f16a6587acb"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-01/build-status.json",
+      "bytes": 25486,
+      "sha256": "e1d3ccb7510578c8196ed416c874a308ef8f59b88c335cfc524c364f563158b2"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-02/build-status.json",
+      "bytes": 26408,
+      "sha256": "ada4338b96b948a8293cbdc09b410d49812c64772062b5933b25cb1b694117e6"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-05/module-inspection.json",
+      "bytes": 10707,
+      "sha256": "cb6147230f69478700a88b079c230d7f295c80a34fdba39475636b7e3ae27a4b"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-05/runtime-init-result.json",
+      "bytes": 2967,
+      "sha256": "5c317ca013e3d0c1ab0a1eebb74155bed1c20fb1ef833a239542ab4b6de27241"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-05/runtime-init-driver.json",
+      "bytes": 410,
+      "sha256": "6c505fb0bfd32bf46ea80d108041378bcbd72d08ced55888c8c5be4a5e7a8ef8"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-05/assets/assets.json",
+      "bytes": 2990,
+      "sha256": "62695802afe9bfe377c308db91d37dd1c14eab62b634c5ed29abc4cc2db72c3f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-05/assets/bounded-read.62136738ccce9b64a1c8e039a0e71032ff9f7a4f166ba3daf9569652216a69bb.mjs",
+      "bytes": 1677,
+      "sha256": "62136738ccce9b64a1c8e039a0e71032ff9f7a4f166ba3daf9569652216a69bb"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-05/assets/bounded-read.mjs",
+      "bytes": 1677,
+      "sha256": "62136738ccce9b64a1c8e039a0e71032ff9f7a4f166ba3daf9569652216a69bb"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-05/assets/client.mjs",
+      "bytes": 8773,
+      "sha256": "2d6646a4c6f1389fadcc46159e753501c3e84c74ce0fc884eb9f1ece8923d08e"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-05/assets/decoder-core.14cad06d21af001fa3ac248947095cc48a83056d6ad1a69bab257ed1ff76b03f.mjs",
+      "bytes": 34616,
+      "sha256": "14cad06d21af001fa3ac248947095cc48a83056d6ad1a69bab257ed1ff76b03f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-05/assets/decoder-core.261c4b4b5cb9ad36e7ac5eebc3dccfc9a0f319b15d2cff53acac263ec4530878.wasm",
+      "bytes": 991492,
+      "sha256": "261c4b4b5cb9ad36e7ac5eebc3dccfc9a0f319b15d2cff53acac263ec4530878"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-05/assets/decoder.worker.9e8090873b1af9d69bfa9ed356a7edfc4d8f675e15fff2bdf8da9c9fd4ef8c1d.mjs",
+      "bytes": 4785,
+      "sha256": "9e8090873b1af9d69bfa9ed356a7edfc4d8f675e15fff2bdf8da9c9fd4ef8c1d"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-05/assets/envelope.623bfc887d0e3db3f188a2327be77732897f0f935721182b200d448fca3cb81f.mjs",
+      "bytes": 7824,
+      "sha256": "623bfc887d0e3db3f188a2327be77732897f0f935721182b200d448fca3cb81f"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-build-05/assets/fixture-harness.mjs",
+      "bytes": 1284,
+      "sha256": "0f2c5b4e1089f1965ddffe75235a5e32220cef44b8a158ab85af7b82a57de700"
+    },
+    {
+      "path": "/private/tmp/aurialis-private-decoder-native-02/native-oracle",
+      "bytes": 1568984,
+      "sha256": "6e46840d28c656aa6b6957d1c75f995751bd28538558e426bf63e8859f5cda87"
+    }
+  ],
+  "recordedBytes": 36599045,
+  "browserMonitoringLimitation": "positive receipt is Node-group-only RSS; detached Browser crash cleanup remains open",
+  "cdrPublicationLicensePublicActivation": "open-unrun-not-approved"
+}

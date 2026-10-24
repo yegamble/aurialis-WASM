@@ -1,6 +1,10 @@
+<!-- cspell:words ALAC AVIO avcodec avformat avutil bitstream demuxer Demuxers downmix emcache Emscripten extradata fcntl ftyp gapless HEAPU libswresample muxers nodev noexec nonfree nosuid OPFS PTHREADS Speex swresample Theora unvalidated Vorbis -->
+
 # Private compressed-source recovery experiment
 
-Status: private compiled experiment with synthetic JavaScript/C-wrapper evidence and actual browser Worker initialization without opening audio. The first three builds and Build04 loader failure remain recorded; corrected relink05 passed. No compressed parser, audio decoder, actual browser or licensing qualification has run. Nothing here is imported by the application, copied into public assets or deployed.
+Status: private compiled experiment with synthetic JavaScript/C-wrapper evidence, actual browser Worker initialization and a finite generated-fixture decoder comparison. Corrected relink05 and 23 positive native/browser cases passed; one requested mono HE-AAC case remains diagnostic and uncovered. Malformed-input, full lifecycle, actual Go CDR publication, reproducibility and licensing gates remain open. Nothing here is imported by the application, copied into public assets or deployed.
+
+[Private qualification evidence](qualification/README.md) records the immutable matrix, exact native oracle and runtime hashes, source provenance, observed frame/sample comparisons and remaining limits. Earlier build, loader, fixture-generation and setup failures remain retained.
 
 This experiment prepares one on-device decoder step before existing Go CDR. It does not deliver compressed recovery, establish every codec the old Web Audio implementation accepted, or permit permanent retirement of rollback resources.
 
@@ -52,13 +56,13 @@ Demuxers: MP3, FLAC, Ogg, ADTS AAC and ordinary non-fragmented MP4/M4A with an i
 
 The profile rejects multiple streams, attached pictures, encrypted inputs, fragmented MP4, chained/multiplexed Ogg, Ogg FLAC and other Ogg codecs, unqualified AAC profiles and changes after the first actual decoded geometry. Some valid older files will be refused. Rejected sources must remain in old storage.
 
-Native Opus requires libswresample for intrinsic SILK/hybrid reconstruction; its output is fixed at 48 kHz in the pinned decoder. That internal dependency is allowed. AAC SBR/PS reconstruction may produce a higher rate or stereo output than its core header suggests. The first actual AVFrame establishes rate and channel layout; later changes reject. No application sample-rate conversion, downmix, loudness normalization or DSP controls are exposed. Bitstream-defined decoding semantics and gapless/edit handling still need explicit native comparisons.
+Native Opus requires libswresample for intrinsic SILK/hybrid reconstruction; its output is fixed at 48 kHz in the pinned decoder. That internal dependency is allowed. AAC SBR/PS reconstruction may produce a higher rate or stereo output than its core header suggests. The first actual AVFrame establishes rate and channel layout; later changes reject. No application sample-rate conversion, downmix, loudness normalization or DSP controls are exposed. Finite native comparisons now record bitstream-defined gapless/edit counts without aligning or trimming output. Broader bitstream coverage remains unqualified.
 
 Only avformat, avcodec, swresample and avutil are linked. There are no CLI programs, encoders, muxers, video decoder or DIRAC parser components, filters, device libraries, network protocols or externally opened inputs. The pinned Ogg demuxer does compile internal header handlers for Dirac/old Dirac, FLAC, OGM, Skeleton, Speex, Theora and VP8; configure selects the dirac_parse helper. These are disclosed linked dependencies, not admitted input formats. Strict BOS preflight rejects every identifier except the narrow Vorbis/Opus profiles before module fetching or decoder opening. Actual static-library symbols are preserved in static-symbols.txt; final module symbols and reachability still require review.
 
 ## C ABI and data flow
 
-`decoder.h` defines ABI 1. One instance opens one selected input through custom bounded AVIO. It emits interleaved stereo Float32 in at most 4,096-frame chunks; mono duplicates its one source channel. The wrapper checks finite samples, does not explicitly clamp headroom and does not quantize output to S16. Actual codec fidelity, including floating negative zero, remains unmeasured; FFmpeg appends its own size and floating-point optimization flags.
+`decoder.h` defines ABI 1. One instance opens one selected input through custom bounded AVIO. It emits interleaved stereo Float32 in at most 4,096-frame chunks; mono duplicates its one source channel. The wrapper checks finite samples, does not explicitly clamp headroom and does not quantize output to S16. The finite generated-fixture comparison measures exact lossless source values and fixed lossy native/WASM tolerances. It does not establish universal codec fidelity or floating negative-zero preservation; FFmpeg appends its own size and floating-point optimization flags.
 
 Decoded frame counts, sample rates and channels come from AVFrames, never declared duration. The C wrapper rejects corrupted frames/packets and changed/new codec parameters. The first limit, decode or unsupported-input failure is sticky. It rechecks that state immediately after open, read, send and receive calls before accepting success or EOF, so a valid decoded prefix cannot hide a later AVIO failure. Only a read exactly at the known file end is benign EOF; short reads, bad bounds, quota exhaustion and secondary input attempts fail the whole operation. Forced size queries are normalized before seek handling. Codec-specific strict-error behavior is not assumed universal; malformed-input tests are a required gate.
 
@@ -78,7 +82,7 @@ Constants in the source lock include 200 MiB selected input, 16,777,216 maximum 
 
 A parent timer hard-terminates its DedicatedWorker after 130 seconds across asset loading, decoding and CDR, or on cancel/error/unmount. Go CDR must honor the same signal. Worker termination does not certify immediate operating-system memory reclamation or an arbitrary-browser wall-clock guarantee. A caller must bound its earlier storage reads and later durable-save/recheck phase too.
 
-The Wasm asset is limited to 16 MiB, below the 25 MiB static-file ceiling; JS glue is capped at 4 MiB and all assets at 32 MiB. These are packaging limits; the failed baseline link sizes above fit them, but a successful corrected package remains pending. No sharding is introduced without an actual demonstrated need.
+The Wasm asset is limited to 16 MiB, below the 25 MiB static-file ceiling; JS glue is capped at 4 MiB and all assets at 32 MiB. These are packaging limits; corrected relink05 fits them at 991,492 bytes of WASM and 1,052,128 bytes across private assets. No sharding is introduced without an actual demonstrated need.
 
 ## Synthetic unit evidence
 

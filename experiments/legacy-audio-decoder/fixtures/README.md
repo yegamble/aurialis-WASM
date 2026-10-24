@@ -1,6 +1,8 @@
+<!-- cspell:words Emscripten OPFS -->
+
 # Private fixture harness
 
-No encoded audio fixtures or actual decoder/browser results are present yet. The 31 passing synthetic JavaScript unit cases do not establish a codec pass.
+Generated audio and actual native/browser PCM results are retained in private output directories. The committed [qualification evidence](../qualification/README.md) freezes their hashes and records 23 positive passes plus one uncovered mono HE-AAC diagnostic. No encoded or compiled binary is committed here. The 31 passing synthetic JavaScript unit cases do not independently establish a codec pass.
 
 After the Chair releases setup/CPU work, generate deterministic synthetic tones, impulses, silence, negative-zero Float32 inputs where applicable, and EOF markers using a separately pinned native encoder. Preserve exact encoder flags, source hashes and expected decoder-native output. Do not use user recordings or download a music corpus.
 
@@ -18,6 +20,6 @@ node experiments/legacy-audio-decoder/fixtures/run-cases.mjs /absolute/private-o
 
 The launcher writes `unit/cases-result.json`; the test exports are never packaged as runtime assets. This test does not parse compressed input or decode audio.
 
-Build04 packaged a 991,492-byte runtime core and 1,053,293-byte asset set. Its synthetic launch RED remains separate from that compile/package pass. Corrected initialization passed in a real Chromium DedicatedWorker under strict CSP/COOP/COEP: exact supplied-memory identity, fixed 64 MiB, ABI/export presence, failed growth and zero input reads, without opening a decoder. Exactly five GET requests and no external request/error were observed. Runtime parser memory use, audio speed, busy-C cancellation and all codec/profile coverage remain unqualified.
+Build04 packaged a 991,492-byte runtime core and 1,053,293-byte asset set. Its synthetic launch RED remains separate from that compile/package pass. Corrected initialization passed in a real Chromium DedicatedWorker under strict CSP/COOP/COEP: exact supplied-memory identity, fixed 64 MiB, ABI/export presence, failed growth and zero input reads, without opening a decoder. Exactly five GET requests and no external request/error were observed. The later finite generated-fixture comparison qualifies only its recorded positive cases. Aggregate browser RSS, crash cleanup of detached Chromium, audio speed, busy-C cancellation and broader codec/profile coverage remain unqualified.
 
 The committed `inspect-built-module.mjs` and `runtime-init-probe.mjs` reproduce the private artifact and no-open checks. The latter accepts private output and repository paths; it installs no application route. Keep an external 45-second owned-process watchdog and preserve stdout/stderr/driver status as in the recorded execution. Its test server serves only known immutable assets and rejects non-GET/HEAD; a fresh browser context blocks other methods/origins before navigation.

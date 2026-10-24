@@ -3,8 +3,10 @@
 // cspell:words statfs bavail
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { mkdir, open, statfs, stat, type FileHandle } from "node:fs/promises";
-import { dirname } from "node:path";
+import { mkdir, open, statfs, stat, unlink, type FileHandle } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { AlbumDownloadTransferError, streamAlbumDownload } from "../scripts/qualification/album-download.mjs";
 import { expect, type Page, type TestInfo } from "@playwright/test";
 export { beforeOwnedWork } from "../scripts/qualification/owned-browser.mjs";
 import type { AlbumReport } from "../src/lib/album-batch";
@@ -62,15 +64,31 @@ async function inspect(path: string) {
   return { sha256: hash.digest("hex"), frames, bytes: encodedBytes, samplePeakDbfs: 20 * Math.log10(maximum / 8388608) };
 }
 export async function retainScaleDownload(page: Page, info: TestInfo, row: AlbumReport["tracks"][number], index: number, retain: boolean) {
-  await admitDisk(info.outputDir, encodedBytes * (retain ? 2 : 1));
-  const waiting = page.waitForEvent("download"); await page.getByRole("button", { name: `Download ${row.title}`, exact: true }).click(); const download = await waiting, temporary = await download.path();
-  if (!temporary) throw new Error("Missing real Album scale download"); const inspected = await inspect(temporary); expect(inspected.sha256).toBe(row.output.sha256); expect(inspected.bytes).toBe(row.output.bytes); expect(inspected.samplePeakDbfs).toBeCloseTo(row.metrics.samplePeakDbfs, 10);
-  let retained: string | null = null;
-  if (retain) { retained = info.outputPath(`master-${String(index)}.wav`); await download.saveAs(retained); expect(await hashFile(retained)).toBe(inspected.sha256); }
-  // Only this newly produced duplicate is removed; the unique measured WAV remains in the proof.
-  await download.delete(); await expect(page.getByRole("button", { name: "Render album masters", exact: true })).toBeEnabled();
-  const url = await page.evaluate((bytes) => window.albumQA.urls.filter((item) => item.bytes === bytes).at(-1), encodedBytes);
-  if (!url || url.revoked === null) throw new Error("Scale output URL cleanup did not settle"); expect(url.revoked - url.created).toBeGreaterThanOrEqual(900);
-  return { ...inspected, retained, urlLifetimeMs: url.revoked - url.created, availableDiskBytes: await admitDisk(dirname(info.outputDir), 0) };
+  // Both the remote server artifact and the bounded client stream occupy physical bytes.
+  await admitDisk(info.outputDir, encodedBytes * 2 + 1);
+  const control = process.env.AURIALIS_OWNERSHIP_DIR;
+  if (!control) throw new Error("Remote Album downloads require their acknowledged scratch owner");
+  const clientDirectory = join(dirname(control), "client-downloads"); await mkdir(clientDirectory, { mode: 0o700, recursive: true });
+  const unverified = retain ? info.outputPath(`master-${String(index)}.wav`) : join(clientDirectory, `repeat-${String(index)}-${randomUUID()}.unverified.wav`);
+  const waiting = page.waitForEvent("download"); await page.getByRole("button", { name: `Download ${row.title}`, exact: true }).click(); const download = await waiting;
+  let transfer: Awaited<ReturnType<typeof streamAlbumDownload>> | undefined;
+  try {
+    transfer = await streamAlbumDownload(download, unverified, encodedBytes);
+    const inspected = await inspect(unverified); expect(inspected.sha256).toBe(row.output.sha256); expect(inspected.bytes).toBe(row.output.bytes); expect(inspected.samplePeakDbfs).toBeCloseTo(row.metrics.samplePeakDbfs, 10);
+    await expect(page.getByRole("button", { name: "Render album masters", exact: true })).toBeEnabled();
+    const url = await page.evaluate((bytes) => window.albumQA.urls.filter((item) => item.bytes === bytes).at(-1), encodedBytes);
+    if (!url || url.revoked === null) throw new Error("Scale output URL cleanup did not settle"); expect(url.revoked - url.created).toBeGreaterThanOrEqual(900);
+    const availableDiskBytes = await admitDisk(dirname(info.outputDir), 0);
+    await download.delete();
+    if (!retain) await unlink(unverified);
+    return { ...inspected, retained: retain ? unverified : null, urlLifetimeMs: url.revoked - url.created, availableDiskBytes };
+  } catch (cause) {
+    const failure = cause instanceof AlbumDownloadTransferError ? cause.receipt : { path: unverified, bytes: transfer?.bytes ?? 0, owned: transfer !== undefined, verified: false };
+    const metadata = JSON.stringify({ failure, reason: String(cause).slice(0, 2048), serverArtifactRetention: "The context may remove its own artifact; the bounded client file above is retained when owned." });
+    if (Buffer.byteLength(metadata) > 64 * 1024) throw new AggregateError([cause], "Bounded remote Album failure receipt exceeds its limit");
+    try { await info.attach(`unverified-download-${String(index)}.json`, { body: metadata, contentType: "application/json" }); }
+    catch (publication) { throw new AggregateError([cause, publication], "Remote Album assertion and diagnostic publication failed"); }
+    throw cause;
+  }
 }
 export async function memoryProfile(page: Page, value: number) { await page.addInitScript((initial) => { Object.defineProperty(navigator, "deviceMemory", { configurable: true, get: () => (window as Window & { albumDeviceProfile?: number }).albumDeviceProfile ?? initial }); }, value); }

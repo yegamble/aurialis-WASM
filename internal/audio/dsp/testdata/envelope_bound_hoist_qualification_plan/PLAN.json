@@ -1,0 +1,240 @@
+{
+  "_cspell": "cspell:ignore GOMAXPROCS AURIALIS ",
+  "scope": "SOURCE PLAN ONLY. No binding adapter implementation, compilation, original unit/recorder execution, profile or timing release.",
+  "existingCandidateModules": {
+    "native": {
+      "BUILD": "artifacts/private-dsp/recovery-20261023/envelope-bound-hoist/bound-hoist-native-v2/BUILD.json",
+      "BUILD_SHA256": "dd08ea0709c3096cba91d7091839be10f0322c9f56dac517a20324cb05a55d64",
+      "module": {
+        "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/envelope-bound-hoist/bound-hoist-native-v2/native-candidate.test",
+        "bytes": 6630066,
+        "sha256": "3d16714502cfeada97cf88e1c5e0e6d8a7db173eea1807721b369625c47b6328",
+        "overlaySHA256": "3b76dac787b9fa60680cc0a4d1c2ea878250f6edb9ef4fd0040d2aeaaa49b724",
+        "sourceSetSHA256": "836829b3d02306a3b4aae74a51f142e7deaf7ff308847fb81ae1153cda299dd9"
+      },
+      "directProofIndexSHA256": "d671be5fbd0161cad6a3b72bb3d0571d4d8b4580c86f3ca22e38c63011f35652"
+    },
+    "wasm": {
+      "BUILD": "artifacts/private-dsp/recovery-20261023/envelope-bound-hoist-wasm/source-v1/BUILD.json",
+      "BUILD_SHA256": "7283ac10b4bd323776e19d783ceb651407ed3ce49581e4e0c5ddb846f90ef3db",
+      "module": {
+        "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/envelope-bound-hoist-wasm/source-v1/candidate.wasm",
+        "bytes": 7597448,
+        "sha256": "e9b1ebc5dd66ee0ce6c8179549286691792b7f97b6f21cc71d9362835732096e",
+        "overlaySHA256": "3b76dac787b9fa60680cc0a4d1c2ea878250f6edb9ef4fd0040d2aeaaa49b724",
+        "sourceSetSHA256": "836829b3d02306a3b4aae74a51f142e7deaf7ff308847fb81ae1153cda299dd9"
+      },
+      "directProofIndexSHA256": "8819cd587b2098759cb37b48d67b9bb19795fe8eab5333f1a8e64467d9f1e9c0",
+      "runtime": {
+        "path": "/Users/yosefgamble/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.10.darwin-arm64/lib/wasm/wasm_exec.js",
+        "sha256": "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14"
+      }
+    }
+  },
+  "bindingRules": "Reuse these exact existing candidate modules and their final eight-entry source overlay; no module copies, baseline rebuild or edits to either closed admitted source folder. A small new host/child binding outside those folders must freeze every input explicitly and retain original raw receipts/exits/EOF and actual argv. No forged old BUILD, whitelist or receipt substitution.",
+  "originalUnits": {
+    "wholePlan": "internal/audio/dsp/testdata/envelope_node_visit_gates/PLAN.json",
+    "wholePlanSHA256": "8f0ffd7726eb727ae0d6d5372a63f4a9f1de567ddfd3f2f6be23e1cb336f3790",
+    "names": [
+      "TestStudioExactExtremaBitContract",
+      "TestStudioGainEnvelopeMatchesNaive",
+      "TestStudioGainEnvelopeLargeClockAndClippedRebuild",
+      "TestStudioLimiterGain4xActualSamplesBoundLinkedAndTail",
+      "TestStudioLimiterGain4xTransparentDisabledInvalidAndNoAllocations",
+      "TestStudioPartitionedGraphDelayIdentityAndActualWetImpulse",
+      "TestStudioPartitionedGraphEpochPartitionAndRepeat",
+      "TestStudioPartitionedGraphFixedAvailabilityAndAdmission",
+      "TestStudioPartitionedGuardModesAndRebuiltBirths",
+      "TestStudioPartitionedGuardDisabledExactDelayAndReset",
+      "TestStudioPartitionedGraphTinyFiniteEOFAndDither",
+      "TestStudioPartitionedPostDetectorFFTAndStereoLeakage",
+      "TestStudioPartitionedPostDetectorPartitionResetAndPartialEOF",
+      "TestStudioPartitionedPostDetectorDirectConvolutionAndFiniteEdges",
+      "TestStudioLimiterGain4xEnvelopeMatchesNaive",
+      "TestStudioTubeNominalAliasAndPublishedHotDriveWorstCase",
+      "TestStudioTapeNominalAliasAndPublishedHotDriveWorstCase",
+      "TestStudioTransformerNominalAliasAndPublishedHotDriveWorstCase"
+    ],
+    "sourceAndAssertionRule": "The exact pinned plan supplies original source-file hashes, whole functions, nested cases, assertions/tolerances and work. No change/shortening or after-RED retuning. The newly added direct oracle is already passed and need not run again.",
+    "children": 36,
+    "order": "each exact name once on native candidate then GoJS candidate, starting with ExactExtremaBitContract; one owned child at a time",
+    "separateWholeUnitWorkBounds": {
+      "baseFramesMax": 374604,
+      "highFrameUpperMax": 1498416,
+      "scalarClockQueryIterationsMax": 350000,
+      "tinyEofBaseFrames": 213882,
+      "tinyEofHighFrameUpper": 855528,
+      "gainNaiveHighRateProcessCalls": 1000000,
+      "scope": "whole immutable original unit functions; not recorder counter acceptance; no counts/rates/tails/tolerances shortened"
+    },
+    "arrayBounds": {
+      "file": "internal/audio/dsp/testdata/envelope_node_visit_units/ARRAY-BOUNDS.json",
+      "sha256": "123b214e9cf80c80757932f75449f769e7306faf8e363c502cb75050c5b9d85c"
+    },
+    "io": "log only; no PCM/open attempts/data writes in GoJS; exact top/nested starts and PASS, Go exit0/full parent EOF/no primary/cleanup/IO error"
+  },
+  "recorder": {
+    "name": "TestWriteStudioExtremaGraphFixtures",
+    "source": "internal/audio/dsp/studio_extrema_graph_fixture_test.go",
+    "sourceSHA256": "d00ba149d21660a3e5a4390ec0944ec6ea090cd28af7aec0ccd5c0d688da0a60",
+    "rates": [
+      8000,
+      44100,
+      48000,
+      96000,
+      192000
+    ],
+    "casesPerRate": 27,
+    "casesPerBackend": 135,
+    "children": 10,
+    "nativeEnv": "unchanged GOMAXPROCS1 plus closed AURIALIS_STUDIO_EXTREMA_RATE/FIXTURES and TMPDIR per exclusive output directory",
+    "executionRule": "Preserve the exact existing Go recorder and GoJS recording/execution, closed FS, counter collector and post-exit blocks; change only new module/source metadata binding. One exclusive0600 rate.bin output per child, raw counter/IO/exit receipt retained.",
+    "caps": {
+      "baseFrames": 200000,
+      "highFrameUpper": 800000,
+      "numericWords": 16777216,
+      "outputBytes": 8388608,
+      "graphObjectBytes": 2097152,
+      "scratchPreparationAllowanceBytes": 6291456
+    },
+    "expectedCountersFrom": {
+      "BUILD": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/BUILD.json",
+      "sha256": "16aacd5935e4bee8c9e253d926f9fe2d5dfbc2179f68b62b5b7e3d1195fde6f8",
+      "field": "nativeCounterReceipts by exact closed rate"
+    },
+    "sameBackendReferences": {
+      "native": {
+        "8000": {
+          "qualifiedBaselineStream": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/runs/native-baseline-rate8000/rate8000.bin",
+          "bytes": 2354640,
+          "sha256": "69522f38f5c6544a698c1d2313078fa902a9715441a084389348401848365474",
+          "acceptedE492Archive": {
+            "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/exact-extrema-graph-candidate/candidate-native-final/rate8000.bin",
+            "bytes": 2354640,
+            "sha256": "69522f38f5c6544a698c1d2313078fa902a9715441a084389348401848365474"
+          }
+        },
+        "44100": {
+          "qualifiedBaselineStream": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/runs/native-baseline-rate44100/rate44100.bin",
+          "bytes": 2189616,
+          "sha256": "7d96eaf578ee351a2eedb52f4b535d4cba352782bc77bdad116136c49a49a3b3",
+          "acceptedE492Archive": {
+            "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/exact-extrema-graph-candidate/candidate-native-final/rate44100.bin",
+            "bytes": 2189616,
+            "sha256": "7d96eaf578ee351a2eedb52f4b535d4cba352782bc77bdad116136c49a49a3b3"
+          }
+        },
+        "48000": {
+          "qualifiedBaselineStream": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/runs/native-baseline-rate48000/rate48000.bin",
+          "bytes": 2168016,
+          "sha256": "d069b562c785f419dbe9770670a81fd1399718317defcb4b44b76649ccd3c0ba",
+          "acceptedE492Archive": {
+            "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/exact-extrema-graph-candidate/candidate-native-final/rate48000.bin",
+            "bytes": 2168016,
+            "sha256": "d069b562c785f419dbe9770670a81fd1399718317defcb4b44b76649ccd3c0ba"
+          }
+        },
+        "96000": {
+          "qualifiedBaselineStream": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/runs/native-baseline-rate96000/rate96000.bin",
+          "bytes": 2225904,
+          "sha256": "aa9e188361782ffdebfb9b4ca40544841c1a854a9e509df2c658be918acfb1d9",
+          "acceptedE492Archive": {
+            "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/exact-extrema-graph-candidate/candidate-native-final/rate96000.bin",
+            "bytes": 2225904,
+            "sha256": "aa9e188361782ffdebfb9b4ca40544841c1a854a9e509df2c658be918acfb1d9"
+          }
+        },
+        "192000": {
+          "qualifiedBaselineStream": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/runs/native-baseline-rate192000/rate192000.bin",
+          "bytes": 2389200,
+          "sha256": "cd2bed7e0b411a92352b75e99e131c37730376b7b92c581c0258762564f4a68e",
+          "acceptedE492Archive": {
+            "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/exact-extrema-graph-candidate/candidate-native-final/rate192000.bin",
+            "bytes": 2389200,
+            "sha256": "cd2bed7e0b411a92352b75e99e131c37730376b7b92c581c0258762564f4a68e"
+          }
+        }
+      },
+      "wasm": {
+        "8000": {
+          "qualifiedBaselineStream": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/runs/wasm-baseline-rate8000/rate8000.bin",
+          "bytes": 2354640,
+          "sha256": "c373b6ad62e32af443d5093d94d4cf3cab5c08a21c619c4c4d2d4a6d85204ef0",
+          "acceptedE492Archive": {
+            "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/exact-extrema-wasm-graph-runner/runs/post-exit-first/candidate-rate8000/rate8000.bin",
+            "bytes": 2354640,
+            "sha256": "c373b6ad62e32af443d5093d94d4cf3cab5c08a21c619c4c4d2d4a6d85204ef0"
+          }
+        },
+        "44100": {
+          "qualifiedBaselineStream": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/runs/wasm-baseline-rate44100/rate44100.bin",
+          "bytes": 2189616,
+          "sha256": "e08f89dca32ad67f80c9e7230e79100e9a162daca74dee6239c71ba9e95717dc",
+          "acceptedE492Archive": {
+            "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/exact-extrema-wasm-graph-runner/runs/post-exit-first/candidate-rate44100/rate44100.bin",
+            "bytes": 2189616,
+            "sha256": "e08f89dca32ad67f80c9e7230e79100e9a162daca74dee6239c71ba9e95717dc"
+          }
+        },
+        "48000": {
+          "qualifiedBaselineStream": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/runs/wasm-baseline-rate48000/rate48000.bin",
+          "bytes": 2168016,
+          "sha256": "680fe270ef13f9da1dbf05aebad288d4f284bcabb6e1f0929c78941948eec51e",
+          "acceptedE492Archive": {
+            "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/exact-extrema-wasm-graph-runner/runs/post-exit-first/candidate-rate48000/rate48000.bin",
+            "bytes": 2168016,
+            "sha256": "680fe270ef13f9da1dbf05aebad288d4f284bcabb6e1f0929c78941948eec51e"
+          }
+        },
+        "96000": {
+          "qualifiedBaselineStream": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/runs/wasm-baseline-rate96000/rate96000.bin",
+          "bytes": 2225904,
+          "sha256": "bd89360faeeb8f38f767b1b5ba19b7364c76fee644d9f5683d3ef663b3f16b73",
+          "acceptedE492Archive": {
+            "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/exact-extrema-wasm-graph-runner/runs/post-exit-first/candidate-rate96000/rate96000.bin",
+            "bytes": 2225904,
+            "sha256": "bd89360faeeb8f38f767b1b5ba19b7364c76fee644d9f5683d3ef663b3f16b73"
+          }
+        },
+        "192000": {
+          "qualifiedBaselineStream": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/runs/wasm-baseline-rate192000/rate192000.bin",
+          "bytes": 2389200,
+          "sha256": "8206cf9d8a34b5ceade91a63dde37e5522e134953826044dca61417db98eb6e9",
+          "acceptedE492Archive": {
+            "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/exact-extrema-wasm-graph-runner/runs/post-exit-first/candidate-rate192000/rate192000.bin",
+            "bytes": 2389200,
+            "sha256": "8206cf9d8a34b5ceade91a63dde37e5522e134953826044dca61417db98eb6e9"
+          }
+        }
+      }
+    },
+    "comparison": "Compare every actual candidate output byte/counter against BOTH the sealed qualified baseline stream and accepted e492 archive in its own backend. No new baseline children or cross-target numeric-state identity claim."
+  },
+  "frozenSources": {
+    "internal/audio/dsp/testdata/envelope_bound_hoist/native-guard.py": "7811878448415c6e85c35fcc8e929f12bcce457b4ae9642315e84adf360f29eb",
+    "internal/audio/dsp/testdata/envelope_node_visit_units/run-unit.py": "2475e09a3ab0a57ab27c6b824a38032ad69821e9e05770b3303cc97024e1ff97",
+    "internal/audio/dsp/testdata/envelope_node_visit_units/wasm-unit.mjs": "036d7b2d26d9d0aa304d0f6b20bb3d522e9332ff6683e0df30557dd7a1e98946",
+    "internal/audio/dsp/testdata/envelope_node_visit_units/unit-io.mjs": "0189c941f0ae40289ab6cbe8611774937e11f3debec693aa1d1fcdcd9121aa24",
+    "internal/audio/dsp/testdata/extrema_graph/closed-fs.mjs": "2e56a72cd4012b18518ce0512b5f3ffa697163f327e50ad2208e2b975ad8f2fa",
+    "internal/audio/dsp/testdata/extrema_graph/child-lifecycle.mjs": "e8f8c41a67596938f0064184665209ccdff61a14a556fd42fa801a483e4f8330",
+    "internal/audio/dsp/testdata/envelope_node_visit_graph/run-pair.py": "a8893bcdeee4430486a19924e1e2e7efc7e112de10fd3b93109e079ef3cbf0ec",
+    "internal/audio/dsp/testdata/envelope_node_visit_graph/wasm-child.mjs": "309216daa505d409d9083e7c5bed9f28d3dbc4f8b4cd7083f5e6649718d77557"
+  },
+  "limits": {
+    "totalFutureChildren": 46,
+    "sequential": true,
+    "goSeconds": 25,
+    "parentSeconds": 28,
+    "nodeOldSpaceMiB": 192,
+    "nodeStackKiB": 8192,
+    "observedLeaderRSSBytes": 1073741824,
+    "rssScope": "same frozen sampled workload-leader guard; no instantaneous or descendant-aggregate claim",
+    "moduleBytes": 16777216,
+    "logBytes": 262144,
+    "noRetriesOrOverwrites": true,
+    "disk": "Check and coordinate physical headroom before release, especially ten recorder outputs of at most8MiB each. Retain required outputs once; do not duplicate modules or silently delete raw evidence. No current reservations/claims or runs are created."
+  },
+  "admissionSequence": "Root reviews this source plan and actual direct proof; only then prepare small binding adapters/source contracts/Writer snapshot for separate review. Only another explicit release permits original-unit and recorder children. Stop on first infrastructure/semantic RED, retain partials, no retry or cap/work/tolerance retuning.",
+  "provenanceLimit": "Selected current Go1.26.10 driver/compiler/link/runtime hashes are pinned by direct proof. Historical qualified baseline executable hashes were never recorded; compare known version/flags/runtime without inventing retrospective byte identity.",
+  "timing": "No timing/profile/quiet-window or production selection is automatic after these gates. Existing192k steady RED, prior failed timings and270 cross-target state-hash differences remain open; no deadline/headroom or V8 cost claim."
+}

@@ -1,0 +1,7 @@
+SOURCE PLAN ONLY — NOT AN EXECUTION RELEASE
+1. Review exact current native/WASM BUILD/module/overlay/test/guard/IO/recording bindings and disk headroom; no new Go builds or module copies.
+2. After separate SOURCE release, prepare only small new binding adapters/contracts outside immutable admitted folders.
+3. After later actual release:36 sequential original-unit children (18 exact names × native/GoJS candidate), original assertions/work unchanged.
+4. Then10 sequential candidate recorder children (5 rates × native/GoJS),27 cases each; compare whole bytes/counters to both same-backend qualified baseline and accepted e492 archive.
+5. Retain exact raw IO/parent/Go/counter/output proof; stop on any RED without retries, output overwrite or work/cap/tolerance retuning.
+6. No automatic profile/timing, baseline execution, full-state cross-target identity, selection or deadline acceptance.

@@ -1,7 +1,7 @@
 /** No app imports. Whole-file precharge/snapshot precedes reads, hashes or Worker. */
 import { shapePlan,parseFixture } from './contract.mjs';
 import { analyzeStages } from './propagated.mjs';
-import { RUNTIME_ABI,MODEL_CONTRACT,DEADLINE_MS,recordFor,allocationPlan } from './runtime-contract.mjs';
+import { RUNTIME_ABI,MODEL_CONTRACT,DEADLINE_MS,recordFor,allocationPlan,METADATA_ABI,METADATA_APPLICATION_BYTES,decodeMetadata } from './runtime-contract.mjs';
 import { SHADER_SHA256 } from './shader.mjs';
 let owner=null;
 // Capture the real internal-slot getter/transfer primitive before publishing any
@@ -64,5 +64,23 @@ export function createAttentionClient(environment={}){
       receipt=Object.freeze({...report,comparison,dispose:release});settle(null,receipt);
     })().catch(error=>settle(canceled??error)).finally(()=>{if(!receipt)release();});
     return returned;
+  },metadata(signal=new AbortController().signal){
+    signal.throwIfAborted();if(owner)throw new Error('One attention operation active; no queue');
+    const lease=reserve(METADATA_APPLICATION_BYTES);if(!lease||typeof lease.release!=='function')throw new Error('Invalid metadata memory lease');
+    const token={};owner=token;let worker,terminate,raw,receipt,workerReject,canceled,settled=false,released=false,cleanupTimer,resolveUser,rejectUser,resolveReleased;
+    const fullyReleased=new Promise(resolve=>{resolveReleased=resolve;}),returned=new Promise((resolve,reject)=>{resolveUser=resolve;rejectUser=reject;});Object.defineProperty(returned,'whenSettled',{value:()=>fullyReleased});
+    const settle=(error,value)=>{if(settled)return;settled=true;if(error)rejectUser(error);else resolveUser(value);};
+    const release=()=>{if(released)return;clearTimeout(deadline);clearTimeout(cleanupTimer);signal.removeEventListener('abort',abort);if(worker){worker.onmessage=null;worker.onerror=null;worker.onmessageerror=null;terminate();}if(raw&&bufferBytes(raw)>0)transferClone(null,{transfer:[raw]});if(raw&&bufferBytes(raw)!==0)throw new Error('Metadata backing store remains owned');raw=undefined;lease.release();released=true;if(owner===token)owner=null;resolveReleased();};
+    const cancel=error=>{if(canceled)return;canceled=error;if(receipt){release();return;}settle(error);if(worker){try{worker.postMessage({abi:METADATA_ABI,id:token.id,kind:'cancel'});}catch{}cleanupTimer=setTimeout(()=>{terminate();workerReject?.(error);},50);}};
+    const abort=()=>cancel(signal.reason instanceof Error?signal.reason:new DOMException('Metadata canceled','AbortError'));
+    const deadline=setTimeout(()=>cancel(new Error('Metadata deadline; host request settlement is not guaranteed by termination')),DEADLINE_MS);signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
+    const check=()=>{if(canceled)throw canceled;signal.throwIfAborted();};
+    void(async()=>{check();token.id=crypto.randomUUID();worker=makeWorker();terminate=worker.terminate.bind(worker);
+      const incoming=await new Promise((resolve,reject)=>{workerReject=reject;worker.onerror=()=>reject(new Error('Metadata Worker failed'));worker.onmessageerror=()=>reject(new Error('Metadata transfer failed'));worker.onmessage=event=>{try{const data=event.data;if(!data||data.abi!==METADATA_ABI||data.id!==token.id)throw new Error('Metadata result identity changed');if(data.kind==='error'){if(Object.keys(data).sort().join('|')!=='abi|error|id|kind')throw new Error('Metadata error fields changed');throw new Error(String(data.error).slice(0,1024));}if(data.kind!=='metadata-result'||Object.keys(data).sort().join('|')!=='abi|id|json|kind')throw new Error('Metadata result fields changed');resolve(data.json);}catch(error){reject(error);}};worker.postMessage({abi:METADATA_ABI,id:token.id,kind:'adapter-metadata'});});
+      // Transfer ownership is recorded before geometry/parse refusal. Worker
+      // producer state ends before parse; no parsed object survives this call.
+      bufferBytes(incoming);raw=incoming;check();worker.onmessage=null;worker.onerror=null;worker.onmessageerror=null;terminate();decodeMetadata(raw);check();clearTimeout(deadline);
+      receipt=Object.freeze({metadata:true,result:raw,dispose:release});settle(null,receipt);
+    })().catch(error=>settle(canceled??error)).finally(()=>{if(!receipt)release();});return returned;
   }});
 }

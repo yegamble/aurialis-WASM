@@ -54,3 +54,39 @@ export function unpackReadback(plan,buffer) {
   for(let i=0;i<6;i++)if(source[offset+i]!==CANARY)throw new Error('Attention input canary changed');
   return result.buffer;
 }
+
+// Metadata is a separate closed command. It has no fixture/model/device path.
+const metadataApply=Reflect.apply,metadataByteLength=Object.getOwnPropertyDescriptor(ArrayBuffer.prototype,'byteLength').get;
+export const METADATA_ABI=ABI+'/adapter-metadata-1';
+export const METADATA_MAX_BYTES=8192;
+export const METADATA_APPLICATION_BYTES=65536;
+export const metadataLedger=Object.freeze({recordRepresentation:18432,serializedUTF16:16384,utf8Buffer:8192,producerControl:6144,producerPhase:49152,parsePhase:49152,rawHashPhase:36864,rawReceipt:8192,numericPackets:2*32*256,utf16Protocol:2*2*(4*256+1024),byteCopies:3*256,streamControl:16384,hashAllowance:4096,streamPhase:54016,phasesExclusive:true});
+export function validateMetadataMessage(message){
+ if(!message||Object.keys(message).sort().join('|')!=='abi|id|kind'||message.abi!==METADATA_ABI||message.kind!=='adapter-metadata'||typeof message.id!=='string'||!/^[a-z0-9-]{1,64}$/u.test(message.id))throw new Error('Closed metadata message identity changed');
+}
+function metadataKeys(value,keys){if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).sort().join('|')!==keys.slice().sort().join('|'))throw new Error('Metadata record fields changed');}
+export function validateMetadataRecord(report){
+ metadataKeys(report,['version','secureContext','request','info','features','limits','device','attribution','scope']);
+ if(report.version!==1||report.secureContext!==true||report.request!=='default-no-hints'||report.device!=='not-requested'||report.scope!=='private-adapter-metadata-only')throw new Error('Metadata operation scope changed');
+ metadataKeys(report.info,['vendor','architecture','device','description','isFallbackAdapter']);
+ for(const key of ['vendor','architecture','device','description'])if(typeof report.info[key]!=='string'||report.info[key].length>512)throw new Error('Metadata identity string cap');
+ if(typeof report.info.isFallbackAdapter!=='boolean')throw new Error('RED: required fallback status unavailable');
+ if(!Array.isArray(report.features)||report.features.length>32||new Set(report.features).size!==report.features.length||report.features.some(x=>typeof x!=='string'||!/^[a-z0-9-]{1,64}$/u.test(x)))throw new Error('Metadata feature cap/type changed');
+ metadataKeys(report.limits,LIMITS);for(const key of LIMITS)if(!Number.isSafeInteger(report.limits[key])||report.limits[key]<0)throw new Error('RED: required adapter limit unavailable');
+ const attribution=['vendor','architecture','device','description'].some(k=>report.info[k]==='')?'LIMITED':'reported-only';if(report.attribution!==attribution)throw new Error('Metadata attribution changed');
+ return report;
+}
+function jsonStringBytes(value){let bytes=2;for(let i=0;i<value.length;i++){const c=value.charCodeAt(i);if(c===34||c===92||[8,9,10,12,13].includes(c))bytes+=2;else if(c<32)bytes+=6;else if(c<128)bytes++;else if(c<2048)bytes+=2;else if(c>=0xd800&&c<=0xdbff&&i+1<value.length&&value.charCodeAt(i+1)>=0xdc00&&value.charCodeAt(i+1)<=0xdfff){bytes+=4;i++;}else if(c>=0xd800&&c<=0xdfff)bytes+=6;else bytes+=3;}return bytes;}
+function jsonBytes(value){if(typeof value==='string')return jsonStringBytes(value);if(typeof value==='boolean')return value?4:5;if(typeof value==='number')return String(value).length;if(Array.isArray(value))return 2+Math.max(0,value.length-1)+value.reduce((n,x)=>n+jsonBytes(x),0);const entries=Object.entries(value);return 2+Math.max(0,entries.length-1)+entries.reduce((n,[k,v])=>n+jsonStringBytes(k)+1+jsonBytes(v),0);}
+export function encodeMetadata(report){
+ validateMetadataRecord(report);const count=jsonBytes(report);if(count>METADATA_MAX_BYTES)throw new Error('Metadata serialized evidence exceeds8KiB');
+ const text=JSON.stringify(report),bytes=new TextEncoder().encode(text);if(bytes.byteLength!==count)throw new Error('Metadata UTF8 size invariant changed');return bytes.buffer;
+}
+export function decodeMetadata(buffer){
+ let bytes;try{bytes=metadataApply(metadataByteLength,buffer,[]);}catch{throw new Error('Metadata result geometry changed');}if(bytes<2||bytes>METADATA_MAX_BYTES)throw new Error('Metadata result geometry changed');
+ const text=new TextDecoder('utf-8',{fatal:true}).decode(buffer);let quoted=false,escaped=false,depth=0,objects=0,arrays=0,strings=0,scalars=0;
+ // Refuse allocation-heavy malformed trees before JSON.parse. The closed schema
+ // has3objects,1array,at most64strings and13number/boolean scalar tokens.
+ for(let i=0;i<text.length;i++){const c=text[i];if(quoted){if(escaped)escaped=false;else if(c==='\\')escaped=true;else if(c==='"')quoted=false;continue;}if(c==='"'){quoted=true;if(++strings>64)throw new Error('Metadata JSON string count');}else if(c==='{'||c==='['){if(++depth>3||c==='{'&&++objects>3||c==='['&&++arrays>1)throw new Error('Metadata JSON structure cap');}else if(c==='}'||c===']')depth--;else if(!/[\s,:]/u.test(c)){if(++scalars>13)throw new Error('Metadata JSON scalar count');while(i+1<text.length&&!/[\s,}\]]/u.test(text[i+1]))i++;}}
+ if(quoted||escaped||depth!==0)throw new Error('Metadata JSON framing changed');return validateMetadataRecord(JSON.parse(text));
+}

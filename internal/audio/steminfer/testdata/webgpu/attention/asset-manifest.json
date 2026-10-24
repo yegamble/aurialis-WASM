@@ -1,22 +1,22 @@
 {
   "harness.mjs": {
-    "bytes": 2012,
-    "sha256": "c5ff74d53610d890a4dfdf6ddfc27d8e204f401b45ff2368ef30f5eb3d7af675",
+    "bytes": 2521,
+    "sha256": "3ae4bc5ed5fafce188f6cb2300971bf755fc95c580c9525d4f143fa85fc98d51",
     "mime": "text/javascript; charset=utf-8"
   },
   "capture.mjs": {
-    "bytes": 5961,
-    "sha256": "ac9ac6b5989465a1db455e45ffdd0d334a191534a4711e09b87b83c1fbc10216",
+    "bytes": 6865,
+    "sha256": "2dfdfddc4e46cb43eff5cbbf60a11fc38c582c29197d50784ffd4faa6604a0c1",
     "mime": "text/javascript; charset=utf-8"
   },
   "capture-contract.mjs": {
-    "bytes": 6386,
-    "sha256": "5ed16b0f26456f6030f35e636216ad3b7a3d6b704d54bc09c164b43ff3f8f599",
+    "bytes": 7786,
+    "sha256": "949915b9d10150bf4d3cd365954b96bbcec9cdb7e39973d94313c6950f35f664",
     "mime": "text/javascript; charset=utf-8"
   },
   "client.mjs": {
-    "bytes": 6898,
-    "sha256": "99dcfff8fb5bc7d42a296149a3dc5a8a303781da8bd794576f9d2a2bc1c1672e",
+    "bytes": 10393,
+    "sha256": "e4bdce043749cb8f18b52f0cfe7fa4543953a7d7c5b1d68bb181776458305374",
     "mime": "text/javascript; charset=utf-8"
   },
   "contract.mjs": {
@@ -30,8 +30,8 @@
     "mime": "text/javascript; charset=utf-8"
   },
   "runtime-contract.mjs": {
-    "bytes": 6017,
-    "sha256": "d3756c94e1e6f11e76882b06e7f095d89e3edf90043f17de3b49fdd738970059",
+    "bytes": 11138,
+    "sha256": "0e51aa0345156700602f57b5f7209070c927f3a27cbb47a88217abfb007ef44b",
     "mime": "text/javascript; charset=utf-8"
   },
   "propagated.mjs": {
@@ -45,13 +45,13 @@
     "mime": "text/javascript; charset=utf-8"
   },
   "worker.mjs": {
-    "bytes": 1208,
-    "sha256": "8c3197da501abde6d9e0b6320a6256c8b1e4bc879aecaea04446c1cc314b504f",
+    "bytes": 1490,
+    "sha256": "56bc291da81576ecf01116c0d5cbce9bf5e400b6adc75a8524039dc8affbda69",
     "mime": "text/javascript; charset=utf-8"
   },
   "gpu-runner.mjs": {
-    "bytes": 6620,
-    "sha256": "bb6056e246936104e995f57b55233186e26412d9f44442e8ea076521a6308fa3",
+    "bytes": 8425,
+    "sha256": "d00b12b1fced51fafc4e1a07e00c50040006de6c2aec8b7fc072aa081bb265f1",
     "mime": "text/javascript; charset=utf-8"
   },
   "index.html": {

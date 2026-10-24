@@ -86,6 +86,18 @@ class Contract(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 state.ready({**ready, **change}, 'normal')
 
+    def test_metadata_mode_requires_truthful_adapter_flag_and_same_owned_work(self):
+        self.assertEqual(node_command('/node', '/launcher', 'metadata', '/control')[-2:], ['metadata', '/control'])
+        state, observed = self.state()
+        ready = {'token': 'token', 'nodePID': 10, 'browserPID': 20, 'serverPID': 30, 'status': 'pass', 'mode': 'metadata', 'ownershipAcknowledgedBeforeWorker': True, 'audioProcessing': False, 'gpuRequested': True}
+        with self.assertRaises(RuntimeError):
+            state.ready(ready, 'metadata')
+        state.admit_work(self.work(), observed)
+        state.ready(ready, 'metadata')
+        for changed in ({'gpuRequested': False}, {'audioProcessing': True}, {'mode': 'normal'}):
+            with self.assertRaises(RuntimeError):
+                state.ready({**ready, **changed}, 'metadata')
+
     def test_crash_only_exact_pre_admitted_live_survivor_and_final_empty(self):
         state, _ = self.state()
         before = [row(20), row(21, 20, parent=20)]

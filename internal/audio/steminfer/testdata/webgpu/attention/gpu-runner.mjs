@@ -1,5 +1,5 @@
 /** GPU implementation requires an explicit interface; source tests inject only dummy objects. */
-import { MODEL_CONTRACT,CANARY,LIMITS,validateMessage,validateDevice,unpackReadback } from './runtime-contract.mjs';
+import { MODEL_CONTRACT,CANARY,LIMITS,validateMessage,validateDevice,unpackReadback,validateMetadataMessage,encodeMetadata } from './runtime-contract.mjs';
 import { SHADER_SOURCE,SHADER_SHA256 } from './shader.mjs';
 function capability(adapter,device){const fields=Object.fromEntries(['vendor','architecture','device','description'].map(k=>[k,String(adapter.info?.[k]??'not exposed').slice(0,512)]));const fallback=adapter.info?.isFallbackAdapter??adapter.isFallbackAdapter??null,software=fallback===true||/swiftshader|llvmpipe|lavapipe|software|basic render|\bwarp\b/iu.test(Object.values(fields).join(' '));return{...fields,reportedFallback:fallback,hardwareStatus:software?'software/fallback adapter':'requires independent browser/OS hardware evidence',backend:'not exposed by WebGPU',adapterFeatures:[...adapter.features].sort(),deviceFeatures:[...device.features].sort(),adapterLimits:Object.fromEntries(LIMITS.map(k=>[k,adapter.limits[k]])),deviceLimits:Object.fromEntries(LIMITS.map(k=>[k,device.limits[k]]))};}
 export async function execute(message,environment){
@@ -41,4 +41,16 @@ export async function execute(message,environment){
     report={model:MODEL_CONTRACT,shaderSHA256:SHADER_SHA256,fixtureSHA256:record.sha256,passes:8,result,canariesIntact:true,chargedApplicationBytes:p.chargedApplicationBytes,gpuBytes:allocation.gpuBytes,gpuWork:p.gpuWork,integerControlUpperBound:allocation.integerControlUpperBound,capability:capability(adapter,device),timingScope:'no benchmark; dispatch completion does not prove callback deadlines'};
   }finally{disposed=true;onCancel(()=>{});if(mapped)readback.unmap();for(const b of buffers)b.destroy();device.removeEventListener('uncapturederror',errorListener);device.destroy();/* Avoid waiting on a lost device during cleanup. */}
   return {...report,cleanupComplete:true};
+}
+
+/** Source tests supply a dummy interface. No device or shader is requested. */
+export async function executeMetadata(message,{gpu,secureContext,check}){
+ validateMetadataMessage(message);check();if(!secureContext||!gpu||typeof gpu.requestAdapter!=='function')throw new Error('RED: WebGPU unavailable in secure Worker');
+ const adapter=await gpu.requestAdapter();check();if(!adapter)throw new Error('RED: no WebGPU adapter');
+ const info={};for(const key of ['vendor','architecture','device','description']){const value=adapter.info?.[key];if(typeof value!=='string'||value.length>512)throw new Error('RED: adapter identity API unavailable/oversize');info[key]=value;}
+ info.isFallbackAdapter=adapter.info?.isFallbackAdapter;if(typeof info.isFallbackAdapter!=='boolean')throw new Error('RED: required fallback status unavailable');
+ const features=[];if(!adapter.features||typeof adapter.features[Symbol.iterator]!=='function')throw new Error('RED: adapter features unavailable');for(const feature of adapter.features){check();if(features.length===32||typeof feature!=='string'||!/^[a-z0-9-]{1,64}$/u.test(feature))throw new Error('Metadata feature cap/type changed');features.push(feature);}features.sort();
+ const limits={};for(const key of LIMITS){const value=adapter.limits?.[key];if(!Number.isSafeInteger(value)||value<0)throw new Error('RED: required adapter limit unavailable');limits[key]=value;}
+ const report={version:1,secureContext:true,request:'default-no-hints',info,features,limits,device:'not-requested',attribution:['vendor','architecture','device','description'].some(k=>info[k]==='')?'LIMITED':'reported-only',scope:'private-adapter-metadata-only'};
+ check();return encodeMetadata(report); // Producer temporaries expire before transfer/parse.
 }

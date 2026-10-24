@@ -47,3 +47,13 @@ export function validateChunk(packet,header,sequence,offset){
  for(let i=0;i<count;i++){const descriptor=Object.getOwnPropertyDescriptor(packet.data,String(i));if(!descriptor||!('value'in descriptor)||!Number.isInteger(descriptor.value)||descriptor.value<0||descriptor.value>255)throw new Error('Invalid capture byte');}
  return count;
 }
+
+export const METADATA_CAPTURE_ABI='aurialis-private-adapter-metadata-stream-1';
+export const METADATA_CHUNK_BYTES=256;
+export function metadataIdentity(message,id,kind,keys){exactKeys(message,keys);if(message.abi!==METADATA_CAPTURE_ABI||message.id!==id||message.kind!==kind)throw new Error('Stale metadata capture identity');}
+export function validateMetadataHeader(header){exactKeys(header,['abi','id','total','chunkBytes','hash']);if(header.abi!==METADATA_CAPTURE_ABI||!validID(header.id)||!Number.isInteger(header.total)||header.total<2||header.total>8192||header.chunkBytes!==METADATA_CHUNK_BYTES||!validHash(header.hash))throw new Error('Metadata header changed');return header.total;}
+export function validateMetadataChunk(packet,header,sequence,offset){
+ metadataIdentity(packet,header.id,'chunk',['abi','id','kind','sequence','offset','total','hash','data']);const count=Math.min(METADATA_CHUNK_BYTES,header.total-offset);
+ if(count<1||sequence>=32||packet.sequence!==sequence||packet.offset!==offset||packet.total!==header.total||!validHash(packet.hash)||!Array.isArray(packet.data)||packet.data.length!==count)throw new Error('Metadata chunk geometry/order changed');
+ for(let i=0;i<count;i++){const d=Object.getOwnPropertyDescriptor(packet.data,String(i));if(!d||!('value'in d)||!Number.isInteger(d.value)||d.value<0||d.value>255)throw new Error('Invalid metadata byte');}return count;
+}

@@ -1,10 +1,12 @@
-/** Private normal/crash ownership controls only. Importing never launches work. */
+/** Private normal/crash ownership and metadata-only source commands. Importing never launches work. */
 import {createHash} from 'node:crypto';
 import {readFile,lstat,writeFile} from 'node:fs/promises';
 import {spawn} from 'node:child_process';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {metadataFromOwnedPage,playwrightPageAdapter} from '../../internal/audio/steminfer/testdata/webgpu/attention/capture-driver.mjs';
+import {createMetadataSinkFactory} from '../../internal/audio/steminfer/testdata/webgpu/attention/capture-files.mjs';
 import {admittedBrowser,beforeOwnedWork,exclusiveJSON} from './owned-browser.mjs';
 
 export function launchOptions(pins){
@@ -13,7 +15,7 @@ export function launchOptions(pins){
 }
 const errorView=error=>error instanceof AggregateError?{message:String(error.message).slice(0,512),causes:error.errors.slice(0,4).map(cause=>String(cause?.stack??cause).slice(0,512))}:String(error?.stack??error).slice(0,2048);
 export async function runOwnershipProbe(mode,deps){
- if(!['normal','crash'].includes(mode))throw new Error('Only normal/crash ownership controls released');
+ if(!['normal','crash','metadata'].includes(mode))throw new Error('Only normal/crash/metadata source commands exist');
  let server,host,browser,context,primary=null,details=null;const cleanup=[];
  try{
   server=await deps.admit(launchOptions(deps.pins));
@@ -24,7 +26,7 @@ export async function runOwnershipProbe(mode,deps){
   await deps.beforeWork();if(deps.stopping())throw new Error('Stopped before acknowledged work');
   browser=await deps.connect(server);context=await browser.newContext();
   details=await deps.probe(context,browser,endpoint.url);
-  await deps.publish('probe-ready',{status:'pass',mode,serverPID:host.pid(),ownershipAcknowledgedBeforeWorker:true,audioProcessing:false,gpuRequested:false});
+  await deps.publish('probe-ready',{status:'pass',mode,serverPID:host.pid(),ownershipAcknowledgedBeforeWorker:true,audioProcessing:false,gpuRequested:mode==='metadata'});
   if(mode==='crash')await deps.waitForStop();
   if(deps.stopping())throw new Error('Owned no-audio root stopped');
  }catch(error){primary=errorView(error);}
@@ -33,7 +35,7 @@ export async function runOwnershipProbe(mode,deps){
    try{await operation();}catch(error){cleanup.push({phase,error:errorView(error)});}
   }
  }
- return Object.freeze({mode,status:primary===null&&!cleanup.length?'pass':'fail',primary,cleanup,details,audioProcessing:false,gpuRequested:false});
+ return Object.freeze({mode,status:primary===null&&!cleanup.length?'pass':'fail',primary,cleanup,details,audioProcessing:false,gpuRequested:mode==='metadata'});
 }
 
 /** No child exists at construction; failed acquisition keeps this exact handle. */
@@ -69,7 +71,7 @@ export function prepareStaticHost(python,serveFile,environment){
 }
 async function verifyFile(pin){const info=await lstat(pin.path);if(!info.isFile()||info.isSymbolicLink()||info.size!==pin.bytes)throw new Error('Pinned runtime file geometry changed');const bytes=await readFile(pin.path);if(createHash('sha256').update(bytes).digest('hex')!==pin.sha256)throw new Error('Pinned runtime digest changed');}
 async function realMain(){
- const [mode,output]=process.argv.slice(2);if(!['normal','crash'].includes(mode)||!output||!path.isAbsolute(output))throw new Error('Closed normal/crash mode and absolute private output required');
+ const [mode,output]=process.argv.slice(2);if(!['normal','crash','metadata'].includes(mode)||!output||!path.isAbsolute(output))throw new Error('Closed normal/crash mode and absolute private output required');
  const pins=JSON.parse(await readFile(new URL('./attention-launch-pins.json',import.meta.url),'utf8'));
  if(process.version!==pins.nodeVersion||process.execPath!==pins.node.path)throw new Error('Pinned Node26 entry required');
  for(const key of ['brave','python','playwrightEntry','playwrightPackage','playwrightCore'])await verifyFile(pins[key]);
@@ -91,6 +93,16 @@ async function realMain(){
   async probe(context,browser,url){
    const inventory=[],violations=[];let routeOverflow=false;
    await context.route('**/*',async route=>{const request=route.request(),target=new URL(request.url());if(target.protocol==='blob:'&&request.method()==='GET'&&!request.postDataBuffer()){await route.continue();return;}const allowed=target.origin===url&&['GET','HEAD'].includes(request.method())&&!request.postDataBuffer()&&(target.pathname==='/'||Object.hasOwn(assets,target.pathname.slice(1)))&&!target.search&&!target.hash;if(inventory.length+violations.length>=256){routeOverflow=true;await route.abort();return;}if(!allowed){violations.push({url:request.url().slice(0,2048),method:request.method()});await route.abort();return;}inventory.push({url:request.url().slice(0,2048),method:request.method(),bodyBytes:0});await route.continue();});
+   if(mode==='metadata'){
+    const page=await context.newPage();await page.goto(url,{waitUntil:'load',timeout:5000});await page.waitForFunction(()=>globalThis.aurialisPrivateAttentionCapture?.status().phase==='idle',{},{timeout:5000});
+    // Fresh shared-helper ACK precedes the sole metadata command. No File,
+    // device, pipeline or attention path is prepared by this mode.
+    const result=await metadataFromOwnedPage(playwrightPageAdapter(page),createMetadataSinkFactory(output),()=>beforeOwnedWork(()=>stopping));
+    if(violations.length||routeOverflow)throw new Error('Metadata network inventory failed');
+    const relative=path.relative(output,result.file.path);if(relative.startsWith('..')||path.isAbsolute(relative))throw new Error('Metadata file escaped owned output');
+    const evidence={scope:'actual adapter metadata only if separately released; no device/fixture/audio/model',metadataFile:{path:relative,bytes:result.file.bytes,hash:result.file.hash,closed:result.closed},inventory,violations,fixtureFilesSelected:0,deviceRequested:false,gpuBuffersCreated:0,shaderModulesCreated:0,computeDispatches:0};
+    await exclusiveJSON(path.join(output,'probe-details.json'),evidence);return{kind:'adapter-metadata',metadataBytes:result.file.bytes,hash:result.file.hash,closed:true,requests:inventory.length};
+   }
    const control=await context.newPage();await control.goto('about:blank');
    const workerResult=await control.evaluate(()=>new Promise((resolve,reject)=>{
     const url=URL.createObjectURL(new Blob(['postMessage(1)'],{type:'application/javascript'})),worker=new Worker(url),deadline=setTimeout(()=>{worker.terminate();URL.revokeObjectURL(url);reject(new Error('No-audio Worker deadline'));},2000);

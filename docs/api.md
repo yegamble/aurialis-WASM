@@ -144,3 +144,5 @@ Live playback meters are computed from actual audible blocks: sample peak dBFS, 
 The later source-v6 original-unit tranche passed all 18 selected tests on native/actual GoJS baseline and candidate (72 children), with clean exits, EOF and GoJS log-only receipts. This changes no API or ABI. The retained v5 infrastructure RED, cross-target full-state uncertainty and 192 kHz steady timing RED remain; the next same-module paired-screen plan is source only and has no timing release.
 
 The same-module screen binding host is a source-only private follow-up: 20 synthetic binding/lifecycle/parser/I/O contracts passed. It references existing modules and actual recorder evidence, adds no product API or ABI, and executes no screen or timing. Verification and timing each require separate Chair release; the 192 kHz steady RED remains open.
+
+A later explicit release passed exactly four same-module verification children (baseline/candidate for steady/peaky), with actual paired PCM/numeric-state/input/clock bytes and closed-I/O receipts matching. No measurement or API/ABI change follows; timing remains separately gated and the 192 kHz steady RED remains open.

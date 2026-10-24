@@ -747,9 +747,11 @@ Main advanced through reader-guide PR #10 at `bbc254a` while Simple PR #11 was b
 
 ## Opt-in true-peak limiter (algorithm 2) — 2026-10-24
 
-Algorithm 2 adds a lookahead limiter that bounds the meter's own 4× reconstructed peak. Algorithm 1 is unchanged and keeps zero latency. Algorithm 2 buffers `round(1.5 ms × rate) + 11` frames (83 at 48 kHz). `dsp.RenderLatencyCompensated` realigns and drains `RenderBufferContext`, `RenderScriptContext` and `RenderScriptV2Context`. Reference guards still require algorithm 1, and live playback, the worklet and the TypeScript validators still accept algorithm 1 only.
+Algorithm 2 adds a lookahead limiter that bounds the meter's own 4× reconstructed peak. Algorithm 1 is unchanged and keeps zero latency. Algorithm 2 buffers `round(1.5 ms × rate) + 46` frames (118 at 48 kHz). Its 8× 48-tap detector costs about 4× the algorithm-1 render time (0.53 µs per frame natively), roughly 6 s for a four-minute 48 kHz track. `dsp.RenderLatencyCompensated` realigns and drains `RenderBufferContext`, `RenderScriptContext` and `RenderScriptV2Context`. Reference guards still require algorithm 1, and live playback, the worklet and the TypeScript validators still accept algorithm 1 only.
 
-Evidence (`unit`): `truepeak_test.go` checks fs/4, hot-noise and near-Nyquist square fixtures at 44.1/48/96/192 kHz with ceilings of −0.1/−1/−6 dBTP. Every case measured at or below the ceiling. At −1 dBTP, algorithm 2 measured −1.043 dBTP; algorithm 1 measured up to +2.48 dBTP. The tests also cover:
+Evidence (`unit`): `truepeak_test.go` checks fs/4, hot-noise and near-Nyquist square fixtures at 44.1/48/96/192 kHz with ceilings of −0.1/−1/−6 dBTP. Every case measured at or below the ceiling. Algorithm 1 measured up to +2.48 dBTP at a −1 dBTP ceiling.
+
+Correction (independent reference): the first version reused the 49-tap 4× meter filter as its detector. That meter read −1.04 dBTP, but an independent 32× 128-tap Kaiser reference measured up to +1.25 dBTP on near-Nyquist tones and 0.16–0.7 dB over the ceiling on program-like noise mixes. The detector is now 8× with 48 taps plus 0.2 dB headroom. `TestTruePeakLimiterHoldsAgainstIndependentReference` holds kick/220 Hz/noise mixes, with and without 19 kHz and 0.45 fs tones, at or below −1 dBTP on that reference at 44.1 and 96 kHz; removing the headroom fails 5 of 6 cases. Full-band white noise can still read about 0.15 dB high. The tests also cover:
 
 - bit-identical aligned output against v1 below the ceiling;
 - delayed bit-identical bypass;

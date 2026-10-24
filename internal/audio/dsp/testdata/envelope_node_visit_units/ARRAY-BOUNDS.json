@@ -1,0 +1,569 @@
+{
+  "scope": "Static exact array payload bounds plus already accepted original recorder object sum; not total process/GC/stack/RSS or recorder admission for units",
+  "baseBuildSHA256": "16aacd5935e4bee8c9e253d926f9fe2d5dfbc2179f68b62b5b7e3d1195fde6f8",
+  "arrays": [
+    {
+      "name": "envelope trees",
+      "reference": 0,
+      "factors": [
+        2,
+        4096,
+        24
+      ],
+      "bytes": 196608,
+      "meaning": "8192 lines, each two float64 and one int64; exactly196608 bytes; each gain/guard embeds one envelope"
+    },
+    {
+      "name": "guard peak records",
+      "reference": 4,
+      "factors": [
+        4096,
+        32
+      ],
+      "bytes": 131072,
+      "meaning": "4096 records of int64+three float64;131072 bytes"
+    },
+    {
+      "name": "guard audio",
+      "reference": 7,
+      "factors": [
+        2,
+        4096,
+        8
+      ],
+      "bytes": 65536,
+      "meaning": "65536 bytes"
+    },
+    {
+      "name": "gain audio",
+      "reference": 8,
+      "factors": [
+        2,
+        2048,
+        8
+      ],
+      "bytes": 32768,
+      "meaning": "32768 bytes"
+    },
+    {
+      "name": "partition kernel responses",
+      "reference": 9,
+      "factors": [
+        3,
+        8,
+        256,
+        16
+      ],
+      "bytes": 98304,
+      "meaning": "98304 bytes; largest partition kernel member"
+    },
+    {
+      "name": "partition detector spectra",
+      "reference": 10,
+      "factors": [
+        8,
+        256,
+        16
+      ],
+      "bytes": 32768,
+      "meaning": "32768 bytes"
+    },
+    {
+      "name": "partition detector output",
+      "reference": 11,
+      "factors": [
+        3,
+        256,
+        16
+      ],
+      "bytes": 12288,
+      "meaning": "12288 bytes"
+    },
+    {
+      "name": "partition original",
+      "reference": 12,
+      "factors": [
+        1024,
+        16
+      ],
+      "bytes": 16384,
+      "meaning": "16384 bytes"
+    },
+    {
+      "name": "partition transform scratch",
+      "reference": 13,
+      "factors": [
+        256,
+        16
+      ],
+      "bytes": 4096,
+      "meaning": "4096 bytes"
+    },
+    {
+      "name": "audible FIR full",
+      "reference": 14,
+      "factors": [
+        3073,
+        8
+      ],
+      "bytes": 24584,
+      "meaning": "24584 bytes"
+    },
+    {
+      "name": "audible FIR phases",
+      "reference": 15,
+      "factors": [
+        4,
+        1024,
+        8
+      ],
+      "bytes": 32768,
+      "meaning": "32768 bytes"
+    },
+    {
+      "name": "audible down history",
+      "reference": 16,
+      "factors": [
+        2,
+        4096,
+        8
+      ],
+      "bytes": 65536,
+      "meaning": "65536 bytes"
+    },
+    {
+      "name": "audible up history",
+      "reference": 17,
+      "factors": [
+        2,
+        1024,
+        8
+      ],
+      "bytes": 16384,
+      "meaning": "16384 bytes"
+    },
+    {
+      "name": "graph original delay",
+      "reference": 18,
+      "factors": [
+        2,
+        4096,
+        4
+      ],
+      "bytes": 32768,
+      "meaning": "32768 bytes independent of source length"
+    },
+    {
+      "name": "graph limiter dry",
+      "reference": 19,
+      "factors": [
+        2,
+        1024,
+        8
+      ],
+      "bytes": 16384,
+      "meaning": "16384 bytes"
+    },
+    {
+      "name": "naive gain audio",
+      "reference": 20,
+      "factors": [
+        2,
+        2048,
+        8
+      ],
+      "bytes": 32768,
+      "meaning": "32768 bytes"
+    },
+    {
+      "name": "naive gain plan",
+      "reference": 21,
+      "factors": [
+        2048,
+        8
+      ],
+      "bytes": 16384,
+      "meaning": "16384 bytes"
+    },
+    {
+      "name": "scalar envelope plan",
+      "reference": 22,
+      "factors": [
+        4096,
+        8
+      ],
+      "bytes": 32768,
+      "meaning": "32768 bytes"
+    },
+    {
+      "name": "spectral samples",
+      "reference": 23,
+      "factors": [
+        8192,
+        8
+      ],
+      "bytes": 65536,
+      "meaning": "65536 bytes per spectral helper call"
+    },
+    {
+      "name": "spectral FFT scratch",
+      "reference": 25,
+      "factors": [
+        8192,
+        16
+      ],
+      "bytes": 131072,
+      "meaning": "131072 bytes, largest selected helper allocation; sample and FFT payload sum196608 bytes per helper call"
+    },
+    {
+      "name": "direct convolution source",
+      "reference": 26,
+      "factors": [
+        4097,
+        16
+      ],
+      "bytes": 65552,
+      "meaning": "65552 bytes; count max4097 from unchanged7 cases"
+    },
+    {
+      "name": "partition reset source",
+      "reference": 27,
+      "factors": [
+        1409,
+        2,
+        8
+      ],
+      "bytes": 22544,
+      "meaning": "22544 bytes"
+    },
+    {
+      "name": "partition reset expected",
+      "reference": 28,
+      "factors": [
+        1409,
+        8
+      ],
+      "bytes": 11272,
+      "meaning": "11272 bytes"
+    },
+    {
+      "name": "render output per channel",
+      "reference": 29,
+      "factors": [
+        2549,
+        4
+      ],
+      "bytes": 10196,
+      "meaning": "10196 bytes at maximum selected source513+latency2036; two outputs per render; does not claim all live output copies"
+    }
+  ],
+  "references": [
+    {
+      "file": "internal/audio/dsp/studio_gain_envelope.go",
+      "absolute": false,
+      "sha256": "9ceee3af867bc992d89dfdd8a778c35648fd140a0a5a84bdfecf2d0ed3d19c5d",
+      "line": 15,
+      "text": "trees [2][2 * studioEnvelopeChunk]studioEnvelopeLine"
+    },
+    {
+      "file": "internal/audio/dsp/studio_gain_envelope.go",
+      "absolute": false,
+      "sha256": "9ceee3af867bc992d89dfdd8a778c35648fd140a0a5a84bdfecf2d0ed3d19c5d",
+      "line": 3,
+      "text": "const studioEnvelopeChunk = 2048"
+    },
+    {
+      "file": "internal/audio/dsp/studio_gain_envelope.go",
+      "absolute": false,
+      "sha256": "9ceee3af867bc992d89dfdd8a778c35648fd140a0a5a84bdfecf2d0ed3d19c5d",
+      "line": 6,
+      "text": "slope, offset float64"
+    },
+    {
+      "file": "internal/audio/dsp/studio_gain_envelope.go",
+      "absolute": false,
+      "sha256": "9ceee3af867bc992d89dfdd8a778c35648fd140a0a5a84bdfecf2d0ed3d19c5d",
+      "line": 7,
+      "text": "epoch         int64"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_postguard.go",
+      "absolute": false,
+      "sha256": "4e3512a9536014076460dfe078842c6f66e3319eb98393cd4dfb45147f6fa813",
+      "line": 25,
+      "text": "peaks                                                     [studioPostGuardLimiterCapacity]studioPostGuardLimiterPeak"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_postguard.go",
+      "absolute": false,
+      "sha256": "4e3512a9536014076460dfe078842c6f66e3319eb98393cd4dfb45147f6fa813",
+      "line": 11,
+      "text": "frame                int64"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_postguard.go",
+      "absolute": false,
+      "sha256": "4e3512a9536014076460dfe078842c6f66e3319eb98393cd4dfb45147f6fa813",
+      "line": 12,
+      "text": "value, raw, required float64"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_postguard.go",
+      "absolute": false,
+      "sha256": "4e3512a9536014076460dfe078842c6f66e3319eb98393cd4dfb45147f6fa813",
+      "line": 24,
+      "text": "audio                                                     [2][studioPostGuardLimiterCapacity]float64"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_gain4x.go",
+      "absolute": false,
+      "sha256": "1bf000bcf8f3d09c56f2cdf442a2bb613fa1c99513b7942d59bdebf9aaa582f5",
+      "line": 10,
+      "text": "// This private gain planner consumes and returns actual 4x audio samples. It is"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_partitioned_detector.go",
+      "absolute": false,
+      "sha256": "e2c1f6e15200d1cee8c9665c2454a511ce02afb5d235d884b54f6f4561a557a3",
+      "line": 17,
+      "text": "responses [3][studioPostPartitions][studioPostPartitionFFT]complex128"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_partitioned_detector.go",
+      "absolute": false,
+      "sha256": "e2c1f6e15200d1cee8c9665c2454a511ce02afb5d235d884b54f6f4561a557a3",
+      "line": 92,
+      "text": "spectra     [studioPostPartitions][studioPostPartitionFFT]complex128"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_partitioned_detector.go",
+      "absolute": false,
+      "sha256": "e2c1f6e15200d1cee8c9665c2454a511ce02afb5d235d884b54f6f4561a557a3",
+      "line": 93,
+      "text": "output      [3][studioPostPartitionFFT]complex128"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_partitioned_detector.go",
+      "absolute": false,
+      "sha256": "e2c1f6e15200d1cee8c9665c2454a511ce02afb5d235d884b54f6f4561a557a3",
+      "line": 95,
+      "text": "original    [1024]complex128"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_partitioned_detector.go",
+      "absolute": false,
+      "sha256": "e2c1f6e15200d1cee8c9665c2454a511ce02afb5d235d884b54f6f4561a557a3",
+      "line": 94,
+      "text": "scratch     [studioPostPartitionFFT]complex128"
+    },
+    {
+      "file": "internal/audio/dsp/studio_audible_resampling.go",
+      "absolute": false,
+      "sha256": "8276cc288dc113cebf8779e5fbdf1c42f73144dd8e870d3048d20b667fd1464e",
+      "line": 20,
+      "text": "full                 [studioAudibleMaxTaps]float64"
+    },
+    {
+      "file": "internal/audio/dsp/studio_audible_resampling.go",
+      "absolute": false,
+      "sha256": "8276cc288dc113cebf8779e5fbdf1c42f73144dd8e870d3048d20b667fd1464e",
+      "line": 21,
+      "text": "phases               [4][1024]float64"
+    },
+    {
+      "file": "internal/audio/dsp/studio_audible_resampling.go",
+      "absolute": false,
+      "sha256": "8276cc288dc113cebf8779e5fbdf1c42f73144dd8e870d3048d20b667fd1464e",
+      "line": 99,
+      "text": "history [2][4096]float64"
+    },
+    {
+      "file": "internal/audio/dsp/studio_audible_resampling.go",
+      "absolute": false,
+      "sha256": "8276cc288dc113cebf8779e5fbdf1c42f73144dd8e870d3048d20b667fd1464e",
+      "line": 72,
+      "text": "history [2][1024]float64"
+    },
+    {
+      "file": "internal/audio/dsp/studio_graph.go",
+      "absolute": false,
+      "sha256": "249f6e0cc31de7e9516a2da914eaf7d771ca3ec191fff23642214e06a7ea5cf1",
+      "line": 33,
+      "text": "original                                                   [2][studioGraphDelayCapacity]float32"
+    },
+    {
+      "file": "internal/audio/dsp/studio_graph.go",
+      "absolute": false,
+      "sha256": "249f6e0cc31de7e9516a2da914eaf7d771ca3ec191fff23642214e06a7ea5cf1",
+      "line": 35,
+      "text": "limiterDry                                                 [2][1024]float64"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_gain4x_reference_test.go",
+      "absolute": false,
+      "sha256": "a378e5863176a64c1f45afaf6abec11be392dbd4afbe5158f784692948a81ba1",
+      "line": 9,
+      "text": "// It consumes and returns actual 4x audio samples. It is"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_gain4x_reference_test.go",
+      "absolute": false,
+      "sha256": "a378e5863176a64c1f45afaf6abec11be392dbd4afbe5158f784692948a81ba1",
+      "line": 15,
+      "text": "plan                                                      [studioLimiterHighCapacity]float64"
+    },
+    {
+      "file": "internal/audio/dsp/studio_gain_envelope_test.go",
+      "absolute": false,
+      "sha256": "c9fb91fbd089755f3bf41f107e778422bbeeb6dd42bed0fa6259f611dcb98f35",
+      "line": 11,
+      "text": "var plan [4096]float64"
+    },
+    {
+      "file": "internal/audio/dsp/studio_saturation_test.go",
+      "absolute": false,
+      "sha256": "86af7aeb1425e486afc1e86744a7e0341988f45d600b398ff53c73793e200d5a",
+      "line": 143,
+      "text": "samples := make([]float64, count)"
+    },
+    {
+      "file": "internal/audio/dsp/studio_saturation_test.go",
+      "absolute": false,
+      "sha256": "86af7aeb1425e486afc1e86744a7e0341988f45d600b398ff53c73793e200d5a",
+      "line": 136,
+      "text": "const count = 8192"
+    },
+    {
+      "file": "internal/audio/dsp/studio_saturation_test.go",
+      "absolute": false,
+      "sha256": "86af7aeb1425e486afc1e86744a7e0341988f45d600b398ff53c73793e200d5a",
+      "line": 126,
+      "text": "values := make([]complex128, len(samples))"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_partitioned_detector_test.go",
+      "absolute": false,
+      "sha256": "2f11a4166a9fba2159e3132e8f55f76785357cd89f5d6be7927f1b830486f523",
+      "line": 144,
+      "text": "source := make([]complex128, count)"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_partitioned_detector_test.go",
+      "absolute": false,
+      "sha256": "2f11a4166a9fba2159e3132e8f55f76785357cd89f5d6be7927f1b830486f523",
+      "line": 268,
+      "text": "source := make([][2]float64, 129+1024+2*studioPostPartitionFrames)"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_partitioned_detector_test.go",
+      "absolute": false,
+      "sha256": "2f11a4166a9fba2159e3132e8f55f76785357cd89f5d6be7927f1b830486f523",
+      "line": 275,
+      "text": "expected := make([]float64, len(source))"
+    },
+    {
+      "file": "internal/audio/dsp/studio_graph_test.go",
+      "absolute": false,
+      "sha256": "be6f813de216eff103e64ea803868d714f2e68177c6756ec463a570b7cd9be4a",
+      "line": 53,
+      "text": "a, b := make([]float32, len(left)+g.latency), make([]float32, len(left)+g.latency)"
+    },
+    {
+      "file": "internal/audio/dsp/studio_graph_audible_test.go",
+      "absolute": false,
+      "sha256": "3255cd2f0246f4bb1837b0c2d24d40ecf2d5aa8babaa872097031d82af0b77aa",
+      "line": 34,
+      "text": "want := []int{1829, 1447, 1397, 1531, 1909}[rateIndex] + extraDelay"
+    },
+    {
+      "file": "internal/audio/dsp/studio_graph_audible_test.go",
+      "absolute": false,
+      "sha256": "3255cd2f0246f4bb1837b0c2d24d40ecf2d5aa8babaa872097031d82af0b77aa",
+      "line": 95,
+      "text": "left, right := studioGraphSignal(513)"
+    },
+    {
+      "file": "internal/audio/dsp/studio_graph_partitioned_test.go",
+      "absolute": false,
+      "sha256": "af5690b0064a0d63dc2295a5f23ffe9a2281d690c9d598ca004fd2a87b6053ca",
+      "line": 19,
+      "text": "testStudioAudibleGraphDelayIdentityAndActualWetImpulse(t, mustStudioPartitionedAudibleGraph, studioPostPartitionDelay)"
+    },
+    {
+      "file": "internal/audio/dsp/studio_limiter_partitioned_detector.go",
+      "absolute": false,
+      "sha256": "e2c1f6e15200d1cee8c9665c2454a511ce02afb5d235d884b54f6f4561a557a3",
+      "line": 9,
+      "text": "studioPostPartitionDelay  = studioPostPartitionFrames - 1"
+    },
+    {
+      "file": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/libproc.h",
+      "absolute": true,
+      "sha256": "246d87709fc6b9157ce5cf3c475656ac48e0e1ae8bbdc46cf45acd34294448cd",
+      "line": 96,
+      "text": "int proc_pidinfo(int pid, int flavor, uint64_t arg, void *buffer, int buffersize) __OSX_AVAILABLE_STARTING(__MAC_10_5, __IPHONE_2_0);"
+    },
+    {
+      "file": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/proc_info.h",
+      "absolute": true,
+      "sha256": "e427fa96b348537b21552b9de71e01039410bcad2cedee5584c5e5fddafd70fc",
+      "line": 124,
+      "text": "struct proc_taskinfo {"
+    },
+    {
+      "file": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/proc_info.h",
+      "absolute": true,
+      "sha256": "e427fa96b348537b21552b9de71e01039410bcad2cedee5584c5e5fddafd70fc",
+      "line": 126,
+      "text": "uint64_t                pti_resident_size;      /* resident memory size (bytes) */"
+    },
+    {
+      "file": "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/sys/proc_info.h",
+      "absolute": true,
+      "sha256": "e427fa96b348537b21552b9de71e01039410bcad2cedee5584c5e5fddafd70fc",
+      "line": 726,
+      "text": "#define PROC_PIDTASKINFO                4"
+    },
+    {
+      "file": "/Users/yosefgamble/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.10.darwin-arm64/src/go/types/sizes.go",
+      "absolute": true,
+      "sha256": "d097bbaba4237da84f93fd67c9133bcf2df7b429351283774895b7b909da5e93",
+      "line": 238,
+      "text": "\"arm64\":    {8, 8},"
+    },
+    {
+      "file": "/Users/yosefgamble/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.10.darwin-arm64/src/go/types/sizes.go",
+      "absolute": true,
+      "sha256": "d097bbaba4237da84f93fd67c9133bcf2df7b429351283774895b7b909da5e93",
+      "line": 249,
+      "text": "\"wasm\":     {8, 8},"
+    }
+  ],
+  "existingGraphObjectEvidence": [
+    {
+      "file": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/runs/native-baseline-rate192000/ACCEPTED.json",
+      "sha256": "eafe29c07e37472b8b1262464dc3c9844e15083e12836a80bf7b5112d930fc3c",
+      "fixedGraphBytes": 1073080
+    },
+    {
+      "file": "artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/runs/wasm-baseline-rate192000/ACCEPTED.json",
+      "sha256": "56c856896b7df198a814b82b00764f4754c9b699eb3bcdce178c7c0a8e54c3a3",
+      "fixedGraphBytes": 1073080
+    }
+  ],
+  "graphSumDescription": "reflect.TypeFor studioGraph+Engine+studioAudibleLimiterPath+studioAudibleKernel+studioPartitionedPostGuardPath+studioPartitionedPostGuardKernel;1073080 bytes in both accepted targets; embedded arrays already included, table is not additive to that sum",
+  "processPolicy": {
+    "rssCapBytes": 1073741824,
+    "pollSeconds": 0.025,
+    "nativeScope": "native workload process",
+    "wasmScope": "Node GoJS workload parent including its WASM resident memory",
+    "samplingMethod": "Darwin proc_pidinfo flavor4,96-byte proc_taskinfo; resident bytes second uint64_t; no helper subprocess",
+    "hardCeilingClaim": false,
+    "nodeOldSpaceMiB": 192,
+    "goSeconds": 25,
+    "parentSeconds": 28,
+    "logBytes": 262144
+  },
+  "limitations": "Original immutable loops can retain multiple graph objects and transient allocations until GC. Go stack copies, preparation copies, runtime, Node/WASM memory and cumulative allocation are not represented by a single array or fixedGraphBytes. Separate observed RSS monitoring fails closed on live query error, oversize or no sample; source array arithmetic does not replace it.",
+  "spellingDirective": "cspell:ignore postguard libproc pidinfo taskinfo PIDTASKINFO "
+}

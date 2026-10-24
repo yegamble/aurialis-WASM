@@ -1,0 +1,138 @@
+{
+  "scope": "SOURCE/COMMAND PROPOSAL ONLY; no diagnostic host implementation, WASM instance, profile, timing, build or optimization edit released",
+  "question": "Which actual WASM functions and caller paths account for steady graph-root samples, and does the unchanged surrounding work dominate the admitted one-function node-visit change?",
+  "existingEvidence": {
+    "measurementIndexSHA256": "268715bac849025662b7ee0ec1ec16991835cb308ed595d7ec722a92645e11ba",
+    "screenSourceIndexSHA256": "3d31cf5c1f7d5104dbac30f83cfe68353da56dfd2525624672e2cc9804ef78b6",
+    "bindingSHA256": "45757e514a3b8cba2043890710e38cc196cf3660a9495cd63f1103a7862198cd",
+    "verificationIndexSHA256": "3c72daf7ccd7c94e4ffaf470aa84899637de34646c3dde9ccad50edcedac1b83",
+    "modules": {
+      "baseline": {
+        "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/modules/wasm-baseline.wasm",
+        "bytes": 7568585,
+        "sha256": "f7f270e64ff525c12ef3c67eea786a794667df933a332a4ea02ba71090093d95",
+        "overlaySHA256": "f3a78ca5d10b09e5737378a82dfdd01edcc9fc8305991476071f04330b269a61",
+        "sourceSetSHA256": "dfcc5a16a4b1638ff4a22b672ae95048d545b01e475ab44ef979dc6ac2f7d94e"
+      },
+      "candidate": {
+        "file": "/Users/yosefgamble/.codex/worktrees/dsp-version-foundation/Aurialis-WASM/artifacts/private-dsp/recovery-20261023/envelope-node-visit-graph/node-visit-build-v1/modules/wasm-candidate.wasm",
+        "bytes": 7568582,
+        "sha256": "d7f415cb7962687b8c77b590d85a098b2fa0c287bed00542d8180cdad0dec0d3",
+        "overlaySHA256": "82affb342f82904e2aa97c0ec2ebe6d23eafd6fac3803e90090c45cbb4627ff6",
+        "sourceSetSHA256": "30416c0cc627d1d880e1991c68e0e8a7b1bab23ea1fbd248c40c0defb3a3b121"
+      }
+    },
+    "runtime": {
+      "path": "/Users/yosefgamble/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.10.darwin-arm64/lib/wasm/wasm_exec.js",
+      "sha256": "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14"
+    },
+    "nameInspectionSHA256": "e28bc5fb06011b5007dc9912a1d501be730dd04b878687a8e1290abe01f3b9bc",
+    "staticInspectionSourceSHA256": "a442ffb6e212cad307a92b2fefe34a31761c2a290a3d6babfa6bcbee18048f79"
+  },
+  "readOnlyFeasibility": {
+    "definedFunctionsPerModule": 4197,
+    "namedFunctionsPerModule": 4197,
+    "functionImportsPerModule": 21,
+    "sameNameMapSHA256": "ca86de0d4b89632492c07c50d094f0eda64512db3ef43a02c0fb6c0837f6768e",
+    "changedDefinedBodies": [
+      {
+        "index": 3680,
+        "name": "studioGainEnvelope.insertRange",
+        "offset": 4013542,
+        "baselineBytes": 1141,
+        "candidateBytes": 1141
+      }
+    ],
+    "limit": "Binary body hashes and sizes establish identity/mapping only, not instruction counts, source-line attribution or cost. No inlining or instruction-level attribution assumed."
+  },
+  "proposedChildren": [
+    {
+      "label": "baseline",
+      "phase": "verify",
+      "workload": "steady",
+      "leg": "gate"
+    },
+    {
+      "label": "candidate",
+      "phase": "verify",
+      "workload": "steady",
+      "leg": "gate"
+    }
+  ],
+  "changedDiagnosticArgv": {
+    "node": "/Users/yosefgamble/.nvm/versions/node/v26.12.0/bin/node",
+    "insertBeforeOriginalChild": [
+      "--cpu-prof",
+      "--cpu-prof-dir=<fresh exclusive child directory>",
+      "--cpu-prof-name=diagnostic.cpuprofile",
+      "--cpu-prof-interval=100"
+    ],
+    "requestedIntervalMicroseconds": 100,
+    "oldDiagnosticIntervalMicroseconds": 1000,
+    "profileOutputPermissions": "Fresh private0700 child directory; explicit diagnostic umask077; require regular0600 output, no preexisting profile and no unrelated output files.",
+    "comparisonLimit": "CPU sampling changes argv/runtime overhead; diagnostic samples and elapsed deltas cannot be compared to the frozen timing observations or treated as function cost, speedup, callback/deadline/headroom proof."
+  },
+  "unchangedChildWork": {
+    "moduleCopy": false,
+    "compile": false,
+    "screenChildSource": "internal/audio/dsp/testdata/envelope_node_visit_screen_host/screen-child.mjs",
+    "phase": "verify",
+    "rate": 192000,
+    "finiteThenRepeat": true,
+    "sourceFrames": 16777216,
+    "blockFrames": 128,
+    "warmBlocks": 64,
+    "verifyBlocks": 32,
+    "baseFramesPerChild": 24576,
+    "highFramesUpperPerChild": 98304,
+    "numericWordsPerChild": 231716,
+    "twoChildrenBaseFrames": 49152,
+    "twoChildrenHighUpper": 196608,
+    "timings": [],
+    "timedBytes": 0,
+    "rawIdentity": "Each entire output must equal its own immutable source-v1 steady verification stream, including counters/PCM/state/input/clock; compare both profiled sides to each other too.",
+    "noFixtureRerun": true
+  },
+  "retainedCaps": {
+    "GoSeconds": 25,
+    "parentSeconds": 28,
+    "logBytes": 262144,
+    "outputBytes": 8388608,
+    "moduleBytes": 16777216,
+    "baseFramesPerChild": 200000,
+    "highUpperPerChild": 800000,
+    "numericWordsPerChild": 16777216,
+    "graphBytes": 2097152,
+    "preparationBytes": 6291456,
+    "testAllowanceBytes": 327680,
+    "aggregateProfileBytes": 4194304,
+    "aggregateProfileNodes": 16384,
+    "aggregateSamples": 65536,
+    "aggregateStackSteps": 1048576,
+    "functionNameBytes": 4096,
+    "nameCount": 65536,
+    "profileWriteLimitScope": "Profile size is admitted after process exit, as in the earlier diagnostic; no preemptive profile-write or internal V8/RSS hard cap is claimed. Retain oversized/missing/partial files as RED; no retries.",
+    "nodeMethod": "Keep original screen Node heap/stack/environment method; no unit heap/RSS monitor inherited."
+  },
+  "proposedMinimalHost": {
+    "status": "Not implemented; review this checkpoint before adapter work.",
+    "binding": "Fresh diagnostic proof ID, source freeze and outer diagnostic manifest/index include every new wrapper/test/source plus the existing37-source screen binding. Retain its unchanged BINDING schema/inventory honestly as the frozen screen-child binding, not the new complete diagnostic inventory. Reference both existing module paths; never copy/rebuild modules, forge an old BUILD, edit frozen sources or overwrite source-v1 runs.",
+    "child": "Run unchanged screen-child source with fresh ID and identical frozen37-source BINDING/source payloads. Its Go work and closedFS/post-exit lifecycle stay unchanged; only explicit host diagnostic options/umask differ.",
+    "parent": "Reuse current fully owned28-second/256KiB bounded lifecycle, including setup failure kill/reap and primary/cleanup receipts. Record actual diagnostic argv; do not rewrite receipts or call a validator that falsely requires unprofiled argv.",
+    "validator": "New small diagnostic read-result validator must be a closed literal transformation of the frozen screen validator permitting exactly the listed diagnostic argv, plus profile cap/schema validation; every other receipt/closedIO/Go/log/counter/PCM/state gate unchanged. No monkey-patching or receipt substitution.",
+    "beforeExecution": "Freeze/index every new adapter source; synthetic malformed mapping, profile schema, ownership/registration, argv, closedIO and byte-identity controls; separate Chair review/release for exactly two children."
+  },
+  "attributionContract": {
+    "mapping": "Parse function imports/name/code sections from each exact hashed existing module, bounded by module16MiB; resolve wasm-function[index] against that exact map, retaining raw callFrame and module identity. Direct symbolic labels need exact existing-map membership for WASM attribution.",
+    "sampleAdmission": "Validate unique positive node IDs, known samples, one parent per nonroot node, acyclic bounded walks, finite monotonic profile times, equal sample/timeDelta lengths, nonnegative integer deltas and all aggregate caps.",
+    "graphRoot": "Only samples whose resolved stack contains actual studioGraph.processBlock or processFrame are graph samples. Report setup/runtime/GC/host/unresolved separately without silently assigning to a DSP stage.",
+    "reports": [
+      "Raw profile hashes, node/sample counts and observed interval distribution, not assumed100microsecond resolution",
+      "All graph self leaf counts and inclusive function counts; deduplicate recursive function membership per sample, keep recursion separately",
+      "Caller/callee edge counts and top full resolved call paths; retain raw IDs/names, module function indices and code-body hashes",
+      "Explicit graph coverage, unresolved/missing-name counts and low-count functions; inclusive totals overlap and cannot be summed as exclusive cost"
+    ],
+    "decision": "Report sparse or ambiguous attribution honestly; do not extend workload, rerun, increase caps or edit Go automatically. Any proposed arithmetic-preserving operation requires the measured path plus a source/IEEE/state argument and fresh separate candidate admission."
+  },
+  "interpretation": "Existing192k steady RED remains open; candidate unselected. This proposes function attribution only, not a benchmark, timing comparability, speedup, physical steady state, source wrap/EOF/drain, public selection or cross-target full-state identity."
+}

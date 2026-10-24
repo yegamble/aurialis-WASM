@@ -1,0 +1,13 @@
+# SOURCE ONLY: these are reviewed future argv shapes, not executable release.
+# No run-profile adapter exists in this checkpoint. Do not run these commands.
+# After source review/adapter synthetic admission, Chair may separately release
+# exactly baseline then candidate, one steady verify child each, fresh ID.
+# Node actual argv (no measurement route):
+# /Users/yosefgamble/.nvm/versions/node/v26.12.0/bin/node \
+#   --cpu-prof --cpu-prof-dir=<fresh exclusive child directory> \
+#   --cpu-prof-name=diagnostic.cpuprofile --cpu-prof-interval=100 \
+#   internal/audio/dsp/testdata/envelope_node_visit_screen_host/screen-child.mjs \
+#   <fresh reviewed diagnostic ID> <baseline then candidate> verify steady gate
+# Never reuse source-v1 run paths, call measure, copy/build modules or profile
+# the 27-case recorder. Retain original25s/28s/log/output/work caps, full raw
+# verification identity and the separate profile caps in PLAN.json.

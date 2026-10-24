@@ -1,0 +1,275 @@
+{
+  "scope": "Read-only binary/name/code inspection and Node CLI help; no WASM compile, instantiate, audio, profile or timing execution",
+  "reports": [
+    {
+      "label": "baseline",
+      "moduleSHA256": "f7f270e64ff525c12ef3c67eea786a794667df933a332a4ea02ba71090093d95",
+      "bytes": 7568585,
+      "customSections": [
+        "go:buildid",
+        "producers",
+        "name"
+      ],
+      "functionImports": 21,
+      "definedFunctions": 4197,
+      "functionNameCount": 4197,
+      "fullNameMapSHA256": "ca86de0d4b89632492c07c50d094f0eda64512db3ef43a02c0fb6c0837f6768e",
+      "selectedActualFunctionBodies": [
+        {
+          "index": 3658,
+          "offset": 3980979,
+          "bytes": 983,
+          "sha256": "dac708919d066780320bbfa5070042cd3831f75ad881e7b9770b045918c52e9d",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioAudibleUpsampler_.process"
+        },
+        {
+          "index": 3659,
+          "offset": 3981964,
+          "bytes": 1147,
+          "sha256": "f62b2951d5044f83d6b3a24d6759ff432d99c8b6f5f054634649a7538bac43df",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioAudibleDownsampler_.process"
+        },
+        {
+          "index": 3679,
+          "offset": 4012332,
+          "bytes": 1208,
+          "sha256": "eeb5735149f78e63f24b724a6cf41449c09c1e40990bbb4716ac3db0b9b4833d",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGainEnvelope_.insertLine"
+        },
+        {
+          "index": 3680,
+          "offset": 4013542,
+          "bytes": 1141,
+          "sha256": "489ab339ffc1336b125bfc16fdb214ce9419573629ff17ab48a33c08f54496a8",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGainEnvelope_.insertRange"
+        },
+        {
+          "index": 3683,
+          "offset": 4015666,
+          "bytes": 928,
+          "sha256": "fe04af89713f1e82fbd07bfc7aabfb7115aa0cc8146917c4719a5b7d8bd2eeab",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGainEnvelope_.bound"
+        },
+        {
+          "index": 3684,
+          "offset": 4016596,
+          "bytes": 821,
+          "sha256": "9d7d509b8c816728f0a82ce3bef34590bfac1c53ca77511febda96f8b4622691",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGainEnvelope_.boundXBits"
+        },
+        {
+          "index": 3687,
+          "offset": 4025629,
+          "bytes": 1323,
+          "sha256": "ffde2a8028f9aa2f69266f68351fd86914d2d7b04d9bd658935579437ff64f40",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGraph_.processPrefix"
+        },
+        {
+          "index": 3688,
+          "offset": 4026954,
+          "bytes": 3550,
+          "sha256": "021615e765515618b74434c6f152255e7f7871b93319c5ba2969781ec3a11320",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGraph_.processFrame"
+        },
+        {
+          "index": 3689,
+          "offset": 4030506,
+          "bytes": 958,
+          "sha256": "b1a77c55fcbbdf0081822c9f96cbb3c52af7433702349a0ea892b0bb5f6051cb",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGraph_.processBlock"
+        },
+        {
+          "index": 3699,
+          "offset": 4042416,
+          "bytes": 2255,
+          "sha256": "cfd6aa00338fa3d56759aae8f3895c344973d89a9747e772b02988ceedd3295a",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioLimiterGain4x_.process"
+        },
+        {
+          "index": 3701,
+          "offset": 4045855,
+          "bytes": 1538,
+          "sha256": "8b09308aedf69aa987611144a61354cc0de78e262e90f222d0928f3374a04bc0",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioPartitionedPostGuardKernel_.transform"
+        },
+        {
+          "index": 3720,
+          "offset": 4069715,
+          "bytes": 1080,
+          "sha256": "ee9e40a0cb35b1b90eff20e2176ca42762be6c12f0a8a0ed95f1b7f817e631bb",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioOversamplerState_.interpolate"
+        },
+        {
+          "index": 3732,
+          "offset": 4088049,
+          "bytes": 3754,
+          "sha256": "fabe21e94da2f3febf688595592a1d10c1f5fdd9082c26b11acff190b866cbf0",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioSaturation_.process"
+        },
+        {
+          "index": 3740,
+          "offset": 4095788,
+          "bytes": 251,
+          "sha256": "c007fbccd35b70bb6b94dc28f09153b73fed60e4204d6780f16137a635f61732",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.studioTubeCurve.integral"
+        },
+        {
+          "index": 3741,
+          "offset": 4096041,
+          "bytes": 855,
+          "sha256": "d2af75cd8057a166f6c251e56b9a22a4123cc2e00e066f263e82f3820bbb27bc",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioADAAState_.process"
+        }
+      ]
+    },
+    {
+      "label": "candidate",
+      "moduleSHA256": "d7f415cb7962687b8c77b590d85a098b2fa0c287bed00542d8180cdad0dec0d3",
+      "bytes": 7568582,
+      "customSections": [
+        "go:buildid",
+        "producers",
+        "name"
+      ],
+      "functionImports": 21,
+      "definedFunctions": 4197,
+      "functionNameCount": 4197,
+      "fullNameMapSHA256": "ca86de0d4b89632492c07c50d094f0eda64512db3ef43a02c0fb6c0837f6768e",
+      "selectedActualFunctionBodies": [
+        {
+          "index": 3658,
+          "offset": 3980979,
+          "bytes": 983,
+          "sha256": "dac708919d066780320bbfa5070042cd3831f75ad881e7b9770b045918c52e9d",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioAudibleUpsampler_.process"
+        },
+        {
+          "index": 3659,
+          "offset": 3981964,
+          "bytes": 1147,
+          "sha256": "f62b2951d5044f83d6b3a24d6759ff432d99c8b6f5f054634649a7538bac43df",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioAudibleDownsampler_.process"
+        },
+        {
+          "index": 3679,
+          "offset": 4012332,
+          "bytes": 1208,
+          "sha256": "eeb5735149f78e63f24b724a6cf41449c09c1e40990bbb4716ac3db0b9b4833d",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGainEnvelope_.insertLine"
+        },
+        {
+          "index": 3680,
+          "offset": 4013542,
+          "bytes": 1141,
+          "sha256": "066c9d67cb9c577e4cc312dfcbcafb26a5d78a856b0466cda0b0f2dec835ca58",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGainEnvelope_.insertRange"
+        },
+        {
+          "index": 3683,
+          "offset": 4015666,
+          "bytes": 928,
+          "sha256": "fe04af89713f1e82fbd07bfc7aabfb7115aa0cc8146917c4719a5b7d8bd2eeab",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGainEnvelope_.bound"
+        },
+        {
+          "index": 3684,
+          "offset": 4016596,
+          "bytes": 821,
+          "sha256": "9d7d509b8c816728f0a82ce3bef34590bfac1c53ca77511febda96f8b4622691",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGainEnvelope_.boundXBits"
+        },
+        {
+          "index": 3687,
+          "offset": 4025629,
+          "bytes": 1323,
+          "sha256": "ffde2a8028f9aa2f69266f68351fd86914d2d7b04d9bd658935579437ff64f40",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGraph_.processPrefix"
+        },
+        {
+          "index": 3688,
+          "offset": 4026954,
+          "bytes": 3550,
+          "sha256": "021615e765515618b74434c6f152255e7f7871b93319c5ba2969781ec3a11320",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGraph_.processFrame"
+        },
+        {
+          "index": 3689,
+          "offset": 4030506,
+          "bytes": 958,
+          "sha256": "b1a77c55fcbbdf0081822c9f96cbb3c52af7433702349a0ea892b0bb5f6051cb",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGraph_.processBlock"
+        },
+        {
+          "index": 3699,
+          "offset": 4042416,
+          "bytes": 2255,
+          "sha256": "cfd6aa00338fa3d56759aae8f3895c344973d89a9747e772b02988ceedd3295a",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioLimiterGain4x_.process"
+        },
+        {
+          "index": 3701,
+          "offset": 4045855,
+          "bytes": 1538,
+          "sha256": "8b09308aedf69aa987611144a61354cc0de78e262e90f222d0928f3374a04bc0",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioPartitionedPostGuardKernel_.transform"
+        },
+        {
+          "index": 3720,
+          "offset": 4069715,
+          "bytes": 1080,
+          "sha256": "ee9e40a0cb35b1b90eff20e2176ca42762be6c12f0a8a0ed95f1b7f817e631bb",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioOversamplerState_.interpolate"
+        },
+        {
+          "index": 3732,
+          "offset": 4088049,
+          "bytes": 3754,
+          "sha256": "fabe21e94da2f3febf688595592a1d10c1f5fdd9082c26b11acff190b866cbf0",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioSaturation_.process"
+        },
+        {
+          "index": 3740,
+          "offset": 4095788,
+          "bytes": 251,
+          "sha256": "c007fbccd35b70bb6b94dc28f09153b73fed60e4204d6780f16137a635f61732",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.studioTubeCurve.integral"
+        },
+        {
+          "index": 3741,
+          "offset": 4096041,
+          "bytes": 855,
+          "sha256": "d2af75cd8057a166f6c251e56b9a22a4123cc2e00e066f263e82f3820bbb27bc",
+          "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioADAAState_.process"
+        }
+      ]
+    }
+  ],
+  "changedDefinedFunctionBodies": [
+    {
+      "index": 3680,
+      "name": "github.com_yegamble_Aurialis_WASM_internal_audio_dsp.__studioGainEnvelope_.insertRange",
+      "baseline": {
+        "index": 3680,
+        "offset": 4013542,
+        "bytes": 1141,
+        "sha256": "489ab339ffc1336b125bfc16fdb214ce9419573629ff17ab48a33c08f54496a8"
+      },
+      "candidate": {
+        "index": 3680,
+        "offset": 4013542,
+        "bytes": 1141,
+        "sha256": "066c9d67cb9c577e4cc312dfcbcafb26a5d78a856b0466cda0b0f2dec835ca58"
+      }
+    }
+  ],
+  "node": {
+    "path": "/Users/yosefgamble/.nvm/versions/node/v26.12.0/bin/node",
+    "version": "v26.12.0",
+    "cpuProfileHelpExcerpt": [
+      "  --cpu-prof                  Start the V8 CPU profiler on start up,\n                              and write the CPU profile to disk\n                              before exit. If --cpu-prof-dir is not",
+      "  --cpu-prof-dir=...          Directory where the V8 profiles\n                              generated by --cpu-prof will be placed.\n                              Does not affect --prof.",
+      "  --cpu-prof-interval=...     specified sampling interval in\n                              microseconds for the V8 CPU profile\n                              generated with --cpu-prof. (default:",
+      "  --cpu-prof-name=...         specified file name of the V8 CPU\n                              profile generated with --cpu-prof\n  --diagnostic-dir=...        set dir for all output files (default:"
+    ]
+  }
+}

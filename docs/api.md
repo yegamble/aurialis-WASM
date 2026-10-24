@@ -148,3 +148,5 @@ The same-module screen binding host is a source-only private follow-up: 20 synth
 A later explicit release passed exactly four same-module verification children (baseline/candidate for steady/peaky), with actual paired PCM/numeric-state/input/clock bytes and closed-I/O receipts matching. No measurement or API/ABI change follows; timing remains separately gated and the 192 kHz steady RED remains open.
 
 The separately released first same-module timing screen retained six clean measurement children. Its steady candidate finite/repeat batch means were 0.766768/0.764184 ms per 128 frames, above 0.666666667 ms; peaky means were 0.608848/0.609888 ms. This adds no API/ABI, selection or performance guarantee. The steady RED remains open; [tasks](tasks.md#first-node-visit-same-module-timing-checkpoint) records all bracket values and scope.
+
+The next same-module steady function-attribution host passed 21 synthetic/static controls without launching a WASM/profile child. It adds no product API or ABI. Separate source review/release precedes its proposed two diagnostic children; the steady RED and candidate non-selection remain unchanged.

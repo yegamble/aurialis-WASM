@@ -164,7 +164,8 @@ test("album gain preserves every accepted chain and Deep script, then hashes and
   await page.getByRole("tab", { name: "deep", exact: true }).click(); await page.getByRole("button", { name: "Analyze Deep proposal", exact: true }).click();
   await expect(page.getByText("Measured proposal ready. Your applied processing has not changed.", { exact: true })).toBeVisible({ timeout: 30_000 });
   // Explicit UI-authored audible envelope over the real measured proposal, then normal Apply validation.
-  await page.getByRole("combobox", { name: "Move target", exact: true }).selectOption("inputGainDb");
+  await page.getByRole("combobox", { name: "New move target", exact: true }).selectOption("inputGainDb");
+  await page.getByRole("button", { name: "Add baseline move", exact: true }).click();
   await page.getByRole("combobox", { name: "Move operation", exact: true }).selectOption("add");
   await page.getByRole("spinbutton", { name: "Point 1 value", exact: true }).fill("-3"); await page.getByRole("spinbutton", { name: "Point 1 value", exact: true }).blur();
   await page.getByRole("spinbutton", { name: "Point 2 value", exact: true }).fill("3"); await page.getByRole("spinbutton", { name: "Point 2 value", exact: true }).blur();
@@ -184,7 +185,7 @@ test("album gain preserves every accepted chain and Deep script, then hashes and
     expect(row.output.sha256).toBe(createHash("sha256").update(actual).digest("hex")); expect(row.output.bytes).toBe(actual.length);
     const chain = await oracle(execution, request, fixture(), { ...(track.deepMastering?.applied ? { script: JSON.stringify(track.deepMastering.applied) } : { params: JSON.stringify(engineParams(track.advanced)) }), bitDepth: 32 }, info, trackId + "-chain");
     if (track.deepMastering?.applied) {
-      const staticChain = await oracle(execution, request, fixture(), { params: JSON.stringify(engineParams(track.advanced)), bitDepth: 32 }, info, trackId + "-static-control");
+      const staticChain = await oracle(execution, request, fixture(), { script: JSON.stringify({ ...track.deepMastering.applied, moves: [] }), bitDepth: 32 }, info, trackId + "-static-control");
       const automated = decode(chain.audio), baseline = decode(staticChain.audio); let difference = 0, energy = 0;
       for (let frame = 0; frame < automated.left.length; frame++) { difference += ((automated.left.at(frame) ?? 0) - (baseline.left.at(frame) ?? 0)) ** 2; energy += (baseline.left.at(frame) ?? 0) ** 2; }
       expect(Math.sqrt(difference / energy)).toBeGreaterThan(0.05);
@@ -244,7 +245,7 @@ test("album management, all gain targets, populated charts and explicit reorder 
   await page.getByLabel("Album name", { exact: true }).fill("A measured sequence"); await page.getByRole("button", { name: "Save name", exact: true }).click();
   await page.getByRole("button", { name: "Delete A measured sequence", exact: true }).click(); await page.keyboard.press("Escape"); await expect(page.getByRole("link", { name: /A measured sequence/u })).toBeVisible();
   await page.getByRole("button", { name: "Delete A measured sequence", exact: true }).click(); await page.getByRole("button", { name: "Delete album", exact: true }).click();
-  expect((await workspace(page)).albums).toHaveLength(0); expect((await workspace(page)).tracks).toHaveLength(2);
+  await expect.poll(async () => (await workspace(page)).albums).toHaveLength(0); expect((await workspace(page)).tracks).toHaveLength(2);
 });
 
 test("cancel keeps only a verified prefix, retry reuses it, and cohort edits invalidate every retained download", async ({ page }) => {
@@ -303,22 +304,27 @@ test("injected IndexedDB QuotaExceededError preserves only the verified prefix a
   const partial = await report(page), first = await storedAlbum(page, partial.albumId); expect(partial.tracks).toHaveLength(1); expect(first.outputs).toBe(1); expect(first.manifest?.pending).toBeNull(); expect(first.budget).toEqual({ version: 1, bytes: 288044, reserved: 0, runs: 1 });
   const prefix = await download(page, "Download quota one"); await run(page, 2); const finished = await storedAlbum(page, partial.albumId); expect(finished.outputs).toBe(2); expect(finished.manifest?.prefix[0]).toEqual(first.manifest?.prefix[0]); expect(await download(page, "Download quota one")).toEqual(prefix);
 });
-test("browser-enforced quota override aborts the actual output transaction and preserves the verified prefix", async ({ page, context }) => {
+test("browser-enforced quota override aborts the actual output transaction and preserves the verified prefix", async ({ page, context }, info) => {
   await uploadProject(page, "browser-quota-one.wav"); await uploadProject(page, "browser-quota-two.wav"); await openAlbum(page, ["browser quota one", "browser quota two"]);
   const gate = await holdEncoded(page, execution, 2), cdp = await context.newCDPSession(page), origin = new URL(page.url()).origin;
+  const observations: unknown[] = [await cdp.send("Browser.getVersion")];
   try {
     await page.getByRole("button", { name: "Render album masters", exact: true }).click(); await expect.poll(gate.held, { timeout: 60_000 }).toBe(true);
     const albumId = (await workspace(page)).albums[0]?.id; if (!albumId) throw new Error("Missing actual quota cohort");
     const before = await storedAlbum(page, albumId); expect(before.manifest?.prefix).toHaveLength(1);
-    const usage = await cdp.send("Storage.getUsageAndQuota", { origin });
+    const usage = await cdp.send("Storage.getUsageAndQuota", { origin }); observations.push(usage);
     await cdp.send("Storage.overrideQuotaForOrigin", { origin, quotaSize: usage.usage + 65536 });
-    expect((await cdp.send("Storage.getUsageAndQuota", { origin })).overrideActive).toBe(true);
+    const overridden = await cdp.send("Storage.getUsageAndQuota", { origin }); observations.push(overridden); expect(overridden.overrideActive).toBe(true);
+    // Chromium caches an earlier bucket-space allowance for 30 seconds. Let it expire before this real commit.
+    // https://raw.githubusercontent.com/chromium/chromium/main/content/browser/indexed_db/instance/bucket_context.h
+    await new Promise((resolve) => setTimeout(resolve, 31_000));
     await gate.release(); await expect(page.getByRole("button", { name: "Render album masters", exact: true })).toBeEnabled({ timeout: 60_000 });
+    observations.push(await cdp.send("Storage.getUsageAndQuota", { origin }));
     expect(await page.evaluate(() => window.albumQA.storageErrors)).toContain("QuotaExceededError");
     const partial = await report(page), after = await storedAlbum(page, albumId); expect(partial.tracks).toHaveLength(1); expect(after.manifest?.prefix).toEqual(before.manifest?.prefix); expect(after.outputs).toBe(1); expect(after.manifest?.pending).toBeNull(); expect(after.budget.reserved).toBe(0);
     await cdp.send("Storage.overrideQuotaForOrigin", { origin });
     await run(page, 2); expect((await storedAlbum(page, albumId)).manifest?.prefix[0]).toEqual(before.manifest?.prefix[0]);
-  } finally { await cdp.send("Storage.overrideQuotaForOrigin", { origin }); await gate.dispose(); await cdp.detach(); }
+  } finally { await info.attach("browser-quota-observations.json", { body: JSON.stringify(observations), contentType: "application/json" }); await cdp.send("Storage.overrideQuotaForOrigin", { origin }); await gate.dispose(); await cdp.detach(); }
 });
 test("an actual response identity change discards the owned generation before trusting new audio", async ({ page }) => {
   await uploadProject(page, "identity-one.wav"); await openAlbum(page, ["identity one"]); await run(page, 1); const previous = await report(page), previousStored = await storedAlbum(page, previous.albumId), before = (await workspace(page)).tracks;

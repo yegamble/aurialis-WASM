@@ -1,4 +1,5 @@
 """Closed readiness framing/diagnostic controls; only injected sockets, no HTTP server."""
+import io
 import json
 from pathlib import Path
 import sys
@@ -41,6 +42,23 @@ class FramingControls(unittest.TestCase):
         self.assertEqual(diagnostic["status"], 200)
         self.assertFalse(diagnostic["headersParsed"]); self.assertFalse(diagnostic["framingFieldsParsed"])
         self.assertEqual(diagnostic["contentLength"]["count"], 0)  # Unknown, not observed absence.
+
+    def test_nonthrowing_partial_or_folded_headers_leave_framing_unknown(self):
+        defective = b"X-Prefix: kept\r\nMalformed line without colon\r\nTransfer-Encoding: chunked\r\nContent-Length: 3\r\n"
+        parsed = service.http.client.parse_headers(io.BytesIO(defective + b"\r\n"))
+        self.assertTrue(parsed.defects)  # The real parser returns a partial message.
+        self.assertEqual(parsed.get_all("Transfer-Encoding", []), [])
+        self.assertEqual(parsed.get_all("Content-Length", []), [])
+        folded = b"X-Prefix: kept\r\n Transfer-Encoding: chunked\r\nContent-Length: 3\r\n"
+        for headers in (defective, folded):
+            with self.subTest(headers=headers):
+                with self.assertRaises(service.ReadinessHTTPError) as caught:
+                    self.request(b"HTTP/1.1 200 OK\r\n" + headers + b"\r\nabc")
+                diagnostic = caught.exception.diagnostic
+                self.assertEqual(diagnostic["status"], 200)
+                self.assertFalse(diagnostic["headersParsed"])
+                self.assertFalse(diagnostic["framingFieldsParsed"])
+                self.assertEqual(diagnostic["transferEncoding"]["count"], 0)  # Untrusted/unknown, not absent.
 
     def test_refusal_keeps_only_bounded_selected_framing_values(self):
         response = b"HTTP/1.1 200 OK\r\nContent-Length: 12\r\nTransfer-Encoding: chunked\r\nContent-Encoding: identity\r\nSet-Cookie: PRIVATE_COOKIE\r\nAuthorization: PRIVATE_AUTH\r\n\r\nc\r\nPRIVATE_BODY\r\n0\r\n\r\n"

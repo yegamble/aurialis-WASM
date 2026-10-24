@@ -140,6 +140,8 @@ def metadata_get(port, path, limit):
             parts = status.split(b" ", 2)
             if len(parts) >= 2 and len(parts[1]) == 3 and parts[1].isdigit(): diagnostic["status"] = int(parts[1])
             headers = http.client.parse_headers(io.BytesIO(raw_headers + b"\r\n\r\n"))
+            if headers.defects or any(value[:1] in (b" ", b"\t") for value in raw_headers.split(b"\r\n")):
+                refuse("Static readiness malformed/folded headers refused")
             diagnostic["headersParsed"] = True
             lengths, transfers, encodings = [headers.get_all(name, []) for name in ("Content-Length", "Transfer-Encoding", "Content-Encoding")]
             for name, values in (("contentLength", lengths), ("transferEncoding", transfers), ("contentEncoding", encodings)):
@@ -147,8 +149,6 @@ def metadata_get(port, path, limit):
             diagnostic["framingFieldsParsed"] = True
             if not parts or parts[0] not in (b"HTTP/1.0", b"HTTP/1.1") or diagnostic["status"] != 200:
                 refuse("Static readiness requires 200 without redirects")
-            if headers.defects or any(value[:1] in (b" ", b"\t") for value in raw_headers.split(b"\r\n")):
-                refuse("Static readiness malformed/folded headers refused")
             if len(lengths) > 1 or len(transfers) > 1 or len(encodings) > 1 or (lengths and transfers):
                 refuse("Static readiness ambiguous/duplicate framing refused")
             if encodings and encodings[0].strip().lower() != "identity": refuse("Static readiness compressed content refused")

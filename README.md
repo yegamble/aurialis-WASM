@@ -111,7 +111,7 @@ The [architecture](docs/architecture.md), [API contract](docs/api.md) and [task 
 
 ## Under the hood
 
-**Shared Go processing on your device.** The executable embeds the Next.js 16 / React 19 interface and local HTTP API. The browser build runs reconstruction, analysis and export in disposable Go/WASM workers. Both builds use shared Go DSP in the browser’s AudioWorklet for listening. Simple and Advanced edit the same canonical settings.
+**Shared Go processing on your device.** The executable embeds the Next.js 16 / React 19 interface and local HTTP API. The browser build runs reconstruction, analysis and export in disposable Go/WASM workers. Both builds use shared Go DSP in the browser’s AudioWorklet for listening, with live momentary, short-term and integrated LUFS, loudness range, true peak and gain-reduction meters measured on the processed output. Simple and Advanced edit the same canonical settings.
 
 See [architecture](docs/architecture.md) for the audio paths, shared-memory controls, resource bounds and security model, or [API reference](docs/api.md) to render audio from a script. The [ScriptV2 contract](docs/api.md#scriptv2-foundation) binds editable proposals and acknowledged live/export schedules to verified source audio. Draft edits wait for explicit Apply.
 

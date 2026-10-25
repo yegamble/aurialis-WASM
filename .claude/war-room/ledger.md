@@ -11,6 +11,10 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Live loudness meters — 2026-10-25
+
+`open — awaiting merge (claude/project-thread-448zhr)`. Audit finding 2 (P1): no live LUFS, true peak, LRA or GR. Go `dsp.LoudnessMeter` (BS.1770-4 / EBU 3341 / EBU 3342, 0.05 LU histograms, zero allocations) runs on the reactor's processed output; the worklet posts a seven-value snapshot every 50 ms and the workstation shows it. Tiers: `unit`, `wasm-bridge`, `playwright-a11y-responsive`. Live-playback browser cases rely on CI, because the local headless AudioContext clock does not advance. Limits: integrated loudness and range reset on each playback start or seek, and the meter does not follow the B Original selection.
+
 ## MP3 and FLAC import — 2026-10-24
 
 `open — awaiting merge (claude/project-thread-93831i)`. Go CDR decodes FLAC (stdlib) and MP3 (vendored, modified go-mp3 with float output, gapless trim and a fixed short-block M/S defect) for native and browser WASM import. Multichannel FLAC is rejected like WAV. Evidence tiers: `unit` (bit-exact FLAC, FFmpeg-oracle MP3 ≤1e-5, payload/corruption cases, fuzz) and `playwright-a11y-responsive` static browser suite 13/13 including real-WASM FLAC/MP3 import. Not done: QA/Devil's Advocate seat review, compressed legacy-library recovery.

@@ -11,6 +11,9 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Saturation highs and level — 2026-10-25
+
+`open — awaiting merge`. Audit finding 4 (P1), fixed in place in algorithm 1, so saved sessions change sound. Saturation now has unity small-signal gain, is flat to 20 kHz and keeps native/WASM bit parity. Tier: `unit` and `wasm-bridge`. MUB-2C (designed polyphase oversampling with ≥60 dB stop-band) remains open; aliasing improved but is not certified.
 ## Pro-convention control readouts — 2026-10-25
 
 `open — awaiting merge`. Audit findings 7, 8, 9 and 11 (P2). The slider readouts state each control in pro-plugin terms, and the processing is unchanged. Tiers: `unit` (Go response measurements plus Vitest). Changing the controls themselves to the pro conventions would alter saved projects and remains a separate decision.
@@ -22,6 +25,7 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 `open — awaiting merge (claude/project-thread-448zhr)`. Audit finding 2 (P1): no live LUFS, true peak, LRA or GR. Go `dsp.LoudnessMeter` (BS.1770-4 / EBU 3341 / EBU 3342, 0.05 LU histograms, zero allocations) runs on the reactor's processed output; the worklet posts a seven-value snapshot every 50 ms and the workstation shows it. Tiers: `unit`, `wasm-bridge`, `playwright-a11y-responsive`. Live-playback browser cases rely on CI, because the local headless AudioContext clock does not advance. Limits: integrated loudness and range reset on each playback start or seek, and the meter does not follow the B Original selection.
 ||||||| parent of 798a0ca (docs: record extensible WAV and AIFF import support)
 ||||||| parent of b69fc7c (docs: record pro-convention control readouts)
+||||||| parent of 3984a3f (docs: record saturation response fix and its evidence)
 
 ## MP3 and FLAC import — 2026-10-24
 

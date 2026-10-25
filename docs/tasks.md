@@ -3,6 +3,11 @@
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
+## Saturation highs and level — 2026-10-25
+
+Audit finding 4. At 50% drive saturation lost 2–9 dB at 16–20 kHz, and Thick/Crisp added 5–15 dB at low levels. The ADAA wet path's half-substep-delayed linear response was blended with the dry path, and Thick/Crisp/Warm were peak-normalized rather than slope-normalized. The fix is in place (the owner was asked; the recommended default applies): every character now has unity small-signal gain and is flat to 20 kHz. The 3 kHz alias from a 15 kHz tone improved from about −23 to −32 dBc (Warm −60 dBc). Drive still produces harmonics; at 100% drive and −6 dBFS, levels fall about 5 dB as the curve soft-limits. Punchy Commercial and Bass Heavy compressor makeup now restores their prior loudness (−7.80 and −6.54 LUFS on the reference mix versus −7.78 and −6.46 before).
+
+Evidence (local, 2026-10-25): a new Go response test covers six characters at 10/50/100%: low-level gain, 10/16/20 kHz flatness within 0.1 dB, THD and an alias bound. `go test -race ./...` passed, as did `pnpm run test:wasm`, with 279 + 54 native/WASM fixtures at maximum absolute error 0 after FMA-free arithmetic. Status: **open — awaiting merge**.
 ## Pro-convention control readouts — 2026-10-25
 
 Audit findings 7, 8, 9 and 11 (labelling only; no processing change). Shelf frequency, bell Q, mono-bass frequency and compressor attack/release sliders now show the value a pro plugin would print: the shelf's half-gain midpoint (1.85× the low-shelf value, 1/1.54 of the high-shelf value), the gain-dependent effective bell Q, the side −3 dB point (2.2× the mono-bass value) and the 63% time constant (0.4× the 92% settling label). Readouts are visible and announced with the slider.
@@ -20,6 +25,7 @@ First item from the [mastering tools audit](audits/2026-10-24-mastering-tools-au
 Evidence (local, 2026-10-25): `go test -race ./...` passed, including new EBU Tech 3341 steady-tone/gating and EBU Tech 3342 range cases at 44.1–192 kHz, a zero-allocation check and a bridge test of compressed output. `pnpm run test:wasm` passed with the compiled reactor exporting the meter and reporting an empty snapshot. Vitest passed 486/486 with new worklet, playback-validation and UI assertions; `tsc`, ESLint, knip and cspell passed. Playwright `a11y-responsive` passed, including keyboard scrolling of both meter strips at 320 px without page overflow. The six live-playback browser cases could not run on this Mac because headless Chromium's AudioContext clock stayed at 0 (`currentTime` 0 while `running`); CI's Linux browser shards are the evidence for them. Status: **open — awaiting merge**.
 ||||||| parent of 798a0ca (docs: record extensible WAV and AIFF import support)
 ||||||| parent of b69fc7c (docs: record pro-convention control readouts)
+||||||| parent of 3984a3f (docs: record saturation response fix and its evidence)
 
 ## Release merge record
 

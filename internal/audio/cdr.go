@@ -75,6 +75,7 @@ var allowedExtensions = map[string]bool{
 	".flac": true,
 	".aiff": true,
 	".aif":  true,
+	".aifc": true,
 	".ogg":  true,
 	".m4a":  true,
 	".aac":  true,
@@ -172,7 +173,7 @@ func DecodeAndDisarm(filename string, raw []byte) (*Buffer, error) {
 	switch {
 	case len(raw) >= 12 && string(raw[0:4]) == "RIFF" && string(raw[8:12]) == "WAVE":
 		return decodeAndDisarmWAV(raw)
-	case len(raw) >= 12 && string(raw[0:4]) == "FORM" && string(raw[8:12]) == "AIFF":
+	case len(raw) >= 12 && string(raw[0:4]) == "FORM" && (string(raw[8:12]) == "AIFF" || string(raw[8:12]) == "AIFC"):
 		return decodeAndDisarmAIFF(raw)
 	}
 	// FLAC and MP3 may be preceded by ID3v2 tags; detection uses the stream behind them.
@@ -209,6 +210,7 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 		dataEndOffset int
 		blockAlign    uint16
 		byteRate      uint32
+		fmtBytes      []byte
 	)
 
 	offset := 12
@@ -239,6 +241,7 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 			bitsPerSample = binary.LittleEndian.Uint16(chunkBytes[14:16])
 			blockAlign = binary.LittleEndian.Uint16(chunkBytes[12:14])
 			byteRate = binary.LittleEndian.Uint32(chunkBytes[8:12])
+			fmtBytes = chunkBytes
 			hasFmt = true
 		case "data":
 			if dataEndOffset != 0 {
@@ -269,6 +272,13 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 
 	if !hasFmt {
 		return nil, fmt.Errorf("%w: missing fmt chunk", ErrCorruptContainer)
+	}
+	if audioFormat == waveFormatExtensible {
+		format, err := extensibleSubFormat(fmtBytes, bitsPerSample)
+		if err != nil {
+			return nil, err
+		}
+		audioFormat = format
 	}
 	if audioFormat != 1 && audioFormat != 3 {
 		return nil, fmt.Errorf("%w: unsupported WAV format tag %d", ErrCorruptContainer, audioFormat)
@@ -338,6 +348,30 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 	}, nil
 }
 
+// waveFormatExtensible is WAVE_FORMAT_EXTENSIBLE, written by most DAWs for
+// 24-bit, high-rate or multichannel files.
+const waveFormatExtensible = 0xFFFE
+
+// extensibleSubFormat returns the PCM (1) or IEEE float (3) format carried by a
+// WAVE_FORMAT_EXTENSIBLE fmt chunk. Valid bits must fit the container; samples
+// are left-justified, so decoding by container width preserves their scale.
+func extensibleSubFormat(chunk []byte, containerBits uint16) (uint16, error) {
+	if len(chunk) < 40 || binary.LittleEndian.Uint16(chunk[16:18]) < 22 {
+		return 0, fmt.Errorf("%w: WAVE_FORMAT_EXTENSIBLE fmt chunk is too short", ErrCorruptContainer)
+	}
+	validBits := binary.LittleEndian.Uint16(chunk[18:20])
+	if validBits == 0 || validBits > containerBits {
+		return 0, fmt.Errorf("%w: extensible WAV valid bits %d exceed the %d-bit container", ErrCorruptContainer, validBits, containerBits)
+	}
+	// KSDATAFORMAT_SUBTYPE_* GUIDs share this tail after their 32-bit format code.
+	guidTail := []byte{0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71}
+	code := binary.LittleEndian.Uint32(chunk[24:28])
+	if !bytes.Equal(chunk[28:40], guidTail) || (code != 1 && code != 3) {
+		return 0, fmt.Errorf("%w: unsupported extensible WAV sub-format", ErrCorruptContainer)
+	}
+	return uint16(code), nil // #nosec G115 -- code is 1 or 3
+}
+
 func decodeSampleLE(b []byte, audioFormat, bitsPerSample uint16) float32 {
 	switch bitsPerSample {
 	case 8:
@@ -381,7 +415,9 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 		bitsPerSample uint16
 		sampleRate    int
 		ssndData      []byte
+		encoding      = "NONE"
 	)
+	compressed := string(raw[8:12]) == "AIFC"
 	offset := 12
 	for offset+8 <= len(raw) {
 		chunkID := string(raw[offset : offset+4])
@@ -401,6 +437,12 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 			}
 			if err := scanNonAudioPayloads(chunkBytes[18:]); err != nil {
 				return nil, err
+			}
+			if compressed {
+				if len(chunkBytes) < 22 {
+					return nil, fmt.Errorf("%w: AIFF-C COMM chunk lacks a compression type", ErrCorruptContainer)
+				}
+				encoding = string(chunkBytes[18:22])
 			}
 			numChannels = binary.BigEndian.Uint16(chunkBytes[0:2])
 			numFrames = binary.BigEndian.Uint32(chunkBytes[2:6])
@@ -437,10 +479,14 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 	if offset != len(raw) {
 		return nil, fmt.Errorf("%w: incomplete AIFF chunk", ErrCorruptContainer)
 	}
-	if numChannels < 1 || numChannels > 2 || sampleRate < 8000 || sampleRate > 192000 || bitsPerSample != 16 || len(ssndData) == 0 {
+	if numChannels < 1 || numChannels > 2 || sampleRate < 8000 || sampleRate > 192000 || len(ssndData) == 0 {
 		return nil, fmt.Errorf("%w: invalid AIFF parameters", ErrCorruptContainer)
 	}
-	frameSize := 2 * int(numChannels)
+	decode, bytesPerSample, err := aiffSampleDecoder(encoding, bitsPerSample)
+	if err != nil {
+		return nil, err
+	}
+	frameSize := bytesPerSample * int(numChannels)
 	availFrames := len(ssndData) / frameSize
 	if uint64(numFrames) != uint64(availFrames) || len(ssndData)%frameSize != 0 || availFrames > MaxDecodedFrames {
 		return nil, fmt.Errorf("%w: inconsistent or excessive AIFF frames", ErrCorruptContainer)
@@ -452,10 +498,10 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 	right := make([]float32, availFrames)
 	for f := 0; f < availFrames; f++ {
 		base := f * frameSize
-		sL := float32(int16(binary.BigEndian.Uint16(ssndData[base:base+2]))) / 32768.0 // #nosec G115 -- 16-bit PCM two's complement
+		sL := decode(ssndData[base : base+bytesPerSample])
 		sR := sL
 		if numChannels >= 2 {
-			sR = float32(int16(binary.BigEndian.Uint16(ssndData[base+2:base+4]))) / 32768.0 // #nosec G115 -- 16-bit PCM two's complement
+			sR = decode(ssndData[base+bytesPerSample : base+2*bytesPerSample])
 		}
 		left[f] = sL
 		right[f] = sR
@@ -468,6 +514,39 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 		Left:       left,
 		Right:      right,
 	}, nil
+}
+
+// aiffSampleDecoder supports big-endian AIFF/AIFF-C "NONE" integer PCM of 1–32
+// bits (stored in whole bytes, left-justified, 8-bit signed), AIFF-C "sowt"
+// little-endian 16-bit PCM and "fl32"/"FL32" big-endian 32-bit float.
+func aiffSampleDecoder(encoding string, bits uint16) (func([]byte) float32, int, error) {
+	switch {
+	case encoding == "NONE" && bits >= 1 && bits <= 32:
+		width := int(bits+7) / 8
+		scale := float32(1 / math.Ldexp(1, 8*width-1))
+		return func(b []byte) float32 {
+			var u uint32
+			for _, octet := range b {
+				u = u<<8 | uint32(octet)
+			}
+			shift := 32 - 8*width
+			return float32(int32(u<<shift)>>shift) * scale // #nosec G115 -- sign-extended two's complement PCM
+		}, width, nil
+	case encoding == "sowt" && bits == 16:
+		return func(b []byte) float32 {
+			return float32(int16(binary.LittleEndian.Uint16(b))) / 32768.0 // #nosec G115 -- 16-bit PCM two's complement
+		}, 2, nil
+	case (encoding == "fl32" || encoding == "FL32") && bits == 32:
+		return func(b []byte) float32 {
+			f := math.Float32frombits(binary.BigEndian.Uint32(b))
+			if math.IsNaN(float64(f)) || math.IsInf(float64(f), 0) {
+				return 0
+			}
+			return f
+		}, 4, nil
+	default:
+		return nil, 0, fmt.Errorf("%w: unsupported AIFF encoding %q at %d bits", ErrCorruptContainer, encoding, bits)
+	}
 }
 
 func parseIEEE80SampleRate(b []byte) int {

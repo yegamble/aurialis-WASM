@@ -44,7 +44,9 @@ func (h *loudnessHistogram) gatedMean(relativeLU float64) (float64, int) {
 		sum += e
 	}
 	gate := loudness(sum/float64(h.total)) + relativeLU
-	first := max(0, int(math.Ceil((gate-liveHistMinLU)*liveBinsPerLU)))
+	// A gate above the histogram still admits its top bin, so one absurd
+	// block cannot leave integrated loudness unavailable until Reset.
+	first := min(liveHistogramN-1, max(0, int(math.Ceil((gate-liveHistMinLU)*liveBinsPerLU))))
 	var gated float64
 	var n uint32
 	for bin := first; bin < liveHistogramN; bin++ {
@@ -159,14 +161,23 @@ func (m *LoudnessMeter) closeSubBlock() {
 	m.subEnergy, m.subPos = 0, 0
 	if m.filled >= 4 {
 		e := m.window(4)
-		m.momentary = loudness(e)
+		m.momentary = gatedReading(e)
 		m.integrated.add(e)
 	}
 	if m.filled == liveSubBlocks {
 		e := m.window(liveSubBlocks)
-		m.short = loudness(e)
+		m.short = gatedReading(e)
 		m.shortTerm.add(e)
 	}
+}
+
+// gatedReading reports NoReading at or below the -70 LUFS absolute gate, so
+// silence shows as no reading rather than a -70 LUFS value.
+func gatedReading(energy float64) float64 {
+	if lu := loudness(energy); lu > liveHistMinLU {
+		return lu
+	}
+	return NoReading
 }
 
 func (m *LoudnessMeter) window(blocks int) float64 {

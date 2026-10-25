@@ -107,3 +107,20 @@ func TestLiveMeterProcessDoesNotAllocate(t *testing.T) {
 		t.Fatalf("Process/Snapshot allocated %.0f times", n)
 	}
 }
+
+func TestLiveMeterSilenceAndAbsurdBlocks(t *testing.T) {
+	m := NewLoudnessMeter(48000)
+	meterBlocks(m, make([]float32, 48000*4))
+	if s := m.Snapshot(); s.MomentaryLUFS != NoReading || s.ShortTermLUFS != NoReading || s.IntegratedLUFS != NoReading {
+		t.Fatalf("silence must report no reading: %+v", s)
+	}
+	huge := make([]float32, 48000)
+	for i := range huge {
+		huge[i] = math.MaxFloat32
+	}
+	meterBlocks(m, huge)
+	meterBlocks(m, tone(48000, -23, 10))
+	if s := m.Snapshot(); s.IntegratedLUFS == NoReading || s.RangeLU == NoReading {
+		t.Fatalf("an absurd block disabled integrated loudness or range: %+v", s)
+	}
+}

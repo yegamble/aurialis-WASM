@@ -18,7 +18,7 @@ export function MasteringShortcuts({ track }: { track: Track }) {
   const shortcuts: { id: MasteringShortcut; label: string; detail: string }[] = [
     { id: "air", label: "Add Air", detail: "Air shelf: +1 dB at 12 kHz." },
     { id: "mud", label: "Cut Mud", detail: "Low bell: −1.5 dB at 250 Hz, Q 0.8." },
-    { id: "tape", label: "Tape Warmth", detail: "Enable Tape saturation at 10% drive." },
+    { id: "tape", label: "Tape Warmth", detail: "Enable Tape saturation at 15% drive." },
     { id: "glue", label: "Glue Comp", detail: "Compressor: −18 dB, 2:1, 30 ms attack, automatic release, 90 Hz sidechain, 6 dB knee, zero makeup." },
   ];
   return <DSPModule title="Starting points">

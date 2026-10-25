@@ -71,8 +71,8 @@ for (const shortcut of shortcuts) {
       for (let i = 0; i < 5; i++) if (i !== index) expect(applied.eqBands[i]).toEqual(before.eqBands[i]);
       expect({ ...applied, eqEnabled: before.eqEnabled, eqBands: before.eqBands }).toEqual(before);
     } else if (shortcut.label === "Tape Warmth") {
-      expect(applied.saturationModule).toEqual({ enabled: true, character: "Tape", drive: 10 });
-      expect(applied.saturation).toBe(10);
+      expect(applied.saturationModule).toEqual({ enabled: true, character: "Tape", drive: 15 });
+      expect(applied.saturation).toBe(15);
       expect({ ...applied, saturation: before.saturation, saturationModule: before.saturationModule }).toEqual(before);
     } else {
       expect(applied.compressor).toEqual({ ...before.compressor, enabled: true, threshold: -18, ratio: 2, attack: 30, release: 200, autoRelease: true, sidechainHpfHz: 90, knee: 6, makeup: 0 });

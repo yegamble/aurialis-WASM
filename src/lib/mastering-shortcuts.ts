@@ -14,8 +14,8 @@ export function applyMasteringShortcut(advanced: AdvancedParams, shortcut: Maste
       return band;
     }) as AdvancedParams["eqBands"];
   } else if (shortcut === "tape") {
-    next.saturation = 10;
-    next.saturationModule = { enabled: true, character: "Tape", drive: 10 };
+    next.saturation = 15;
+    next.saturationModule = { enabled: true, character: "Tape", drive: 15 };
   } else {
     next.compressor = { ...advanced.compressor, enabled: true, threshold: -18, ratio: 2, attack: 30, release: 200, autoRelease: true, sidechainHpfHz: 90, knee: 6, makeup: 0 };
     next.threshold = next.compressor.threshold;

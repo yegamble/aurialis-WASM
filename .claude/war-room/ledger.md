@@ -11,9 +11,13 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## 24-bit WAV and AIFF imports — 2026-10-25
+
+`open — awaiting merge`. Audit finding 3 (P1). The CDR now accepts extensible WAV and 1–32-bit AIFF and uncompressed AIFF-C, with stdlib only. Tier: `unit` (FFmpeg oracle, 12 layouts). Multichannel (>2) input is still rejected.
 ## Live loudness meters — 2026-10-25
 
 `open — awaiting merge (claude/project-thread-448zhr)`. Audit finding 2 (P1): no live LUFS, true peak, LRA or GR. Go `dsp.LoudnessMeter` (BS.1770-4 / EBU 3341 / EBU 3342, 0.05 LU histograms, zero allocations) runs on the reactor's processed output; the worklet posts a seven-value snapshot every 50 ms and the workstation shows it. Tiers: `unit`, `wasm-bridge`, `playwright-a11y-responsive`. Live-playback browser cases rely on CI, because the local headless AudioContext clock does not advance. Limits: integrated loudness and range reset on each playback start or seek, and the meter does not follow the B Original selection.
+||||||| parent of 798a0ca (docs: record extensible WAV and AIFF import support)
 
 ## MP3 and FLAC import — 2026-10-24
 

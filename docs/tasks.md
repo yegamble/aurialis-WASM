@@ -3,11 +3,17 @@
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
+## 24-bit WAV and AIFF imports — 2026-10-25
+
+Audit finding 3. Imports rejected `WAVE_FORMAT_EXTENSIBLE` (0xFFFE), which most DAWs write for 24-bit or above-48 kHz WAV, and every AIFF that was not 16-bit. The Go CDR now resolves the extensible PCM/float sub-format (validating cbSize, valid bits and the KSDATAFORMAT GUID) and decodes AIFF integer PCM of 1–32 bits plus AIFF-C `NONE`, `sowt` and `fl32`. Browser import accepts `.aif`, `.aiff` and `.aifc`.
+
+Evidence (local, 2026-10-25): an FFmpeg oracle matches 12 layouts within 1e-7, including 24/32-bit, float and 96/192 kHz extensible WAV, 8/24/32-bit AIFF, and float and `sowt` AIFF-C, with each fixture checked for its layout marker. Rejection tests cover a bad GUID, a compressed sub-format, zero or excessive valid bits, a truncated extension and unsupported AIFF-C codecs. Status: **open — awaiting merge**.
 ## Live loudness meters — 2026-10-25
 
 First item from the [mastering tools audit](audits/2026-10-24-mastering-tools-audit.md) (finding 2). Playback previously showed only sample peak, RMS and crest; correlation was computed but hidden. A streaming Go meter now reads the processed output inside the WASI reactor and the workstation shows short-term (with momentary), integrated, loudness range, true peak (hold and latest), gain reduction and correlation.
 
 Evidence (local, 2026-10-25): `go test -race ./...` passed, including new EBU Tech 3341 steady-tone/gating and EBU Tech 3342 range cases at 44.1–192 kHz, a zero-allocation check and a bridge test of compressed output. `pnpm run test:wasm` passed with the compiled reactor exporting the meter and reporting an empty snapshot. Vitest passed 486/486 with new worklet, playback-validation and UI assertions; `tsc`, ESLint, knip and cspell passed. Playwright `a11y-responsive` passed, including keyboard scrolling of both meter strips at 320 px without page overflow. The six live-playback browser cases could not run on this Mac because headless Chromium's AudioContext clock stayed at 0 (`currentTime` 0 while `running`); CI's Linux browser shards are the evidence for them. Status: **open — awaiting merge**.
+||||||| parent of 798a0ca (docs: record extensible WAV and AIFF import support)
 
 ## Release merge record
 

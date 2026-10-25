@@ -18,7 +18,7 @@ type windowPredictor func(context.Context, []float32, []float32, []int, func(int
 // writes are unpublished job state and must be discarded after any error.
 // No job timeout is configured here; the owner supplies a cancellable context.
 func runTrainedSeparation(ctx context.Context, archive *weightArchive, rate, stems int, left, right []float32, admittedBytes int64, sink stemSink, progress func(pipelineProgress)) error {
-	resources, err := estimatePipeline(rate, len(left), stems, maximumWindowSamples)
+	resources, err := estimatePipeline(rate, len(left), stems, maximumWindowSamples, defaultWorkers())
 	if err != nil {
 		return err
 	}
@@ -28,7 +28,7 @@ func runTrainedSeparation(ctx context.Context, archive *weightArchive, rate, ste
 	if err := validatePipelineSource(ctx, left, right); err != nil {
 		return err
 	}
-	runner, err := newWindowRunner(ctx, archive, maximumWindowSamples)
+	runner, err := newWindowRunner(ctx, archive, maximumWindowSamples, resources.workers)
 	if err != nil {
 		return err
 	}
@@ -51,7 +51,7 @@ func validatePipelineSource(ctx context.Context, left, right []float32) error {
 	return ctx.Err()
 }
 func runPipelineCore(ctx context.Context, resources pipelineResources, left, right []float32, predict windowPredictor, sink stemSink, progress func(pipelineProgress)) error {
-	canonical, resourceErr := estimatePipeline(resources.sourceRate, resources.sourceFrames, resources.stems, resources.window)
+	canonical, resourceErr := estimatePipeline(resources.sourceRate, resources.sourceFrames, resources.stems, resources.window, resources.workers)
 	if resourceErr != nil || canonical != resources {
 		return errors.New("private pipeline resource plan changed")
 	}

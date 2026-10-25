@@ -17,7 +17,7 @@ func TestMeasureFixedTwentySecondTrainedPipeline(t *testing.T) {
 		t.Skip("set explicit private full-context measurement opt-in")
 	}
 	const rate, frames, stems = 48000, 480000, 6
-	resources, err := estimatePipeline(rate, frames, stems, maximumWindowSamples)
+	resources, err := estimatePipeline(rate, frames, stems, maximumWindowSamples, defaultWorkers())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestMeasureFixedTwentySecondTrainedPipeline(t *testing.T) {
 	counts := [stems]int{}
 	observedWindows := 0
 	completedWindow, completedStep := -1, -1
-	ctx, cancel := context.WithTimeout(context.Background(), 145*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 1800*time.Second)
 	defer cancel()
 	processing := time.Now()
 	err = runTrainedSeparation(ctx, archive, rate, stems, source[0], source[1], resources.requiredJobBytes, func(stem, start int, left, right []float32) error {

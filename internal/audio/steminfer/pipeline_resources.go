@@ -5,13 +5,21 @@ package steminfer
 import (
 	"errors"
 	"math"
+	"runtime"
 )
 
 const modelSampleRate = 44100
 const maximumPrivateJobBytes int64 = 1024 * 1024 * 1024
 
+// maximumWorkers bounds transformer lanes; each lane adds about 20 MB at the
+// full window.
+const maximumWorkers = 16
+
+// defaultWorkers uses every available core up to maximumWorkers.
+func defaultWorkers() int { return min(runtime.GOMAXPROCS(0), maximumWorkers) }
+
 type pipelineResources struct {
-	sourceRate, sourceFrames, modelFrames, stems, heads, window, originalSpan          int
+	sourceRate, sourceFrames, modelFrames, stems, heads, window, originalSpan, workers int
 	staticModelBytes, graphBytes, overlapBytes, resampleBytes, streamBytes, groupBytes int64
 	inputBytes, retainedOutputBytes, workingBytes, requiredJobBytes                    int64
 }
@@ -22,8 +30,8 @@ func resampleRadius(fromRate, toRate int) int {
 	}
 	return int(math.Ceil(32 / (.94 * math.Min(1, float64(toRate)/float64(fromRate)))))
 }
-func estimatePipeline(sourceRate, frames, stems, window int) (pipelineResources, error) {
-	if sourceRate < 8000 || sourceRate > 192000 || frames < 1 || frames > maximumSourceFrames || stems < 2 || stems > 6 || window <= fftSize/2 || window > maximumWindowSamples || window%2 != 0 {
+func estimatePipeline(sourceRate, frames, stems, window, workers int) (pipelineResources, error) {
+	if workers < 1 || workers > maximumWorkers || sourceRate < 8000 || sourceRate > 192000 || frames < 1 || frames > maximumSourceFrames || stems < 2 || stems > 6 || window <= fftSize/2 || window > maximumWindowSamples || window%2 != 0 {
 		return pipelineResources{}, errors.New("invalid private separation resource request")
 	}
 	modelFrames := (int64(frames)*modelSampleRate + int64(sourceRate) - 1) / int64(sourceRate)
@@ -36,7 +44,7 @@ func estimatePipeline(sourceRate, frames, stems, window int) (pipelineResources,
 	}
 	inverseRadius := resampleRadius(modelSampleRate, sourceRate)
 	span := min(frames, int((int64(window/2+inverseRadius+2)*int64(sourceRate)+modelSampleRate-1)/modelSampleRate)+2)
-	result := pipelineResources{sourceRate: sourceRate, sourceFrames: frames, modelFrames: int(modelFrames), stems: stems, heads: heads, window: window, originalSpan: span, staticModelBytes: modelBytes, graphBytes: workingStorageBytes(window)}
+	result := pipelineResources{sourceRate: sourceRate, sourceFrames: frames, modelFrames: int(modelFrames), stems: stems, heads: heads, window: window, originalSpan: span, staticModelBytes: modelBytes, graphBytes: workingStorageBytes(window, workers), workers: workers}
 	result.overlapBytes = int64(4+2*heads) * int64(window) * 4
 	result.resampleBytes = int64(2*(resampleRadius(sourceRate, modelSampleRate)+inverseRadius)) * (resamplePhases + 1) * 4
 	result.streamBytes = int64(heads) * int64(2*(2*inverseRadius+2)+2*outputBlockFrames) * 4

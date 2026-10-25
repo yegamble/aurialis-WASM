@@ -37,7 +37,7 @@ func TestPrivatePipelinePreservesOriginalPCMAndAllTwoToSixGroups(t *testing.T) {
 	for _, rate := range []int{8001, 44100, 48000, 192000} {
 		for stems := 2; stems <= 6; stems++ {
 			const frames = 2053
-			resources, err := estimatePipeline(rate, frames, stems, 2048)
+			resources, err := estimatePipeline(rate, frames, stems, 2048, 2)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -128,7 +128,7 @@ func TestPrivatePipelinePreservesOriginalPCMAndAllTwoToSixGroups(t *testing.T) {
 }
 func TestPrivatePipelineShortSourceAndFullProductionWindow(t *testing.T) {
 	for _, frames := range []int{1, 127, 129} {
-		resources, err := estimatePipeline(48000, frames, 6, 2048)
+		resources, err := estimatePipeline(48000, frames, 6, 2048, 2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -152,7 +152,7 @@ func TestPrivatePipelineShortSourceAndFullProductionWindow(t *testing.T) {
 			}
 		}
 	}
-	resources, err := estimatePipeline(44100, 1, 2, maximumWindowSamples)
+	resources, err := estimatePipeline(44100, 1, 2, maximumWindowSamples, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestPrivatePipelineRejectsMissingReservationMalformedAndCanceledWork(t *tes
 	if err := runTrainedSeparation(context.Background(), nil, 44100, 6, []float32{1}, []float32{1}, 1, sink, nil); err == nil {
 		t.Fatal("full graph accepted without reservation")
 	}
-	resources, err := estimatePipeline(44100, 129, 2, 2048)
+	resources, err := estimatePipeline(44100, 129, 2, 2048, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestPrivatePipelineRejectsMissingReservationMalformedAndCanceledWork(t *tes
 func TestPrivateResourcePlanSeparatesStaticAndRetainedBudgets(t *testing.T) {
 	for _, rate := range []int{8001, 44100, 48000, 192000} {
 		for stems := 2; stems <= 6; stems++ {
-			resources, err := estimatePipeline(rate, 441000, stems, maximumWindowSamples)
+			resources, err := estimatePipeline(rate, 441000, stems, maximumWindowSamples, 2)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -229,14 +229,14 @@ func TestPrivateResourcePlanSeparatesStaticAndRetainedBudgets(t *testing.T) {
 		}
 	}
 	for _, request := range [][3]int{{0, 1, 2}, {44100, 0, 6}, {44100, maximumSourceFrames + 1, 6}, {44100, 1, 7}, {8000, maximumSourceFrames, 6}, {44100, maximumSourceFrames, 6}} {
-		if _, err := estimatePipeline(request[0], request[1], request[2], maximumWindowSamples); err == nil {
+		if _, err := estimatePipeline(request[0], request[1], request[2], maximumWindowSamples, 2); err == nil {
 			t.Fatal("unbounded source/model/retention admitted", request)
 		}
 	}
 }
 
 func TestPrivateResourceArraysMatchEstimate(t *testing.T) {
-	resources, err := estimatePipeline(8001, 1027, 5, 2048)
+	resources, err := estimatePipeline(8001, 1027, 5, 2048, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,12 +277,12 @@ func TestPrivateResourceArraysMatchEstimate(t *testing.T) {
 		grouping += int64(cap(groups.sum[channel]))*8 + int64(cap(groups.melody[channel])+cap(groups.output[channel]))*4
 	}
 	src := int64(cap(forward.coefficients)+cap(inverse.coefficients)) * 4
-	graph := newNetworkWorkspace(resources.window).storageBytes()
+	graph := newNetworkWorkspace(resources.window, resources.workers).storageBytes()
 	if overlap != resources.overlapBytes || streaming != resources.streamBytes || grouping != resources.groupBytes || src != resources.resampleBytes || graph != resources.graphBytes || graph+overlap+streaming+grouping+src != resources.workingBytes {
 		t.Fatalf("array reservation mismatch graph%d overlap%d stream%d groups%d SRC%d estimate%+v", graph, overlap, streaming, grouping, src, resources)
 	}
 	for _, rate := range []int{8001, 44100, 192000} {
-		example, err := estimatePipeline(rate, rate*10, 6, maximumWindowSamples)
+		example, err := estimatePipeline(rate, rate*10, 6, maximumWindowSamples, 2)
 		if err != nil {
 			t.Fatal(err)
 		}

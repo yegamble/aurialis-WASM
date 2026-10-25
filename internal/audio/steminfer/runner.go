@@ -35,14 +35,14 @@ type windowRunner struct {
 	gate    chan struct{}
 }
 
-func newWindowRunner(ctx context.Context, archive *weightArchive, samples int) (*windowRunner, error) {
-	if ctx == nil || archive == nil || len(archive.tensors) != 1691 || samples <= fftSize/2 || samples > maximumWindowSamples {
+func newWindowRunner(ctx context.Context, archive *weightArchive, samples, workers int) (*windowRunner, error) {
+	if workers < 1 || workers > maximumWorkers || ctx == nil || archive == nil || len(archive.tensors) != 1691 || samples <= fftSize/2 || samples > maximumWindowSamples {
 		return nil, errors.New("invalid bounded inference runner")
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return &windowRunner{archive: archive, work: newNetworkWorkspace(samples), gate: make(chan struct{}, 1)}, nil
+	return &windowRunner{archive: archive, work: newNetworkWorkspace(samples, workers), gate: make(chan struct{}, 1)}, nil
 }
 func (runner *windowRunner) predict(ctx context.Context, left, right []float32, heads []int, consume func(int, []float32, []float32) error, hooks inferenceHooks) error {
 	if ctx == nil || runner == nil || runner.work == nil || len(left) != runner.work.samples || len(right) != len(left) || len(heads) < 1 || len(heads) > 5 || consume == nil {
@@ -154,7 +154,7 @@ func (work *networkWorkspace) maskHead(ctx context.Context, archive *weightArchi
 				return err
 			}
 		}
-		hidden := work.inner[:work.frames*512]
+		hidden := work.lanes[0].inner[:work.frames*512]
 		input := work.hidden[band*work.frames*256 : (band+1)*work.frames*256]
 		if err := multiply(ctx, hidden, input, firstWeights, work.frames, 512, 256, true); err != nil {
 			return err
@@ -163,7 +163,7 @@ func (work *networkWorkspace) maskHead(ctx context.Context, archive *weightArchi
 		if err := applyTanh(ctx, hidden); err != nil {
 			return err
 		}
-		output := work.qkv[:work.frames*2*width]
+		output := work.lanes[0].qkv[:work.frames*2*width]
 		if err := multiply(ctx, output, hidden, secondWeights, work.frames, 2*width, 512, true); err != nil {
 			return err
 		}

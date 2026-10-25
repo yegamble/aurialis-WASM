@@ -123,7 +123,7 @@ func compareOriginalOracle(t *testing.T, exactFeatures bool) {
 		t.Fatal("wrong source shape")
 	}
 	archive := actualArchive(t)
-	runner, err := newWindowRunner(context.Background(), archive, metadata.Samples)
+	runner, err := newWindowRunner(context.Background(), archive, metadata.Samples, defaultWorkers())
 	if err != nil {
 		t.Fatal(err)
 	}

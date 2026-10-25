@@ -5,33 +5,35 @@ package steminfer
 import (
 	"context"
 	"errors"
+	"math"
+	"slices"
 	"testing"
 )
 
 func TestWorkingStorageAdmissionMatchesActualSmallWindows(t *testing.T) {
 	for _, samples := range []int{1025, 2053, 44100} {
-		work := newNetworkWorkspace(samples)
-		if got, want := work.storageBytes(), workingStorageBytes(samples); got != want {
+		work := newNetworkWorkspace(samples, 3)
+		if got, want := work.storageBytes(), workingStorageBytes(samples, 3); got != want {
 			t.Fatalf("samples%d actual%d admitted%d", samples, got, want)
 		}
 	}
 	var previous int64
 	for _, samples := range []int{1025, 1026, 2048, 441000, maximumWindowSamples} {
-		bytes := workingStorageBytes(samples)
+		bytes := workingStorageBytes(samples, 1)
 		if bytes < previous || bytes <= 0 || bytes > 256*1024*1024 {
 			t.Fatalf("invalid bound samples%d bytes%d", samples, bytes)
 		}
 		previous = bytes
 	}
 	for _, samples := range []int{-1, 0, 1024, maximumWindowSamples + 1} {
-		if workingStorageBytes(samples) != 0 {
+		if workingStorageBytes(samples, 1) != 0 {
 			t.Fatal("invalid size admitted", samples)
 		}
 	}
 	t.Logf("maximum fixed-window arrays%d bytes; static model%d bytes is separate", previous, modelBytes)
 }
 func TestRunnerValidationAndCanceledConstruction(t *testing.T) {
-	if _, err := newWindowRunner(context.Background(), nil, 2053); err == nil {
+	if _, err := newWindowRunner(context.Background(), nil, 2053, 2); err == nil {
 		t.Fatal("unverified archive accepted")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -40,13 +42,13 @@ func TestRunnerValidationAndCanceledConstruction(t *testing.T) {
 	for name := range expectedModelSchema() {
 		archive.tensors[name] = tensorDescriptor{}
 	}
-	if _, err := newWindowRunner(ctx, archive, 2053); !errors.Is(err, context.Canceled) {
+	if _, err := newWindowRunner(ctx, archive, 2053, 2); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 }
 func TestTrainedRunnerProgressCancellationAndConcurrentAdmission(t *testing.T) {
 	archive := actualArchive(t)
-	runner, err := newWindowRunner(context.Background(), archive, 2053)
+	runner, err := newWindowRunner(context.Background(), archive, 2053, 2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,5 +119,39 @@ func TestTrainedRunnerProgressCancellationAndConcurrentAdmission(t *testing.T) {
 	}})
 	if err != nil || !consumed || completed != 29 {
 		t.Fatal("runner was not reusable after cancellation", err, completed)
+	}
+}
+
+func TestParallelLanesMatchSerialInferenceExactly(t *testing.T) {
+	archive := actualArchive(t)
+	const samples = 44100
+	left, right := make([]float32, samples), make([]float32, samples)
+	seed := uint32(97)
+	for i := range left {
+		seed = seed*1664525 + 1013904223
+		left[i] = float32(seed>>8)/(1<<24) - .5
+		right[i] = .3*left[i] + .2*float32(math.Sin(float64(i)*.07))
+	}
+	run := func(workers int) [5][2][]float32 {
+		runner, err := newWindowRunner(context.Background(), archive, samples, workers)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out [5][2][]float32
+		if err := runner.predict(context.Background(), left, right, []int{0, 1, 2, 3, 4}, func(head int, l, r []float32) error {
+			out[head] = [2][]float32{slices.Clone(l), slices.Clone(r)}
+			return nil
+		}, inferenceHooks{}); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	serial, parallel := run(1), run(6)
+	for head := range serial {
+		for channel := range 2 {
+			if !slices.Equal(serial[head][channel], parallel[head][channel]) {
+				t.Fatalf("head %d channel %d differs between one and six lanes", head, channel)
+			}
+		}
 	}
 }

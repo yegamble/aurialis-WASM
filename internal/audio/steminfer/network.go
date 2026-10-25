@@ -6,24 +6,28 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"sync"
+	"sync/atomic"
 )
 
 type networkWorkspace struct {
-	hidden, features, normalized, qkv, inner, projected, gates, query, key, value, scores, rotations, frequencies, weightArena, bandGamma, finalGamma []float32
-	spectra                                                                                                                                           []complex64
-	spectrum                                                                                                                                          spectrumWorkspace
-	frames, samples                                                                                                                                   int
+	hidden, features, rotations, weightArena, bandGamma, finalGamma []float32
+	spectra                                                         []complex64
+	spectrum                                                        spectrumWorkspace
+	// Each lane runs one band or frame transformer at a time. Lane 0 also
+	// holds the band-split and mask-head scratch, which run serially.
+	lanes           []*transformerLane
+	frames, samples int
+}
+
+type transformerLane struct {
+	normalized, qkv, inner, projected, gates, query, key, value, scores, frequencies []float32
 }
 
 const blockWeightElements = 32 + 256 + 1536*256 + 8*256 + 8 + 256*512 + 256 + 1024*256 + 1024 + 256*1024 + 256
 
-func newNetworkWorkspace(samples int) *networkWorkspace {
-	frames := samples/fftHop + 1
-	sequence := max(frames, len(bandBins))
-	return &networkWorkspace{
-		frames: frames, samples: samples,
-		hidden:      make([]float32, len(bandBins)*frames*modelDimension),
-		features:    make([]float32, frames*featureCount),
+func newTransformerLane(sequence int) *transformerLane {
+	return &transformerLane{
 		normalized:  make([]float32, sequence*516),
 		qkv:         make([]float32, sequence*3*attentionInner),
 		inner:       make([]float32, sequence*attentionInner),
@@ -33,13 +37,28 @@ func newNetworkWorkspace(samples int) *networkWorkspace {
 		key:         make([]float32, sequence*attentionHeadDimension),
 		value:       make([]float32, sequence*attentionHeadDimension),
 		scores:      make([]float32, attentionTile*sequence),
-		rotations:   make([]float32, sequence*attentionHeadDimension),
 		frequencies: make([]float32, len(bandBins)*modelDimension),
+	}
+}
+
+func newNetworkWorkspace(samples, workers int) *networkWorkspace {
+	frames := samples/fftHop + 1
+	sequence := max(frames, len(bandBins))
+	work := &networkWorkspace{
+		frames: frames, samples: samples,
+		hidden:      make([]float32, len(bandBins)*frames*modelDimension),
+		features:    make([]float32, frames*featureCount),
+		rotations:   make([]float32, sequence*attentionHeadDimension),
 		weightArena: make([]float32, blockWeightElements),
 		bandGamma:   make([]float32, 516), finalGamma: make([]float32, modelDimension),
 		spectra:  make([]complex64, frames*spectrumBins*2),
 		spectrum: newSpectrumWorkspace(frames),
+		lanes:    make([]*transformerLane, max(1, workers)),
 	}
+	for i := range work.lanes {
+		work.lanes[i] = newTransformerLane(sequence)
+	}
+	return work
 }
 func normalizeRows(destination, input, gamma []float32, rows, width int) {
 	scale := float32(math.Sqrt(float64(width)))
@@ -112,12 +131,12 @@ func (work *networkWorkspace) loadBlock(archive *weightArchive, layer, axis int)
 	}
 	return result, nil
 }
-func (work *networkWorkspace) transformer(ctx context.Context, input []float32, sequence int, weights blockWeights) error {
-	norm := work.normalized[:sequence*256]
-	qkv := work.qkv[:sequence*1536]
-	gates := work.gates[:sequence*8]
-	inner := work.inner[:sequence*512]
-	projected := work.projected[:sequence*256]
+func (lane *transformerLane) transformer(ctx context.Context, rotations, input []float32, sequence int, weights blockWeights) error {
+	norm := lane.normalized[:sequence*256]
+	qkv := lane.qkv[:sequence*1536]
+	gates := lane.gates[:sequence*8]
+	inner := lane.inner[:sequence*512]
+	projected := lane.projected[:sequence*256]
 	normalizeRows(norm, input, weights.gamma, sequence, 256)
 	if err := multiply(ctx, qkv, norm, weights.qkv, sequence, 1536, 256, true); err != nil {
 		return err
@@ -130,11 +149,11 @@ func (work *networkWorkspace) transformer(ctx context.Context, input []float32, 
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		query, key, value := work.query[:sequence*64], work.key[:sequence*64], work.value[:sequence*64]
+		query, key, value := lane.query[:sequence*64], lane.key[:sequence*64], lane.value[:sequence*64]
 		for row := range sequence {
 			for pair := range 32 {
-				s := work.rotations[row*64+pair*2]
-				c := work.rotations[row*64+pair*2+1]
+				s := rotations[row*64+pair*2]
+				c := rotations[row*64+pair*2+1]
 				for source, destination := range [2][]float32{query, key} {
 					offset := row*1536 + source*512 + head*64 + pair*2
 					a, b := qkv[offset], qkv[offset+1]
@@ -146,14 +165,14 @@ func (work *networkWorkspace) transformer(ctx context.Context, input []float32, 
 		}
 		for first := 0; first < sequence; first += attentionTile {
 			rows := min(attentionTile, sequence-first)
-			scores := work.scores[:rows*sequence]
+			scores := lane.scores[:rows*sequence]
 			if err := multiply(ctx, scores, query[first*64:(first+rows)*64], key, rows, sequence, 64, true); err != nil {
 				return err
 			}
 			if err := attentionSoftmax(ctx, scores, rows, sequence); err != nil {
 				return err
 			}
-			output := work.normalized[:rows*64]
+			output := lane.normalized[:rows*64]
 			if err := multiply(ctx, output, scores, value, rows, 64, sequence, false); err != nil {
 				return err
 			}
@@ -172,7 +191,7 @@ func (work *networkWorkspace) transformer(ctx context.Context, input []float32, 
 		input[i] += projected[i]
 	}
 	normalizeRows(norm, input, weights.ffGamma, sequence, 256)
-	hidden := work.qkv[:sequence*1024]
+	hidden := lane.qkv[:sequence*1024]
 	if err := multiply(ctx, hidden, norm, weights.ffOne, sequence, 1024, 256, true); err != nil {
 		return err
 	}
@@ -209,11 +228,11 @@ func (work *networkWorkspace) splitBands(ctx context.Context, archive *weightArc
 		if err := archive.tensorInto(prefix+"1.bias", bias); err != nil {
 			return err
 		}
-		copied := work.qkv[:work.frames*width]
+		copied := work.lanes[0].qkv[:work.frames*width]
 		for row := range work.frames {
 			copy(copied[row*width:(row+1)*width], work.features[row*featureCount+offset:row*featureCount+offset+width])
 		}
-		norm := work.normalized[:work.frames*width]
+		norm := work.lanes[0].normalized[:work.frames*width]
 		normalizeRows(norm, copied, gamma, work.frames, width)
 		output := work.hidden[band*work.frames*256 : (band+1)*work.frames*256]
 		if err := multiply(ctx, output, norm, matrix, work.frames, 256, width, true); err != nil {
@@ -231,23 +250,25 @@ func (work *networkWorkspace) layer(ctx context.Context, archive *weightArchive,
 			return err
 		}
 		if axis == 0 {
-			for band := range bandBins {
-				if err := work.transformer(ctx, work.hidden[band*work.frames*256:(band+1)*work.frames*256], work.frames, weights); err != nil {
-					return err
-				}
-			}
+			err = work.parallel(ctx, len(bandBins), func(lane *transformerLane, band int) error {
+				return lane.transformer(ctx, work.rotations, work.hidden[band*work.frames*256:(band+1)*work.frames*256], work.frames, weights)
+			})
 		} else {
-			for frame := range work.frames {
+			err = work.parallel(ctx, work.frames, func(lane *transformerLane, frame int) error {
 				for band := range bandBins {
-					copy(work.frequencies[band*256:(band+1)*256], work.hidden[(band*work.frames+frame)*256:(band*work.frames+frame+1)*256])
+					copy(lane.frequencies[band*256:(band+1)*256], work.hidden[(band*work.frames+frame)*256:(band*work.frames+frame+1)*256])
 				}
-				if err := work.transformer(ctx, work.frequencies, len(bandBins), weights); err != nil {
+				if err := lane.transformer(ctx, work.rotations, lane.frequencies, len(bandBins), weights); err != nil {
 					return err
 				}
 				for band := range bandBins {
-					copy(work.hidden[(band*work.frames+frame)*256:(band*work.frames+frame+1)*256], work.frequencies[band*256:(band+1)*256])
+					copy(work.hidden[(band*work.frames+frame)*256:(band*work.frames+frame+1)*256], lane.frequencies[band*256:(band+1)*256])
 				}
-			}
+				return nil
+			})
+		}
+		if err != nil {
+			return err
 		}
 		if trace != nil {
 			suffix := "time"
@@ -261,4 +282,35 @@ func (work *networkWorkspace) layer(ctx context.Context, archive *weightArchive,
 		}
 	}
 	return nil
+}
+
+// parallel runs task for every index in [0, count) across the workspace lanes.
+// Tasks write disjoint slices of shared state, so results do not depend on
+// scheduling. The first error cancels the remaining tasks.
+func (work *networkWorkspace) parallel(ctx context.Context, count int, task func(*transformerLane, int) error) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var next atomic.Int64
+	var first error
+	var once sync.Once
+	var wait sync.WaitGroup
+	for _, lane := range work.lanes[:min(len(work.lanes), count)] {
+		wait.Go(func() {
+			for {
+				index := int(next.Add(1) - 1)
+				if index >= count || ctx.Err() != nil {
+					return
+				}
+				if err := task(lane, index); err != nil {
+					once.Do(func() { first = err; cancel() })
+					return
+				}
+			}
+		})
+	}
+	wait.Wait()
+	if first != nil {
+		return first
+	}
+	return ctx.Err()
 }

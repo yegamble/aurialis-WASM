@@ -864,6 +864,12 @@ func (e *Engine) finishSample(l, r, rawL, rawR float64, limActive bool) (float32
 			l *= multiplier
 			r *= multiplier
 			e.lastLimGRDB -= linToDB(multiplier)
+			// Keep dithered output on its quantization grid; truncation toward
+			// zero cannot exceed the ceiling.
+			if scale := ditherScale(e.params.DitherBits); scale > 0 {
+				l = math.Trunc(l*scale) / scale
+				r = math.Trunc(r*scale) / scale
+			}
 		}
 	}
 	return finiteFloat32(l), finiteFloat32(r)
@@ -1305,13 +1311,20 @@ func (e *Engine) nextUniform() float64 {
 	return float64(prod>>11) * (1.0 / 9007199254740992.0)
 }
 
-func (e *Engine) applyTPDFDither(sample float64, bits int) float64 {
-	var scale float64
-	if bits == 16 {
-		scale = 32768.0
-	} else {
-		scale = 8388608.0
+// ditherScale is the quantization step count per unit for dithered output, or 0.
+func ditherScale(bits int) float64 {
+	switch bits {
+	case 16:
+		return 32768.0
+	case 24:
+		return 8388608.0
+	default:
+		return 0
 	}
+}
+
+func (e *Engine) applyTPDFDither(sample float64, bits int) float64 {
+	scale := ditherScale(bits)
 	// Triangular Probability Density Function (TPDF) = (u1 - u2) * 1 LSB
 	tpdf := (e.nextUniform() - e.nextUniform()) / scale
 	quantized := math.Round((sample+tpdf)*scale) / scale

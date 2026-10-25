@@ -81,6 +81,7 @@ import { useDeepPlayback } from "@/lib/use-deep-playback";
 import { appliedRevisionKey } from "@/lib/deep-mastering";
 import type { ScriptV2 } from "@/lib/deep-mastering";
 import { DeepTimeline } from "./shared/DeepTimeline";
+import { timeConstantMs } from "@/lib/control-conventions";
 
 const stemNames = new Map<number, string[]>([
   [2, ["Vocals", "Instrumental"]],
@@ -1305,6 +1306,7 @@ function AdvancedControls({
         max={100}
         step={1}
         unit="ms"
+        note={`Reaches 92% of the reduction in ${String(adv.compressor.attack)} ms; time constant ≈ ${timeConstantMs(adv.compressor.attack).toFixed(1)} ms`}
         onChange={(attack) => {
           dispatch({
             type: "UPDATE_COMPRESSOR",
@@ -1322,6 +1324,7 @@ function AdvancedControls({
         max={500}
         step={5}
         unit="ms"
+        note={`Recovers 92% in ${String(adv.compressor.release)} ms; time constant ≈ ${timeConstantMs(adv.compressor.release).toFixed(0)} ms`}
         onChange={(release) => {
           dispatch({
             type: "UPDATE_COMPRESSOR",

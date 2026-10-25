@@ -90,6 +90,21 @@ describe("master live playback lifecycle", () => {
     expect(screen.getByRole("region", { name: "Measured audio levels" }).textContent).not.toContain("−∞");
   }, 20000);
 
+  it("shows pro-convention readouts for shelf midpoint, bell Q, mono bass and compressor times", async () => {
+    mount(); await ready();
+    const description = (name: string) => {
+      const ids = screen.getByRole("slider", { name }).getAttribute("aria-describedby")?.split(" ") ?? [];
+      return ids.map((id) => document.getElementById(id)?.textContent ?? "").join(" ");
+    };
+    fireEvent.click(screen.getByRole("tab", { name: "advanced" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Sub" }));
+    expect(description("Sub frequency")).toContain("Shelf midpoint (half gain) ≈ 111 Hz");
+    fireEvent.click(screen.getByRole("tab", { name: "Mid" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Mid gain" }), { target: { value: "6" } });
+    expect(description("Mid Q")).toContain("Effective bell Q at +6 dB ≈ 2.50");
+    expect(description("Attack")).toContain("time constant ≈ 10.0 ms");
+    expect(description("Bass mono frequency")).toContain("Side is −3 dB at ≈ 242 Hz");
+  }, 20000);
   it.each(["Media Session", "Space"])("accepts %s pause and resume while playback initialization is pending", async (input) => {
     const handlers = new Map<MediaSessionAction, MediaSessionActionHandler | null>();
     vi.stubGlobal("navigator", { mediaSession: {

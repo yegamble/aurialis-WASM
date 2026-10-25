@@ -116,7 +116,7 @@ func newResamplePlan(ctx context.Context, fromRate, toRate int) (*resamplePlan, 
 	return plan, nil
 }
 
-// phaseRows returns the two neighbouring coefficient rows and the fraction
+// phaseRows returns the two neighboring coefficient rows and the fraction
 // between them for an output index.
 func (plan *resamplePlan) phaseRows(outputIndex int) ([]float32, []float32, float64) {
 	position := int64(outputIndex) * int64(plan.fromRate)

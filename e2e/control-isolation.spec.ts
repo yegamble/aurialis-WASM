@@ -39,7 +39,7 @@ test.describe("End-to-End Parameter Orthogonality & Control Isolation", () => {
     await expect(stereoWidthSlider).toHaveValue("100")
   })
 
-  test("profiles apply real processing while unavailable separation cannot invent stems", async ({ page }) => {
+  test("profiles apply real processing while disabled separation cannot invent stems", async ({ page }) => {
     const id = await uploadProject(page)
     await page.getByRole("tab", { name: "deep", exact: true }).click()
     await expect(page.getByRole("button", { name: "Analyze Deep proposal", exact: true })).toBeEnabled()
@@ -50,8 +50,9 @@ test.describe("End-to-End Parameter Orthogonality & Control Isolation", () => {
     await expect(page.getByText("Profile applied to live playback. Adjust it in Advanced mode while you listen.", { exact: true })).toBeVisible()
     await page.goto(`/split/${id}`)
     await expect(page.getByRole("group", { name: "Stem count", exact: true })).toBeVisible()
-    await expect(page.getByText("Separation unavailable", { exact: false })).toBeVisible()
-    await expect(page.getByRole("button", { name: "Separate into stems", exact: true })).toHaveCount(0)
-    await expect(page.locator(".stem-card")).toHaveCount(0)
+    // The e2e binary runs without a model (--stem-model-url ""), so nothing downloads.
+    await expect(page.getByText("Smart Split is turned off in this build of the app.", { exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: /^Split .* into 4 stems$/u })).toBeDisabled()
+    await expect(page.getByRole("list", { name: "Separated stems" })).toHaveCount(0)
   })
 })

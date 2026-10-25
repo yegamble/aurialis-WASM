@@ -3,6 +3,11 @@
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
+## Steeper multiband crossovers — 2026-10-25
+
+Audit finding 10. First-order splits let a −12 dB low-band move leak −2.8 dB at its 200 Hz crossover and −1 dB at 400 Hz. Three-band dynamics now use 24 dB/oct Linkwitz–Riley crossovers with the low band phase-matched through the upper all-pass. Idle multiband keeps magnitude within 0.01 dB from 40 Hz to 16 kHz but rotates phase, so the earlier sample-exact idle test was replaced by a magnitude test. This is a sound change for saved sessions that use multiband.
+
+Evidence (local, 2026-10-25): a new crossover test measures −12 ±0.5 dB two octaves below the crossover, about 0 dB two octaves above, and 0 at the upper crossover. `go test -race ./...` and `pnpm run test:wasm` passed with native/WASM error 0. Status: **open — awaiting merge**.
 ## De-esser range — 2026-10-25
 
 Audit finding 6. `repair.deEssDb` subtracted its Q=2 band-pass at double gain. On a loud 6.5 kHz tone, 4.2 dB cut 12.6 dB, 6 dB nulled the tone and 10 dB inverted it. That path is reachable through API `profile=` renders (Vocal Forward uses 4.2 dB) and legacy v1 script moves; the current UI has no de-esser. The band is now subtracted at unity, so the cut grows with the setting and never exceeds it. The detector is unchanged.
@@ -37,6 +42,7 @@ Evidence (local, 2026-10-25): `go test -race ./...` passed, including new EBU Te
 ||||||| parent of 7b10d42 (docs: record program-level saturation gain and break-test result)
 Evidence (local, 2026-10-25): a new Go response test covers six characters at 10/50/100%: low-level gain, 10/16/20 kHz flatness within 0.1 dB, THD and an alias bound. `go test -race ./...` passed, as did `pnpm run test:wasm`, with 279 + 54 native/WASM fixtures at maximum absolute error 0 after FMA-free arithmetic. Status: **open — awaiting merge**.
 ||||||| parent of 9ec94e1 (docs: record de-esser range fix)
+||||||| parent of a4cc9ff (docs: record Linkwitz-Riley multiband crossovers)
 
 ## Release merge record
 

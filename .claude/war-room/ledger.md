@@ -11,6 +11,9 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Steeper multiband crossovers — 2026-10-25
+
+`open — awaiting merge`. Audit finding 10 (P2) and the LR4 half of MUB-2C: three-band dynamics use LR4 crossovers, with idle bands summing to an all-pass. Tier: `unit` and `wasm-bridge`. Linear-phase multiband is not offered.
 ## De-esser range — 2026-10-25
 
 `open — awaiting merge`. Audit finding 6 (P2). The de-esser band is normalized, so its cut is monotonic and bounded by `deEssDb`. Tier: `unit`. The repair UI remains absent.
@@ -33,6 +36,7 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 ||||||| parent of 7b10d42 (docs: record program-level saturation gain and break-test result)
 `open — awaiting merge`. Audit finding 4 (P1), fixed in place in algorithm 1, so saved sessions change sound. Saturation now has unity small-signal gain, is flat to 20 kHz and keeps native/WASM bit parity. Tier: `unit` and `wasm-bridge`. MUB-2C (designed polyphase oversampling with ≥60 dB stop-band) remains open; aliasing improved but is not certified.
 ||||||| parent of 9ec94e1 (docs: record de-esser range fix)
+||||||| parent of a4cc9ff (docs: record Linkwitz-Riley multiband crossovers)
 
 ## MP3 and FLAC import — 2026-10-24
 

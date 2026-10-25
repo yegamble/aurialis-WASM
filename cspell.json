@@ -393,6 +393,14 @@
     "KSDATAFORMAT",
     "ulaw",
     "steminfer",
-    "safetensors"
+    "safetensors",
+    "roformer",
+    "STFT",
+    "softmax",
+    "GELU",
+    "mvsep",
+    "ckpt",
+    "mmap",
+    "Slakh"
   ]
 }

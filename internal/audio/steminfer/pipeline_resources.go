@@ -32,11 +32,11 @@ func resampleRadius(fromRate, toRate int) int {
 }
 func estimatePipeline(sourceRate, frames, stems, window, workers int) (pipelineResources, error) {
 	if workers < 1 || workers > maximumWorkers || sourceRate < 8000 || sourceRate > 192000 || frames < 1 || frames > maximumSourceFrames || stems < 2 || stems > 6 || window <= fftSize/2 || window > maximumWindowSamples || window%2 != 0 {
-		return pipelineResources{}, errors.New("invalid private separation resource request")
+		return pipelineResources{}, errors.New("invalid separation resource request")
 	}
 	modelFrames := (int64(frames)*modelSampleRate + int64(sourceRate) - 1) / int64(sourceRate)
 	if modelFrames > maximumSourceFrames {
-		return pipelineResources{}, errors.New("model-rate duration exceeds private separation limit")
+		return pipelineResources{}, errors.New("source is too long to separate")
 	}
 	heads := stems - 1
 	if stems == 5 {
@@ -81,6 +81,6 @@ func stemNames(stems int) ([6]string, error) {
 	case 6:
 		return [6]string{"vocals", "drums", "bass", "guitar", "piano", "other"}, nil
 	default:
-		return [6]string{}, errors.New("invalid private stem count")
+		return [6]string{}, errors.New("invalid stem count")
 	}
 }

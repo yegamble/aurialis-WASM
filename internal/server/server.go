@@ -254,6 +254,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 			ready = true
 		}
 	}
+	models, separation := []string{}, "unavailable"
+	if s.cfg.Separator != nil {
+		models, separation = []string{"mega53-bs-roformer-5head"}, "trained-bs-roformer"
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":                     "ok",
 		"service":                    "aurialis-wasm",
@@ -261,8 +265,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"wasmDsp":                    true,
 		"wasmDspReady":               ready,
 		"gpu":                        false,
-		"models":                     []string{"deterministic-frequency-split"},
-		"separationMethod":           "deterministic-frequency-split",
+		"models":                     models,
+		"separationMethod":           separation,
 		"analysisMethod":             "deterministic-energy-heuristics",
 		"featureAnalysisMethod":      "normalized-hann-spectrum-and-novelty",
 		"featureAnalysisVersion":     "1.0",

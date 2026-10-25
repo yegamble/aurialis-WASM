@@ -1,5 +1,5 @@
-// Package steminfer implements private bounded inference primitives for the
-// licensed five-head Mega53 subset. No public separation capability is enabled.
+// Package steminfer runs bounded BS-RoFormer stem separation with the
+// MIT-licensed five-head Mega53 subset (see NOTICE).
 package steminfer
 
 // cspell:words steminfer dtype CFLAGS DACCELERATE LAPACK cblas sgemm Cblas GFLOP

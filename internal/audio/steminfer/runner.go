@@ -8,7 +8,7 @@ import (
 	"fmt"
 )
 
-// This private fixed-window runner is intentionally not connected to any API.
+// windowRunner runs the network on one fixed-size window.
 // A future job owner must admit its static weights and complete working storage
 // before construction, reuse one window size, and consume/copy callback samples
 // before returning. No source-length output buffers are retained here.

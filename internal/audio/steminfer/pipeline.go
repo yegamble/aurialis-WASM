@@ -12,7 +12,7 @@ type stemSink func(stem, start int, left, right []float32) error
 type pipelineProgress struct{ window, windows, completed, total int }
 type windowPredictor func(context.Context, []float32, []float32, []int, func(int, []float32, []float32) error, inferenceHooks) error
 
-// runTrainedSeparation is private and unadvertised. The caller must own immutable
+// runTrainedSeparation backs Model.Separate. The caller must own immutable
 // canonical source PCM and reserve estimatePipeline's requiredJobBytes before
 // entering, plus separately reserve the shared immutable model. Partial sink
 // writes are unpublished job state and must be discarded after any error.
@@ -23,7 +23,7 @@ func runTrainedSeparation(ctx context.Context, archive *weightArchive, rate, ste
 		return err
 	}
 	if ctx == nil || len(left) != len(right) || sink == nil || admittedBytes < resources.requiredJobBytes || admittedBytes > maximumPrivateJobBytes {
-		return errors.New("private separation has no valid bounded admission")
+		return errors.New("separation has no valid bounded admission")
 	}
 	if err := validatePipelineSource(ctx, left, right); err != nil {
 		return err
@@ -36,7 +36,7 @@ func runTrainedSeparation(ctx context.Context, archive *weightArchive, rate, ste
 }
 func validatePipelineSource(ctx context.Context, left, right []float32) error {
 	if ctx == nil || len(left) != len(right) {
-		return errors.New("invalid private separation source")
+		return errors.New("invalid separation source")
 	}
 	for i := range left {
 		if i%4096 == 0 {
@@ -45,7 +45,7 @@ func validatePipelineSource(ctx context.Context, left, right []float32) error {
 			}
 		}
 		if !finite32(left[i]) || !finite32(right[i]) {
-			return errors.New("non-finite private separation source")
+			return errors.New("non-finite separation source")
 		}
 	}
 	return ctx.Err()
@@ -53,10 +53,10 @@ func validatePipelineSource(ctx context.Context, left, right []float32) error {
 func runPipelineCore(ctx context.Context, resources pipelineResources, left, right []float32, predict windowPredictor, sink stemSink, progress func(pipelineProgress)) error {
 	canonical, resourceErr := estimatePipeline(resources.sourceRate, resources.sourceFrames, resources.stems, resources.window, resources.workers)
 	if resourceErr != nil || canonical != resources {
-		return errors.New("private pipeline resource plan changed")
+		return errors.New("pipeline resource plan changed")
 	}
 	if ctx == nil || predict == nil || sink == nil || len(left) != resources.sourceFrames || len(right) != len(left) {
-		return errors.New("invalid private pipeline source")
+		return errors.New("invalid pipeline source")
 	}
 	if err := validatePipelineSource(ctx, left, right); err != nil {
 		return err
@@ -135,11 +135,11 @@ func runPipelineCore(ctx context.Context, resources pipelineResources, left, rig
 	}
 	for _, stream := range streams {
 		if stream.next != resources.sourceFrames || stream.received != resources.modelFrames {
-			return errors.New("private separation did not reconstruct exact source duration")
+			return errors.New("separation did not reconstruct exact source duration")
 		}
 	}
 	if groups.first != resources.sourceFrames {
-		return errors.New("private separation residual duration mismatch")
+		return errors.New("separation residual duration mismatch")
 	}
 	return ctx.Err()
 }

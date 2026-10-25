@@ -39,12 +39,3 @@ func sineThrough(p Params, freq, amp float64) ([]float32, []float32) {
 	e.ProcessBlock(in, in, outL, outR)
 	return in[rate/2:], outL[rate/2:]
 }
-
-func levelChangeDB(in, out []float32) float64 {
-	var a, b float64
-	for i := range in {
-		a += float64(in[i]) * float64(in[i])
-		b += float64(out[i]) * float64(out[i])
-	}
-	return 10 * math.Log10(b/a)
-}

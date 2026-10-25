@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -138,6 +139,7 @@ func TestSeparateAndDeepAnalyzeAndMasterRenderEndToEnd(t *testing.T) {
 	srv := server.New(server.Config{
 		MaxUploadBytes: 64 * 1024, // 64 KB limit to test 413 easily
 		Workers:        2,
+		Separator:      copySeparator,
 	})
 	defer srv.Close()
 
@@ -241,5 +243,51 @@ func TestSeparateAndDeepAnalyzeAndMasterRenderEndToEnd(t *testing.T) {
 	defer func() { _ = badStemsRes.Body.Close() }()
 	if badStemsRes.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400 for stems=99, got %d", badStemsRes.StatusCode)
+	}
+}
+
+// copySeparator stands in for the trained model: the first stem is the mix
+// and the others are silent.
+func copySeparator(_ context.Context, _, stems int, left, right []float32, sink func(int, int, []float32, []float32) error, _ func(float64)) error {
+	for stem := range stems {
+		l, r := make([]float32, len(left)), make([]float32, len(right))
+		if stem == 0 {
+			copy(l, left)
+			copy(r, right)
+		}
+		if err := sink(stem, 0, l, r); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func TestSeparateReportsUnavailableModel(t *testing.T) {
+	srv := server.New(server.Config{Workers: 1})
+	defer srv.Close()
+	req := newMultipartRequest(t, http.MethodPost, "/api/separate", "song.wav", buildTestWAV(t, 16000, 0.25), map[string]string{"stems": "2"})
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusServiceUnavailable || !strings.Contains(rec.Body.String(), "stems_unavailable") {
+		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
+	}
+	for _, tc := range []struct {
+		cfg  server.Config
+		want string
+	}{
+		{server.Config{Workers: 1}, `"available":false`},
+		{server.Config{Workers: 1, Separator: copySeparator, StemModelStatus: func() server.StemModelStatus {
+			return server.StemModelStatus{Downloading: true, Downloaded: 10, Total: 20}
+		}}, `{"available":true,"ready":false,"downloading":true,"downloadedBytes":10,"totalBytes":20}`},
+	} {
+		srv := server.New(tc.cfg)
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/stems/model", nil)
+		req.Host = "127.0.0.1:8080"
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, req)
+		srv.Close()
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), tc.want) {
+			t.Fatalf("model status %d: %s", rec.Code, rec.Body.String())
+		}
 	}
 }

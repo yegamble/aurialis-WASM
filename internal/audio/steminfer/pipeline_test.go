@@ -228,10 +228,14 @@ func TestPrivateResourcePlanSeparatesStaticAndRetainedBudgets(t *testing.T) {
 			}
 		}
 	}
-	for _, request := range [][3]int{{0, 1, 2}, {44100, 0, 6}, {44100, maximumSourceFrames + 1, 6}, {44100, 1, 7}, {8000, maximumSourceFrames, 6}, {44100, maximumSourceFrames, 6}} {
+	for _, request := range [][3]int{{0, 1, 2}, {44100, 0, 6}, {44100, maximumSourceFrames + 1, 6}, {44100, 1, 7}, {8000, maximumSourceFrames, 6}} {
 		if _, err := estimatePipeline(request[0], request[1], request[2], maximumWindowSamples, 2); err == nil {
 			t.Fatal("unbounded source/model/retention admitted", request)
 		}
+	}
+	// The longest admitted source still fits the per-job ceiling.
+	if resources, err := estimatePipeline(44100, maximumSourceFrames, 6, maximumWindowSamples, maximumWorkers); err != nil || resources.requiredJobBytes > maximumPrivateJobBytes {
+		t.Fatal("longest source exceeds the job ceiling", err)
 	}
 }
 

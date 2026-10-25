@@ -15,7 +15,7 @@ func (m *Manager) SubmitAnalyzeDeepV2(buf *audio.Buffer, profile mastering.Profi
 	now := time.Now().UTC()
 	job := &Job{ID: id, JobID: id, Kind: KindAnalyzeDeepV2, Status: StatusQueued, Stage: "Queued for measured ScriptV2 proposal", Profile: string(profile), CreatedAt: now, UpdatedAt: now}
 	m.mu.Lock()
-	if err := m.admitLocked(job, buf, 0); err != nil {
+	if err := m.admitLocked(job, buf); err != nil {
 		m.mu.Unlock()
 		return nil, err
 	}

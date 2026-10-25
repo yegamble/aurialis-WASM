@@ -109,7 +109,7 @@ func TestFeatureJobAdmissionReservesInputScratchAndRetainedResults(t *testing.T)
 	buf := &audio.Buffer{SampleRate: 8000, Channels: 2, Frames: 16, Left: make([]float32, 16), Right: make([]float32, 16)}
 	manager.mu.Lock()
 	job := &Job{ID: "admitted", Kind: KindAnalyzeFeatures}
-	err := manager.admitLocked(job, buf, 0)
+	err := manager.admitLocked(job, buf)
 	if err != nil {
 		manager.mu.Unlock()
 		t.Fatal(err)
@@ -119,7 +119,7 @@ func TestFeatureJobAdmissionReservesInputScratchAndRetainedResults(t *testing.T)
 		t.Fatalf("feature reservation%d want%d", job.reservedBytes, want)
 	}
 	manager.usedBytes = MaxMemoryBytes
-	err = manager.admitLocked(&Job{ID: "rejected", Kind: KindAnalyzeFeatures}, buf, 0)
+	err = manager.admitLocked(&Job{ID: "rejected", Kind: KindAnalyzeFeatures}, buf)
 	manager.mu.Unlock()
 	if !errors.Is(err, ErrQueueFull) {
 		t.Fatal("feature memory admission not enforced", err)

@@ -9,7 +9,7 @@ import (
 )
 
 const modelSampleRate = 44100
-const maximumPrivateJobBytes int64 = 1024 * 1024 * 1024
+const maximumPrivateJobBytes int64 = 1536 * 1024 * 1024
 
 // maximumWorkers bounds transformer lanes; each lane adds about 20 MB at the
 // full window.
@@ -60,7 +60,7 @@ func estimatePipeline(sourceRate, frames, stems, window, workers int) (pipelineR
 	const backendAndMetadataAllowance = 32 * 1024 * 1024
 	result.requiredJobBytes = result.workingBytes + result.inputBytes + result.retainedOutputBytes + backendAndMetadataAllowance
 	if result.requiredJobBytes > maximumPrivateJobBytes {
-		return pipelineResources{}, errors.New("private separation job exceeds one GiB admission ceiling")
+		return pipelineResources{}, errors.New("separation job exceeds its 1.5 GiB memory ceiling")
 	}
 	return result, nil
 }

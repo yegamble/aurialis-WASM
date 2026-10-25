@@ -36,6 +36,7 @@ func makeTestBuffer() *audio.Buffer {
 func TestConcurrentJobSubmissionAndIdempotentCancel(t *testing.T) {
 	mgr := jobs.NewManager(4)
 	defer mgr.Close()
+	mgr.SetSeparator(splitEvenly)
 
 	buf := makeTestBuffer()
 	const totalJobs = 20

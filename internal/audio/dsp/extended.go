@@ -35,7 +35,6 @@ type MultibandParams struct {
 type extendedState struct {
 	currentMid, currentSide, gainSmooth                 float64
 	midGain, sideGain                                   float64
-	autoFast, autoSlow, autoMemory                      float64
 	harshCoeffs                                         svfCoeffs
 	harshState                                          [2]svfState
 	harshEnvelope, harshGain, harshAttack, harshRelease float64
@@ -56,9 +55,6 @@ func (e *Engine) recomputeExtended() {
 	}
 	x.gainSmooth = math.Exp(-1 / (.005 * e.sampleRate))
 	x.midGain, x.sideGain = dbToLin(e.params.Stereo.MidGainDB), dbToLin(e.params.Stereo.SideGainDB)
-	x.autoFast = math.Exp(-2.5 / (.08 * e.sampleRate))
-	x.autoSlow = math.Exp(-2.5 / (.8 * e.sampleRate))
-	x.autoMemory = math.Exp(-1 / (.5 * e.sampleRate))
 	x.harshCoeffs = computeBandpassSVF(e.sampleRate, e.params.DeHarsh.FrequencyHz, 1.2)
 	x.harshAttack = math.Exp(-1 / (.005 * e.sampleRate))
 	x.harshRelease = math.Exp(-1 / (.1 * e.sampleRate))
@@ -241,10 +237,15 @@ func (e *Engine) clearStoppedStageHistory(prev Params) {
 	wasComp := prev.Compressor.Enabled && (prev.Compressor.Ratio > 1.0001 || math.Abs(prev.Compressor.MakeupDB) >= 1e-7)
 	isComp := next.Compressor.Enabled && (next.Compressor.Ratio > 1.0001 || math.Abs(next.Compressor.MakeupDB) >= 1e-7)
 	if all || (wasComp && !isComp) {
-		e.compPeakEnv, e.compEnvDB, e.compSlowDB, e.lastGRDB = 0, 0, 0, 0
+		e.compModel, e.compEnvDB, e.lastGRDB = compModelState{}, 0, 0
+	}
+	// A new topology starts its detector fresh; the shared smoother keeps the
+	// applied reduction, so the switch glides instead of jumping.
+	if prev.Compressor.Topology != next.Compressor.Topology {
+		e.compModel = compModelState{}
 	}
 	if prev.Compressor.AutoRelease && !next.Compressor.AutoRelease {
-		e.compSlowDB = 0
+		e.compModel.memory, e.compModel.crest = 0, 0
 	}
 	if all || (wasComp && !isComp) || (prev.Compressor.SidechainHPFHz > 10 && next.Compressor.SidechainHPFHz <= 10) {
 		e.scHPFState = [2][2]svfState{}

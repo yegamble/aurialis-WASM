@@ -40,18 +40,18 @@ const (
 	SatCrisp SatCharacter = "Crisp"
 )
 
-// CompTopology retains legacy preset labels. All values currently use the
-// same peak detector and gain-reduction ballistics; hardware models are not implemented.
+// CompTopology selects the compressor's detector, transfer curve and
+// program-dependent release (see compressor_models.go).
 type CompTopology string
 
 const (
-	// CompOptical is the legacy optical preset label.
+	// CompOptical is two-stage, exposure-dependent optical-style release.
 	CompOptical CompTopology = "optical"
-	// CompVariableMu is the legacy variable-mu preset label.
+	// CompVariableMu is averaged sensing with a progressive ratio.
 	CompVariableMu CompTopology = "vari_mu"
-	// CompFET is the legacy FET preset label.
+	// CompFET is fast peak sensing for transient control.
 	CompFET CompTopology = "fet"
-	// CompVCA is the legacy VCA preset label.
+	// CompVCA is RMS sensing with crest-dependent auto release.
 	CompVCA CompTopology = "vca"
 )
 
@@ -210,7 +210,8 @@ type svfState struct {
 // outside sample loops preserves the exact formulas without repeating expensive
 // transcendental functions at the audio sample rate.
 type stageCoeffs struct {
-	compPeakDecay, compAttack, compRelease               float64
+	compAttack, compRelease                              float64
+	compModel                                            compModelCoeffs
 	satAmount, satDrive, satDCR, satMakeup               float64
 	stereoWidth                                          float64
 	limiterCeiling, limiterRelease, limiterSampleCeiling float64
@@ -231,9 +232,8 @@ type Engine struct {
 	// Sidechain HPF (2 cascaded 2nd-order Butterworth SVFs = 24 dB/oct)
 	scHPFCoeffs svfCoeffs
 	scHPFState  [2][2]svfState
-	compPeakEnv float64
+	compModel   compModelState
 	compEnvDB   float64
-	compSlowDB  float64
 	lastGRDB    float64
 
 	// Saturation ADAA & DC blocker state
@@ -369,9 +369,8 @@ func (e *Engine) Reset() {
 	e.recomputeExtended()
 	e.eqState = [NumEQBands][2]svfState{}
 	e.scHPFState = [2][2]svfState{}
-	e.compPeakEnv = 0.0
+	e.compModel = compModelState{}
 	e.compEnvDB = 0.0
-	e.compSlowDB = 0.0
 	e.lastGRDB = 0.0
 	e.satPrevX = [2]float64{}
 	e.satPrevF1 = [2]float64{}
@@ -406,7 +405,7 @@ func (e *Engine) LastGainReductionDB() float64 {
 func (e *Engine) recomputeStageCoeffs() {
 	e.recomputeExtended()
 	c := &e.params.Compressor
-	e.stages.compPeakDecay = math.Exp(-1.0 / (0.025 * e.sampleRate))
+	e.stages.compModel = prepareCompModel(e.sampleRate, c.Topology)
 	attMS := math.Max(0.02, c.AttackMS)
 	relMS := math.Max(5.0, c.ReleaseMS)
 	e.stages.compAttack = math.Exp(-2.5 / (attMS * 0.001 * e.sampleRate))
@@ -945,47 +944,21 @@ func (e *Engine) processCompressorSample(l, r float64) (float64, float64) {
 		_, scR = processSVFLowHigh(e.scHPFCoeffs, &e.scHPFState[1][1], scR)
 	}
 
-	// Linked peak-envelope detector so sine/program crests read accurately without zero-crossing ripple
-	instPeak := math.Max(math.Abs(scL), math.Abs(scR))
-	peakDecay := e.stages.compPeakDecay
-	if instPeak >= e.compPeakEnv {
-		e.compPeakEnv = instPeak
-	} else {
-		e.compPeakEnv = peakDecay*e.compPeakEnv + (1.0-peakDecay)*instPeak
-	}
-	detDB := linToDB(e.compPeakEnv)
-
-	var targetGRDB float64
-	if c.Ratio > 1.0001 {
-		slope := 1.0 - (1.0 / c.Ratio)
-		overDB := detDB - c.ThresholdDB
-		knee := c.KneeDB
-		if knee > 0.01 && overDB > -knee*0.5 && overDB < knee*0.5 {
-			x := overDB + knee*0.5
-			targetGRDB = slope * (x * x) / (2.0 * knee)
-		} else if overDB >= knee*0.5 || (knee <= 0.01 && overDB > 0.0) {
-			targetGRDB = slope * overDB
-		}
-	}
-
 	// Attack/release specify 91.8% gain-reduction settling (1-exp(-2.5)).
-	// Detector peak decay adds a separate 25 ms release response.
-	attCoeff := e.stages.compAttack
-	relCoeff := e.stages.compRelease
-	if c.AutoRelease {
-		e.compSlowDB = e.extended.autoMemory*e.compSlowDB + (1-e.extended.autoMemory)*targetGRDB
-		weight := math.Min(1, e.compSlowDB/6)
-		relCoeff = e.extended.autoFast + weight*(e.extended.autoSlow-e.extended.autoFast)
-	}
-
+	// The topology model picks the detector and any program-dependent release.
+	targetGRDB, relCoeff := e.compModel.target(scL, scR, c, &e.stages.compModel, e.stages.compRelease, e.compEnvDB)
 	if targetGRDB > e.compEnvDB {
-		e.compEnvDB = attCoeff*e.compEnvDB + (1.0-attCoeff)*targetGRDB
+		e.compEnvDB = e.stages.compAttack*e.compEnvDB + (1.0-e.stages.compAttack)*targetGRDB
 	} else {
 		e.compEnvDB = relCoeff*e.compEnvDB + (1.0-relCoeff)*targetGRDB
 	}
+	grDB := e.compEnvDB
+	if c.Topology == CompOptical {
+		grDB = e.compModel.opticalSlowStage(targetGRDB, grDB, &e.stages.compModel)
+	}
 
-	e.lastGRDB = e.compEnvDB
-	totalGainDB := c.MakeupDB - e.compEnvDB
+	e.lastGRDB = grDB
+	totalGainDB := c.MakeupDB - grDB
 	gainLin := dbToLin(totalGainDB)
 	return l * gainLin, r * gainLin
 }

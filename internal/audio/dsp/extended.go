@@ -160,7 +160,7 @@ func (e *Engine) processNewSaturation(l, r float64) (float64, float64) {
 			}
 		}
 		// The curve is normalized to unity slope at zero; see saturationWet.
-		wet := saturationWet(adaa[0], adaa[1], 1, prev, shapedSub[0], shapedSub[1]) + transformerHigh
+		wet := float64(e.stages.satMakeup*saturationWet(adaa[0], adaa[1], 1, prev, shapedSub[0], shapedSub[1])) + transformerHigh
 		mixed := float64((1-amt)*v) + float64(amt*wet)
 		dc := (mixed - e.dcPrevX[ch]) + float64(e.stages.satDCR*e.dcPrevY[ch])
 		e.dcPrevX[ch], e.dcPrevY[ch] = mixed, dc

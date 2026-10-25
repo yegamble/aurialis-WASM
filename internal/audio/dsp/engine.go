@@ -211,7 +211,7 @@ type svfState struct {
 // transcendental functions at the audio sample rate.
 type stageCoeffs struct {
 	compPeakDecay, compAttack, compRelease               float64
-	satAmount, satDrive, satDCR                          float64
+	satAmount, satDrive, satDCR, satMakeup               float64
 	stereoWidth                                          float64
 	limiterCeiling, limiterRelease, limiterSampleCeiling float64
 	repairDeEssAlpha, repairDeEssMaxAtten                float64
@@ -414,6 +414,7 @@ func (e *Engine) recomputeStageCoeffs() {
 
 	e.stages.satAmount = math.Min(100.0, math.Max(0.0, e.params.Saturation.Amount)) / 100.0
 	e.stages.satDrive = 1.0 + e.stages.satAmount*3.2
+	e.stages.satMakeup = saturationMakeup(e.params.Saturation.Character, e.stages.satAmount, e.stages.satDrive)
 	e.stages.satDCR = 1.0 - (2.0 * math.Pi * 20.0 / e.sampleRate)
 	if e.stages.satDCR < 0.96 {
 		e.stages.satDCR = 0.96
@@ -1024,6 +1025,38 @@ func adaaWarmWave(x, drive float64) (float64, float64) {
 // differences are written explicitly so large values never cancel against
 // themselves, and explicit conversions prevent fused multiply-adds, keeping
 // native and WebAssembly output bit-identical.
+// saturationReference is the peak level (-12 dBFS) at which each curve keeps
+// unity fundamental gain. Program material near that level keeps its loudness
+// as drive rises; quieter signals gain at most a few dB and louder peaks soften.
+const saturationReference = 0.25
+
+// saturationMakeup is the wet gain that restores unity fundamental gain at
+// saturationReference for a unity-slope curve. Warm's odd part is nearly
+// linear there, so it keeps unity small-signal gain.
+func saturationMakeup(character SatCharacter, amount, drive float64) float64 {
+	odd := func(f func(float64) float64) float64 {
+		return saturationReference / (0.5 * (f(saturationReference) - f(-saturationReference)))
+	}
+	tanhCurve := func(d, bias float64) func(float64) float64 {
+		b := math.Tanh(bias)
+		return func(x float64) float64 { return (math.Tanh(d*x+bias) - b) / (d * (1 - b*b)) }
+	}
+	switch character {
+	case SatThick:
+		return odd(tanhCurve(drive, 0))
+	case SatCrisp:
+		return odd(tanhCurve(drive*1.1, 0))
+	case SatTube:
+		return odd(tanhCurve(1+3*amount, .12))
+	case SatTape, SatTransformer:
+		return odd(tanhCurve(1+3*amount, 0))
+	case SatWarm, SatClean:
+		return 1
+	default:
+		return 1
+	}
+}
+
 func saturationWet(adaa0, adaa1, slope, prev, x0, x1 float64) float64 {
 	nonlinear := float64(0.5*adaa0)/slope + float64(0.5*adaa1)/slope
 	return nonlinear + float64(0.5*(x1-x0)) + float64(0.25*(x1-prev))
@@ -1097,10 +1130,11 @@ func (e *Engine) processSaturationSample(l, r float64) (float64, float64) {
 			e.satPrevF1[ch] = f1
 		}
 
-		// Unity small-signal gain: drive adds harmonics and soft-limits peaks
-		// without raising low-level loudness. Two-point averaging decimates only
-		// the harmonic residual; it is not a designed half-band filter.
-		wet := saturationWet(adaa[0], adaa[1], slope, prev, shaped[0], shaped[1])
+		// Unity fundamental gain at -12 dBFS peaks (see saturationReference):
+		// drive adds harmonics and softens louder peaks without a level jump.
+		// Two-point averaging decimates only the harmonic residual; it is not a
+		// designed half-band filter.
+		wet := float64(e.stages.satMakeup * saturationWet(adaa[0], adaa[1], slope, prev, shaped[0], shaped[1]))
 		mixed := float64((1.0-amt)*xCurr) + float64(amt*wet)
 
 		// Remove any asymmetric DC offset

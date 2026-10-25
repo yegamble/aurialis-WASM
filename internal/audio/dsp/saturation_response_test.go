@@ -28,17 +28,23 @@ func levelChangeDB(in, out []float32) float64 {
 }
 
 // Audit finding 4: saturation dulled 16-20 kHz by 2-9 dB and Thick/Crisp added
-// 5-15 dB at low levels. Low-level response must now be flat to 20 kHz, near
-// unity, while drive still adds harmonics and the worst alias stays lower.
+// 5-15 dB at low levels. Low-level response must now be flat to 20 kHz, keep
+// unity gain at program level, and drive must still add harmonics with a
+// lower worst-case alias.
 func TestSaturationIsFlatNearUnityAndStillSaturates(t *testing.T) {
 	for _, character := range []SatCharacter{SatWarm, SatThick, SatCrisp, SatTube, SatTape, SatTransformer} {
 		for _, amount := range []float64{10, 50, 100} {
 			p := DefaultParams()
 			p.Saturation = SaturationParams{Enabled: true, Amount: amount, Character: character}
 			ref := levelChangeDB(saturate(p, 1000, 0.01))
-			// Crisp and Tape keep a deliberate broadband tilt; others are unity.
-			if limit := 0.1 + 0.025*amount*boolToFloat(character == SatCrisp || character == SatTape); math.Abs(ref) > limit {
-				t.Errorf("%s %.0f%%: low-level gain %+.2f dB, want within ±%.2f", character, amount, ref, limit)
+			// Crisp and Tape keep a deliberate broadband tilt.
+			tilt := 0.025 * amount * boolToFloat(character == SatCrisp || character == SatTape)
+			// Unity fundamental gain at -12 dBFS peaks; quiet signals gain at most about 3 dB.
+			if program := levelChangeDB(saturate(p, 1000, 0.25)); math.Abs(program) > 0.8+tilt {
+				t.Errorf("%s %.0f%%: gain at -12 dBFS %+.2f dB, want within ±%.2f", character, amount, program, 0.8+tilt)
+			}
+			if ref < -0.1 || ref > 3+tilt {
+				t.Errorf("%s %.0f%%: low-level gain %+.2f dB, want 0 to %.2f", character, amount, ref, 3+tilt)
 			}
 			// Crisp's intended presence sheen rises about 0.27 dB above 1 kHz at 100%.
 			flat := 0.1 + 0.002*amount*boolToFloat(character == SatCrisp)

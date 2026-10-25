@@ -1046,8 +1046,11 @@ const saturationReference = 0.25
 // saturationReference for a unity-slope curve. Warm's odd part is nearly
 // linear there, so it keeps unity small-signal gain.
 func saturationMakeup(character SatCharacter, amount, drive float64) float64 {
+	// math.Tanh may round differently by one ulp where amd64 math assembly
+	// uses FMA. Quantizing to 2^-20 keeps native and WebAssembly gains equal.
 	odd := func(f func(float64) float64) float64 {
-		return saturationReference / (0.5 * (f(saturationReference) - f(-saturationReference)))
+		g := saturationReference / (0.5 * (f(saturationReference) - f(-saturationReference)))
+		return math.Round(g*(1<<20)) / (1 << 20)
 	}
 	tanhCurve := func(d, bias float64) func(float64) float64 {
 		b := math.Tanh(bias)

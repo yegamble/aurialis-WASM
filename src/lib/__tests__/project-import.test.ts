@@ -65,9 +65,9 @@ describe("canonical import transfer validation", () => {
   });
 });
 describe("compressed source admission", () => {
-  it("admits WAV, FLAC and MP3 names and labels the project with the source format", async () => {
-    expect(["a.wav", "b.WAVE", "c.flac", "d.MP3"].map(isSourceFileName)).toEqual([true, true, true, true]);
-    for (const [name, format] of [["song.flac", "FLAC"], ["song.mp3", "MP3"], ["song.wave", "WAV"]] as const) {
+  it("admits WAV, AIFF, FLAC and MP3 names and labels the project with the source format", async () => {
+    expect(["a.wav", "b.WAVE", "c.flac", "d.MP3", "e.aif", "f.AIFF", "g.aifc"].map(isSourceFileName)).toEqual([true, true, true, true, true, true, true]);
+    for (const [name, format] of [["song.flac", "FLAC"], ["song.mp3", "MP3"], ["song.wave", "WAV"], ["song.aif", "AIFF"], ["song.aifc", "AIFF"]] as const) {
       const source = new File([new Uint8Array(64)], name), imported = result(canonical());
       const progress = vi.fn<(stage: string) => void>();
       vi.mocked(importAudio).mockResolvedValue(imported);
@@ -77,8 +77,8 @@ describe("compressed source admission", () => {
     }
   });
   it("rejects other codecs before any decode", async () => {
-    for (const name of ["song.ogg", "song.m4a", "song.aiff", "song.flac.exe"]) {
-      await expect(prepareProjectFile(new File([new Uint8Array(64)], name), new AbortController().signal, () => undefined)).rejects.toThrow("WAV, FLAC or MP3");
+    for (const name of ["song.ogg", "song.m4a", "song.caf", "song.flac.exe"]) {
+      await expect(prepareProjectFile(new File([new Uint8Array(64)], name), new AbortController().signal, () => undefined)).rejects.toThrow("WAV, AIFF, FLAC or MP3");
     }
     expect(importAudio).not.toHaveBeenCalled();
   });

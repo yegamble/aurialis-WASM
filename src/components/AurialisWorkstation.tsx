@@ -460,7 +460,7 @@ function HomeView() {
             {message ||
               "Drop audio here, paste it, or choose a file from your device."}
           </p>
-          <span className="file-types">WAV, FLAC or MP3 · up to 128 MiB · 16,777,216 frames maximum</span>
+          <span className="file-types">WAV, AIFF, FLAC or MP3 · up to 128 MiB · 16,777,216 frames maximum</span>
           <Button
             variant="primary"
             icon={<Icon name="file-audio" />}
@@ -486,7 +486,7 @@ function HomeView() {
             View library <Icon name="arrow-right" />
           </Link>
         </div>
-        {state.tracks.length === 0 && <p className="empty-state">Your library starts with your own audio. Import a WAV, FLAC or MP3 to create your first project.</p>}
+        {state.tracks.length === 0 && <p className="empty-state">Your library starts with your own audio. Import a WAV, AIFF, FLAC or MP3 to create your first project.</p>}
         <div className="track-row-grid">
           {state.tracks.slice(0, 3).map((track, index) => (
             <TrackCard key={track.id} track={track} index={index} />

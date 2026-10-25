@@ -64,7 +64,7 @@ export function SourceRelink({ track, open, onClose }: { track: Track; open: boo
     finally { if (operation.current === controller) setBusy(false); }
   }
   return <Modal open={open} title={`Restore “${track.title}”`} onClose={close} actions={<Button variant="secondary" onClick={close}>{busy ? "Cancel restore" : "Close"}</Button>}>
-    <p className="disclosure">Choose the original WAV, FLAC or MP3. An exact canonical audio match keeps all settings. Replacing a different or unverified source preserves the project and album links, validates settings for its sample rate, and clears source-derived results.</p>
+    <p className="disclosure">Choose the original WAV, AIFF, FLAC or MP3. An exact canonical audio match keeps all settings. Replacing a different or unverified source preserves the project and album links, validates settings for its sample rate, and clears source-derived results.</p>
     <input ref={input} hidden type="file" accept={SOURCE_ACCEPT} aria-label="Restore audio file" onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void select(file); }} />
     <Button variant="secondary" disabled={busy} onClick={() => { input.current?.click(); }}>Choose source audio</Button>
     {message && <p className="disclosure" role="status">{message}</p>}

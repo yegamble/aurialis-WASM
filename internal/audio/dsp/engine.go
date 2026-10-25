@@ -1010,9 +1010,9 @@ func adaaWarmWave(x, drive float64) (float64, float64) {
 	return f0, f1
 }
 
-// saturationWet combines two 2x substeps of first-order ADAA output into a
+// saturationWet combines two 2x sub-steps of first-order ADAA output into a
 // unity-small-signal wet sample. ADAA delays its linear response by half a
-// substep, which dulled highs when blended with the dry path. Adding back the
+// sub-step, which dulled highs when blended with the dry path. Adding back the
 // difference between the aligned input and that delayed linear response keeps
 // the low-level response flat:
 //

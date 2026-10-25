@@ -46,7 +46,9 @@ func estimatePipeline(sourceRate, frames, stems, window, workers int) (pipelineR
 	span := min(frames, int((int64(window/2+inverseRadius+2)*int64(sourceRate)+modelSampleRate-1)/modelSampleRate)+2)
 	result := pipelineResources{sourceRate: sourceRate, sourceFrames: frames, modelFrames: int(modelFrames), stems: stems, heads: heads, window: window, originalSpan: span, staticModelBytes: modelBytes, graphBytes: workingStorageBytes(window, workers), workers: workers}
 	result.overlapBytes = int64(4+2*heads) * int64(window) * 4
-	result.resampleBytes = int64(2*(resampleRadius(sourceRate, modelSampleRate)+inverseRadius)) * (resamplePhases + 1) * 4
+	forwardRadius := resampleRadius(sourceRate, modelSampleRate)
+	result.resampleBytes = int64(2*(forwardRadius+inverseRadius))*(resamplePhases+1)*4 +
+		int64(kernelElements(sourceRate, modelSampleRate, forwardRadius)+kernelElements(modelSampleRate, sourceRate, inverseRadius))*8
 	result.streamBytes = int64(heads) * int64(2*(2*inverseRadius+2)+2*outputBlockFrames) * 4
 	result.groupBytes = int64(span)*2*8 + 2*outputBlockFrames*4
 	if stems == 5 {

@@ -280,7 +280,7 @@ func TestPrivateResourceArraysMatchEstimate(t *testing.T) {
 	for channel := range 2 {
 		grouping += int64(cap(groups.sum[channel]))*8 + int64(cap(groups.melody[channel])+cap(groups.output[channel]))*4
 	}
-	src := int64(cap(forward.coefficients)+cap(inverse.coefficients)) * 4
+	src := int64(cap(forward.coefficients)+cap(inverse.coefficients))*4 + int64(cap(forward.kernels)+cap(inverse.kernels))*8
 	graph := newNetworkWorkspace(resources.window, resources.workers).storageBytes()
 	if overlap != resources.overlapBytes || streaming != resources.streamBytes || grouping != resources.groupBytes || src != resources.resampleBytes || graph != resources.graphBytes || graph+overlap+streaming+grouping+src != resources.workingBytes {
 		t.Fatalf("array reservation mismatch graph%d overlap%d stream%d groups%d SRC%d estimate%+v", graph, overlap, streaming, grouping, src, resources)

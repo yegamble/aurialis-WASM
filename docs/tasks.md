@@ -3,6 +3,11 @@
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
+## De-esser range — 2026-10-25
+
+Audit finding 6. `repair.deEssDb` subtracted its Q=2 band-pass at double gain. On a loud 6.5 kHz tone, 4.2 dB cut 12.6 dB, 6 dB nulled the tone and 10 dB inverted it. That path is reachable through API `profile=` renders (Vocal Forward uses 4.2 dB) and legacy v1 script moves; the current UI has no de-esser. The band is now subtracted at unity, so the cut grows with the setting and never exceeds it. The detector is unchanged.
+
+Evidence (local, 2026-10-25): a new Go test sweeps 1–24 dB at −12 and −6 dBFS and requires a monotonic cut no greater than the setting, reaching at least 23 dB at 24 dB. `go test -race ./...` and `pnpm run test:wasm` passed. Status: **open — awaiting merge**.
 ## Saturation highs and level — 2026-10-25
 
 Audit finding 4. At 50% drive saturation lost 2–9 dB at 16–20 kHz, and Thick/Crisp added 5–15 dB at low levels. The ADAA wet path's half-step-delayed linear response was blended with the dry path, and the curves were peak-normalized. The fix is in place (the owner was asked; the recommended default applies). Every character is flat to 20 kHz and keeps unity fundamental gain for −12 dBFS peaks. At 100% drive, quiet signals gain at most 2.6 dB (Crisp 5.3 dB including its tilt) and a 0 dBFS sine softens by about 7.4 dB. The 3 kHz alias from a 15 kHz tone improved from about −23 to −32 dBc. Punchy Commercial and Bass Heavy compressor makeup (7.5 dB) restores their prior loudness: −7.70 and −6.44 LUFS on the reference mix, against −7.78 and −6.46 before. Dynamic & Open input drops 2 dB so it remains the quieter profile.
@@ -31,6 +36,7 @@ Evidence (local, 2026-10-25): `go test -race ./...` passed, including new EBU Te
 ||||||| parent of 3984a3f (docs: record saturation response fix and its evidence)
 ||||||| parent of 7b10d42 (docs: record program-level saturation gain and break-test result)
 Evidence (local, 2026-10-25): a new Go response test covers six characters at 10/50/100%: low-level gain, 10/16/20 kHz flatness within 0.1 dB, THD and an alias bound. `go test -race ./...` passed, as did `pnpm run test:wasm`, with 279 + 54 native/WASM fixtures at maximum absolute error 0 after FMA-free arithmetic. Status: **open — awaiting merge**.
+||||||| parent of 9ec94e1 (docs: record de-esser range fix)
 
 ## Release merge record
 

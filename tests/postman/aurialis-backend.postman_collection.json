@@ -119,22 +119,19 @@
       }
     },
     {
-      "name": "TS-004 POST /separate (4 Stems Happy Path)",
+      "name": "TS-004 POST /separate Without a Model Returns 503 stems_unavailable",
       "event": [
         {
           "listen": "test",
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('Status is 200 or 202', function () {",
-              "  pm.expect(pm.response.code).to.be.oneOf([200, 202]);",
+              "// Newman runs the binary with -stem-model-url \"\" so CI never downloads the model.",
+              "pm.test('Status is 503 stems_unavailable', function () {",
+              "  pm.response.to.have.status(503);",
+              "  pm.expect(pm.response.json().error).to.eql('stems_unavailable');",
               "});",
-              "const body = pm.response.json();",
-              "pm.test('Returns jobId and job_id', function () {",
-              "  pm.expect(body.jobId).to.be.a('string');",
-              "  pm.expect(body.job_id).to.eql(body.jobId);",
-              "  pm.collectionVariables.set('sepJobId', body.jobId);",
-              "});"
+              "pm.collectionVariables.set('sepJobId', 'job-000000000000000000000000');"
             ]
           }
         }
@@ -161,20 +158,18 @@
       }
     },
     {
-      "name": "TS-005 GET /jobs/:id/result (Wait & Verify 4 Stems)",
+      "name": "TS-005 GET /api/stems/model Reports Separation Unavailable",
       "event": [
         {
           "listen": "test",
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('Status is 200', function () {",
+              "pm.test('Status is 200 with available false', function () {",
               "  pm.response.to.have.status(200);",
-              "});",
-              "const body = pm.response.json();",
-              "pm.test('Stem job completed with 4 stems', function () {",
-              "  pm.expect(body.status).to.be.oneOf(['done', 'completed']);",
-              "  pm.expect(body.stems.length).to.eql(4);",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.available).to.eql(false);",
+              "  pm.expect(body.ready).to.eql(false);",
               "});"
             ]
           }
@@ -183,20 +178,19 @@
       "request": {
         "method": "GET",
         "header": [],
-        "url": "{{baseUrl}}/jobs/{{sepJobId}}/result?wait=1"
+        "url": "{{baseUrl}}/api/stems/model"
       }
     },
     {
-      "name": "TS-006 GET /jobs/:id/stems/vocals (Download Re-Synthesized Stem WAV)",
+      "name": "TS-006 GET /jobs/:id/stems/vocals for an Unknown Job Returns 404",
       "event": [
         {
           "listen": "test",
           "script": {
             "type": "text/javascript",
             "exec": [
-              "pm.test('Returns 200 audio/wav', function () {",
-              "  pm.response.to.have.status(200);",
-              "  pm.expect(pm.response.headers.get('Content-Type')).to.include('audio/wav');",
+              "pm.test('Unknown separation job has no stems', function () {",
+              "  pm.response.to.have.status(404);",
               "});"
             ]
           }
@@ -546,7 +540,7 @@
       "request": {
         "method": "DELETE",
         "header": [],
-        "url": "{{baseUrl}}/jobs/{{sepJobId}}"
+        "url": "{{baseUrl}}/jobs/{{deepJobId}}"
       }
     },
     {

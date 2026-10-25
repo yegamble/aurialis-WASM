@@ -16,7 +16,7 @@
 
 <p align="center"><strong>Bring a mix. Shape its sound. Keep it local.</strong></p>
 
-Aurialis is an audio mastering workstation that runs on your computer and opens in your browser. Start with a WAV, FLAC or MP3 file, adjust its tone, dynamics and stereo image, listen against the original, then export a new WAV. Mastering is the final shaping of a finished mix before you share it.
+Aurialis is an audio mastering workstation that runs on your computer and opens in your browser. Start with a WAV, AIFF, FLAC or MP3 file, adjust its tone, dynamics and stereo image, listen against the original, then export a new WAV. Mastering is the final shaping of a finished mix before you share it.
 
 <p align="center">
   <a href="#run-the-studio">Get started</a> ·
@@ -70,7 +70,7 @@ The build embeds the interface, fonts, audio modules and worklets in one `aurial
 
 ## Your first master
 
-1. **Import a WAV, FLAC or MP3.** Start with a short mono or stereo file. The first imported track opens in Advanced; select **Simple** for guided controls. You can import multiple files in one queue and find the others in Library.
+1. **Import a WAV, AIFF, FLAC or MP3.** Start with a short mono or stereo file. The first imported track opens in Advanced; select **Simple** for guided controls. You can import multiple files in one queue and find the others in Library.
 2. **Choose a direction.** Adjust genre, tone, style, modifiers and intensity. These update the shared settings while retaining explicit input gain and output targets. Elevated checks the rendered candidate before accepting it.
 3. **Listen.** Press Play and switch between **A Processed** and **B Original**. Volume controls listening level, not export gain. A louder result can sound more impressive, so judge tone and dynamics as well as loudness.
 4. **Set loudness when needed.** Choose a target and press **Set target loudness** to measure the current settings and adjust input gain. Selecting a target alone does not normalize the track.
@@ -98,7 +98,7 @@ The first public-domain trial was rolled back after Cloudflare injected an exter
 
 | Area | Current boundary |
 | --- | --- |
-| Import | Mono/stereo WAV: 8/16/24/32-bit integer PCM or 32-bit float, 8–192 kHz. Mono/stereo FLAC (4–32-bit, 8–192 kHz, CRC and MD5 verified) and MPEG-1/2 Layer III MP3 (16–48 kHz, LAME/Lavc gapless trimming, decoded to float without clipping). AAC, Ogg, M4A, MPEG-2.5 and free-format MP3 need conversion first. The API also accepts limited AIFF input. |
+| Import | Mono/stereo WAV (including extensible headers) and AIFF/AIFF-C: 8/16/24/32-bit integer PCM or 32-bit float, 8–192 kHz. Mono/stereo FLAC (4–32-bit, 8–192 kHz, CRC and MD5 verified) and MPEG-1/2 Layer III MP3 (16–48 kHz, LAME/Lavc gapless trimming, decoded to float without clipping). AAC, Ogg, M4A, MPEG-2.5 and free-format MP3 need conversion first. |
 | Track size | At most **128 MiB + 44 bytes** and **16,777,216 decoded frames**. The frame cap is about **5 min 50 s at 48 kHz**, or **2 min 55 s at 96 kHz**; file size can limit you sooner. |
 | Processing | One expensive browser job and at most one waiting job, with both inputs charged against memory. Browser memory preflight may reject smaller files, and retained masters also need memory; use the local executable within its own limits. The local server also bounds admission. |
 | Albums | Individual 24-bit WAVs in a **128 MiB temporary output cache**, charged against browser memory. Download them before leaving the album page or changing settings/order. Download URLs remain charged until revoked. There is no persistent mastered-output store or ZIP export. |
@@ -111,7 +111,7 @@ The [architecture](docs/architecture.md), [API contract](docs/api.md) and [task 
 
 ## Under the hood
 
-**Shared Go processing on your device.** The executable embeds the Next.js 16 / React 19 interface and local HTTP API. The browser build runs reconstruction, analysis and export in disposable Go/WASM workers. Both builds use shared Go DSP in the browser’s AudioWorklet for listening. Simple and Advanced edit the same canonical settings.
+**Shared Go processing on your device.** The executable embeds the Next.js 16 / React 19 interface and local HTTP API. The browser build runs reconstruction, analysis and export in disposable Go/WASM workers. Both builds use shared Go DSP in the browser’s AudioWorklet for listening, with live momentary, short-term and integrated LUFS, loudness range, true peak and gain-reduction meters measured on the processed output. Simple and Advanced edit the same canonical settings.
 
 See [architecture](docs/architecture.md) for the audio paths, shared-memory controls, resource bounds and security model, or [API reference](docs/api.md) to render audio from a script. The [ScriptV2 contract](docs/api.md#scriptv2-foundation) binds editable proposals and acknowledged live/export schedules to verified source audio. Draft edits wait for explicit Apply.
 

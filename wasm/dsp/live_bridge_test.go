@@ -107,3 +107,44 @@ func TestLiveBlockSharesControlsResetAndZeroAllocations(t *testing.T) {
 		t.Fatalf("direct live block allocates %v times", allocations)
 	}
 }
+
+func TestLiveMeterReadsProcessedOutputAndGainReduction(t *testing.T) {
+	b := liveBlockBridge{bridge: NewBridge(48000)}
+	params := dsp.DefaultParams()
+	params.InputGainDB = -6
+	params.Compressor.ThresholdDB = -40
+	params.Compressor.Ratio = 4
+	b.bridge.engine.SetParams(params)
+	amp := math.Pow(10, -14.0/20)
+	for block := 0; block < 48000*4/128; block++ {
+		for i := range liveBlockFrames {
+			v := float32(amp * math.Sin(2*math.Pi*1000*float64(block*liveBlockFrames+i)/48000))
+			b.channels[0][i], b.channels[1][i] = v, v
+		}
+		if b.process() != 128 {
+			t.Fatal("process rejected the tone")
+		}
+	}
+	if b.meterSnapshot() != liveMeterValues {
+		t.Fatal("meter snapshot was not written")
+	}
+	momentary, shortTerm, integrated, _, hold, recent, reduction := b.meterOut[0], b.meterOut[1], b.meterOut[2], b.meterOut[3], b.meterOut[4], b.meterOut[5], b.meterOut[6]
+	offline := dsp.MeasureStereo(b.channels[2][:], b.channels[3][:], 48000)
+	if momentary > -20 || momentary < -40 || shortTerm == dsp.NoReading || integrated == dsp.NoReading || reduction < 10 {
+		t.Fatalf("meter did not follow the compressed output: %v", b.meterOut)
+	}
+	// The hold keeps the -20 dBFS onset (already slightly reduced by the attack).
+	if hold > -19.9 || hold < -21 || recent != hold || recent < offline.TruePeakDBTP {
+		t.Fatalf("true-peak hold %.2f / recent %.2f, last block %.2f", hold, recent, offline.TruePeakDBTP)
+	}
+	if b.meterSnapshot(); b.meterOut[6] != 0 || b.meterOut[5] > -200 {
+		t.Fatalf("recent intervals did not restart: %v", b.meterOut)
+	}
+	if b.reset() != 1 || b.meterSnapshot() != liveMeterValues || b.meterOut[2] != dsp.NoReading || b.meterOut[4] > -200 {
+		t.Fatalf("reset kept meter history: %v", b.meterOut)
+	}
+	var uninitialized liveBlockBridge
+	if uninitialized.meterSnapshot() != 0 {
+		t.Fatal("uninitialized bridge published a meter snapshot")
+	}
+}

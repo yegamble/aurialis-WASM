@@ -150,6 +150,13 @@ func (b *Bridge) Measure(left, right []float32) dsp.Metrics {
 	return m
 }
 
+// GainReductionDB reports the combined compressor and limiter reduction after the last block.
+func (b *Bridge) GainReductionDB() float64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.engine.LastGainReductionDB()
+}
+
 // LatencyFrames reports buffered DSP delay, excluding transport delay.
 func (b *Bridge) LatencyFrames() int {
 	b.mu.Lock()

@@ -151,6 +151,7 @@ export function SliderField({
   onChange,
   onCommit,
   ariaLabel,
+  note,
 }: {
   label: string;
   value: number;
@@ -162,8 +163,11 @@ export function SliderField({
   onChange: (next: number) => void;
   onCommit?: () => void;
   ariaLabel?: string;
+  /** Visible secondary readout, also announced with the slider. */
+  note?: string;
 }) {
   const inputId = useId();
+  const noteId = useId();
   const hintId = useId();
   const precision = Math.min(6, String(step).split(".")[1]?.length ?? 0);
   const resetValue = Math.max(min, Math.min(max, defaultValue));
@@ -183,7 +187,7 @@ export function SliderField({
         step={step}
         value={value}
         aria-label={ariaLabel ?? label}
-        aria-describedby={hintId}
+        aria-describedby={note ? `${noteId} ${hintId}` : hintId}
         title={resetHint}
         onChange={(e) => {
           onChange(Number(e.target.value));
@@ -194,6 +198,7 @@ export function SliderField({
           if (event.key === "Backspace") { event.preventDefault(); reset(); }
         }}
       />
+      {note ? <span id={noteId} className="text-xs text-[var(--ink-soft)] tabular-nums">{note}</span> : null}
       <span id={hintId} className="sr-only">{resetHint}</span>
     </ControlGroup>
   );

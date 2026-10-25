@@ -7,6 +7,7 @@ import type { MultibandBandParams, Track } from "@/lib/types";
 import { DSPModule } from "./DSPModule";
 import { Icon } from "./Icon";
 import { Button, SliderField } from "./Primitives";
+import { monoBassMinus3dBHz } from "@/lib/control-conventions";
 
 function ModuleToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return <label className="check-row"><input type="checkbox" checked={checked} onChange={(event) => { onChange(event.target.checked); }} /><span><Icon name="check" /></span>{label}</label>;
@@ -17,7 +18,7 @@ export function MasteringShortcuts({ track }: { track: Track }) {
   const shortcuts: { id: MasteringShortcut; label: string; detail: string }[] = [
     { id: "air", label: "Add Air", detail: "Air shelf: +1 dB at 12 kHz." },
     { id: "mud", label: "Cut Mud", detail: "Low bell: −1.5 dB at 250 Hz, Q 0.8." },
-    { id: "tape", label: "Tape Warmth", detail: "Enable Tape saturation at 10% drive." },
+    { id: "tape", label: "Tape Warmth", detail: "Enable Tape saturation at 15% drive." },
     { id: "glue", label: "Glue Comp", detail: "Compressor: −18 dB, 2:1, 30 ms attack, automatic release, 90 Hz sidechain, 6 dB knee, zero makeup." },
   ];
   return <DSPModule title="Starting points">
@@ -48,7 +49,7 @@ export function ExtendedStereoControls({ track }: { track: Track }) {
   const value = track.advanced.stereo;
   const defaults = createDefaultAdvancedParams().stereo;
   return <>
-    <SliderField label="Bass mono frequency" value={value.crossoverHz} defaultValue={defaults.crossoverHz} min={20} max={1000} step={5} unit="Hz" onChange={(crossoverHz) => { dispatch({ type: "UPDATE_STEREO", trackId: track.id, patch: { crossoverHz } }); }} />
+    <SliderField label="Bass mono frequency" value={value.crossoverHz} defaultValue={defaults.crossoverHz} min={20} max={1000} step={5} unit="Hz" note={`Side is −3 dB at ≈ ${String(Math.round(monoBassMinus3dBHz(value.crossoverHz)))} Hz, with a steep 48 dB/oct slope`} onChange={(crossoverHz) => { dispatch({ type: "UPDATE_STEREO", trackId: track.id, patch: { crossoverHz } }); }} />
     <p className="text-xs text-[var(--ink-soft)]">Bass narrowing applies only when Mono bass is enabled.</p>
     <SliderField label="Mid channel gain" value={value.midGainDb} defaultValue={defaults.midGainDb} min={-24} max={24} step={0.5} unit="dB" onChange={(midGainDb) => { dispatch({ type: "UPDATE_STEREO", trackId: track.id, patch: { midGainDb } }); }} />
     <SliderField label="Side channel gain" value={value.sideGainDb} defaultValue={defaults.sideGainDb} min={-24} max={24} step={0.5} unit="dB" onChange={(sideGainDb) => { dispatch({ type: "UPDATE_STEREO", trackId: track.id, patch: { sideGainDb } }); }} />

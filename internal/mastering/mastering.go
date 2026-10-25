@@ -127,7 +127,7 @@ func ProfilePreset(profile ProfileID) dsp.Params {
 		p.Compressor.Ratio = 3.2
 		p.Compressor.AttackMS = 16.0
 		p.Compressor.ReleaseMS = 95.0
-		p.Compressor.MakeupDB = 2.0
+		p.Compressor.MakeupDB = 7.5 // Replaces loudness the former saturation gain supplied
 		p.Compressor.Topology = dsp.CompVCA
 		p.Saturation.Amount = 46.0
 		p.Saturation.Character = dsp.SatCrisp
@@ -187,7 +187,7 @@ func ProfilePreset(profile ProfileID) dsp.Params {
 		p.Compressor.AttackMS = 24.0
 		p.Compressor.ReleaseMS = 110.0
 		p.Compressor.SidechainHPFHz = 115.0 // High sidechain HPF so 808/sub doesn't pump
-		p.Compressor.MakeupDB = 1.8
+		p.Compressor.MakeupDB = 7.5         // Replaces loudness the former saturation gain supplied
 		p.Compressor.Topology = dsp.CompVCA
 		p.Saturation.Amount = 52.0
 		p.Saturation.Character = dsp.SatThick

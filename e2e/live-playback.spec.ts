@@ -87,7 +87,13 @@ test("meters and measured spectrum follow tone into silence instead of whole-tra
   const spectrum = page.locator(".live-spectrum polyline");
   await expect(spectrum).toBeVisible();
   const tonePoints = await spectrum.getAttribute("points");
+  // Go BS.1770 meter of the processed output: momentary reads within the tone,
+  // and integrated loudness keeps its gated value once the source falls silent.
+  const loudness = page.getByRole("region", { name: "Live loudness of the processed output", exact: true });
+  await expect(loudness).toContainText(/M -\d+\.\d/);
+  await expect(loudness.locator("div").nth(3).locator("strong")).toHaveText(/^-?\d+\.\d$/);
   await expect.poll(() => audibleDb(page), { timeout: 8000 }).toBeLessThan(-100);
+  await expect(loudness.locator("div").nth(1).locator("strong")).toHaveText(/^-\d+\.\d$/);
   const levels = page.getByRole("region", { name: "Measured audio levels", exact: true });
   await expect(levels).toContainText("−∞");
   await expect.poll(() => spectrum.getAttribute("points")).not.toBe(tonePoints);

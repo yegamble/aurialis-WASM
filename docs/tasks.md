@@ -3,6 +3,51 @@
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
+## Bit-exact integer WAV and dither grid — 2026-10-25
+
+Audit finding 14. WAV decoding divided by 2^(bits−1) while encoding multiplied by 2^(bits−1)−1, so a decode/encode cycle shifted samples above half scale by one LSB. The final linked ceiling after dither could also move samples off the dither grid. Encoding now uses 2^(bits−1) with +1.0 clipped to the largest positive code. A ceiling correction on dithered output truncates back onto the grid.
+
+Evidence (local, 2026-10-25): a new round-trip test is bit-exact for 16/24-bit on-grid samples, including −1.0 and the largest positive code, and checks clipping of overs. A dithered-limiter test fails on the previous engine and passes now. `go test -race ./...`, `pnpm run test:wasm` and Vitest passed. Status: **open — awaiting merge**.
+
+## Steeper multiband crossovers — 2026-10-25
+
+Audit finding 10. First-order splits let a −12 dB low-band move leak −2.8 dB at its 200 Hz crossover and −1 dB at 400 Hz. Three-band dynamics now use 24 dB/oct Linkwitz–Riley crossovers with the low band phase-matched through the upper all-pass. Idle multiband keeps magnitude within 0.01 dB from 40 Hz to 16 kHz but rotates phase, so the earlier sample-exact idle test was replaced by a magnitude test. This is a sound change for saved sessions that use multiband.
+
+Evidence (local, 2026-10-25): a new crossover test measures −12 ±0.5 dB two octaves below the crossover, about 0 dB two octaves above, and 0 at the upper crossover. `go test -race ./...` and `pnpm run test:wasm` passed with native/WASM error 0. Status: **open — awaiting merge**.
+
+## De-esser range — 2026-10-25
+
+Audit finding 6. `repair.deEssDb` subtracted its Q=2 band-pass at double gain. On a loud 6.5 kHz tone, 4.2 dB cut 12.6 dB, 6 dB nulled the tone and 10 dB inverted it. That path is reachable through API `profile=` renders (Vocal Forward uses 4.2 dB) and legacy v1 script moves; the current UI has no de-esser. The band is now subtracted at unity, so the cut grows with the setting and never exceeds it. The detector is unchanged.
+
+Evidence (local, 2026-10-25): a new Go test sweeps 1–24 dB at −12 and −6 dBFS and requires a monotonic cut no greater than the setting, reaching at least 23 dB at 24 dB. `go test -race ./...` and `pnpm run test:wasm` passed. Status: **open — awaiting merge**.
+
+## Saturation highs and level — 2026-10-25
+
+Audit finding 4. At 50% drive saturation lost 2–9 dB at 16–20 kHz, and Thick/Crisp added 5–15 dB at low levels. The ADAA wet path's half-step-delayed linear response was blended with the dry path, and the curves were peak-normalized. The fix is in place (the owner was asked; the recommended default applies). Every character is flat to 20 kHz and keeps unity fundamental gain for −12 dBFS peaks. At 100% drive, quiet signals gain at most 2.6 dB (Crisp 5.3 dB including its tilt) and a 0 dBFS sine softens by about 7.4 dB. The 3 kHz alias from a 15 kHz tone improved from about −23 to −32 dBc. Punchy Commercial and Bass Heavy compressor makeup (7.5 dB) restores their prior loudness: −7.70 and −6.44 LUFS on the reference mix, against −7.78 and −6.46 before. Dynamic & Open input drops 2 dB so it remains the quieter profile.
+
+Devil's Advocate break-test: no blockers. It found a true-peak regression on the algorithm-1 limiter, which was re-measured after the program-level correction. On the reference mix Punchy and Bass Heavy now read −0.72 and −0.85 dBTP, against −0.78 and −0.92 on main, with ceilings of −0.8 and −0.9. Exports use algorithm 2, which holds the ceiling; algorithm-1 live and preview playback has no true-peak guarantee.
+
+Evidence (local, 2026-10-25): a Go response test covers six characters at 10/50/100%, checking low-level and program gain, 10/16/20 kHz flatness within 0.1 dB, THD and an alias bound. `go test -race ./...` passed, and `pnpm run test:wasm` passed with 279 + 54 native/WASM fixtures at maximum error 0. Status: **open — awaiting merge**.
+Evidence (local, 2026-10-25): a new Go response test covers six characters at 10/50/100%: low-level gain, 10/16/20 kHz flatness within 0.1 dB, THD and an alias bound. `go test -race ./...` passed, as did `pnpm run test:wasm`, with 279 + 54 native/WASM fixtures at maximum absolute error 0 after FMA-free arithmetic. Status: **open — awaiting merge**.
+
+## Pro-convention control readouts — 2026-10-25
+
+Audit findings 7, 8, 9 and 11 (labelling only; no processing change). Shelf frequency, bell Q, mono-bass frequency and compressor attack/release sliders now show the value a pro plugin would print: the shelf's half-gain midpoint (1.85× the low-shelf value, 1/1.54 of the high-shelf value), the gain-dependent effective bell Q, the side −3 dB point (2.2× the mono-bass value) and the 63% time constant (0.4× the 92% settling label). Readouts are visible and announced with the slider.
+
+Evidence (local, 2026-10-25): new Go tests measure +3 dB at each reported shelf midpoint and bell half-gain point and −3 dB at the reported mono-bass point. Vitest covers the conversion functions and the rendered descriptions. Status: **open — awaiting merge**.
+
+## 24-bit WAV and AIFF imports — 2026-10-25
+
+Audit finding 3. Imports rejected `WAVE_FORMAT_EXTENSIBLE` (0xFFFE), which most DAWs write for 24-bit or above-48 kHz WAV, and every AIFF that was not 16-bit. The Go CDR now resolves the extensible PCM/float sub-format (validating cbSize, valid bits and the KSDATAFORMAT GUID) and decodes AIFF integer PCM of 1–32 bits plus AIFF-C `NONE`, `sowt` and `fl32`. Browser import accepts `.aif`, `.aiff` and `.aifc`.
+
+Evidence (local, 2026-10-25): an FFmpeg oracle matches 12 layouts within 1e-7, including 24/32-bit, float and 96/192 kHz extensible WAV, 8/24/32-bit AIFF, and float and `sowt` AIFF-C, with each fixture checked for its layout marker. Rejection tests cover a bad GUID, a compressed sub-format, zero or excessive valid bits, a truncated extension and unsupported AIFF-C codecs. Status: **open — awaiting merge**.
+
+## Live loudness meters — 2026-10-25
+
+First item from the [mastering tools audit](audits/2026-10-24-mastering-tools-audit.md) (finding 2). Playback previously showed only sample peak, RMS and crest; correlation was computed but hidden. A streaming Go meter now reads the processed output inside the WASI reactor and the workstation shows short-term (with momentary), integrated, loudness range, true peak (hold and latest), gain reduction and correlation.
+
+Evidence (local, 2026-10-25): `go test -race ./...` passed, including new EBU Tech 3341 steady-tone/gating and EBU Tech 3342 range cases at 44.1–192 kHz, a zero-allocation check and a bridge test of compressed output. `pnpm run test:wasm` passed with the compiled reactor exporting the meter and reporting an empty snapshot. Vitest passed 486/486 with new worklet, playback-validation and UI assertions; `tsc`, ESLint, knip and cspell passed. Playwright `a11y-responsive` passed, including keyboard scrolling of both meter strips at 320 px without page overflow. The six live-playback browser cases could not run on this Mac because headless Chromium's AudioContext clock stayed at 0 (`currentTime` 0 while `running`); CI's Linux browser shards are the evidence for them. Status: **open — awaiting merge**.
+
 ## Release merge record
 
 [PR #15](https://github.com/yegamble/aurialis-WASM/pull/15) merged at `01c2c158513de942e5c520dd6d383ca3feff0ccd` after exact head `002d1a5` passed all protected checks plus GitGuardian in [run 40013736325](https://github.com/yegamble/aurialis-WASM/actions/runs/40013736325). Its three browser shards passed 36/36/35 cases, totaling 107/107; the reviewed head and merge trees matched. This supersedes historical Release awaiting-merge statements without certifying the browser deployment or whole product. [Post-merge run 40014809849](https://github.com/yegamble/aurialis-WASM/actions/runs/40014809849) also completed successfully at `01c2c15`; that workflow status was observed separately, without a second inspection of its individual browser counts.

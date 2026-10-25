@@ -6,6 +6,9 @@ const SLOTS = 256;
 const FRAMES = QUANTUM * SLOTS;
 const WRITE = 0, READ = 1, GENERATION = 2, APPLIED = 4, ERROR = 5, UNDERRUNS = 6;
 const LEGACY_CONTROL_COUNT = 81;
+// Go-owned loudness snapshot: momentary, short-term, integrated (LUFS), range
+// (LU), true-peak hold, recent true peak (dBTP), recent gain reduction (dB).
+const METER_VALUES = 7, NO_READING = -200;
 class AurialisLiveProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
@@ -114,7 +117,8 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         || typeof exports.aurialis_live_process !== "function" || typeof exports.aurialis_live_reset !== "function"
         || typeof exports.aurialis_set_controls !== "function"
         || typeof exports.aurialis_control_count !== "function" || typeof exports.aurialis_algorithm_supported !== "function"
-        || typeof exports.aurialis_latency_frames !== "function" || typeof exports.aurialis_live_drain !== "function")
+        || typeof exports.aurialis_latency_frames !== "function" || typeof exports.aurialis_live_drain !== "function"
+        || typeof exports.aurialis_meter_buffer !== "function" || typeof exports.aurialis_meter_snapshot !== "function")
         throw new Error("The live audio engine is missing its fixed-buffer interface.");
       host.attach(exports.memory);
       exports._initialize();
@@ -148,18 +152,20 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     const pointers = [];
     for (let channel = 0; channel < 4; channel++) pointers.push(this.kernel.aurialis_live_buffer(channel));
     pointers.push(this.controlAbiVersion === 2 ? this.kernel.aurialis_control_buffer_v2() : this.kernel.aurialis_control_buffer());
+    pointers.push(this.kernel.aurialis_meter_buffer());
     const buffer = this.kernel.memory.buffer;
+    const size = index => index === 4 ? this.controlCount * 8 : index === 5 ? METER_VALUES * 8 : QUANTUM * 4;
     for (let index = 0; index < pointers.length; index++) {
       const raw = pointers[index];
       if (!Number.isInteger(raw) || raw < -2147483648 || raw > 2147483647)
         throw new Error("The live audio engine returned an invalid buffer address.");
       pointers[index] = raw >>> 0;
-      const bytes = index === 4 ? this.controlCount * 8 : QUANTUM * 4;
-      const alignment = index === 4 ? 8 : 4;
+      const bytes = size(index);
+      const alignment = index >= 4 ? 8 : 4;
       if (pointers[index] === 0 || pointers[index] % alignment !== 0 || pointers[index] + bytes > buffer.byteLength)
         throw new Error("The live audio engine returned an invalid buffer address.");
       for (let previous = 0; previous < index; previous++) {
-        const previousBytes = previous === 4 ? this.controlCount * 8 : QUANTUM * 4;
+        const previousBytes = size(previous);
         if (pointers[index] < pointers[previous] + previousBytes && pointers[previous] < pointers[index] + bytes)
           throw new Error("The live audio engine returned overlapping buffers.");
       }
@@ -169,6 +175,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.outLeft = new Float32Array(buffer, pointers[2], QUANTUM);
     this.outRight = new Float32Array(buffer, pointers[3], QUANTUM);
     this.controls = new Float64Array(buffer, pointers[4], this.controlCount);
+    this.meterValues = new Float64Array(buffer, pointers[5], METER_VALUES);
     if (this.numericSchedule) {
       const sourcePointer = this.kernel.aurialis_schedule_source_buffer() >>> 0;
       const movePointer = this.kernel.aurialis_schedule_move_buffer() >>> 0;
@@ -366,9 +373,17 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       const rms = Math.sqrt(this.sum / (this.frames * 2));
       const db = value => value > 1e-12 ? 20 * Math.log10(value) : -120;
       const denominator = Math.sqrt(this.ll * this.rr);
+      let loudness;
+      try {
+        if (this.kernel.aurialis_meter_snapshot() !== METER_VALUES) throw new Error("The live loudness meter is unavailable.");
+        this.refreshBuffers();
+        const v = this.meterValues, reading = value => value > NO_READING ? value : null, peak = value => Math.max(-120, value);
+        loudness = { momentaryLufs: reading(v[0]), shortTermLufs: reading(v[1]), integratedLufs: reading(v[2]),
+          loudnessRangeLu: reading(v[3]), truePeakDbtp: peak(v[4]), recentTruePeakDbtp: peak(v[5]), gainReductionDb: Math.max(0, v[6]) };
+      } catch (error) { this.fail(error); return true; }
       this.port.postMessage({ type: "meter", generation: this.generation, time: currentTime + QUANTUM / sampleRate,
         peakDbfs: db(this.peak), rmsDbfs: db(rms), crestDb: rms > 1e-12 ? db(this.peak / rms) : 0,
-        correlation: denominator > 1e-12 ? Math.max(-1, Math.min(1, this.lr / denominator)) : 1 });
+        correlation: denominator > 1e-12 ? Math.max(-1, Math.min(1, this.lr / denominator)) : 1, ...loudness });
       this.sum = this.peak = this.ll = this.rr = this.lr = this.frames = 0;
     }
     return true;

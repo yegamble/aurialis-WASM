@@ -71,20 +71,40 @@ describe("master live playback lifecycle", () => {
     expect(mocks.createLivePlayback.mock.calls[0]?.[0]).toEqual(pcm);
     fireEvent.click(screen.getByRole("button", { name: "Play" }));
     await screen.findByRole("button", { name: "Pause" });
-    act(() => { instance.callbacks.onMeter?.({ peakDbfs: -12.3, rmsDbfs: -20.1, crestDb: 7.8, correlation: 0.5, position: 0.02, underruns: 0 }); });
+    act(() => { instance.callbacks.onMeter?.({ peakDbfs: -12.3, rmsDbfs: -20.1, crestDb: 7.8, correlation: 0.5, position: 0.02, underruns: 0,
+      momentaryLufs: -13.94, shortTermLufs: -14.26, integratedLufs: null, loudnessRangeLu: 4.04, truePeakDbtp: -0.96, recentTruePeakDbtp: -2.31, gainReductionDb: 3.36 }); });
     expect(screen.getByRole("region", { name: "Measured audio levels" }).textContent).toContain("-12.3");
+    const loudness = screen.getByRole("region", { name: "Live loudness of the processed output" }).textContent;
+    for (const text of ["-14.3", "M -13.9", "4.0", "-1.0", "now -2.3", "3.4", "0.50"]) expect(loudness).toContain(text);
     fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "6" } });
     await waitFor(() => { expect(instance.controller.setParams).toHaveBeenLastCalledWith(expect.objectContaining({ input: 6 })); });
     expect(instance.controller.play).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "B Original" }));
     expect(instance.controller.setBypass).toHaveBeenCalledWith(true);
     expect(screen.getByRole("button", { name: "Pause" })).toBeTruthy();
-    act(() => { instance.callbacks.onMeter?.({ peakDbfs: -120, rmsDbfs: -120, crestDb: 0, correlation: 0, position: 0.03, underruns: 0 }); });
+    act(() => { instance.callbacks.onMeter?.({ peakDbfs: -120, rmsDbfs: -120, crestDb: 0, correlation: 0, position: 0.03, underruns: 0,
+      momentaryLufs: null, shortTermLufs: null, integratedLufs: null, loudnessRangeLu: null, truePeakDbtp: -120, recentTruePeakDbtp: -120, gainReductionDb: 0 }); });
+    expect(screen.getByRole("region", { name: "Live loudness of the processed output" }).textContent).toContain("−∞");
     expect(screen.getByRole("region", { name: "Measured audio levels" }).textContent).toContain("−∞");
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
     expect(screen.getByRole("region", { name: "Measured audio levels" }).textContent).not.toContain("−∞");
   }, 20000);
 
+  it("shows pro-convention readouts for shelf midpoint, bell Q, mono bass and compressor times", async () => {
+    mount(); await ready();
+    const description = (name: string) => {
+      const ids = screen.getByRole("slider", { name }).getAttribute("aria-describedby")?.split(" ") ?? [];
+      return ids.map((id) => document.getElementById(id)?.textContent ?? "").join(" ");
+    };
+    fireEvent.click(screen.getByRole("tab", { name: "advanced" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Sub" }));
+    expect(description("Sub frequency")).toContain("Shelf midpoint (half gain) ≈ 111 Hz");
+    fireEvent.click(screen.getByRole("tab", { name: "Mid" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Mid gain" }), { target: { value: "6" } });
+    expect(description("Mid Q")).toContain("Effective bell Q at +6 dB ≈ 2.50");
+    expect(description("Attack")).toContain("time constant ≈ 10.0 ms");
+    expect(description("Bass mono frequency")).toContain("Side is −3 dB at ≈ 242 Hz");
+  }, 20000);
   it.each(["Media Session", "Space"])("accepts %s pause and resume while playback initialization is pending", async (input) => {
     const handlers = new Map<MediaSessionAction, MediaSessionActionHandler | null>();
     vi.stubGlobal("navigator", { mediaSession: {

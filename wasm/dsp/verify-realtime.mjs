@@ -27,6 +27,7 @@ const requiredExports = new Set([
   "aurialis_schedule_abi", "aurialis_schedule_source_buffer", "aurialis_schedule_bind_source",
   "aurialis_schedule_begin", "aurialis_schedule_move_buffer", "aurialis_schedule_stage_move",
   "aurialis_schedule_commit", "aurialis_schedule_revision", "aurialis_schedule_seek", "aurialis_schedule_detach", "aurialis_schedule_set_looping",
+  "aurialis_meter_buffer", "aurialis_meter_snapshot",
 ]);
 for (const entry of WebAssembly.Module.exports(module)) {
   assert.ok(requiredExports.delete(entry.name), `unexpected or repeated reactor export ${entry.name}`);
@@ -51,6 +52,11 @@ async function createKernel(fixture, abi = 1) {
   assert.equal(wasm.aurialis_algorithm_supported(1), 1);
   for (const unknown of [0, 2, 3, 0xffffffff]) assert.equal(wasm.aurialis_algorithm_supported(unknown), 0);
   assert.equal(wasm.aurialis_latency_frames(), 0);
+  // The compiled loudness snapshot starts empty: no readings, no peak, no reduction.
+  assert.equal(wasm.aurialis_meter_snapshot(), 7);
+  const meterPointer = wasm.aurialis_meter_buffer() >>> 0;
+  assert.ok(meterPointer > 0 && meterPointer % 8 === 0 && meterPointer + 56 <= wasm.memory.buffer.byteLength);
+  assert.deepEqual([...new Float64Array(wasm.memory.buffer, meterPointer, 7)], [-200, -200, -200, -200, -240, -240, 0]);
   const count = wasm.aurialis_control_count(abi);
   const controlPointer = (abi === 2 ? wasm.aurialis_control_buffer_v2() : wasm.aurialis_control_buffer()) >>> 0;
   for (const [index, pointer] of [...pointers, controlPointer].entries()) {

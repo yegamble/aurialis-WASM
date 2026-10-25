@@ -54,19 +54,11 @@ func TestExtendedMidSideIsolation(t *testing.T) {
 func TestMultibandUnityAndIndependentCompression(t *testing.T) {
 	p := extendedTestParams()
 	p.Multiband.Enabled = true
-	e := NewEngine(48000)
-	e.SetParams(p)
-	var l, r, ol, or [128]float32
-	for b := 0; b < 100; b++ {
-		for i := range l {
-			l[i] = float32(.3 * math.Sin(float64(b*128+i)*.73))
-			r[i] = float32(.2 * math.Cos(float64(b*128+i)*.17))
-		}
-		e.ProcessBlock(l[:], r[:], ol[:], or[:])
-		for i := range l {
-			if math.Abs(float64(ol[i]-l[i])) > 1e-7 || math.Abs(float64(or[i]-r[i])) > 1e-7 {
-				t.Fatal("unity reconstruction changed samples")
-			}
+	// Idle Linkwitz-Riley bands sum to an all-pass: flat magnitude, shifted phase.
+	idle := extendedTestParams()
+	for _, f := range []float64{40, 120, 200, 400, 1000, 2500, 4000, 8000, 16000} {
+		if change := 20 * math.Log10(extendedTone(p, f, .2, false)/extendedTone(idle, f, .2, false)); math.Abs(change) > .01 {
+			t.Fatalf("idle multiband changed %g Hz by %g dB", f, change)
 		}
 	}
 	lowBase := extendedTone(p, 60, .4, false)
@@ -247,5 +239,27 @@ func TestMultibandAllBandsAndCrossoverSweep(t *testing.T) {
 			t.Fatalf("crossover response outside bounded broad boost%gHz: %g", freq, result)
 		}
 		p.Multiband.Bands[1].MakeupDB = 0
+	}
+}
+
+// Audit finding 10: first-order splits leaked a low-band cut to -1 dB two
+// octaves above its crossover. Linkwitz-Riley 24 dB/oct bands isolate it.
+func TestMultibandCrossoversAreSteep(t *testing.T) {
+	idle := extendedTestParams()
+	p := extendedTestParams()
+	p.Multiband.Enabled = true
+	p.Multiband.LowMidHz, p.Multiband.MidHighHz = 200, 3000
+	p.Multiband.Bands[0].MakeupDB = -12
+	change := func(f float64) float64 {
+		return 20 * math.Log10(extendedTone(p, f, .2, false)/extendedTone(idle, f, .2, false))
+	}
+	if got := change(50); math.Abs(got+12) > .5 {
+		t.Fatalf("two octaves below the crossover: %g dB, want -12", got)
+	}
+	if got := change(800); math.Abs(got) > .3 {
+		t.Fatalf("two octaves above the crossover: %g dB, want about 0", got)
+	}
+	if got := change(3000); math.Abs(got) > .05 {
+		t.Fatalf("upper crossover: %g dB, want 0", got)
 	}
 }

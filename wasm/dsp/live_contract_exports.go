@@ -45,3 +45,14 @@ func WasmVersionedControlBuffer() *[liveVersionedControlValues]float64 {
 func WasmSetVersionedControls(count uint32) uint32 {
 	return versionedControls.apply(runtimeBridge(), count)
 }
+
+// WasmMeterBuffer exposes the fixed live meter snapshot (see liveMeterValues).
+//
+//go:wasmexport aurialis_meter_buffer
+func WasmMeterBuffer() *[liveMeterValues]float64 { return &runtimeBlocks().meterOut }
+
+// WasmMeterSnapshot refreshes the meter buffer from the processed output and
+// returns the number of values written, or zero before initialization.
+//
+//go:wasmexport aurialis_meter_snapshot
+func WasmMeterSnapshot() uint32 { return runtimeBlocks().meterSnapshot() }

@@ -9,7 +9,7 @@ Need to launch Aurialis first? Follow the [README setup steps](../README.md#run-
 
 On **Home**, drop WAV files onto the upload area, paste audio files from the clipboard, or select **Choose audio**. The library starts empty; there are no bundled songs.
 
-Use an uncompressed mono or stereo WAV at **8–192 kHz**: 8/16/24/32-bit integer PCM or 32-bit float. Mono is converted to stereo. The browser import does not accept MP3, FLAC, OGG, M4A, AAC or AIFF. The [API reference](api.md#security-and-resource-contract) describes its additional, limited AIFF support.
+Use a mono or stereo WAV, AIFF, FLAC or MP3 at **8–192 kHz**. WAV and AIFF can be 8/16/24/32-bit integer PCM or 32-bit float, including the extensible WAV header most DAWs write for 24-bit and high-rate files. Mono is converted to stereo. OGG, M4A, AAC and compressed AIFF-C need conversion first.
 
 Aurialis imports selected files one at a time. It validates each file on the local Go server, rebuilds its audio into a clean stereo-float WAV, prepares a waveform, and saves that reconstructed source in this browser. Invalid files are skipped with a reason. Select **Cancel import** to stop the queue; already imported projects remain in your Library. Keep your original files separately: the stored versions do not retain the original container metadata.
 

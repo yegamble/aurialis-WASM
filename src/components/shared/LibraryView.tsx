@@ -71,7 +71,7 @@ export function LibraryView() {
     {error && <p className="disclosure text-danger" role="alert">{error}</p>}
     <div className="library-list">
       <div className="library-list-head"><span>Project</span><span>Format</span><span>Saved LUFS</span><span>Modified</span><span /></div>
-      {!tracks.length && <p className="py-8 text-sm">{state.tracks.length ? "No projects match this search and filter." : "Import a WAV, FLAC or MP3 to start your library."}</p>}
+      {!tracks.length && <p className="py-8 text-sm">{state.tracks.length ? "No projects match this search and filter." : "Import a WAV, AIFF, FLAC or MP3 to start your library."}</p>}
       {tracks.map((track, index) => <div className="library-item" key={track.id}>
         <Link className="library-project" href={`/master/${track.id}`}><Artwork seed={track.seed} index={index} /><span><strong>{track.title}</strong><small>{formatTime(track.duration)} · <StatusBadge status={track.status} /></small></span></Link>
         <span>{track.format}<small>{track.sampleRate / 1000} kHz</small></span>

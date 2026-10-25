@@ -21,7 +21,19 @@ export type LivePlaybackState = {
   error: string | null;
 };
 
-export type LiveMeter = {
+/** BS.1770-4 / EBU R128 readings of the processed output (before A/B and volume). */
+export type LiveLoudness = {
+  /** null until its 400 ms / 3 s window is full or while every block is gated. */
+  momentaryLufs: number | null;
+  shortTermLufs: number | null;
+  integratedLufs: number | null;
+  loudnessRangeLu: number | null;
+  truePeakDbtp: number;
+  recentTruePeakDbtp: number;
+  gainReductionDb: number;
+};
+
+export type LiveMeter = LiveLoudness & {
   peakDbfs: number;
   rmsDbfs: number;
   crestDb: number;
@@ -29,6 +41,18 @@ export type LiveMeter = {
   position: number;
   underruns: number;
 };
+
+const SILENT_LOUDNESS: LiveLoudness = { momentaryLufs: null, shortTermLufs: null, integratedLufs: null,
+  loudnessRangeLu: null, truePeakDbtp: -120, recentTruePeakDbtp: -120, gainReductionDb: 0 };
+
+function liveLoudness(message: Record<string, unknown>): LiveLoudness | null {
+  const reading = (value: unknown) => value === null || (typeof value === "number" && Number.isFinite(value));
+  const level = (value: unknown) => typeof value === "number" && Number.isFinite(value);
+  const { momentaryLufs, shortTermLufs, integratedLufs, loudnessRangeLu, truePeakDbtp, recentTruePeakDbtp, gainReductionDb } = message;
+  if (![momentaryLufs, shortTermLufs, integratedLufs, loudnessRangeLu].every(reading)
+    || ![truePeakDbtp, recentTruePeakDbtp, gainReductionDb].every(level)) return null;
+  return { momentaryLufs, shortTermLufs, integratedLufs, loudnessRangeLu, truePeakDbtp, recentTruePeakDbtp, gainReductionDb } as LiveLoudness;
+}
 
 export type LiveSpectrum = {
   dbBins: Float32Array<ArrayBuffer>;
@@ -229,7 +253,7 @@ export function createLivePlayback(
     });
   }
   function emitSilence(): void {
-    callbacks.onMeter?.({ peakDbfs: -120, rmsDbfs: -120, crestDb: 0,
+    callbacks.onMeter?.({ ...SILENT_LOUDNESS, peakDbfs: -120, rmsDbfs: -120, crestDb: 0,
       correlation: 1, position: state.position, underruns: state.underruns });
   }
   function pause(): void {
@@ -320,6 +344,11 @@ export function createLivePlayback(
         fail(new Error("The live audio meter returned invalid data."));
         return;
       }
+      const loudness = liveLoudness(message);
+      if (!loudness) {
+        fail(new Error("The live audio meter returned invalid data."));
+        return;
+      }
       state = { ...state, position: positionAt(message.time),
         underruns: Atomics.load(header, UNDERRUNS), appliedVersion: Atomics.load(header, APPLIED_VERSION) };
       if (unwrappedPosition(message.time) >= sourceEnd) {
@@ -327,7 +356,7 @@ export function createLivePlayback(
         else pause();
         return;
       }
-      callbacks.onMeter?.({ peakDbfs: message.peakDbfs, rmsDbfs: message.rmsDbfs,
+      callbacks.onMeter?.({ ...loudness, peakDbfs: message.peakDbfs, rmsDbfs: message.rmsDbfs,
         crestDb: message.crestDb, correlation: message.correlation,
         position: state.position, underruns: state.underruns });
       emit();

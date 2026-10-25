@@ -2,6 +2,7 @@
 
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "@/lib/audio-dsp";
 import { useStore } from "@/lib/store";
+import { effectiveBellQ, shelfMidpointHz } from "@/lib/control-conventions";
 import type { EQBandParams, EQFilterType, Track } from "@/lib/types";
 import { Icon } from "./Icon";
 import { ControlGroup, SliderField } from "./Primitives";
@@ -21,6 +22,9 @@ export function EQBandControls({ track, band }: { track: Track; band: EQBandPara
     dispatch({ type: "UPDATE_EQ_BAND", trackId: track.id, bandId: band.id, patch });
   };
   const highPass = band.type === "highpass";
+  const shelf = band.type === "lowshelf" || band.type === "highshelf" ? band.type : null;
+  const frequencyNote = shelf ? `Shelf midpoint (half gain) ≈ ${String(Math.round(shelfMidpointHz(shelf, band.freqHz, track.sampleRate)))} Hz` : undefined;
+  const qNote = band.type === "peaking" && band.gainDb !== 0 ? `Effective bell Q at ${band.gainDb > 0 ? "+" : ""}${String(band.gainDb)} dB ≈ ${effectiveBellQ(band.q, band.gainDb).toFixed(2)} (narrows as gain rises)` : undefined;
   return <>
     <label className="check-row">
       <input type="checkbox" checked={band.enabled} onChange={(event) => { update({ enabled: event.target.checked }); }} />
@@ -41,8 +45,8 @@ export function EQBandControls({ track, band }: { track: Track; band: EQBandPara
       <SliderField label={`${band.label} gain`} value={band.gainDb} defaultValue={defaultBand.gainDb} min={-12} max={12} step={0.5} unit="dB" onChange={(gainDb) => { update({ gainDb }); }} />
     </fieldset>
     {highPass && <p className="text-xs text-[var(--ink-soft)]">High-pass uses frequency and Q. Gain is retained for the other filter types.</p>}
-    <SliderField label={`${band.label} frequency`} value={Math.min(band.freqHz, Math.floor(track.sampleRate * 0.47))} defaultValue={defaultBand.freqHz} min={20} max={Math.min(18000, Math.floor(track.sampleRate * 0.47))} step={1} unit="Hz" onChange={(freqHz) => { update({ freqHz }); }} />
-    <SliderField label={`${band.label} Q`} value={band.q} defaultValue={defaultBand.q} min={0.3} max={8} step={0.001} onChange={(q) => { update({ q }); }} />
+    <SliderField label={`${band.label} frequency`} value={Math.min(band.freqHz, Math.floor(track.sampleRate * 0.47))} defaultValue={defaultBand.freqHz} min={20} max={Math.min(18000, Math.floor(track.sampleRate * 0.47))} step={1} unit="Hz" {...(frequencyNote ? { note: frequencyNote } : {})} onChange={(freqHz) => { update({ freqHz }); }} />
+    <SliderField label={`${band.label} Q`} value={band.q} defaultValue={defaultBand.q} min={0.3} max={8} step={0.001} {...(qNote ? { note: qNote } : {})} onChange={(q) => { update({ q }); }} />
   </>;
 }
 

@@ -488,7 +488,7 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 	}
 	frameSize := bytesPerSample * int(numChannels)
 	availFrames := len(ssndData) / frameSize
-	if uint64(numFrames) != uint64(availFrames) || len(ssndData)%frameSize != 0 || availFrames > MaxDecodedFrames {
+	if int64(numFrames) != int64(availFrames) || len(ssndData)%frameSize != 0 || availFrames > MaxDecodedFrames {
 		return nil, fmt.Errorf("%w: inconsistent or excessive AIFF frames", ErrCorruptContainer)
 	}
 	if availFrames < 8 {

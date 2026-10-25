@@ -5,8 +5,11 @@ The blanket “all slices verified” claim at `ade7736` is withdrawn. The earli
 
 ## Saturation highs and level — 2026-10-25
 
-Audit finding 4. At 50% drive saturation lost 2–9 dB at 16–20 kHz, and Thick/Crisp added 5–15 dB at low levels. The ADAA wet path's half-step-delayed linear response was blended with the dry path, and Thick/Crisp/Warm were peak-normalized rather than slope-normalized. The fix is in place (the owner was asked; the recommended default applies): every character now has unity small-signal gain and is flat to 20 kHz. The 3 kHz alias from a 15 kHz tone improved from about −23 to −32 dBc (Warm −60 dBc). Drive still produces harmonics; at 100% drive and −6 dBFS, levels fall about 5 dB as the curve soft-limits. Punchy Commercial and Bass Heavy compressor makeup now restores their prior loudness (−7.80 and −6.54 LUFS on the reference mix versus −7.78 and −6.46 before).
+Audit finding 4. At 50% drive saturation lost 2–9 dB at 16–20 kHz, and Thick/Crisp added 5–15 dB at low levels. The ADAA wet path's half-step-delayed linear response was blended with the dry path, and the curves were peak-normalized. The fix is in place (the owner was asked; the recommended default applies). Every character is flat to 20 kHz and keeps unity fundamental gain for −12 dBFS peaks. At 100% drive, quiet signals gain at most 2.6 dB (Crisp 5.3 dB including its tilt) and a 0 dBFS sine softens by about 7.4 dB. The 3 kHz alias from a 15 kHz tone improved from about −23 to −32 dBc. Punchy Commercial and Bass Heavy compressor makeup (7.5 dB) restores their prior loudness: −7.70 and −6.44 LUFS on the reference mix, against −7.78 and −6.46 before. Dynamic & Open input drops 2 dB so it remains the quieter profile.
 
+Devil's Advocate break-test: no blockers. It found a true-peak regression on the algorithm-1 limiter, which was re-measured after the program-level correction. On the reference mix Punchy and Bass Heavy now read −0.72 and −0.85 dBTP, against −0.78 and −0.92 on main, with ceilings of −0.8 and −0.9. Exports use algorithm 2, which holds the ceiling; algorithm-1 live and preview playback has no true-peak guarantee.
+
+Evidence (local, 2026-10-25): a Go response test covers six characters at 10/50/100%, checking low-level and program gain, 10/16/20 kHz flatness within 0.1 dB, THD and an alias bound. `go test -race ./...` passed, and `pnpm run test:wasm` passed with 279 + 54 native/WASM fixtures at maximum error 0. Status: **open — awaiting merge**.
 Evidence (local, 2026-10-25): a new Go response test covers six characters at 10/50/100%: low-level gain, 10/16/20 kHz flatness within 0.1 dB, THD and an alias bound. `go test -race ./...` passed, as did `pnpm run test:wasm`, with 279 + 54 native/WASM fixtures at maximum absolute error 0 after FMA-free arithmetic. Status: **open — awaiting merge**.
 ## Pro-convention control readouts — 2026-10-25
 
@@ -26,6 +29,8 @@ Evidence (local, 2026-10-25): `go test -race ./...` passed, including new EBU Te
 ||||||| parent of 798a0ca (docs: record extensible WAV and AIFF import support)
 ||||||| parent of b69fc7c (docs: record pro-convention control readouts)
 ||||||| parent of 3984a3f (docs: record saturation response fix and its evidence)
+||||||| parent of 7b10d42 (docs: record program-level saturation gain and break-test result)
+Evidence (local, 2026-10-25): a new Go response test covers six characters at 10/50/100%: low-level gain, 10/16/20 kHz flatness within 0.1 dB, THD and an alias bound. `go test -race ./...` passed, as did `pnpm run test:wasm`, with 279 + 54 native/WASM fixtures at maximum absolute error 0 after FMA-free arithmetic. Status: **open — awaiting merge**.
 
 ## Release merge record
 

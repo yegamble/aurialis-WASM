@@ -13,6 +13,7 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ## Saturation highs and level — 2026-10-25
 
+`open — awaiting merge`. Audit finding 4 (P1), fixed in place in algorithm 1, so saved sessions change sound. Saturation now has unity gain at program level (−12 dBFS peaks), is flat to 20 kHz and keeps native/WASM bit parity. Algorithm-1 true peak on Punchy and Bass Heavy is 0.06–0.07 dB higher than main on the reference mix; exports use algorithm 2. Tier: `unit` and `wasm-bridge`. MUB-2C (designed polyphase oversampling with ≥60 dB stop-band) remains open; aliasing improved but is not certified.
 `open — awaiting merge`. Audit finding 4 (P1), fixed in place in algorithm 1, so saved sessions change sound. Saturation now has unity small-signal gain, is flat to 20 kHz and keeps native/WASM bit parity. Tier: `unit` and `wasm-bridge`. MUB-2C (designed polyphase oversampling with ≥60 dB stop-band) remains open; aliasing improved but is not certified.
 ## Pro-convention control readouts — 2026-10-25
 
@@ -26,6 +27,8 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 ||||||| parent of 798a0ca (docs: record extensible WAV and AIFF import support)
 ||||||| parent of b69fc7c (docs: record pro-convention control readouts)
 ||||||| parent of 3984a3f (docs: record saturation response fix and its evidence)
+||||||| parent of 7b10d42 (docs: record program-level saturation gain and break-test result)
+`open — awaiting merge`. Audit finding 4 (P1), fixed in place in algorithm 1, so saved sessions change sound. Saturation now has unity small-signal gain, is flat to 20 kHz and keeps native/WASM bit parity. Tier: `unit` and `wasm-bridge`. MUB-2C (designed polyphase oversampling with ≥60 dB stop-band) remains open; aliasing improved but is not certified.
 
 ## MP3 and FLAC import — 2026-10-24
 

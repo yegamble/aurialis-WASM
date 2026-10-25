@@ -3,6 +3,11 @@
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
+## Bit-exact integer WAV and dither grid — 2026-10-25
+
+Audit finding 14. WAV decoding divided by 2^(bits−1) while encoding multiplied by 2^(bits−1)−1, so a decode/encode cycle shifted samples above half scale by one LSB. The final linked ceiling after dither could also move samples off the dither grid. Encoding now uses 2^(bits−1) with +1.0 clipped to the largest positive code. A ceiling correction on dithered output truncates back onto the grid.
+
+Evidence (local, 2026-10-25): a new round-trip test is bit-exact for 16/24-bit on-grid samples, including −1.0 and the largest positive code, and checks clipping of overs. A dithered-limiter test fails on the previous engine and passes now. `go test -race ./...`, `pnpm run test:wasm` and Vitest passed. Status: **open — awaiting merge**.
 ## Steeper multiband crossovers — 2026-10-25
 
 Audit finding 10. First-order splits let a −12 dB low-band move leak −2.8 dB at its 200 Hz crossover and −1 dB at 400 Hz. Three-band dynamics now use 24 dB/oct Linkwitz–Riley crossovers with the low band phase-matched through the upper all-pass. Idle multiband keeps magnitude within 0.01 dB from 40 Hz to 16 kHz but rotates phase, so the earlier sample-exact idle test was replaced by a magnitude test. This is a sound change for saved sessions that use multiband.
@@ -43,6 +48,7 @@ Evidence (local, 2026-10-25): `go test -race ./...` passed, including new EBU Te
 Evidence (local, 2026-10-25): a new Go response test covers six characters at 10/50/100%: low-level gain, 10/16/20 kHz flatness within 0.1 dB, THD and an alias bound. `go test -race ./...` passed, as did `pnpm run test:wasm`, with 279 + 54 native/WASM fixtures at maximum absolute error 0 after FMA-free arithmetic. Status: **open — awaiting merge**.
 ||||||| parent of 9ec94e1 (docs: record de-esser range fix)
 ||||||| parent of a4cc9ff (docs: record Linkwitz-Riley multiband crossovers)
+||||||| parent of ffedf9d (docs: record bit-exact WAV and dither grid fixes)
 
 ## Release merge record
 

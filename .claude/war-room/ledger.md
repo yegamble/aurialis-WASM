@@ -11,6 +11,9 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Bit-exact integer WAV and dither grid — 2026-10-25
+
+`open — awaiting merge`. Audit finding 14 (Low). Integer WAV round-trips bit-exactly and dithered output stays on its grid. Tier: `unit`.
 ## Steeper multiband crossovers — 2026-10-25
 
 `open — awaiting merge`. Audit finding 10 (P2) and the LR4 half of MUB-2C: three-band dynamics use LR4 crossovers, with idle bands summing to an all-pass. Tier: `unit` and `wasm-bridge`. Linear-phase multiband is not offered.
@@ -37,6 +40,7 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 `open — awaiting merge`. Audit finding 4 (P1), fixed in place in algorithm 1, so saved sessions change sound. Saturation now has unity small-signal gain, is flat to 20 kHz and keeps native/WASM bit parity. Tier: `unit` and `wasm-bridge`. MUB-2C (designed polyphase oversampling with ≥60 dB stop-band) remains open; aliasing improved but is not certified.
 ||||||| parent of 9ec94e1 (docs: record de-esser range fix)
 ||||||| parent of a4cc9ff (docs: record Linkwitz-Riley multiband crossovers)
+||||||| parent of ffedf9d (docs: record bit-exact WAV and dither grid fixes)
 
 ## MP3 and FLAC import — 2026-10-24
 

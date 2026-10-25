@@ -22,7 +22,9 @@ type DynamicsBandParams struct {
 	MakeupDB    float64 `json:"makeupDb"`
 }
 
-// MultibandParams uses complementary first-order bands, not linear-phase FIRs.
+// MultibandParams splits three bands with 24 dB/oct Linkwitz-Riley crossovers.
+// The low band passes through the upper crossover's all-pass so idle bands sum
+// to a flat-magnitude all-pass; the split is minimum-phase, not linear-phase.
 type MultibandParams struct {
 	Enabled   bool                  `json:"enabled"`
 	LowMidHz  float64               `json:"lowMidHz"`
@@ -37,8 +39,9 @@ type extendedState struct {
 	harshCoeffs                                         svfCoeffs
 	harshState                                          [2]svfState
 	harshEnvelope, harshGain, harshAttack, harshRelease float64
-	splitAlpha                                          [2]float64
-	splitState                                          [2][2]float64
+	split                                               [2]svfCoeffs
+	split1Low, split1High, split2Low, split2High        [2][2]svfState
+	lowAllpassLow, lowAllpassHigh                       [2][2]svfState
 	bandEnvelope                                        [3]float64
 	bandAttack, bandRelease, bandMakeup                 [3]float64
 	colorLP                                             [2]float64
@@ -59,8 +62,8 @@ func (e *Engine) recomputeExtended() {
 	x.harshCoeffs = computeBandpassSVF(e.sampleRate, e.params.DeHarsh.FrequencyHz, 1.2)
 	x.harshAttack = math.Exp(-1 / (.005 * e.sampleRate))
 	x.harshRelease = math.Exp(-1 / (.1 * e.sampleRate))
-	x.splitAlpha[0] = math.Exp(-2 * math.Pi * clampFreq(e.sampleRate, e.params.Multiband.LowMidHz) / e.sampleRate)
-	x.splitAlpha[1] = math.Exp(-2 * math.Pi * clampFreq(e.sampleRate, e.params.Multiband.MidHighHz) / e.sampleRate)
+	x.split[0] = computeButterworthSVF(e.sampleRate, e.params.Multiband.LowMidHz)
+	x.split[1] = computeButterworthSVF(e.sampleRate, e.params.Multiband.MidHighHz)
 	for i, b := range e.params.Multiband.Bands {
 		x.bandAttack[i] = math.Exp(-2.5 / (math.Max(1, b.AttackMS) * .001 * e.sampleRate))
 		x.bandRelease[i] = math.Exp(-2.5 / (math.Max(20, b.ReleaseMS) * .001 * e.sampleRate))
@@ -92,12 +95,11 @@ func (e *Engine) processMultiband(l, r float64) (float64, float64) {
 	input := [2]float64{l, r}
 	var bands [3][2]float64
 	for ch, v := range input {
-		for i, a := range x.splitAlpha {
-			x.splitState[i][ch] = a*x.splitState[i][ch] + (1-a)*v
-		}
-		bands[0][ch] = x.splitState[0][ch]
-		bands[1][ch] = x.splitState[1][ch] - x.splitState[0][ch]
-		bands[2][ch] = v - x.splitState[1][ch]
+		low := linkwitzRiley(x.split[0], &x.split1Low[ch], v, true)
+		rest := linkwitzRiley(x.split[0], &x.split1High[ch], v, false)
+		bands[0][ch] = linkwitzRiley(x.split[1], &x.lowAllpassLow[ch], low, true) + linkwitzRiley(x.split[1], &x.lowAllpassHigh[ch], low, false)
+		bands[1][ch] = linkwitzRiley(x.split[1], &x.split2Low[ch], rest, true)
+		bands[2][ch] = linkwitzRiley(x.split[1], &x.split2High[ch], rest, false)
 	}
 	var out [2]float64
 	for i, b := range e.params.Multiband.Bands {
@@ -113,6 +115,21 @@ func (e *Engine) processMultiband(l, r float64) (float64, float64) {
 		out[1] += bands[i][1] * gain
 	}
 	return out[0], out[1]
+}
+
+// linkwitzRiley runs one fourth-order Linkwitz-Riley section: two cascaded
+// Butterworth stages sharing one coefficient set. Low and high outputs are
+// -6.02 dB at the crossover and sum to an all-pass.
+func linkwitzRiley(c svfCoeffs, s *[2]svfState, v float64, low bool) float64 {
+	for stage := range s {
+		l, h := processSVFLowHigh(c, &s[stage], v)
+		if low {
+			v = l
+		} else {
+			v = h
+		}
+	}
+	return v
 }
 
 // These are original, bounded coloration curves, not hardware circuit emulations.
@@ -263,7 +280,9 @@ func (e *Engine) clearStoppedStageHistory(prev Params) {
 		e.extended.harshEnvelope, e.extended.harshGain = 0, 0
 	}
 	if all || (prev.Multiband.Enabled && !next.Multiband.Enabled) {
-		e.extended.splitState = [2][2]float64{}
+		x := &e.extended
+		x.split1Low, x.split1High, x.split2Low, x.split2High = [2][2]svfState{}, [2][2]svfState{}, [2][2]svfState{}, [2][2]svfState{}
+		x.lowAllpassLow, x.lowAllpassHigh = [2][2]svfState{}, [2][2]svfState{}
 		e.extended.bandEnvelope = [3]float64{}
 	}
 	if all || (prev.Limiter.Enabled && !next.Limiter.Enabled) {

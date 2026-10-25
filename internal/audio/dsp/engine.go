@@ -869,6 +869,9 @@ func (e *Engine) finishSample(l, r, rawL, rawR float64, limActive bool) (float32
 	return finiteFloat32(l), finiteFloat32(r)
 }
 
+// deEssBandNorm normalizes the de-esser's Q=2 band-pass to unity gain at its center.
+const deEssBandNorm = 0.5
+
 func (e *Engine) processRepairSample(l, r float64) (float64, float64) {
 	rep := &e.params.Repair
 	if rep.DeClip {
@@ -900,8 +903,11 @@ func (e *Engine) processRepairSample(l, r float64) (float64, float64) {
 		if e.deEssEnv > 0.05 {
 			maxAtten := e.stages.repairDeEssMaxAtten
 			ratio := math.Min(1.0, (e.deEssEnv-0.05)/0.25)
-			l -= sibL * maxAtten * ratio
-			r -= sibR * maxAtten * ratio
+			// The Q=2 band output has gain 2 at 6.5 kHz. Subtract it at unity
+			// so the cut never exceeds deEssDb and never inverts the band.
+			cut := deEssBandNorm * maxAtten * ratio
+			l -= sibL * cut
+			r -= sibR * cut
 		}
 	}
 

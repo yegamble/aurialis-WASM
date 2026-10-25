@@ -126,9 +126,12 @@ func (e *Engine) processNewSaturation(l, r float64) (float64, float64) {
 	for ch, v := range inputs {
 		subs := [2]float64{.5 * (e.satPrevIn[ch] + v), v}
 		e.satPrevIn[ch] = v
-		wet := 0.0
-		for _, s := range subs {
-			e.extended.colorLP[ch] = e.extended.colorAlpha*e.extended.colorLP[ch] + (1-e.extended.colorAlpha)*s
+		var adaa, shapedSub [2]float64
+		var transformerHigh float64
+		prev := e.satPrevX[ch]
+		for i, s := range subs {
+			// Explicit conversions keep these linear tone terms FMA-free.
+			e.extended.colorLP[ch] = float64(e.extended.colorAlpha*e.extended.colorLP[ch]) + float64((1-e.extended.colorAlpha)*s)
 			low := e.extended.colorLP[ch]
 			shaped := s
 			bias := 0.0
@@ -136,7 +139,7 @@ func (e *Engine) processNewSaturation(l, r float64) (float64, float64) {
 				bias = .12
 			}
 			if e.params.Saturation.Character == SatTape {
-				shaped = s - .12*amt*(s-low)
+				shaped = s - float64(.12*amt*(s-low))
 			}
 			if e.params.Saturation.Character == SatTransformer {
 				shaped = low
@@ -151,13 +154,15 @@ func (e *Engine) processNewSaturation(l, r float64) (float64, float64) {
 				value = (integral - e.satPrevF1[ch]) / delta
 			}
 			e.satPrevX[ch], e.satPrevF1[ch] = shaped, integral
+			adaa[i], shapedSub[i] = value, shaped
 			if e.params.Saturation.Character == SatTransformer {
-				value += s - low
+				transformerHigh = s - low
 			}
-			wet += value
 		}
-		mixed := (1-amt)*v + amt*wet*.5
-		dc := mixed - e.dcPrevX[ch] + e.stages.satDCR*e.dcPrevY[ch]
+		// The curve is normalized to unity slope at zero; see saturationWet.
+		wet := saturationWet(adaa[0], adaa[1], 1, prev, shapedSub[0], shapedSub[1]) + transformerHigh
+		mixed := float64((1-amt)*v) + float64(amt*wet)
+		dc := (mixed - e.dcPrevX[ch]) + float64(e.stages.satDCR*e.dcPrevY[ch])
 		e.dcPrevX[ch], e.dcPrevY[ch] = mixed, dc
 		output[ch] = dc
 	}

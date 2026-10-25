@@ -211,7 +211,7 @@ type svfState struct {
 // transcendental functions at the audio sample rate.
 type stageCoeffs struct {
 	compPeakDecay, compAttack, compRelease               float64
-	satAmount, satDrive, satNorm, satDCR                 float64
+	satAmount, satDrive, satDCR                          float64
 	stereoWidth                                          float64
 	limiterCeiling, limiterRelease, limiterSampleCeiling float64
 	repairDeEssAlpha, repairDeEssMaxAtten                float64
@@ -414,10 +414,6 @@ func (e *Engine) recomputeStageCoeffs() {
 
 	e.stages.satAmount = math.Min(100.0, math.Max(0.0, e.params.Saturation.Amount)) / 100.0
 	e.stages.satDrive = 1.0 + e.stages.satAmount*3.2
-	e.stages.satNorm = 1.0 / math.Tanh(e.stages.satDrive)
-	if e.stages.satNorm > 1.2 {
-		e.stages.satNorm = 1.2
-	}
 	e.stages.satDCR = 1.0 - (2.0 * math.Pi * 20.0 / e.sampleRate)
 	if e.stages.satDCR < 0.96 {
 		e.stages.satDCR = 0.96
@@ -1014,13 +1010,31 @@ func adaaWarmWave(x, drive float64) (float64, float64) {
 	return f0, f1
 }
 
+// saturationWet combines two 2x substeps of first-order ADAA output into a
+// unity-small-signal wet sample. ADAA delays its linear response by half a
+// substep, which dulled highs when blended with the dry path. Adding back the
+// difference between the aligned input and that delayed linear response keeps
+// the low-level response flat:
+//
+//	wet = (adaa0 + adaa1) / (2·slope) + (x1 − x0)/2 + (x1 − prev)/4
+//
+// The correction is linear, so it adds no aliasing; it lets steep (high-
+// frequency) edges through at their unsaturated slope, making the curve's
+// softening frequency-dependent rather than a hard peak bound. Input
+// differences are written explicitly so large values never cancel against
+// themselves, and explicit conversions prevent fused multiply-adds, keeping
+// native and WebAssembly output bit-identical.
+func saturationWet(adaa0, adaa1, slope, prev, x0, x1 float64) float64 {
+	nonlinear := float64(0.5*adaa0)/slope + float64(0.5*adaa1)/slope
+	return nonlinear + float64(0.5*(x1-x0)) + float64(0.25*(x1-prev))
+}
+
 func (e *Engine) processSaturationSample(l, r float64) (float64, float64) {
 	if e.params.Saturation.Character == SatTube || e.params.Saturation.Character == SatTape || e.params.Saturation.Character == SatTransformer {
 		return e.processNewSaturation(l, r)
 	}
 	amt := e.stages.satAmount
 	drive := e.stages.satDrive
-	norm := e.stages.satNorm
 
 	inSamples := [2]float64{l, r}
 	var outSamples [2]float64
@@ -1035,64 +1049,62 @@ func (e *Engine) processSaturationSample(l, r float64) (float64, float64) {
 		e.satPrevIn[ch] = xCurr
 
 		subInputs := [2]float64{xMid, xCurr}
-		var subOutputs [2]float64
+		var adaa, shaped [2]float64
+		var slope float64
+		prev := e.satPrevX[ch]
 
 		for s := 0; s < 2; s++ {
 			x := subInputs[s]
-			var y float64
+			prevX := e.satPrevX[ch]
+			shaped[s] = x
+			var f1 float64
 			switch e.params.Saturation.Character {
 			case SatWarm:
-				f0, f1 := adaaWarmWave(x, drive)
-				diff := x - e.satPrevX[ch]
-				if math.Abs(diff) > 1e-5 {
-					y = 0.5*f0 + 0.5*(f1-e.satPrevF1[ch])/diff
-				} else {
-					y = f0
+				var f0 float64
+				f0, f1 = adaaWarmWave(x, drive)
+				adaa[s], slope = f0, 1
+				if diff := x - prevX; math.Abs(diff) > 1e-5 {
+					adaa[s] = (f1 - e.satPrevF1[ch]) / diff
 				}
-				e.satPrevX[ch] = x
-				e.satPrevF1[ch] = f1
-				y *= 0.82 * norm
 			case SatCrisp:
 				// Iron transformer low-frequency weight + high-frequency harmonic sheen
-				e.ironLP[ch] = 0.96*e.ironLP[ch] + 0.04*x
+				// Explicit conversions keep these linear tone terms FMA-free.
+				e.ironLP[ch] = float64(0.96*e.ironLP[ch]) + float64(0.04*x)
 				hi := x - e.ironLP[ch]
-				xShaped := x + 0.35*amt*hi + 0.20*amt*e.ironLP[ch]
-				f1 := adaaThickIntegral(xShaped, drive*1.1)
-				diff := xShaped - e.satPrevX[ch]
-				if math.Abs(diff) > 1e-6 {
-					y = (f1 - e.satPrevF1[ch]) / diff
+				shaped[s] = (x + float64(0.35*amt*hi)) + float64(0.20*amt*e.ironLP[ch])
+				slope = drive * 1.1
+				f1 = adaaThickIntegral(shaped[s], slope)
+				if diff := shaped[s] - prevX; math.Abs(diff) > 1e-6 {
+					adaa[s] = (f1 - e.satPrevF1[ch]) / diff
 				} else {
-					y = adaaThickValue(xShaped, drive*1.1)
+					adaa[s] = adaaThickValue(shaped[s], slope)
 				}
-				e.satPrevX[ch] = xShaped
-				e.satPrevF1[ch] = f1
-				y *= norm
 			case SatClean, SatTube, SatTape, SatTransformer:
-				y = x // New models are dispatched before this legacy loop.
+				// New models are dispatched before this legacy loop.
+				adaa[s], slope, f1 = 0.5*(x+prevX), 1, e.satPrevF1[ch]
 			case SatThick:
 				fallthrough
 			default:
-				f1 := adaaThickIntegral(x, drive)
-				diff := x - e.satPrevX[ch]
-				if math.Abs(diff) > 1e-6 {
-					y = (f1 - e.satPrevF1[ch]) / diff
+				slope = drive
+				f1 = adaaThickIntegral(x, drive)
+				if diff := x - prevX; math.Abs(diff) > 1e-6 {
+					adaa[s] = (f1 - e.satPrevF1[ch]) / diff
 				} else {
-					y = adaaThickValue(x, drive)
+					adaa[s] = adaaThickValue(x, drive)
 				}
-				e.satPrevX[ch] = x
-				e.satPrevF1[ch] = f1
-				y *= norm
 			}
-			subOutputs[s] = y
+			e.satPrevX[ch] = shaped[s]
+			e.satPrevF1[ch] = f1
 		}
 
-		// Downsample 2x -> 1x via two-point averaging and blend with dry signal.
-		// This is not a designed half-band anti-alias filter.
-		wet := 0.5 * (subOutputs[0] + subOutputs[1])
-		mixed := (1.0-amt)*xCurr + amt*wet
+		// Unity small-signal gain: drive adds harmonics and soft-limits peaks
+		// without raising low-level loudness. Two-point averaging decimates only
+		// the harmonic residual; it is not a designed half-band filter.
+		wet := saturationWet(adaa[0], adaa[1], slope, prev, shaped[0], shaped[1])
+		mixed := float64((1.0-amt)*xCurr) + float64(amt*wet)
 
 		// Remove any asymmetric DC offset
-		dcY := mixed - e.dcPrevX[ch] + dcR*e.dcPrevY[ch]
+		dcY := (mixed - e.dcPrevX[ch]) + float64(dcR*e.dcPrevY[ch])
 		e.dcPrevX[ch] = mixed
 		e.dcPrevY[ch] = dcY
 		outSamples[ch] = dcY

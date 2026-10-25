@@ -27,12 +27,15 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
   test("mobile level meters can be scrolled with the keyboard", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 640 })
     await uploadProject(page)
-    const meters = page.getByRole("region", { name: "Measured audio levels", exact: true })
-    await meters.focus()
-    await expect(meters).toBeFocused()
-    await expect.poll(() => meters.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeGreaterThan(0)
-    await page.keyboard.press("ArrowRight")
-    await expect.poll(() => meters.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+    for (const name of ["Live loudness of the processed output", "Measured audio levels"]) {
+      const meters = page.getByRole("region", { name, exact: true })
+      await meters.focus()
+      await expect(meters).toBeFocused()
+      await expect.poll(() => meters.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeGreaterThan(0)
+      await page.keyboard.press("ArrowRight")
+      await expect.poll(() => meters.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0)
+    }
   })
 
   test("audio touch targets retain 44 CSS pixels at the editorial font size", async ({ page }) => {

@@ -57,6 +57,8 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
     aurialis_live_drain: vi.fn(() => 0),
     aurialis_control_buffer_v2: vi.fn(() => 2560),
     aurialis_set_controls_v2: vi.fn((count: number) => count === 82 ? applyGo() : 0),
+    aurialis_meter_buffer: vi.fn(() => 3328),
+    aurialis_meter_snapshot: vi.fn(() => { new Float64Array(memory.buffer, 3328, 7).set([-14.2, -14.6, -200, -200, -0.8, -240, 2.5]); return 7; }),
   };
   const host = { imports: {}, attach: vi.fn(), beginRender: vi.fn() };
   const load = vi.fn((array: Int32Array, index: number) => Atomics.load(array, index));
@@ -100,6 +102,17 @@ describe("direct Go worklet lifecycle", () => {
     f.render(); f.message({ type: "schedule-commit", token: 2 }); f.render();
     expect(f.kernel.aurialis_schedule_commit).toHaveBeenCalledOnce();
     expect(f.kernel.aurialis_schedule_set_looping).toHaveBeenCalledOnce();
+  });
+  it("posts the Go loudness snapshot with each 50 ms meter packet and fails on a missing snapshot", () => {
+    const f = workletFixture(false, 2);
+    f.message({ type: "reset", generation: 1, startTime: 0, sourceFrame: 0, looping: false });
+    for (let block = 0; block < 19; block++) f.render();
+    expect(f.processor.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "meter",
+      momentaryLufs: -14.2, shortTermLufs: -14.6, integratedLufs: null, loudnessRangeLu: null,
+      truePeakDbtp: -0.8, recentTruePeakDbtp: -120, gainReductionDb: 2.5 }));
+    f.kernel.aurialis_meter_snapshot.mockReturnValueOnce(0);
+    for (let block = 0; block < 19; block++) f.render();
+    expect(f.processor.failed).toBe(true);
   });
   it("uses an atomic shared audible deadline and accepts deadline updates after the epoch starts", () => {
     const f = workletFixture(false, 2, null, true);

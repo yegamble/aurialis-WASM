@@ -85,6 +85,9 @@ async function attachedGraph() {
   return { ...harness, controller, context, node };
 }
 
+const LOUDNESS = { momentaryLufs: -14.2, shortTermLufs: -14.5, integratedLufs: null, loudnessRangeLu: null,
+  truePeakDbtp: -1.1, recentTruePeakDbtp: -2.3, gainReductionDb: 3.4 };
+
 describe("per-track live audio lifecycle", () => {
   it("keeps a finite native source and publishes its exact audible deadline before playback", async () => {
     const { contexts, nodes } = graphHarness();
@@ -116,11 +119,23 @@ describe("per-track live audio lifecycle", () => {
     controller.setRepeat(true); expect(context.createBufferSource).toHaveBeenCalledOnce();
     const epoch = new Float64Array(node.options.processorOptions.stream, 8, 2); expect(epoch[1]).toBeLessThan(Infinity);
     context.currentTime = (epoch[1] ?? 0) / context.sampleRate + .01;
-    node.port.message({ type: "meter", generation: first?.generation, time: context.currentTime, peakDbfs: -6, rmsDbfs: -12, crestDb: 6, correlation: 1 });
+    node.port.message({ type: "meter", generation: first?.generation, time: context.currentTime, peakDbfs: -6, rmsDbfs: -12, crestDb: 6, correlation: 1, ...LOUDNESS });
     expect(controller.getState()).toMatchObject({ playing: false, loading: true });
     const latest = node.port.postMessage.mock.calls.filter(([message]) => message.type === "arm").at(-1)?.[0]; expect(latest?.generation).not.toBe(first?.generation);
     controller.setRepeat(false); node.port.message({ type: "stream-armed", generation: latest?.generation }); await Promise.resolve(); await Promise.resolve();
     expect(context.createBufferSource).toHaveBeenCalledOnce(); expect(controller.getState()).toMatchObject({ playing: false, loading: false, repeat: false }); controller.dispose();
+  });
+  it("forwards Go loudness readings and fails on malformed meter packets", async () => {
+    const { nodes } = graphHarness(true, false); const meters = vi.fn(), errors = vi.fn();
+    const controller = createLivePlayback({ sampleRate: 8001, left: new Float32Array(8001), right: new Float32Array(8001) }, createDefaultAdvancedParams(), { onMeter: meters, onError: errors });
+    const playing = controller.play(); await vi.waitFor(() => { expect(nodes[0]?.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "arm" })); });
+    const node = nodes[0]; if (!node) throw new Error("Missing graph");
+    const first = node.port.postMessage.mock.calls.find(([message]) => message.type === "arm")?.[0]; node.port.message({ type: "stream-armed", generation: first?.generation }); await playing;
+    node.port.message({ type: "meter", generation: first?.generation, time: 0.01, peakDbfs: -6, rmsDbfs: -12, crestDb: 6, correlation: 0.8, ...LOUDNESS });
+    expect(meters).toHaveBeenLastCalledWith(expect.objectContaining({ ...LOUDNESS, correlation: 0.8 }));
+    node.port.message({ type: "meter", generation: first?.generation, time: 0.02, peakDbfs: -6, rmsDbfs: -12, crestDb: 6, correlation: 0.8, ...LOUDNESS, integratedLufs: Number.NaN });
+    expect(errors).toHaveBeenCalledWith(expect.objectContaining({ message: "The live audio meter returned invalid data." }));
+    controller.dispose();
   });
   it("stops periodic playback at the next input cycle and can remove that deadline", async () => {
     const { contexts, nodes } = graphHarness(); const controller = createLivePlayback({ sampleRate: 8001, left: new Float32Array(129), right: new Float32Array(129) }, createDefaultAdvancedParams());

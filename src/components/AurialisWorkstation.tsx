@@ -634,6 +634,14 @@ function MasterView({ trackId }: { trackId: string }) {
   currentSettings.current = liveSettings;
   const liveMeter = playback?.playing ? meter : null;
   const levels = liveMeter ? { peak: liveMeter.peakDbfs <= -119.9 ? "−∞" : liveMeter.peakDbfs.toFixed(1), rms: liveMeter.rmsDbfs <= -119.9 ? "−∞" : liveMeter.rmsDbfs.toFixed(1), crest: liveMeter.peakDbfs <= -119.9 ? "—" : liveMeter.crestDb.toFixed(1) } : null;
+  const reading = (value: number | null | undefined) => value === null || value === undefined ? "—" : value.toFixed(1);
+  const loudness = liveMeter ? {
+    momentary: reading(liveMeter.momentaryLufs), shortTerm: reading(liveMeter.shortTermLufs),
+    integrated: reading(liveMeter.integratedLufs), range: reading(liveMeter.loudnessRangeLu),
+    truePeak: liveMeter.truePeakDbtp <= -119.9 ? "−∞" : liveMeter.truePeakDbtp.toFixed(1),
+    recentPeak: liveMeter.recentTruePeakDbtp <= -119.9 ? "−∞" : liveMeter.recentTruePeakDbtp.toFixed(1),
+    reduction: liveMeter.gainReductionDb.toFixed(1), correlation: liveMeter.correlation.toFixed(2),
+  } : null;
   const peaks = useMemo(() => (source ? sourcePeaks(source) : []), [source]);
 
   useEffect(() => {
@@ -932,6 +940,38 @@ function MasterView({ trackId }: { trackId: string }) {
       </header>
       <div className="workspace-layout">
         <section className="workspace-canvas">
+          <div className="metric-strip metric-strip-loudness" role="region" tabIndex={0} aria-label="Live loudness of the processed output">
+            <div>
+              <span>Short-term</span>
+              <strong>{loudness?.shortTerm ?? "—"}</strong>
+              <small>LUFS · M {loudness?.momentary ?? "—"}</small>
+            </div>
+            <div>
+              <span>Integrated</span>
+              <strong>{loudness?.integrated ?? "—"}</strong>
+              <small>LUFS</small>
+            </div>
+            <div>
+              <span>Loudness range</span>
+              <strong>{loudness?.range ?? "—"}</strong>
+              <small>LU</small>
+            </div>
+            <div>
+              <span>True peak</span>
+              <strong>{loudness?.truePeak ?? "—"}</strong>
+              <small>dBTP max · now {loudness?.recentPeak ?? "—"}</small>
+            </div>
+            <div>
+              <span>Gain reduction</span>
+              <strong>{loudness?.reduction ?? "—"}</strong>
+              <small>dB</small>
+            </div>
+            <div>
+              <span>Correlation</span>
+              <strong>{loudness?.correlation ?? "—"}</strong>
+              <small>−1 to +1</small>
+            </div>
+          </div>
           <div className="metric-strip" role="region" tabIndex={0} aria-label="Measured audio levels">
             <div>
               <span>Sample peak</span>

@@ -21,6 +21,7 @@ import type {
   Album,
   AdvancedParams,
   CompressorParams,
+  CompressorTopology,
   DeHarshParams,
   MultibandParams,
   MultibandBandParams,
@@ -33,6 +34,7 @@ import type {
   StereoParams,
   Track,
 } from "./types";
+import { compressorTopologies } from "./types";
 
 export const profiles: { id: ProfileId; name: string; note: string }[] = [
   {
@@ -457,6 +459,11 @@ function normalizeSourceMetadata<T extends Omit<Track, "advanced">>(track: T): T
   return restored;
 }
 
+// Sessions saved before compressor types were selectable ran Optical.
+function restoredTopology(value: unknown): CompressorTopology {
+  return compressorTopologies.find((topology) => topology === value) ?? "optical";
+}
+
 export function normalizeHydratedState(raw: unknown): StoreState | null {
   if (typeof raw !== "object" || raw === null) return null;
   const candidate = raw as {
@@ -502,6 +509,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
         compressor: {
           ...baseAdv.compressor,
           ...(track.advanced?.compressor ?? {}),
+          topology: restoredTopology(track.advanced?.compressor?.topology),
         },
         saturationModule: {
           ...baseAdv.saturationModule,

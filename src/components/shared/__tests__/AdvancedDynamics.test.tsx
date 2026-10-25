@@ -21,6 +21,14 @@ describe("Advanced module controls", () => {
     expect(dispatch).toHaveBeenLastCalledWith({ type: "UPDATE_COMPRESSOR", trackId: track.id, patch: { autoRelease: true } });
   });
 
+  it("selects a compressor type and describes the selected one", () => {
+    render(<ExtendedCompressorControls track={track} />);
+    expect(screen.getByRole("button", { name: "Optical" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText(/sustained reduction releases slowly/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "FET" }));
+    expect(dispatch).toHaveBeenLastCalledWith({ type: "UPDATE_COMPRESSOR", trackId: track.id, patch: { topology: "fet" } });
+  });
+
   it("dispatches multiband edits to exactly the named band and caps frequency UI at the source rate", () => {
     const lowRate = { ...track, sampleRate: 8000 };
     render(<FrequencyDynamicsControls track={lowRate} />);

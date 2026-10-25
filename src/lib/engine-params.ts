@@ -33,7 +33,7 @@ export function engineParams(advanced: AdvancedParams) {
       makeupDb: advanced.compressor.makeup,
       sidechainHpfHz: advanced.compressor.sidechainHpfHz,
       autoRelease: advanced.compressor.autoRelease,
-      topology: "optical",
+      topology: advanced.compressor.topology,
     },
     saturation: {
       enabled: advanced.saturationModule.enabled,

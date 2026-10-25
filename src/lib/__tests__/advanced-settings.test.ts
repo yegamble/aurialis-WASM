@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createDefaultAdvancedParams } from "../audio-dsp";
 import { applyMasteringShortcut, isMasteringShortcutActive } from "../mastering-shortcuts";
 import { normalizeHydratedState, reduceStoreState } from "../store";
+import { engineParams } from "../engine-params";
+import type { ShortcutUndo } from "../types";
 import { testStore } from "./fixtures";
 
 const track = testStore.tracks[0];
@@ -15,12 +17,31 @@ function first(state: Parameters<typeof reduceStoreState>[0]) {
 }
 
 describe("expanded Advanced settings", () => {
+  it("persists the chosen compressor type and sends it to the engine", () => {
+    const changed = reduceStoreState(testStore, { type: "UPDATE_COMPRESSOR", trackId, patch: { topology: "fet" } });
+    expect(engineParams(first(changed).advanced).compressor.topology).toBe("fet");
+    expect(normalizeHydratedState(changed)?.tracks[0]?.advanced.compressor.topology).toBe("fet");
+    const corrupt = JSON.parse(JSON.stringify(changed)) as typeof testStore;
+    Reflect.set(first(corrupt).advanced.compressor, "topology", "tube");
+    expect(normalizeHydratedState(corrupt)?.tracks[0]?.advanced.compressor.topology).toBe("optical");
+  });
+
+  it("keeps the current compressor type when undoing Glue Comp saved before types existed", () => {
+    const vca = reduceStoreState(testStore, { type: "UPDATE_COMPRESSOR", trackId, patch: { topology: "vca" } });
+    const glued = { ...first(vca), advanced: applyMasteringShortcut(first(vca).advanced, "glue", track.sampleRate) };
+    const legacyUndo: NonNullable<ShortcutUndo["glue"]> = { ...first(vca).advanced.compressor };
+    delete legacyUndo.topology;
+    const state = { ...vca, tracks: [{ ...glued, shortcutUndo: { glue: legacyUndo } }] };
+    const undone = reduceStoreState(state, { type: "TOGGLE_MASTERING_SHORTCUT", trackId, shortcut: "glue" });
+    expect(first(undone).advanced.compressor.topology).toBe("vca");
+  });
+
   it("restores legacy sessions with neutral additions and keeps their existing audio settings", () => {
     const legacy = JSON.parse(JSON.stringify(testStore)) as typeof testStore;
     const original = first(legacy).advanced;
     const before = structuredClone(original);
     for (const key of ["deHarsh", "multiband"]) Reflect.deleteProperty(original, key);
-    for (const key of ["sidechainHpfHz", "autoRelease"]) Reflect.deleteProperty(original.compressor, key);
+    for (const key of ["sidechainHpfHz", "autoRelease", "topology"]) Reflect.deleteProperty(original.compressor, key);
     for (const key of ["crossoverHz", "midGainDb", "sideGainDb"]) Reflect.deleteProperty(original.stereo, key);
     const restored = normalizeHydratedState(legacy);
     expect(restored?.tracks[0]?.advanced).toEqual(before);

@@ -8,16 +8,19 @@ The blanket “all slices verified” claim at `ade7736` is withdrawn. The earli
 Audit finding 14. WAV decoding divided by 2^(bits−1) while encoding multiplied by 2^(bits−1)−1, so a decode/encode cycle shifted samples above half scale by one LSB. The final linked ceiling after dither could also move samples off the dither grid. Encoding now uses 2^(bits−1) with +1.0 clipped to the largest positive code. A ceiling correction on dithered output truncates back onto the grid.
 
 Evidence (local, 2026-10-25): a new round-trip test is bit-exact for 16/24-bit on-grid samples, including −1.0 and the largest positive code, and checks clipping of overs. A dithered-limiter test fails on the previous engine and passes now. `go test -race ./...`, `pnpm run test:wasm` and Vitest passed. Status: **open — awaiting merge**.
+
 ## Steeper multiband crossovers — 2026-10-25
 
 Audit finding 10. First-order splits let a −12 dB low-band move leak −2.8 dB at its 200 Hz crossover and −1 dB at 400 Hz. Three-band dynamics now use 24 dB/oct Linkwitz–Riley crossovers with the low band phase-matched through the upper all-pass. Idle multiband keeps magnitude within 0.01 dB from 40 Hz to 16 kHz but rotates phase, so the earlier sample-exact idle test was replaced by a magnitude test. This is a sound change for saved sessions that use multiband.
 
 Evidence (local, 2026-10-25): a new crossover test measures −12 ±0.5 dB two octaves below the crossover, about 0 dB two octaves above, and 0 at the upper crossover. `go test -race ./...` and `pnpm run test:wasm` passed with native/WASM error 0. Status: **open — awaiting merge**.
+
 ## De-esser range — 2026-10-25
 
 Audit finding 6. `repair.deEssDb` subtracted its Q=2 band-pass at double gain. On a loud 6.5 kHz tone, 4.2 dB cut 12.6 dB, 6 dB nulled the tone and 10 dB inverted it. That path is reachable through API `profile=` renders (Vocal Forward uses 4.2 dB) and legacy v1 script moves; the current UI has no de-esser. The band is now subtracted at unity, so the cut grows with the setting and never exceeds it. The detector is unchanged.
 
 Evidence (local, 2026-10-25): a new Go test sweeps 1–24 dB at −12 and −6 dBFS and requires a monotonic cut no greater than the setting, reaching at least 23 dB at 24 dB. `go test -race ./...` and `pnpm run test:wasm` passed. Status: **open — awaiting merge**.
+
 ## Saturation highs and level — 2026-10-25
 
 Audit finding 4. At 50% drive saturation lost 2–9 dB at 16–20 kHz, and Thick/Crisp added 5–15 dB at low levels. The ADAA wet path's half-step-delayed linear response was blended with the dry path, and the curves were peak-normalized. The fix is in place (the owner was asked; the recommended default applies). Every character is flat to 20 kHz and keeps unity fundamental gain for −12 dBFS peaks. At 100% drive, quiet signals gain at most 2.6 dB (Crisp 5.3 dB including its tilt) and a 0 dBFS sine softens by about 7.4 dB. The 3 kHz alias from a 15 kHz tone improved from about −23 to −32 dBc. Punchy Commercial and Bass Heavy compressor makeup (7.5 dB) restores their prior loudness: −7.70 and −6.44 LUFS on the reference mix, against −7.78 and −6.46 before. Dynamic & Open input drops 2 dB so it remains the quieter profile.
@@ -26,29 +29,24 @@ Devil's Advocate break-test: no blockers. It found a true-peak regression on the
 
 Evidence (local, 2026-10-25): a Go response test covers six characters at 10/50/100%, checking low-level and program gain, 10/16/20 kHz flatness within 0.1 dB, THD and an alias bound. `go test -race ./...` passed, and `pnpm run test:wasm` passed with 279 + 54 native/WASM fixtures at maximum error 0. Status: **open — awaiting merge**.
 Evidence (local, 2026-10-25): a new Go response test covers six characters at 10/50/100%: low-level gain, 10/16/20 kHz flatness within 0.1 dB, THD and an alias bound. `go test -race ./...` passed, as did `pnpm run test:wasm`, with 279 + 54 native/WASM fixtures at maximum absolute error 0 after FMA-free arithmetic. Status: **open — awaiting merge**.
+
 ## Pro-convention control readouts — 2026-10-25
 
 Audit findings 7, 8, 9 and 11 (labelling only; no processing change). Shelf frequency, bell Q, mono-bass frequency and compressor attack/release sliders now show the value a pro plugin would print: the shelf's half-gain midpoint (1.85× the low-shelf value, 1/1.54 of the high-shelf value), the gain-dependent effective bell Q, the side −3 dB point (2.2× the mono-bass value) and the 63% time constant (0.4× the 92% settling label). Readouts are visible and announced with the slider.
 
 Evidence (local, 2026-10-25): new Go tests measure +3 dB at each reported shelf midpoint and bell half-gain point and −3 dB at the reported mono-bass point. Vitest covers the conversion functions and the rendered descriptions. Status: **open — awaiting merge**.
+
 ## 24-bit WAV and AIFF imports — 2026-10-25
 
 Audit finding 3. Imports rejected `WAVE_FORMAT_EXTENSIBLE` (0xFFFE), which most DAWs write for 24-bit or above-48 kHz WAV, and every AIFF that was not 16-bit. The Go CDR now resolves the extensible PCM/float sub-format (validating cbSize, valid bits and the KSDATAFORMAT GUID) and decodes AIFF integer PCM of 1–32 bits plus AIFF-C `NONE`, `sowt` and `fl32`. Browser import accepts `.aif`, `.aiff` and `.aifc`.
 
 Evidence (local, 2026-10-25): an FFmpeg oracle matches 12 layouts within 1e-7, including 24/32-bit, float and 96/192 kHz extensible WAV, 8/24/32-bit AIFF, and float and `sowt` AIFF-C, with each fixture checked for its layout marker. Rejection tests cover a bad GUID, a compressed sub-format, zero or excessive valid bits, a truncated extension and unsupported AIFF-C codecs. Status: **open — awaiting merge**.
+
 ## Live loudness meters — 2026-10-25
 
 First item from the [mastering tools audit](audits/2026-10-24-mastering-tools-audit.md) (finding 2). Playback previously showed only sample peak, RMS and crest; correlation was computed but hidden. A streaming Go meter now reads the processed output inside the WASI reactor and the workstation shows short-term (with momentary), integrated, loudness range, true peak (hold and latest), gain reduction and correlation.
 
 Evidence (local, 2026-10-25): `go test -race ./...` passed, including new EBU Tech 3341 steady-tone/gating and EBU Tech 3342 range cases at 44.1–192 kHz, a zero-allocation check and a bridge test of compressed output. `pnpm run test:wasm` passed with the compiled reactor exporting the meter and reporting an empty snapshot. Vitest passed 486/486 with new worklet, playback-validation and UI assertions; `tsc`, ESLint, knip and cspell passed. Playwright `a11y-responsive` passed, including keyboard scrolling of both meter strips at 320 px without page overflow. The six live-playback browser cases could not run on this Mac because headless Chromium's AudioContext clock stayed at 0 (`currentTime` 0 while `running`); CI's Linux browser shards are the evidence for them. Status: **open — awaiting merge**.
-||||||| parent of 798a0ca (docs: record extensible WAV and AIFF import support)
-||||||| parent of b69fc7c (docs: record pro-convention control readouts)
-||||||| parent of 3984a3f (docs: record saturation response fix and its evidence)
-||||||| parent of 7b10d42 (docs: record program-level saturation gain and break-test result)
-Evidence (local, 2026-10-25): a new Go response test covers six characters at 10/50/100%: low-level gain, 10/16/20 kHz flatness within 0.1 dB, THD and an alias bound. `go test -race ./...` passed, as did `pnpm run test:wasm`, with 279 + 54 native/WASM fixtures at maximum absolute error 0 after FMA-free arithmetic. Status: **open — awaiting merge**.
-||||||| parent of 9ec94e1 (docs: record de-esser range fix)
-||||||| parent of a4cc9ff (docs: record Linkwitz-Riley multiband crossovers)
-||||||| parent of ffedf9d (docs: record bit-exact WAV and dither grid fixes)
 
 ## Release merge record
 

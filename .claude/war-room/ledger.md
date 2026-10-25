@@ -14,33 +14,31 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 ## Bit-exact integer WAV and dither grid — 2026-10-25
 
 `open — awaiting merge`. Audit finding 14 (Low). Integer WAV round-trips bit-exactly and dithered output stays on its grid. Tier: `unit`.
+
 ## Steeper multiband crossovers — 2026-10-25
 
 `open — awaiting merge`. Audit finding 10 (P2) and the LR4 half of MUB-2C: three-band dynamics use LR4 crossovers, with idle bands summing to an all-pass. Tier: `unit` and `wasm-bridge`. Linear-phase multiband is not offered.
+
 ## De-esser range — 2026-10-25
 
 `open — awaiting merge`. Audit finding 6 (P2). The de-esser band is normalized, so its cut is monotonic and bounded by `deEssDb`. Tier: `unit`. The repair UI remains absent.
+
 ## Saturation highs and level — 2026-10-25
 
 `open — awaiting merge`. Audit finding 4 (P1), fixed in place in algorithm 1, so saved sessions change sound. Saturation now has unity gain at program level (−12 dBFS peaks), is flat to 20 kHz and keeps native/WASM bit parity. Algorithm-1 true peak on Punchy and Bass Heavy is 0.06–0.07 dB higher than main on the reference mix; exports use algorithm 2. Tier: `unit` and `wasm-bridge`. MUB-2C (designed polyphase oversampling with ≥60 dB stop-band) remains open; aliasing improved but is not certified.
 `open — awaiting merge`. Audit finding 4 (P1), fixed in place in algorithm 1, so saved sessions change sound. Saturation now has unity small-signal gain, is flat to 20 kHz and keeps native/WASM bit parity. Tier: `unit` and `wasm-bridge`. MUB-2C (designed polyphase oversampling with ≥60 dB stop-band) remains open; aliasing improved but is not certified.
+
 ## Pro-convention control readouts — 2026-10-25
 
 `open — awaiting merge`. Audit findings 7, 8, 9 and 11 (P2). The slider readouts state each control in pro-plugin terms, and the processing is unchanged. Tiers: `unit` (Go response measurements plus Vitest). Changing the controls themselves to the pro conventions would alter saved projects and remains a separate decision.
+
 ## 24-bit WAV and AIFF imports — 2026-10-25
 
 `open — awaiting merge`. Audit finding 3 (P1). The CDR now accepts extensible WAV and 1–32-bit AIFF and uncompressed AIFF-C, with stdlib only. Tier: `unit` (FFmpeg oracle, 12 layouts). Multichannel (>2) input is still rejected.
+
 ## Live loudness meters — 2026-10-25
 
 `open — awaiting merge (claude/project-thread-448zhr)`. Audit finding 2 (P1): no live LUFS, true peak, LRA or GR. Go `dsp.LoudnessMeter` (BS.1770-4 / EBU 3341 / EBU 3342, 0.05 LU histograms, zero allocations) runs on the reactor's processed output; the worklet posts a seven-value snapshot every 50 ms and the workstation shows it. Tiers: `unit`, `wasm-bridge`, `playwright-a11y-responsive`. Live-playback browser cases rely on CI, because the local headless AudioContext clock does not advance. Limits: integrated loudness and range reset on each playback start or seek, and the meter does not follow the B Original selection.
-||||||| parent of 798a0ca (docs: record extensible WAV and AIFF import support)
-||||||| parent of b69fc7c (docs: record pro-convention control readouts)
-||||||| parent of 3984a3f (docs: record saturation response fix and its evidence)
-||||||| parent of 7b10d42 (docs: record program-level saturation gain and break-test result)
-`open — awaiting merge`. Audit finding 4 (P1), fixed in place in algorithm 1, so saved sessions change sound. Saturation now has unity small-signal gain, is flat to 20 kHz and keeps native/WASM bit parity. Tier: `unit` and `wasm-bridge`. MUB-2C (designed polyphase oversampling with ≥60 dB stop-band) remains open; aliasing improved but is not certified.
-||||||| parent of 9ec94e1 (docs: record de-esser range fix)
-||||||| parent of a4cc9ff (docs: record Linkwitz-Riley multiband crossovers)
-||||||| parent of ffedf9d (docs: record bit-exact WAV and dither grid fixes)
 
 ## MP3 and FLAC import — 2026-10-24
 

@@ -41,7 +41,7 @@ type extendedState struct {
 	harshEnvelope, harshGain, harshAttack, harshRelease float64
 	split                                               [2]svfCoeffs
 	split1Low, split1High, split2Low, split2High        [2][2]svfState
-	lowAllpassLow, lowAllpassHigh                       [2][2]svfState
+	lowPhaseLow, lowPhaseHigh                           [2][2]svfState
 	bandEnvelope                                        [3]float64
 	bandAttack, bandRelease, bandMakeup                 [3]float64
 	colorLP                                             [2]float64
@@ -97,7 +97,7 @@ func (e *Engine) processMultiband(l, r float64) (float64, float64) {
 	for ch, v := range input {
 		low := linkwitzRiley(x.split[0], &x.split1Low[ch], v, true)
 		rest := linkwitzRiley(x.split[0], &x.split1High[ch], v, false)
-		bands[0][ch] = linkwitzRiley(x.split[1], &x.lowAllpassLow[ch], low, true) + linkwitzRiley(x.split[1], &x.lowAllpassHigh[ch], low, false)
+		bands[0][ch] = linkwitzRiley(x.split[1], &x.lowPhaseLow[ch], low, true) + linkwitzRiley(x.split[1], &x.lowPhaseHigh[ch], low, false)
 		bands[1][ch] = linkwitzRiley(x.split[1], &x.split2Low[ch], rest, true)
 		bands[2][ch] = linkwitzRiley(x.split[1], &x.split2High[ch], rest, false)
 	}
@@ -282,7 +282,7 @@ func (e *Engine) clearStoppedStageHistory(prev Params) {
 	if all || (prev.Multiband.Enabled && !next.Multiband.Enabled) {
 		x := &e.extended
 		x.split1Low, x.split1High, x.split2Low, x.split2High = [2][2]svfState{}, [2][2]svfState{}, [2][2]svfState{}, [2][2]svfState{}
-		x.lowAllpassLow, x.lowAllpassHigh = [2][2]svfState{}, [2][2]svfState{}
+		x.lowPhaseLow, x.lowPhaseHigh = [2][2]svfState{}, [2][2]svfState{}
 		e.extended.bandEnvelope = [3]float64{}
 	}
 	if all || (prev.Limiter.Enabled && !next.Limiter.Enabled) {

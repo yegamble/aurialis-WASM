@@ -646,13 +646,15 @@ func EncodeWAV(left, right []float32, sampleRate, bitDepth int) ([]byte, error) 
 				s = math.Max(-1, math.Min(1, s))
 			}
 			switch bitDepth {
+			// Integer PCM uses the same 2^(bits-1) scale as decoding and dither,
+			// so on-grid samples round-trip exactly; +1.0 clips to max positive.
 			case 16:
-				scaled := int32(math.Round(s * 32767.0))
-				u16 := uint16(scaled & 0xFFFF) // #nosec G115 -- clamped to [-32767, 32767]
+				scaled := int32(math.Min(32767, math.Round(s*32768.0)))
+				u16 := uint16(scaled & 0xFFFF) // #nosec G115 -- clamped to [-32768, 32767]
 				binary.LittleEndian.PutUint16(out[offset:offset+2], u16)
 				offset += 2
 			case 24:
-				scaled := int32(math.Round(s * 8388607.0))
+				scaled := int32(math.Min(8388607, math.Round(s*8388608.0)))
 				out[offset] = byte(scaled & 0xff)
 				out[offset+1] = byte((scaled >> 8) & 0xff)
 				out[offset+2] = byte((scaled >> 16) & 0xff)

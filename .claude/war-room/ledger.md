@@ -11,6 +11,10 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Distinct compressor types — 2026-10-25
+
+`open — awaiting merge`. MUB-2B and the topology part of MUB-4B, delivered in algorithm 1 in place (saved sessions change sound) instead of the earlier v2-only ruling, matching the saturation-fix precedent. Each type has its own detector, curve and release; Advanced exposes the choice. Tier: `unit` and `wasm-bridge`. Behavioral models only; no hardware certification.
+
 ## Bit-exact integer WAV and dither grid — 2026-10-25
 
 `open — awaiting merge`. Audit finding 14 (Low). Integer WAV round-trips bit-exactly and dithered output stays on its grid. Tier: `unit`.

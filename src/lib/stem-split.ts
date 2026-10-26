@@ -40,7 +40,7 @@ const failureCopy = new Map<StemSplitFailure, string>([
   ["too_long", "This song is too long to split. Smart Split handles up to about 5.8 minutes at 48 kHz."],
   ["memory", "This song needs more memory than Smart Split allows. Try a shorter section or a lower sample rate."],
   ["model", "The separation model couldn't be downloaded or verified. Check your internet connection, then split again to retry the download."],
-  ["model_cache", "The separation model couldn't be saved to or loaded from its cache folder on this computer. Check that your user cache folder is writable and has about 180 MB free, then split again."],
+  ["model_cache", "The separation model couldn't be saved to or loaded from its cache folder on this computer. Check that your user cache folder can be written to and has about 180 MB free, then split again."],
   ["stopped", "Smart Split stopped before it finished. A long song on a slower computer can reach the 90-minute job limit."],
   ["lost", "Aurialis lost track of this split; the local server may have restarted. Split the song again."],
   ["expired", "These stems are no longer available. Stems are kept for 15 minutes, and restarting the local server clears them. Split the song again."],
@@ -140,7 +140,7 @@ function rejected(response: Response, body: unknown): StemSplitError {
 /** Maps a failed job's raw Go error to a failure kind. */
 function jobFailure(raw: string): StemSplitError {
   if (/stem model download|dial tcp|no such host|connection (?:refused|reset)|certificate|tls|timeout|Get "/iu.test(raw)) return new StemSplitError("model", raw);
-  // Anything else while loading is local: an unwritable cache folder or a damaged cached file.
+  // Anything else while loading is local: a cache folder that cannot be written or a damaged cached file.
   if (/stem model|separation model|model cache/iu.test(raw)) return new StemSplitError("model_cache", raw);
   if (/memory ceiling/iu.test(raw)) return new StemSplitError("memory", raw);
   if (/too long/iu.test(raw)) return new StemSplitError("too_long", raw);

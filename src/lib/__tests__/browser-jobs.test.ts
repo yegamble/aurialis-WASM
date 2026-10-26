@@ -94,9 +94,9 @@ describe("device-local browser audio transport", () => {
       timer.mockClear();
       const index = TestWorker.all.length;
       const pending = deviceAudioRequest("/api/master/render", { method: "POST", body: render(paddedSource(48000, 4_194_304), sampleRate) });
-      await waitFor(() => { expect(TestWorker.all[index]?.message).toBeDefined(); });
+      await waitFor(() => { expect(TestWorker.all.at(index)?.message).toBeDefined(); });
       const delays = timer.mock.calls.map(([, delay]) => delay ?? 0).filter((delay) => delay >= 100_000);
-      TestWorker.all[index]?.reply(); await pending;
+      TestWorker.all.at(index)?.reply(); await pending;
       return delays;
     };
     expect(await deadline()).toEqual([130_000]);

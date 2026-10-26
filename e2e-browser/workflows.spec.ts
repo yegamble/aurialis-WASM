@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fixture, decode } from "../e2e/audio-fixture";
 import { engineParams, exportParams, exportScript } from "../src/lib/engine-params";
-import type { AdvancedParams, MeasuredAudioMetrics, Track } from "../src/lib/types";
+import type { AdvancedParams, ExportDelivery, MeasuredAudioMetrics, Track } from "../src/lib/types";
 import type { ReleaseReport } from "../src/lib/release-review";
 import type { ScriptV2 } from "../src/lib/deep-mastering";
 import { captureDeepDevice, capturedDevice, capturedProgress } from "../e2e/deep-capture";
@@ -35,14 +35,14 @@ async function settings(page: Page, id: string) {
   }, id);
 }
 // Exports render with algorithm 2; live playback (live = true) stays on algorithm 1.
-async function nativeRender(info: TestInfo, source: Buffer, advanced: AdvancedParams, bitDepth: number, script?: ScriptV2, live = false) {
-  const directory = info.outputPath(`native-oracle-${String(bitDepth)}${live ? "-live" : ""}`);
+async function nativeRender(info: TestInfo, source: Buffer, advanced: AdvancedParams, bitDepth: number, script?: ScriptV2, live = false, delivery: ExportDelivery = {}) {
+  const directory = info.outputPath(`native-oracle-${String(bitDepth)}${live ? "-live" : ""}${delivery.sampleRate ? `-${String(delivery.sampleRate)}` : ""}${delivery.dither ? `-${delivery.dither}` : ""}`);
   await mkdir(directory, { recursive: true });
   await writeFile(directory + "/source.wav", source);
   const rendered = script ? { script: JSON.stringify(live ? script : exportScript(script)) } : { params: JSON.stringify(live ? engineParams(advanced) : exportParams(advanced)) };
-  await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", ...rendered, bitDepth }));
+  await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", ...rendered, bitDepth, ...delivery }));
   execFileSync("go", ["test", "./internal/browserjobs", "-run", "^TestWriteBrowserOracle$", "-count=1"], { env: { ...process.env, AURIALIS_BROWSER_ORACLE_DIR: directory }, stdio: "pipe" });
-  return { audio: await readFile(directory + "/native.wav"), metadata: JSON.parse(await readFile(directory + "/native.json", "utf8")) as { afterMetrics: { integratedLufs: number; samplePeakDbfs: number } } };
+  return { audio: await readFile(directory + "/native.wav"), metadata: JSON.parse(await readFile(directory + "/native.json", "utf8")) as { sampleRate: number; frames: number; afterMetrics: { integratedLufs: number; samplePeakDbfs: number; truePeakDbtp: number } } };
 }
 async function downloadBytes(page: Page, name: string): Promise<Buffer> {
   const event = page.waitForEvent("download");
@@ -171,6 +171,36 @@ test("Release retains native-equivalent final 16/24/32-bit WAVs and exact encode
     const native = await nativeRender(info, source, advanced, bitDepth);
     await reviewEncoded(page, info, native.audio, String(bitDepth));
   }
+  await assertPrivate(info, requests);
+});
+
+test("a 44.1 kHz undithered export from a 48 kHz source matches the native converted render byte for byte", async ({ page, context }, info) => {
+  const requests = observeNetwork(context);
+  const source = fixture(997, 2), id = await upload(page, source, "private-converted-source.wav");
+  await page.getByRole("slider", { name: "Input gain", exact: true }).fill("3");
+  await expect.poll(async () => (await settings(page, id)).input).toBe(3);
+  const advanced = await settings(page, id);
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("group", { name: "Bit depth", exact: true }).getByRole("button", { name: "16-bit PCM", exact: true }).click();
+  const rates = dialog.getByRole("group", { name: "Sample rate", exact: true });
+  await expect(rates.getByRole("button")).toHaveText(["44.1 kHz", "48 kHz (source)", "88.2 kHz", "96 kHz"]);
+  await rates.getByRole("button", { name: "44.1 kHz", exact: true }).click();
+  await dialog.getByRole("group", { name: "Dither", exact: true }).getByRole("button", { name: "Off", exact: true }).click();
+  const downloading = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Render & download WAV", exact: true }).click();
+  const downloaded = await downloading, path = await downloaded.path();
+  if (!path) throw new Error("Missing browser-local converted export");
+  expect(await downloaded.failure()).toBeNull();
+  expect(downloaded.suggestedFilename()).toMatch(/-44\.1k-16bit\.wav$/u);
+  const native = await nativeRender(info, source, advanced, 16, undefined, false, { sampleRate: 44100, dither: "none" });
+  expect(native.metadata.sampleRate).toBe(44100);
+  expect(native.metadata.frames).toBe(88200);
+  const exported = await readFile(path);
+  expect(exported).toEqual(native.audio);
+  const pcm = decode(exported);
+  expect([pcm.rate, pcm.bits, pcm.left.length]).toEqual([44100, 16, 88200]);
+  await expect(dialog.getByRole("status")).toContainText(`Delivered true peak ${native.metadata.afterMetrics.truePeakDbtp.toFixed(2)} dBTP at 44.1 kHz.`);
   await assertPrivate(info, requests);
 });
 

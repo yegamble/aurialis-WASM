@@ -1,11 +1,22 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  "name": "aurialis-wasm-preview",
+  // Production Worker. GitHub Actions deploys `main` after CI passes; Workers
+  // Builds creates an isolated Worker Preview for every other branch.
+  "name": "aurialis-wasm",
   "main": "worker.ts",
   "compatibility_date": "2026-10-23",
   "compatibility_flags": ["nodejs_compat"],
-  "workers_dev": true,
-  "preview_urls": false,
+  // Production is reachable only through its custom domains, so no second
+  // public origin exists. Preview URLs are configured separately and stay on.
+  "workers_dev": false,
+  "preview_urls": true,
+  // Worker Previews settings. Empty: previews reuse the production config,
+  // which has only the static ASSETS binding, so nothing needs isolating.
+  "previews": {},
+  "routes": [
+    { "pattern": "aurialis.yosefgamble.com", "custom_domain": true },
+    { "pattern": "aurialis.yosef.app", "custom_domain": true }
+  ],
   "assets": {
     "directory": "./assets",
     "binding": "ASSETS",

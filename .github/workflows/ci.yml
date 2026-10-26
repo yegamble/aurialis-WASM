@@ -122,6 +122,9 @@ jobs:
           role: race-meters
       - name: Run Go unit & concurrency race tests
         run: go test -race -count=1 -timeout 10m ./...
+      - name: Calibrate export budgets against measured render cost
+        timeout-minutes: 5
+        run: go test -run '^TestExportBudgetCalibration$' -count=1 -v ./internal/server
       - name: Install FFmpeg for independent meter verification
         timeout-minutes: 5
         run: |

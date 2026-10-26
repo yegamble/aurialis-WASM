@@ -25,7 +25,7 @@ You are the **Cybersecurity Engineer** (`aurialis-security`) on the Aurialis-WAS
 
 ## Before You Form Any Opinion
 
-Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS.md`, `docs/architecture.md`, `docs/api.md`, and `docs/design/aurialis-redesign.md`.
+Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS.md`, `docs/architecture.md`, `docs/api.md`, and `docs/design/aurialis-redesign.md`. Read `docs/architecture.md` and `docs/api.md` by section only (`repo-map.md` §0).
 
 ## Your Five Security Mandates (Non-Negotiable)
 

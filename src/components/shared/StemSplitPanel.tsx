@@ -1,10 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { usesBrowserAudio } from "@/lib/browser-jobs";
+import { useBrowserBuild } from "@/lib/build-mode";
 import { getAudio } from "@/lib/db";
-import { runStemSplit, stemModelStatus, type StemModelStatus, type StemSplit } from "@/lib/stem-split";
-import { Button, buttonClassName } from "./Primitives";
+import { downloadLocalBlob } from "@/lib/download";
+import {
+  fetchStemAudio, runStemSplit, stemDownloadName, STEM_MODEL_DISABLED, StemSplitError, stemSplitFailureKind, stemSplitFailureMessage, stemModelStatus,
+  type SplitStem, type StemModelStatus, type StemSplit, type StemSplitFailure,
+} from "@/lib/stem-split";
+import { stemSplitAvailability } from "@/lib/stem-split-copy";
+import { Button } from "./Primitives";
 
 const stemLayouts = new Map<number, string[]>([
   [2, ["Vocals", "Instrumental"]],
@@ -18,15 +23,57 @@ function megabytes(bytes: number): string {
   return `${String(Math.round(bytes / 1_000_000))} MB`;
 }
 
-function modelNote(status: StemModelStatus | null): string {
+/** The browser build's availability sentence already explains why nothing can run, so it has no model note. */
+/** How often the panel re-checks a local server that stopped answering. */
+const RECHECK_MS = 3000;
+
+function modelNote(status: StemModelStatus | null, lastFailure: StemSplitFailure | null): string {
   if (!status) return "Checking the separation model…";
-  if (!status.available) return usesBrowserAudio() ? "Smart Split runs in the Aurialis desktop app. This browser build cannot separate stems." : "Smart Split is turned off in this build of the app.";
+  if (!status.reachable) return "Aurialis can't reach its local server to check the separation model. Checking again every few seconds; Split comes back when the server answers.";
+  if (!status.available) return STEM_MODEL_DISABLED;
   if (status.downloading) return `Downloading the separation model: ${megabytes(status.downloadedBytes)} of ${megabytes(status.totalBytes)}.`;
   if (status.ready) return "The separation model is ready.";
+  if (lastFailure === "model") return `The ${megabytes(status.totalBytes)} separation model could not be downloaded or verified. The next split retries the download.`;
+  if (lastFailure === "model_cache") return `The ${megabytes(status.totalBytes)} separation model could not be saved to or loaded from its cache folder. The next split tries again.`;
   return `The first split downloads the ${megabytes(status.totalBytes)} separation model once.`;
 }
 
+function StemRow({ stem, title }: { stem: SplitStem; title: string }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  async function download() {
+    setSaving(true);
+    setError("");
+    try {
+      const blob = await fetchStemAudio(stem);
+      try {
+        downloadLocalBlob(blob, stemDownloadName(title, stem.name));
+      } catch (failure) {
+        // A memory-budget refusal already explains itself in plain language.
+        setError(failure instanceof Error ? failure.message : "This stem could not be saved.");
+      }
+    } catch (failure) {
+      setError(stemSplitFailureMessage(failure));
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <li className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+      <span aria-hidden="true" className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ background: stem.color }} />
+      <span className="min-w-0 flex-1 font-medium md:min-w-24 md:flex-none">{stem.name}</span>
+      {/* Below md the player takes its own full-width line so its play control never collapses. */}
+      <audio className="order-last w-full md:order-none md:w-auto md:min-w-0 md:flex-1" controls preload="none" src={stem.url} aria-label={`Play ${stem.name}`} />
+      <Button variant="secondary" disabled={saving} aria-label={`Download ${stem.name}`} onClick={() => { void download(); }}>
+        {saving ? "Preparing…" : "Download"}
+      </Button>
+      {error && <p className="order-last w-full text-xs text-danger" role="alert">{error}</p>}
+    </li>
+  );
+}
+
 export function StemSplitPanel({ audioId, title }: { audioId: string | null; title: string }) {
+  const browser = useBrowserBuild();
   const operation = useRef<AbortController | null>(null);
   const [count, setCount] = useState(4);
   const [status, setStatus] = useState<StemModelStatus | null>(null);
@@ -34,6 +81,7 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState("");
   const [error, setError] = useState("");
+  const [lastFailure, setLastFailure] = useState<StemSplitFailure | null>(null);
   const [split, setSplit] = useState<StemSplit | null>(null);
 
   useEffect(() => {
@@ -47,6 +95,13 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
     const timer = setInterval(() => { void stemModelStatus().then(setStatus); }, 1000);
     return () => { clearInterval(timer); };
   }, [busy, status?.available, status?.ready]);
+  // A server that stopped answering is not a disabled model: keep checking until it is back.
+  const unreachable = status?.reachable === false;
+  useEffect(() => {
+    if (!unreachable || busy) return;
+    const timer = setInterval(() => { void stemModelStatus().then(setStatus); }, RECHECK_MS);
+    return () => { clearInterval(timer); };
+  }, [unreachable, busy]);
   useEffect(() => () => { operation.current?.abort(); }, []);
   useEffect(() => () => { split?.release(); }, [split]);
 
@@ -57,12 +112,13 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
     operation.current = controller;
     setSplit(null);
     setError("");
+    setLastFailure(null);
     setProgress(0);
     setStage("Reading the original audio…");
     setBusy(true);
     try {
       const blob = await getAudio(audioId);
-      if (!blob) throw new Error("Original audio is missing. Restore the source before splitting.");
+      if (!blob) throw new StemSplitError("missing_source");
       const result = await runStemSplit(blob, count, controller.signal, (value, label) => { setProgress(value); setStage(label); });
       if (operation.current === controller) {
         setSplit(result);
@@ -71,7 +127,12 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
         result.release();
       }
     } catch (failure) {
-      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Smart Split failed.");
+      if (!controller.signal.aborted) {
+        setError(stemSplitFailureMessage(failure));
+        setLastFailure(stemSplitFailureKind(failure));
+        // A failed first download leaves the "downloading" note stale; re-read the model state.
+        void stemModelStatus().then(setStatus);
+      }
     } finally {
       if (operation.current === controller) {
         operation.current = null;
@@ -87,13 +148,14 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
     setStage("");
   }
 
-  const available = status?.available === true;
+  const available = !browser && status?.available === true;
   return (
     <section className="split-intro paper-panel" aria-label="Smart Split">
       <div>
         <span className="eyebrow">Trained stem separation</span>
         <h2>Choose a stem layout</h2>
-        <p>Separation runs on this computer; your audio never leaves it. Vocals, drums, bass and guitar separate cleanly; piano and Other are less reliable. A song takes a few minutes. The stems add up to the original mix.</p>
+        <p>{stemSplitAvailability(browser)}</p>
+        <p>Your audio stays on this device. Vocals, drums, bass and guitar separate cleanly; piano and Other are less reliable. The stems add up to the original mix.</p>
       </div>
       <div className="stem-count" role="group" aria-label="Stem count">
         {[2, 3, 4, 5, 6].map((number) => (
@@ -103,7 +165,7 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
         ))}
       </div>
       <div className="stem-preview">{(stemLayouts.get(count) ?? []).map((name) => <span key={name}>{name}</span>)}</div>
-      <p className="disclosure" role="status">{modelNote(status)}</p>
+      {!browser && <p className="disclosure" role="status">{modelNote(status, lastFailure)}</p>}
       <div className="flex flex-wrap gap-2">
         {busy
           ? <Button variant="secondary" onClick={cancel}>Cancel split</Button>
@@ -113,18 +175,11 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
       {busy && <div className="space-y-1"><progress className="w-full" max={100} value={progress} aria-label="Smart Split progress" /><p className="text-xs text-[var(--ink-soft)]">{stage}</p></div>}
       {error && <p className="disclosure text-danger" role="alert">{error}</p>}
       {split && (
-        <ul className="space-y-3" aria-label="Separated stems">
-          {split.stems.map((stem) => (
-            <li key={stem.id} className="flex min-w-0 flex-wrap items-center gap-3">
-              <span aria-hidden="true" className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ background: stem.color }} />
-              <span className="min-w-24 font-medium">{stem.name}</span>
-              <audio className="min-w-0 max-w-full flex-1" controls preload="none" src={stem.url} aria-label={`Play ${stem.name}`} />
-              <a className={buttonClassName("secondary")} href={stem.url} download={`${title} - ${stem.name}.wav`}>Download</a>
-            </li>
-          ))}
+        <ul className="col-span-full space-y-3" aria-label="Separated stems">
+          {split.stems.map((stem) => <StemRow key={stem.id} stem={stem} title={title} />)}
         </ul>
       )}
-      {split && <p className="text-xs text-[var(--ink-soft)]">Stems are 24-bit WAV at the source sample rate. They stay available for 15 minutes or until you leave this page.</p>}
+      {split && <p className="col-span-full text-xs text-[var(--ink-soft)]">Stems are 24-bit WAV at the source sample rate. They stay available for 15 minutes or until you leave this page.</p>}
     </section>
   );
 }

@@ -56,7 +56,7 @@ export function denseFixture(seconds = 8, peakDbfs = -1.3): Buffer {
 export async function uploadProject(page: Page, name = "qa-workflow.wav", seconds = 1, source: "tone" | "dense" | Buffer = "tone"): Promise<string> {
   await page.goto("/");
   const buffer = source === "dense" ? denseFixture(seconds) : source === "tone" ? fixture(1000, seconds) : source;
-  await page.getByLabel("Upload audio file").setInputFiles({ name, mimeType: "audio/wav", buffer });
+  await page.getByLabel("Import audio file").setInputFiles({ name, mimeType: "audio/wav", buffer });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
   return new URL(page.url()).pathname.split("/")[2] ?? "";

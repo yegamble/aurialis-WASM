@@ -30,7 +30,7 @@ async function saved(page: Page): Promise<Track> {
   });
 }
 async function upload(page: Page, source: Buffer) {
-  await page.goto("/"); await page.getByLabel("Upload audio file").setInputFiles({ name: "qa-simple-styles.wav", mimeType: "audio/wav", buffer: source });
+  await page.goto("/"); await page.getByLabel("Import audio file").setInputFiles({ name: "qa-simple-styles.wav", mimeType: "audio/wav", buffer: source });
   await expect(page).toHaveURL(/\/master\/track-/u); await expect(page.getByRole("button", { name: "Export", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Reset modules", exact: true }).click();
   await page.getByRole("tab", { name: "simple", exact: true }).click();

@@ -76,7 +76,7 @@ test("advanced audio controls independently change actual exported PCM", async (
     };
   });
   await page.goto("/");
-  await page.getByLabel("Upload audio file").setInputFiles({ name: "qa-control-bursts.wav", mimeType: "audio/wav", buffer: controlFixture() });
+  await page.getByLabel("Import audio file").setInputFiles({ name: "qa-control-bursts.wav", mimeType: "audio/wav", buffer: controlFixture() });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "Export", exact: true })).toBeEnabled({ timeout: 30_000 });
   const results: { name: string; changes: string[]; maximumSampleDifference: number }[] = [];

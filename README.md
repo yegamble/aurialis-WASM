@@ -16,7 +16,7 @@
 
 <p align="center"><strong>Bring a mix. Shape its sound. Keep it local.</strong></p>
 
-Aurialis is an audio mastering workstation that runs on your computer and opens in your browser. Start with a WAV, AIFF, FLAC or MP3 file, adjust its tone, dynamics and stereo image, listen against the original, then export a new WAV. Mastering is the final shaping of a finished mix before you share it.
+Aurialis is an audio mastering workstation that runs in your browser: open [aurialis.yosefgamble.com](https://aurialis.yosefgamble.com/) and your audio is processed on your device, never uploaded. Start with a WAV, AIFF, FLAC or MP3 file, adjust its tone, dynamics and stereo image, listen against the original, then export a new WAV. Mastering is the final shaping of a finished mix before you share it.
 
 <p align="center">
   <a href="#run-the-studio">Get started</a> ·
@@ -25,7 +25,7 @@ Aurialis is an audio mastering workstation that runs on your computer and opens 
   <a href="docs/development.md">Developer guide</a>
 </p>
 
-> **Project status:** active development, with a source build described below. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. Smart Split separates 2–6 stems with a trained model in the desktop app. AI repair and certified hardware/true-peak behavior remain open work. Deep and Release are merged with their bounded workflows verified. Browser processing is merged, and both public addresses passed their scoped hosted checks. See [current limits](#know-the-current-limits).
+> **Project status:** active development. The browser build at [aurialis.yosefgamble.com](https://aurialis.yosefgamble.com/) and [aurialis.yosef.app](https://aurialis.yosef.app/) is the v1 release target; a native single binary, built from source, is the fallback for files beyond a browser's memory. Simple and Advanced share a working audio-processing chain. Deep adds measured proposals and editable source-frame automation with explicit Apply/Revert; Reference offers measured proposals for review. Smart Split runs only in the native Aurialis build, which you build from source; the browser build cannot separate stems. On an idle Apple-silicon Mac (8-core M2) one 20-second window took about 32 seconds; at that rate a four-minute song would take roughly 15 minutes, but no idle full-song timing has been recorded, and a busy machine took up to about three minutes per window. On Linux and Windows, plain Go did not finish one 20-second window in 30 minutes, so songs will generally not finish within the 90-minute job limit. AI repair and certified hardware/true-peak behavior remain open work. No prebuilt binaries are published. See [current limits](#know-the-current-limits).
 
 ## A small studio, one clear path
 
@@ -46,7 +46,11 @@ The interface follows a warm paper-and-ink design, with a focused listening area
 
 ## Run the studio
 
-The commands below build from source in a **Bash-compatible shell**. You need Git and these pinned tools installed and available in your terminal:
+Open **[aurialis.yosefgamble.com](https://aurialis.yosefgamble.com/)** (or [aurialis.yosef.app](https://aurialis.yosef.app/)) in a current browser with WebAssembly, AudioWorklet and shared-memory support; a recent Chromium-based browser is a good starting point. There is nothing to install or sign in to, and you should see an empty studio ready to import audio. The [first-master guide](docs/getting-started.md) walks through a session.
+
+### Build the native fallback from source
+
+Build the native single binary when a file is too large for your browser's memory, or to use Smart Split. No prebuilt binaries are published. The commands below build from source in a **Bash-compatible shell**. You need Git and these pinned tools installed and available in your terminal:
 
 | Tool | Version | Used for |
 | --- | --- | --- |
@@ -54,7 +58,7 @@ The commands below build from source in a **Bash-compatible shell**. You need Gi
 | [pnpm](https://pnpm.io/installation) | `10.33.0` | Installing JavaScript dependencies; use pnpm for this repository |
 | [Go](https://go.dev/doc/install) | `1.26.10` | Building the local server and audio modules |
 
-The versions are recorded in [`.mise.toml`](.mise.toml), [`.nvmrc`](.nvmrc), [`package.json`](package.json) and [`go.mod`](go.mod). If someone has already built the executable for you, you can run that executable without Node.js or Go installed; you still need a browser with WebAssembly, AudioWorklet and shared-memory support.
+The versions are recorded in [`.mise.toml`](.mise.toml), [`.nvmrc`](.nvmrc), [`package.json`](package.json) and [`go.mod`](go.mod). The built executable runs without Node.js or Go installed; you still need a browser with WebAssembly, AudioWorklet and shared-memory support.
 
 ```bash
 git clone https://github.com/yegamble/aurialis-WASM.git
@@ -64,7 +68,7 @@ pnpm run build:binary
 ./aurialis
 ```
 
-Leave the terminal running and open **[http://127.0.0.1:8080](http://127.0.0.1:8080)** on the same computer. You should see an empty studio ready to import audio. Press **Ctrl+C** in the terminal to stop the server.
+Leave the terminal running and open **[http://127.0.0.1:8080](http://127.0.0.1:8080)** on the same computer. You should see an empty studio ready to import audio. Press **Ctrl+C** in the terminal to stop the server. Projects saved on the public site stay in that site's browser storage; the local studio starts with its own empty library.
 
 The build embeds the interface, fonts, audio modules and worklets in one `aurialis` executable. A plain `go build` does not rebuild those assets. For build verification, another port or development commands, use the [developer guide](docs/development.md).
 
@@ -112,7 +116,7 @@ The deploy and rollback jobs run in the GitHub `Production` environment, which o
 | Track size | At most **256 MiB + 44 bytes** and **33,554,432 decoded frames**. The frame cap is about **11 min 39 s at 48 kHz**, **12 min 40 s at 44.1 kHz**, or **5 min 49 s at 96 kHz**; file size can limit you sooner. In the browser, memory admission can stop shorter tracks: Chrome on an 8 GB-class machine takes the full length; desktop Safari and Firefox take about 9½ minutes at 48 kHz; phones and 4 GB devices less. |
 | Processing | One expensive browser job and at most one waiting job, with both inputs charged against memory. Browser memory preflight may reject smaller files, and retained masters also need memory; use the local executable within its own limits. The local server also bounds admission. |
 | Albums | Each 24-bit master is saved in browser storage (IndexedDB) as it renders and stays available across reloads until the sequence or settings change. Download them one by one or as a single uncompressed ZIP. Rendering checks free browser storage first. If browser storage is unavailable, masters fall back to a **128 MiB in-memory cache** that is lost when you leave the page. **Delete album** removes its saved masters. |
-| Deep and Smart Split | Deep provides measured source diagnostics, editable automation and separate legacy static profiles. Change points do not identify verses or choruses; AI repair remains unavailable. Smart Split runs a trained BS-RoFormer model locally in the desktop app only (not the browser build). The first split downloads a 176 MB model from this repository's `stem-model-v1` release into your user cache, verified by SHA-256. It is slow: on an idle 8-core M2 MacBook Air each 20-second model window takes about 32 s (a four-minute song needs 27 windows, about 15 minutes), and a busy or hot machine measured up to about three minutes per window. Linux and Windows use a plain-Go path that is at least 18 times slower. Songs up to 16,777,216 frames (about 5.8 minutes at 48 kHz) fit. On the one measured test track, vocals, drums, bass and guitar separated at 12–16 dB SI-SDR; piano and Other are weak. ScriptV2 keeps sonic algorithm 1, its proposals' Optical compression and sample-peak limiting; it uses deterministic heuristics, not a trained mastering model. |
+| Deep and Smart Split | Deep provides measured source diagnostics, editable automation and separate legacy static profiles. Change points do not identify verses or choruses; AI repair remains unavailable. Smart Split runs a trained BS-RoFormer model on your computer in the native build only. The first split downloads a 176 MB model from this repository's published `stem-model-v1` release into your user cache, verified by SHA-256. It is slow: on an idle 8-core M2 MacBook Air each 20-second model window takes about 32 s (a four-minute song needs 27 windows, an estimated 15 minutes; no idle full-song timing has been recorded), and a busy or hot machine measured up to about three minutes per window. On Linux and Windows the plain-Go path did not finish one window in 30 minutes, so songs will generally not finish within the 90-minute job limit. Songs up to 16,777,216 frames (about 5.8 minutes at 48 kHz) fit. On the one measured test track, vocals, drums, bass and guitar separated at 12–16 dB SI-SDR; piano and Other are weak. ScriptV2 keeps sonic algorithm 1, its proposals' Optical compression and sample-peak limiting; it uses deterministic heuristics, not a trained mastering model. |
 | Reference | Reference analyzes original reference audio against your source through its starting settings, with explicit proposal review and Apply/Revert. Saved reference knob positions are ignored; broad-band similarity does not establish perceptual matching. Both audio files share one **129 MiB** request ceiling. |
 | Release | Reviews the exact 16/24/32-bit WAV against six scoped destination profiles. It never changes gain, trims or resamples. Guidance and diagnostic measurements do not certify platform delivery, codec peaks, metadata, Digital Masters status or a manufactured CD. |
 | Audio guarantees | Hardware emulation and certified true-peak limiting remain open work. Offline renders can opt into `algorithmVersion: 2`, which limits the reconstructed peak to the ceiling. Browser exports (WAV download, album render and release check) use it; previews and live playback stay on algorithm 1, so on content with intersample peaks an export limits harder than what you heard. Live playback may be resampled to the audio device's rate; live and exported samples are not promised to be identical across rates. |

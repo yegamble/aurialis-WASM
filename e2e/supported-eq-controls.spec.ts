@@ -27,7 +27,7 @@ function burstSource(seconds = 4) {
 }
 async function importFixture(page: Page, wav: Buffer, name: string) {
   await page.goto("/");
-  await page.getByLabel("Upload audio file").setInputFiles({ name, mimeType: "audio/wav", buffer: wav });
+  await page.getByLabel("Import audio file").setInputFiles({ name, mimeType: "audio/wav", buffer: wav });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
 }

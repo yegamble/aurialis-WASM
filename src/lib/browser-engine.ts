@@ -114,7 +114,9 @@ async function readAudioResponse<T>(read: () => Promise<T>, signal?: AbortSignal
     return result;
   } catch (error: unknown) {
     signal?.throwIfAborted();
-    throw new Error("The local audio response was interrupted or unreadable. Try again or use the local Aurialis app on this device.", { cause: error });
+    throw new Error(usesBrowserAudio()
+      ? "The audio response was interrupted or unreadable. Try again."
+      : "The local server's audio response was interrupted or unreadable. Try again, or restart the Aurialis server.", { cause: error });
   }
 }
 

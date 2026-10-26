@@ -10,7 +10,7 @@ async function startTone(page: Page, frequency: number, hot = false) {
       wav.writeInt16LE(wav.readInt16LE(offset) * 3, offset);
   }
   await page.goto("/");
-  await page.getByLabel("Upload audio file").setInputFiles({ name: `qa-extended-${frequency}.wav`, mimeType: "audio/wav", buffer: wav });
+  await page.getByLabel("Import audio file").setInputFiles({ name: `qa-extended-${frequency}.wav`, mimeType: "audio/wav", buffer: wav });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
   await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");

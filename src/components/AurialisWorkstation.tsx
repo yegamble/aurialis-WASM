@@ -44,7 +44,7 @@ import {
   mapProfileToDSP,
 } from "@/lib/audio-dsp";
 import { saveAudio, getAudio, discardStagedAudio, deleteAudio, newAudioAssetId, loadAlbumMasters, saveAlbumMasters, deleteAlbumMasters, ensureStorageFor, type SavedAlbumMasters } from "@/lib/db";
-import { albumEntryNames, createStoredZip } from "@/lib/zip";
+import { albumEntryNames, createStoredZip, safeFileBaseName } from "@/lib/zip";
 import { profiles, useStore } from "@/lib/store";
 import type {
   Album,
@@ -91,6 +91,8 @@ import { appliedRevisionKey } from "@/lib/deep-mastering";
 import type { ScriptV2 } from "@/lib/deep-mastering";
 import { DeepTimeline } from "./shared/DeepTimeline";
 import { StemSplitPanel } from "./shared/StemSplitPanel";
+import { processingCopy, useBrowserBuild } from "@/lib/build-mode";
+import { STEM_SPLIT_PITCH, stemSplitAvailability } from "@/lib/stem-split-copy";
 import { timeConstantMs } from "@/lib/control-conventions";
 
 
@@ -348,6 +350,7 @@ export function AurialisWorkstation({
 
 function HomeView() {
   const { state, dispatch } = useStore();
+  const browser = useBrowserBuild();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("");
@@ -420,10 +423,7 @@ function HomeView() {
           </p>
           <div className="hero-trust">
             <Icon name="headphones" />
-            <span>
-              Local by default. Audio is processed by your local Go server and
-              browser.
-            </span>
+            <span>{processingCopy(browser)}</span>
           </div>
         </div>
         <div
@@ -450,7 +450,7 @@ function HomeView() {
             multiple
             accept={SOURCE_ACCEPT}
             hidden
-            aria-label="Upload audio file"
+            aria-label="Import audio file"
             onChange={(event) => {
               const files = Array.from(event.currentTarget.files ?? []);
               event.currentTarget.value = "";
@@ -517,7 +517,7 @@ function HomeView() {
             number="02"
             icon="scissors"
             title="Split"
-            copy="Instrument separation is planned. It is not available in this build."
+            copy={`${STEM_SPLIT_PITCH} ${stemSplitAvailability(browser)}`}
           />
           <WorkflowCard
             number="03"
@@ -796,7 +796,7 @@ function MasterView({ trackId }: { trackId: string }) {
     renderSettings.current = appliedRevisionKey(track) ?? masteringSettingsKey(params);
     setProcessing(true);
     setMessage(
-      track.deepMastering?.applied ? "Rendering the applied script with the common native Go engine…" : "Rendering the uploaded audio with the shared Go WebAssembly engine…",
+      track.deepMastering?.applied ? "Rendering the applied script on this device…" : "Rendering the imported audio on this device…",
     );
     try {
       const pcm = track.deepMastering?.applied && sourceBlob
@@ -854,7 +854,7 @@ function MasterView({ trackId }: { trackId: string }) {
     renderAbort.current = controller;
     setProcessing(true);
     renderSettings.current = settingsKey;
-    setMessage("Rendering WAV from the uploaded source…");
+    setMessage("Rendering WAV from the imported source…");
     try {
       const outputRate = deliveryRate === "source" ? track.sampleRate : deliveryRate;
       const delivery: ExportDelivery = {
@@ -1861,12 +1861,12 @@ function AlbumView({ albumId }: { albumId: string }) {
           if (blobs.some((blob) => blob === undefined)) throw new Error("A saved album master is missing. Render the album again.");
           const names = albumEntryNames(artifacts.map((file) => file.title));
           const zip = await createStoredZip(blobs.map((blob, index) => ({ name: names.at(index) ?? `${String(index + 1)}.wav`, blob: blob ?? new Blob() })));
-          downloadLocalBlob(zip, `${album.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-album-masters.zip`, { charge: !artifacts.every((file) => file.durable) });
+          downloadLocalBlob(zip, `${safeFileBaseName(album.title, "Aurialis album")} - album masters.zip`, { charge: !artifacts.every((file) => file.durable) });
         }); }}>Download all as ZIP</Button>
         {artifacts.map((file) => <Button key={file.id} variant="secondary" icon={<Icon name="arrow-down-to-line" />} onClick={() => { download(async () => {
           const blob = await file.blob();
           if (!blob) throw new Error("This saved album master is missing. Render the album again.");
-          downloadLocalBlob(blob, `${file.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-album-master.wav`, { charge: !file.durable });
+          downloadLocalBlob(blob, `${safeFileBaseName(file.title, "Track")} - master.wav`, { charge: !file.durable });
         }); }}>Download {file.title}</Button>)}
       </section>}
       <div className="flex flex-wrap gap-2">
@@ -2027,6 +2027,7 @@ function AlbumView({ albumId }: { albumId: string }) {
 
 function ToolsView() {
   const { state } = useStore();
+  const browser = useBrowserBuild();
   const first = state.tracks[0];
   const targetId = first?.id ?? "placeholder";
   return (
@@ -2041,7 +2042,7 @@ function ToolsView() {
           icon="scissors"
           eyebrow="Separation"
           title="Smart stem splitter"
-          copy="Split a song into 2 to 6 stems with a trained model. Runs in the desktop app."
+          copy={`${STEM_SPLIT_PITCH} ${stemSplitAvailability(browser)}`}
           href={`/split/${targetId}`}
         />
         <ToolCard

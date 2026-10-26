@@ -20,7 +20,7 @@ function observeNetwork(context: BrowserContext) {
 }
 async function upload(page: Page, source: Buffer, name: string) {
   await page.goto("/");
-  await page.getByLabel("Upload audio file").setInputFiles({ name, mimeType: "audio/wav", buffer: source });
+  await page.getByLabel("Import audio file").setInputFiles({ name, mimeType: "audio/wav", buffer: source });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
   const id = new URL(page.url()).pathname.split("/")[2];
@@ -149,7 +149,7 @@ test("album WAVs and release measurements run on the device without an audio ser
   await page.getByRole("button", { name: "Download all as ZIP", exact: true }).click();
   const zipped = await zipping, zipPath = await zipped.path();
   if (!zipPath) throw new Error("Missing local album ZIP");
-  expect(zipped.suggestedFilename()).toBe("Untitled-sequence-1-album-masters.zip");
+  expect(zipped.suggestedFilename()).toBe("Untitled sequence 1 - album masters.zip");
   const archive = await readFile(zipPath), name = "01 private album source.wav";
   expect(archive.readUInt32LE(0)).toBe(0x04034b50);
   expect(archive.subarray(30, 30 + Buffer.byteLength(name)).toString("utf8")).toBe(name);

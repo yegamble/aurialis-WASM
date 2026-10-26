@@ -51,7 +51,9 @@ test.describe("End-to-End Parameter Orthogonality & Control Isolation", () => {
     await page.goto(`/split/${id}`)
     await expect(page.getByRole("group", { name: "Stem count", exact: true })).toBeVisible()
     // The e2e binary runs without a model (--stem-model-url ""), so nothing downloads.
-    await expect(page.getByText("Smart Split is turned off in this build of the app.", { exact: true })).toBeVisible()
+    await expect(page.getByText("Smart Split is turned off in this Aurialis server: it was started with the separation model disabled.", { exact: true })).toBeVisible()
+    // The loopback studio is the native build, so it states the native availability and speed.
+    await expect(page.getByText(/^Smart Split runs on this computer, and it is slow\./u)).toBeVisible()
     await expect(page.getByRole("button", { name: /^Split .* into 4 stems$/u })).toBeDisabled()
     await expect(page.getByRole("list", { name: "Separated stems" })).toHaveCount(0)
   })

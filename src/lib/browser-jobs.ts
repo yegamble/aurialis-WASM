@@ -3,7 +3,9 @@ import { EXPORT_SAMPLE_RATES } from "./types";
 const OFFLINE_ABI = "1.0";
 const MIB = 1024 * 1024;
 const MAX_METADATA_BYTES = 2 * MIB + 128 * 1024;
-const LOCAL_FALLBACK = "Use the local Aurialis app on this device for this file. Your audio will not be uploaded.";
+const LOCAL_FALLBACK = "For this file, use the native Aurialis build (built from source) on this device. Your audio will not be uploaded.";
+// Retained audio lives in this tab in both builds, so the native build keeps the budget but needs its own advice.
+const RETAINED_NATIVE_HINT = "Download or discard finished audio in this tab, such as album masters or reviewed WAVs, or close other heavy tabs, then try again.";
 
 interface JobRequest {
   operation: "render" | "features" | "deep" | "reference" | "compile";
@@ -50,7 +52,7 @@ export function reserveBrowserAudioMemory(initialBytes = 0): Readonly<{ update: 
     if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error("Audio memory reservations require nonnegative safe byte counts.");
     const total = reservedResidentBytes - held + bytes;
     if (!Number.isSafeInteger(total) || total < 0) throw new Error("Audio memory reservations exceed the safe byte limit.");
-    if (total + Math.max(64 * MIB, activeJobBytes) > memoryBudget()) throw new Error("Retained audio exceeds the browser's conservative memory budget. " + LOCAL_FALLBACK);
+    if (total + Math.max(64 * MIB, activeJobBytes) > memoryBudget()) throw new Error("Retained audio exceeds the browser's conservative memory budget. " + (usesBrowserAudio() ? LOCAL_FALLBACK : RETAINED_NATIVE_HINT));
     reservedResidentBytes = total;
     held = bytes;
   };

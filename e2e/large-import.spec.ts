@@ -61,7 +61,7 @@ test("a full song over 35 MB imports in one bounded request and survives reopeni
     const buffer = fixture(997, 200);
     stages.push({ name: "generate-fixture", startedMs: fixtureStarted, finishedMs: Date.now() - started });
     expect(buffer.length).toBeGreaterThan(35 * 1024 * 1024);
-    await timed("upload-transfer", () => page.getByLabel("Upload audio file").setInputFiles({ name: "full-song.wav", mimeType: "audio/wav", buffer }));
+    await timed("upload-transfer", () => page.getByLabel("Import audio file").setInputFiles({ name: "full-song.wav", mimeType: "audio/wav", buffer }));
     await timed("import-navigation", () => expect(page).toHaveURL(/\/master\/track-/, { timeout: 60_000 }));
     await timed("initial-ready", () => expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 }));
     await expect(page.getByRole("slider", { name: "Track playback position", exact: true })).toHaveAttribute("aria-valuemax", "200");

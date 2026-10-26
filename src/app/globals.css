@@ -370,8 +370,9 @@ input[type="range"] {
   gap: 7px;
 }
 
+/* Narrow phones keep three-up labels such as "32-bit Float" on one line. */
 .choice {
-  padding: 10px 12px;
+  padding: 10px 6px;
   min-height: 44px;
   min-width: 44px;
   border-radius: 14px;
@@ -380,6 +381,12 @@ input[type="range"] {
   color: var(--ink);
   font-size: 13px;
   font-weight: 500;
+}
+
+@media (min-width: 360px) {
+  .choice {
+    padding-inline: 12px;
+  }
 }
 
 /* Even option sets, such as delivery rates, read as clean pairs at every width. */

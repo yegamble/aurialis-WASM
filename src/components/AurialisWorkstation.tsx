@@ -1173,6 +1173,7 @@ function MasterView({ trackId }: { trackId: string }) {
         {bitDepth !== 32 && (
           <ChoiceGroup
             label="Dither"
+            className="choice-grid--pairs"
             value={dither}
             options={[{ value: true, label: "TPDF" }, { value: false, label: "Off" }]}
             onChange={setDither}

@@ -92,10 +92,11 @@ describe("device-local browser audio transport", () => {
     const timer = vi.spyOn(globalThis, "setTimeout");
     const deadline = async (sampleRate?: string) => {
       timer.mockClear();
+      const index = TestWorker.all.length;
       const pending = deviceAudioRequest("/api/master/render", { method: "POST", body: render(paddedSource(48000, 4_194_304), sampleRate) });
-      await waitFor(() => { expect(TestWorker.all.at(-1)?.message).toBeDefined(); });
+      await waitFor(() => { expect(TestWorker.all[index]?.message).toBeDefined(); });
       const delays = timer.mock.calls.map(([, delay]) => delay ?? 0).filter((delay) => delay >= 100_000);
-      TestWorker.all.at(-1)?.reply(); await pending;
+      TestWorker.all[index]?.reply(); await pending;
       return delays;
     };
     expect(await deadline()).toEqual([130_000]);

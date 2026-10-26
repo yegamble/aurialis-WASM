@@ -1,5 +1,5 @@
 # Aurialis-WASM War-Room Ledger
-<!-- cspell:words Embedder automator Turbopack yyosefgamble yosefgamble ENOENT -->
+<!-- cspell:words cutover HSTS ISRC ΔLUFS Embedder automator Turbopack yyosefgamble yosefgamble ENOENT -->
 
 Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-room-loop` iterations. The Chair updates this file after every Round D ruling and every Round E verification pass. One row per item; never delete a row — move completed items to **Verified & Merged** with commit/PR and test evidence, or to **Declined** with the reason.
 
@@ -10,6 +10,84 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 `unit` · `wasm-bridge` · `api-curl` · `newman-e2e` · `playwright-a11y-responsive` · `compiled-binary-smoke`
 
 ---
+
+## v1 release ruling — 2026-10-26 (`/war-room all`, Round D)
+
+**This section supersedes the Active Backlog, Recovery backlog and MUB rows below.** Those rows are kept as history. Seats were product engineer, Devil's Advocate, QA, security and the Grammy veteran, all reviewing `main` at `71e6f1c`. Rounds B/C were skipped because every P0 was reported independently by 3–5 seats with executed evidence. Disputed P1s are ruled below, with dissent recorded.
+
+**Owner decisions (2026-10-26):**
+- v1 is the **browser build** (Cloudflare). The native binary is a documented, source-built fallback, and the only place Smart Split runs. No "desktop app" wording until binaries are published.
+- The `stem-model-v1` model asset is **published**. A 200 response, the exact 176,487,688 bytes and the production `Download` + `LoadModel` were verified 2026-10-26.
+- MUB-4E is **reopened** as an opt-in, static, displayed, attenuate-only loudness match.
+- Old `codex/*` branches are archived, then deleted.
+- The owner will move the Cloudflare secrets into the Production environment.
+
+**Verified in Round A (no action):**
+- Localhost/CDR hardening: 72 hostile fixtures, Host/Origin/Sec-Fetch matrix, 413, CRLF/traversal, 15-way races. No 5xx, no temp files.
+- Newman 34/34.
+- Playwright: native 47/47 (9 routes × 6 widths with axe) and browser 14/14.
+- Advanced controls are not placebo: 62 controls are asserted against exported PCM.
+- Smart Split, once the model was published: 4 and 6 stems, which sum back to the mix at −132 dBFS.
+
+| ID | Pri | Item | Source findings | Acceptance (summary) | Status |
+|---|---|---|---|---|---|
+| V1-01 | P0 | Set target loudness, Elevated and album normalization measure with the export algorithm (2). Algorithm-1 peaks reject ordinary limited mixes. | GV-1 | A dense fixture reaches −14/−1 and −9/−1, with export within ±0.2 LU of target and TP ≤ ceiling. A 3-track album renders. The tone fixture still passes. | open |
+| V1-02 | P0 | Build-aware, truthful copy and browser-first docs: no "local Go server" or "desktop app" claims in the browser build; one Smart Split availability and speed story; user guide written browser-first with a native appendix. | PE-2, DA-2/3/6, QA-5 copy | No production chunk contains false claims. Home, Tools and Split agree for each build mode. README, AGENTS.md and architecture.md name the same target. | open |
+| V1-03 | P1 | Albums do not mutate projects. Default is "keep each master's level"; optional normalize to a selectable target with per-track offset; measured chart or no placeholder. Port the logic from `codex/album-consistency`. | PE-4, DA-4/8, GV-3 | `track.advanced` is unchanged after render. Keep mode: each WAV = single export ±0.1 LU. Normalize mode: each WAV = target + offset ±0.2 LU. The displayed target is the one used. | open |
+| V1-04 | P1 | Release Check and album render use the Export delivery rate and dither. | PE-5, DA-5, GV-4 | 48 kHz source → CD 44.1/16 passes the format check, and the measured WAV is the delivered file. A mixed-rate album is uniform at 44.1/16. | open |
+| V1-05 | P1 | Per-track tool navigation from Master, and a Tools track chooser. | PE-3 | Import A then B: Release/Reference/Split open for A via keyboard. 320 px, 44 px targets. | open |
+| V1-06 | P1 | Smart Split hardening. | QA-1/3/5/6, PE-6, DA-7 | Every stem player is ≥240 px with a play control at 320–390. Failures show plain copy, and the note reflects them. A cached model reports ready. Platform-aware estimate, or unavailable on non-accelerated builds. Downloads named "<title> - Stem.wav". Scheduled HEAD check on the model URL. macOS steminfer job. Mocked success-path e2e. | open |
+| V1-07 | P1 | Long converted exports must not hit the fixed 60 s POST deadline (408). | QA-2 | 16,777,216 frames → 96 kHz and 33,554,432 → 44.1 kHz return 200 on CI. Any remaining 408 names the next step. | open |
+| V1-08 | P1 | Deploy and supply-chain security: HSTS on the Worker; Production environment with a main-only branch policy; deploy and rollback jobs use the environment; actions pinned by SHA; no `@latest`; dependabot; patched wrangler/vitest/newman. | security-2/3/8 | HSTS max-age ≥ 1 year on both domains, asserted by the smoke test. No mutable `uses:` tags. The environment policy refuses non-main branches. `pnpm audit --audit-level high` is clean for wrangler/vitest. | open (secret move: owner) |
+| V1-09 | P1 | Honest starting points: every target and profile ceiling ≤ −1.0 dBTP; legacy static profile cards removed; Deep proposal lists every changed field plus predicted LUFS/TP/crest, with baseline makeup 0 and MUB-5 caps. | GV-5/7/8, DA-9 | No ceiling above −1.0. One profile control in Deep. No profile raises loudness >1 LU or cuts crest >4 dB without a visible finding. | open |
+| V1-10 | P1 | Live/preview uses algorithm 2, so what you hear is what you export. Gated first on a measured worklet CPU budget; fallback is "Audition export" playback. | GV-2 | Live vs export residual ≤ −60 dB; ΔLUFS ≤ 0.1; live TP meter ≤ ceiling + 0.1; no underruns in 10 min. | open |
+| V1-11 | P1 | Opt-in static level-matched A/B (MUB-4E reopened). Remove the dormant engine AGC (`LoudnessMatchAB`). | GV-6, GV-12 | Matched A/B within ±0.5 LU; crest and section contrast unchanged within ±0.05 dB; export bytes identical with the toggle on or off; offset visible and announced. | open |
+| V1-12 | P1 | Ledger, docs and branch truth: stale rows closed against merged PRs; `docs/api.md` limits match `/health`; `codex/*` branches archived and deleted. | PE-7/8, QA-8 | Every old row is superseded here. Every stated limit equals `/health`. `git branch -a` shows only main plus active work. | in-progress |
+
+**P2 (after v1 P0/P1):**
+- Bounded float headroom in CDR, and FLAC sample range (security-4).
+- FLAC preallocation (security-5).
+- Render memory admission (security-6, QA-9).
+- Fuzz harness for WAV/AIFF/gomp3 in CI (security-7).
+- One export path: remove the offline-preview download and set "mastered" only on export (DA-10).
+- Route remaining choices and downloads through ChoiceGroup / downloadLocalBlob (DA-11).
+- Go↔TS limit contract test, and remove dead repair/legacy state (DA-12, PE-12).
+- Remove the "AI Repair" lane.
+- Distinct Simple Metal/Jazz voicing (GV-9).
+- Mono/side monitoring (GV-10).
+- Smart Split error-state target size (QA-4).
+- Specific 503 copy (QA-7).
+- 4× meter accuracy.
+- Album transitions (P3).
+- MUB-2C, gated on the alias measurement (DA-14).
+- `finite-playback.spec.ts:50` flake.
+- Native unknown routes return 404.
+
+**DECLINED for v1:**
+- Certified or "Waves-grade" hardware emulation (WASM-3 wording).
+- AI Repair.
+- Verse/chorus section labels.
+- Per-stem mute/solo/level/pan mixer.
+- Browser Smart Split inference.
+- Perceptual reference matching.
+- Platform/DDP/CD-TEXT/ISRC certification.
+- Merging the stale `codex/*` branches.
+- Hosted multi-tenant auth (`codex/workers-cutover`).
+
+**Dissent recorded:**
+- GV-2: Devil's Advocate and product engineer rated live algorithm 2 an EXPERIMENT. The Grammy veteran holds P1, because monitoring on a limiter that never ships defeats A/B. **Ruling: P1, gated on a CPU measurement.**
+- GV-8 vs DA-9: the Devil's Advocate preferred aliasing the legacy profiles onto measured Deep profiles. The Grammy veteran measured EQ moves that contradict their own genres. **Ruling: remove them.** Simple and Deep already cover starting points.
+
+**Superseded rows:**
+- **Closed against merged PRs:** WASM-1/2/4/5/6/10, R-01/02/03/04/08/09/10/11/12/14/15/16/17, MUB-2B, MUB-2D (exports), MUB-3C, MUB-4C, MUB-4D.
+- **Rewritten into V1 items:**
+  - WASM-3 → V1-09 and P2.
+  - WASM-7 → measured Deep closed; declines above.
+  - WASM-8 / R-06 → V1-06.
+  - WASM-9 / R-07 → V1-03 and V1-04.
+  - R-05 → automation closed; repair declined.
+  - R-13 → V1-07.
+  - MUB-4E → V1-11.
 
 ## Export sample-rate conversion and dither — 2026-10-26
 

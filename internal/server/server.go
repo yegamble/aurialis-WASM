@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -375,7 +376,7 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request, exp
 			return uploadReadError(w, err)
 		}
 		if r.Context().Err() != nil {
-			writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio upload canceled or exceeded the 60 s upload deadline; retry, or send a smaller file")
+			writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio upload was canceled or ran past its upload deadline; retry, or send a smaller file")
 			return nil, false
 		}
 	}
@@ -396,9 +397,14 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request, exp
 
 func uploadReadError(w http.ResponseWriter, err error) (*audio.Buffer, bool) {
 	var limitErr *http.MaxBytesError
-	if errors.As(err, &limitErr) {
+	var netErr net.Error
+	switch {
+	case errors.As(err, &limitErr):
 		writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Uploaded request exceeds size limit")
-	} else {
+	case errors.Is(err, os.ErrDeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()):
+		writeErrorJSON(w, http.StatusRequestTimeout, "upload_timeout",
+			"The upload was too slow and timed out; retry, or export from a less busy machine or connection")
+	default:
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_multipart", "Malformed or incomplete multipart upload")
 	}
 	return nil, false

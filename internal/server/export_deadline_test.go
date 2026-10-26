@@ -1,11 +1,14 @@
 package server_test
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -210,5 +213,71 @@ func TestClientDisconnectCancelsExport(t *testing.T) {
 	}
 	if err := <-errs; err == nil {
 		t.Fatal("canceled request returned a response")
+	}
+}
+
+// shortReadDeadline stands in for the 10 s transfer floor: it moves every
+// read deadline the handler sets to d from now on the real connection.
+type shortReadDeadline struct {
+	http.ResponseWriter
+	rc *http.ResponseController
+	d  time.Duration
+}
+
+func (w shortReadDeadline) SetReadDeadline(time.Time) error {
+	return w.rc.SetReadDeadline(time.Now().Add(w.d))
+}
+
+func (w shortReadDeadline) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// A body that trickles past its read deadline over a real connection gets a
+// 408 that says the upload was too slow and what to do next, not a 400.
+func TestSlowUploadPastReadDeadlineReturns408(t *testing.T) {
+	srv := server.New(server.Config{Workers: 1})
+	t.Cleanup(srv.Close)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		srv.Handler().ServeHTTP(shortReadDeadline{ResponseWriter: w, rc: http.NewResponseController(w), d: 150 * time.Millisecond}, r)
+	}))
+	defer ts.Close()
+
+	req := newMultipartRequest(t, http.MethodPost, "/api/master/render", "source.wav", buildTestWAV(t, 44100, 0.5), nil)
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := net.Dial("tcp", ts.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	head := fmt.Sprintf("POST /api/master/render HTTP/1.1\r\nHost: %s\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n",
+		ts.Listener.Addr().String(), req.Header.Get("Content-Type"), len(body))
+	if _, err = conn.Write(append([]byte(head), body[:len(body)/2]...)); err != nil {
+		t.Fatal(err)
+	}
+	// The rest of the body never arrives before the read deadline.
+	if err = conn.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		t.Fatalf("read response: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var got struct {
+		Error  string `json:"error"`
+		Detail string `json:"detail"`
+		Status int    `json:"status"`
+	}
+	if err = json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("status %d: %v", resp.StatusCode, err)
+	}
+	if resp.StatusCode != http.StatusRequestTimeout || got.Status != http.StatusRequestTimeout || got.Error != "upload_timeout" {
+		t.Fatalf("status %d: %+v", resp.StatusCode, got)
+	}
+	for _, want := range []string{"too slow", "retry"} {
+		if !strings.Contains(got.Detail, want) {
+			t.Fatalf("detail %q lacks %q", got.Detail, want)
+		}
 	}
 }

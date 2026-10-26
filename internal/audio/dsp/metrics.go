@@ -263,8 +263,8 @@ func RenderBufferContext(ctx context.Context, inL, inR []float32, sampleRate flo
 	if !finite(sampleRate) || sampleRate < 8000 || sampleRate > 192000 {
 		return nil, nil, Metrics{}, errors.New("sample rate must be finite and within 8000–192000 Hz")
 	}
-	if len(inL) != len(inR) || len(inL) > 16*1024*1024 {
-		return nil, nil, Metrics{}, errors.New("render requires equal channel lengths under 16 million frames")
+	if len(inL) != len(inR) || len(inL) > 32*1024*1024 {
+		return nil, nil, Metrics{}, errors.New("render requires equal channel lengths under 33.5 million frames")
 	}
 	if err := ValidateParams(params); err != nil {
 		return nil, nil, Metrics{}, err

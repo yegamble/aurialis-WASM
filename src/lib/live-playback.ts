@@ -1,3 +1,4 @@
+import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import { engineParams, type StereoPCM } from "./browser-engine";
 import { prepareLiveAutomation, verifiedSourceVector } from "./live-automation";
 import { sameSource } from "./library";
@@ -105,7 +106,7 @@ export function createLivePlayback(
 ): LivePlaybackController {
   if (!Number.isInteger(source.sampleRate) || source.sampleRate < 8000 || source.sampleRate > 192000
     || source.left.length === 0 || source.left.length !== source.right.length
-    || source.left.length > 16 * 1024 * 1024)
+    || source.left.length > MAX_SOURCE_FRAMES)
     throw new Error("Live playback requires bounded stereo PCM at 8–192 kHz.");
   if (!source.left.every(Number.isFinite) || !source.right.every(Number.isFinite))
     throw new Error("Live playback requires finite PCM samples.");

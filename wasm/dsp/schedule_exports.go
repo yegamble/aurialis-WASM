@@ -2,6 +2,8 @@
 
 package main
 
+import "github.com/yegamble/Aurialis-WASM/internal/audio/automation"
+
 // cspell:words wasmexport
 
 var scheduleSource scheduleSourceVector
@@ -90,7 +92,7 @@ func WasmScheduleRevision() float64 { return float64(runtimeBridge().scheduleRev
 //
 //go:wasmexport aurialis_schedule_seek
 func WasmScheduleSeek(sourceFrame float64) uint32 {
-	if integer(sourceFrame, 0, 16*1024*1024) && runtimeBridge().seekSchedule(int64(sourceFrame)) {
+	if integer(sourceFrame, 0, automation.MaxSourceFrames) && runtimeBridge().seekSchedule(int64(sourceFrame)) {
 		return 1
 	}
 	return 0

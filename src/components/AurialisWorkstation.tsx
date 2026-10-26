@@ -40,7 +40,8 @@ import {
   clampAdvancedToSampleRate,
   mapProfileToDSP,
 } from "@/lib/audio-dsp";
-import { saveAudio, getAudio, discardStagedAudio } from "@/lib/db";
+import { saveAudio, getAudio, discardStagedAudio, deleteAudio, newAudioAssetId, loadAlbumMasters, saveAlbumMasters, deleteAlbumMasters, ensureStorageFor, type SavedAlbumMasters } from "@/lib/db";
+import { albumEntryNames, createStoredZip } from "@/lib/zip";
 import { profiles, useStore } from "@/lib/store";
 import type {
   Album,
@@ -456,7 +457,7 @@ function HomeView() {
             {message ||
               "Drop audio here, paste it, or choose a file from your device."}
           </p>
-          <span className="file-types">WAV, AIFF, FLAC or MP3 · up to 128 MiB · 16,777,216 frames maximum</span>
+          <span className="file-types">WAV, AIFF, FLAC or MP3 · up to 256 MiB · about 11½ minutes at 48 kHz</span>
           <Button
             variant="primary"
             icon={<Icon name="file-audio" />}
@@ -1635,6 +1636,8 @@ function AlbumsView() {
   );
 }
 
+type AlbumMasterFile = { id: string; title: string; blob: () => Promise<Blob | undefined>; durable: boolean };
+
 function AlbumView({ albumId }: { albumId: string }) {
   const { state, dispatch } = useStore();
   const [working, setWorking] = useState(false);
@@ -1643,7 +1646,14 @@ function AlbumView({ albumId }: { albumId: string }) {
   useEffect(() => () => { operation.current?.abort(); cacheMemory.current?.dispose(); cacheMemory.current = null; }, []);
   const [message, setMessage] = useState("");
   const [rendered, setRendered] = useState<{ key: string; files: { id: string; title: string; blob: Blob }[]; memory: ReturnType<typeof reserveBrowserAudioMemory> } | null>(null);
+  const [saved, setSaved] = useState<SavedAlbumMasters | undefined>();
+  const [confirmDelete, setConfirmDelete] = useState(false);
   useEffect(() => () => { rendered?.memory.dispose(); }, [rendered]);
+  useEffect(() => {
+    let current = true;
+    void loadAlbumMasters(albumId).then((record) => { if (current) setSaved(record); });
+    return () => { current = false; };
+  }, [albumId]);
   const album =
     state.albums.find((item) => item.id === albumId);
 
@@ -1675,7 +1685,13 @@ function AlbumView({ albumId }: { albumId: string }) {
     );
   }
 
-  const artifacts = rendered?.key === artifactKey ? rendered.files : [];
+  const artifacts: AlbumMasterFile[] = rendered?.key === artifactKey
+    ? rendered.files.map((file) => ({ id: file.id, title: file.title, blob: () => Promise.resolve(file.blob), durable: false }))
+    : saved?.key === artifactKey
+      ? saved.files.map((file) => ({ id: file.trackId, title: file.title, blob: () => getAudio(file.audioId), durable: true }))
+      : [];
+  const staleSaved = artifacts.length === 0 && saved !== undefined;
+  const download = (run: () => Promise<void>) => { void run().catch((error: unknown) => { setMessage(error instanceof Error ? error.message : "The album master could not be downloaded. Try again."); }); };
 
   return (
     <div className="page">
@@ -1731,7 +1747,14 @@ function AlbumView({ albumId }: { albumId: string }) {
             const memory = reserveBrowserAudioMemory();
             cacheMemory.current = memory;
             let retained = false;
+            // Rendered masters are saved to browser storage as they finish, so
+            // only the track being rendered is held in memory. Without storage,
+            // they fall back to the bounded in-memory cache for this page.
+            let durable: boolean | undefined;
+            const stored: SavedAlbumMasters["files"] = [];
             try {
+              const expectedTotal = albumTracks.reduce((total, track) => total + (track.sourceIdentity?.frames ?? Math.ceil(track.duration * track.sampleRate)) * 6 + 44, 0);
+              await ensureStorageFor(expectedTotal);
               const prepared: { track: Track; advanced: AdvancedParams; measurement: Awaited<ReturnType<typeof measureAudio>> }[] = [];
               const files: { id: string; title: string; blob: Blob }[] = [];
               let totalBytes = 0;
@@ -1742,15 +1765,28 @@ function AlbumView({ albumId }: { albumId: string }) {
                 const advanced = await normalizeSimpleAudio(file, track.advanced, -14, controller.signal);
                 const measurement = await measureAudio(file, exportParams(advanced), controller.signal);
                 const expectedBytes = totalBytes + measurement.frames * 6 + 44;
-                if (expectedBytes > 128 * 1024 * 1024) throw new Error("The rendered album exceeds the 128 MiB download cache. Export a smaller sequence or render tracks individually.");
+                if (durable === false && expectedBytes > 128 * 1024 * 1024) throw new Error("Browser storage is unavailable and the rendered album exceeds the 128 MiB in-memory cache. Allow site storage, or render a smaller sequence.");
                 // Claim the final retained allocation before rendering; no gap while
                 // the worker result becomes its downloadable Blob.
                 memory.update(expectedBytes);
                 const blob = await serverRender(file, exportParams(advanced), 24, controller.signal);
                 if (controller.signal.aborted) return;
-                totalBytes += blob.size;
+                if (durable !== false) {
+                  const audioId = newAudioAssetId("master");
+                  try {
+                    await saveAudio(audioId, blob, false);
+                    durable = true;
+                    stored.push({ trackId: track.id, title: track.title, audioId, bytes: blob.size });
+                  } catch (cause) {
+                    if (durable) throw new Error("Browser storage filled while saving album masters. Free space and render again.", { cause });
+                    durable = false;
+                  }
+                }
+                if (!durable) {
+                  totalBytes += blob.size;
+                  files.push({ id: track.id, title: track.title, blob });
+                }
                 memory.update(totalBytes);
-                files.push({ id: track.id, title: track.title, blob });
                 prepared.push({ track, advanced, measurement });
               }
               if (controller.signal.aborted) return;
@@ -1763,12 +1799,22 @@ function AlbumView({ albumId }: { albumId: string }) {
                 } });
               }
               dispatch({ type: "UPDATE_ALBUM", id: album.id, patch: { mastered: true } });
-              setRendered({ key: JSON.stringify(prepared.map((item) => [item.track.id, item.track.sourceRevision, engineParams(item.advanced)])), files, memory });
-              retained = true;
-              setMessage("Rendered 24-bit WAV masters are ready below. Original source files are preserved. Downloads remain available until settings change or you leave this page.");
+              const key = JSON.stringify(prepared.map((item) => [item.track.id, item.track.sourceRevision, engineParams(item.advanced)]));
+              if (durable) {
+                const record: SavedAlbumMasters = { key, createdAt: new Date().toISOString(), files: [...stored] };
+                await saveAlbumMasters(album.id, record);
+                stored.length = 0;
+                setSaved(record);
+                setMessage("Rendered 24-bit WAV masters are saved in this browser. Download them individually or as one ZIP. Original source files are preserved.");
+              } else {
+                setRendered({ key, files, memory });
+                retained = true;
+                setMessage("Rendered 24-bit WAV masters are ready below. Browser storage is unavailable, so they last until settings change or you leave this page. Original source files are preserved.");
+              }
             } catch (error) {
               if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "The sequence could not be prepared.");
             } finally {
+              for (const file of stored) await deleteAudio(file.audioId).catch(() => undefined);
               if (!retained) { memory.dispose(); if (cacheMemory.current === memory) cacheMemory.current = null; }
               if (!controller.signal.aborted) setWorking(false);
             }
@@ -1777,14 +1823,29 @@ function AlbumView({ albumId }: { albumId: string }) {
           {working ? "Rendering sequence…" : "Render album masters"}
         </Button>
       </section>
-      <p className="disclosure" role="status">{message || "Render a measured master for each song, then download the WAV files individually."}</p>
+      <p className="disclosure" role="status">{message || (staleSaved ? "Saved masters no longer match this sequence or its settings. Render again to replace them." : "Render a measured master for each song, then download the WAV files individually or as one ZIP.")}</p>
       {artifacts.length > 0 && <section className="paper-panel" aria-label="Rendered album downloads">
         <h2>Your album masters</h2>
-        {artifacts.map((file) => <Button key={file.id} variant="secondary" icon={<Icon name="arrow-down-to-line" />} onClick={() => {
-          try { downloadLocalBlob(file.blob, `${file.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-album-master.wav`); }
-          catch (error) { setMessage(error instanceof Error ? error.message : "The album master could not be downloaded. Try again."); }
-        }}>Download {file.title}</Button>)}
+        <Button icon={<Icon name="arrow-down-to-line" />} disabled={working} onClick={() => { download(async () => {
+          const blobs = await Promise.all(artifacts.map((file) => file.blob()));
+          if (blobs.some((blob) => blob === undefined)) throw new Error("A saved album master is missing. Render the album again.");
+          const names = albumEntryNames(artifacts.map((file) => file.title));
+          const zip = await createStoredZip(blobs.map((blob, index) => ({ name: names.at(index) ?? `${String(index + 1)}.wav`, blob: blob ?? new Blob() })));
+          downloadLocalBlob(zip, `${album.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-album-masters.zip`, { charge: !artifacts.every((file) => file.durable) });
+        }); }}>Download all as ZIP</Button>
+        {artifacts.map((file) => <Button key={file.id} variant="secondary" icon={<Icon name="arrow-down-to-line" />} onClick={() => { download(async () => {
+          const blob = await file.blob();
+          if (!blob) throw new Error("This saved album master is missing. Render the album again.");
+          downloadLocalBlob(blob, `${file.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-album-master.wav`, { charge: !file.durable });
+        }); }}>Download {file.title}</Button>)}
       </section>}
+      <div className="flex flex-wrap gap-2">
+        {confirmDelete ? <>
+          <Button variant="danger" disabled={working} onClick={() => { void deleteAlbumMasters(album.id).then(() => { dispatch({ type: "DELETE_ALBUM", id: album.id }); navigateWorkspace("/albums"); }, (error: unknown) => { setMessage(error instanceof Error ? error.message : "The album's saved masters could not be deleted. Try again."); }); }}>Confirm delete album</Button>
+          <Button variant="secondary" onClick={() => { setConfirmDelete(false); }}>Keep album</Button>
+        </> : <Button variant="secondary" icon={<Icon name="trash" />} disabled={working} onClick={() => { setConfirmDelete(true); }}>Delete album</Button>}
+        {confirmDelete && <p className="disclosure">Deletes this album and its saved masters. Your projects and their sources stay in the Library.</p>}
+      </div>
       <div className="album-layout">
         <section className="paper-panel">
           <div className="section-heading">

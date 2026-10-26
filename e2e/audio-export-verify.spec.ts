@@ -56,6 +56,9 @@ test.describe("Accessible modal and honest WAV source export", () => {
     expect(audio.rate).toBe(44100)
     expect(audio.left).toHaveLength(44100)
     await expect(dialog.getByRole("status")).toContainText("Exported 16-bit PCM WAV without dither at 44.1 kHz (converted from 48 kHz)")
+    // The native server's X-Aurialis-After-Peak-dBTP, measured after conversion.
+    await expect(dialog.getByRole("status")).toContainText(/Delivered true peak -?\d+\.\d{2} dBTP at 44\.1 kHz\.$/)
+    await expect(dialog.getByRole("group", { name: "Sample rate", exact: true }).getByRole("button")).toHaveText(["44.1 kHz", "48 kHz (source)", "88.2 kHz", "96 kHz"])
     await dialog.getByRole("button", { name: "32-bit Float", exact: true }).click()
     await expect(dialog.getByRole("button", { name: "Off", exact: true })).toHaveCount(0)
   })

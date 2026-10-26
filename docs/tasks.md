@@ -11,6 +11,8 @@ Evidence (local, 2026-10-26, reported by backend): `unit` budget/transfer math a
 
 Round E corrections (QA + Devil's Advocate, 2026-10-26): a body that misses its read deadline now returns 408 `upload_timeout` ("The upload was too slow and timed out; retry, …") instead of 400 `invalid_multipart`, proven by a real-connection test that trickles a body past a shortened read deadline (it failed with 400 before the fix); the canceled-upload copy no longer claims a fixed 60 s deadline. `TestExportBudgetCalibration` times a 1,048,576-frame export through the render handler at 48 → 96 kHz and 48 → 44.1 kHz, extrapolates linearly to the two acceptance shapes and requires each budget to be at least twice that cost; it skips under `-race` and `-short`, and the Go race job runs it in its own step so CI logs the timings. Local run on a loaded Mac: 7.5 s → 120 s extrapolated vs a 362 s budget (3.0×) for 96 kHz, and 4.2 s → 133 s vs 374 s (2.8×) for 44.1 kHz. CI numbers are recorded by the workflow step, not yet observed here. Status: **open — awaiting merge** (PR #39, `fix/v1-07-export-deadline`).
 
+CI calibration on the runner (`go-race-meters`): 1,048,576-frame renders took 1.91 s (48→96 kHz) and 1.05 s (48→44.1 kHz), so the budgets are 11.9× and 11.1× the extrapolated cost of the two acceptance shapes. The owner amended the acceptance from "200 on CI" to this calibration plus the recorded compiled-binary runs. Status: **verified and merged** (PR #39, `574b8f7`).
+
 ## Set target loudness on dense mixes — 2026-10-26
 
 V1-01 (P0), finding GV-1 from the v1 ruling. Set target loudness, album normalization and the Elevated check measured candidates with the live algorithm 1. Its sample-peak limiter overshoots in true peak on any program that needs limiting, so dense mixes were rejected ("exceeds the measured peak ceiling") even at −14 LUFS. The browser-test fixture was a pure tone, so it never caught this. Measurement now uses the export parameters (algorithm 2, true peak on). The peak gate is strict: a measured export true peak (and, for Elevated, sample peak) above the ceiling is rejected, with no tolerance. The earlier 0.05 dB slack (`EXPORT_PEAK_TOLERANCE_DB`) is removed; the export limiter already keeps 0.2 dB of internal headroom.
@@ -34,13 +36,13 @@ Tests:
 - The Go mirror of the browser search (`internal/browserjobs/normalize_test.go`) is removed: it hand-copied `normalizeSimpleAudio` and the dense fixture, so either copy could drift. `e2e/workflow-fixture.ts` `denseFixture` is the only copy.
 - Run the native Playwright specs after `bash scripts/build.sh`. The browser suite's global setup rebuilds the embedded assets for browser execution, and a native run on those assets silently uses the browser worker.
 
-Offline preview and live playback still use algorithm 1 (tracked as V1-10). Status: **open — awaiting merge**.
+Offline preview and live playback still use algorithm 1 (tracked as V1-10). Status: **verified and merged** (PR #35, `970a9c3`).
 
 ## Deploy and supply-chain security — 2026-10-26
 
 Round E (Devil's Advocate) fixes, 2026-10-26: CI now runs the full `pnpm audit --audit-level high` instead of `--prod`, so wrangler (which runs with the deploy token), vitest and newman are covered. `pnpm.auditConfig.ignoreGhsas` lists the two documented newman advisories. The result is "9 moderate | 2 high (2 ignored)" with exit 0, and removing one ignore fails the gate. The static browser suite asserts the exact HSTS and Permissions-Policy values on the real Worker under `wrangler dev` before merge (14/14). Dependabot alerts and automated security fixes were enabled in repository settings.
 
-Status: **open — awaiting merge** (`fix/v1-08-deploy-security`, V1-08).
+Status: **verified and merged** (PR #36, `f33995a`, V1-08). The owner moved both Cloudflare secrets into the `Production` environment and deleted the repository copies on 2026-10-26; the next deploy from `main` (`574b8f7`) succeeded with them, and both domains serve `Strict-Transport-Security: max-age=63072000; includeSubDomains`.
 
 - **Headers.** The native server and the Cloudflare Worker deny `payment` and `usb` in `Permissions-Policy` as well as camera, microphone and geolocation. The Worker adds `Strict-Transport-Security: max-age=63072000; includeSubDomains` without `preload`. `smoke-cloudflare.sh` asserts both exact values on each production domain.
 - **Production environment.** The `Production` environment admits deployments only from `main` through a custom branch policy; `cloudflare-deploy` and the rollback job already run in it. The Cloudflare secrets belong there as environment secrets. On 2026-10-26 the environment held no secrets and the two repository-level secrets were still present; moving them is an owner step.
@@ -74,7 +76,7 @@ The owner set the browser build as the v1 release target; the native single bina
 - **Downloads.** Stems download through a Blob as a sanitized `<title> - <Stem>.wav` (shared sanitizer in `src/lib/zip.ts`), because the server's attachment name was the bare stem ID.
 - **Round E corrections.** An unanswered `/api/stems/model` is now `reachable: false` (re-checked every 3 s) instead of "model disabled"; fetch timeouts, a job lost to a server restart and model-cache failures each have their own copy; retained-audio memory advice is build-aware; render status no longer names an engine and audio is "imported", not "uploaded"; album ZIP and master names use the shared sanitizer, which truncates by code point (no split emoji) and replaces direction overrides and other invisible format characters such as U+202E, so a title cannot disguise its extension; the speed copy states only recorded timings.
 
-Status: **open — awaiting merge** on branch `fix/v1-02-truthful-copy`.
+Status: **verified and merged** (PR #37, `fd7bc36`).
 
 ## Faster Smart Split — 2026-10-26
 

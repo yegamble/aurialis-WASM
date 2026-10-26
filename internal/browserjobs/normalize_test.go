@@ -11,7 +11,7 @@ import (
 	"github.com/yegamble/Aurialis-WASM/internal/browserjobs"
 )
 
-// denseProgram mirrors denseFixture in e2e/audio-fixture.ts: a deterministic
+// denseProgram mirrors denseFixture in e2e/workflow-fixture.ts: a deterministic
 // 120 BPM drum-and-bass loop (pitched kick + click, noise snare, stereo noise
 // hats, harmonic bass) scaled to a -1 dBFS sample peak. Unlike a pure tone it
 // has full-band transients whose inter-sample peaks overshoot a sample-peak

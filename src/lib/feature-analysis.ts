@@ -1,3 +1,4 @@
+import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import { runAudioJob } from "./audio-jobs";
 
 /** Measured source summaries. These are diagnostics, not a mastering script. */
@@ -28,7 +29,7 @@ function measurements(value: unknown): FeatureMeasurements {
   if (data.version !== "1.0") throw new Error("Unsupported analysis version.");
   const identity = record(data.source);
   const source = { pcmHash: string(identity.pcmHash), sampleRate: finite(identity.sampleRate), frames: finite(identity.frames) };
-  if (!/^[a-f0-9]{64}$/u.test(source.pcmHash) || !Number.isInteger(source.sampleRate) || source.sampleRate < 8000 || source.sampleRate > 192000 || !Number.isInteger(source.frames) || source.frames < 1 || source.frames > 16_777_216) throw new Error("Invalid analysis source identity.");
+  if (!/^[a-f0-9]{64}$/u.test(source.pcmHash) || !Number.isInteger(source.sampleRate) || source.sampleRate < 8000 || source.sampleRate > 192000 || !Number.isInteger(source.frames) || source.frames < 1 || source.frames > MAX_SOURCE_FRAMES) throw new Error("Invalid analysis source identity.");
   if (!Array.isArray(data.bands) || data.bands.length !== 5 || !Array.isArray(data.sections) || data.sections.length < 1 || data.sections.length > 1024 || !Array.isArray(data.warnings) || data.warnings.length > 20) throw new Error("Invalid analysis summary.");
   const bands = data.bands.map((item: unknown) => {
     const band = record(item);

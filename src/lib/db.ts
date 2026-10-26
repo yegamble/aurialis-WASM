@@ -1,3 +1,4 @@
+import { MAX_SOURCE_BYTES } from "./audio-limits";
 const memoryAudio = new Map<string, Blob>();
 const freshAssets = new Set<string>();
 /** Audio assets are immutable: only this factory can issue a writable new ID. */
@@ -7,7 +8,7 @@ export function newAudioAssetId(prefix: "track" | "source" | "master"): string {
   return id;
 }
 // Fits one maximum canonical source; denied storage cannot retain an unbounded queue.
-const MAX_SESSION_BYTES = 128 * 1024 * 1024 + 44;
+const MAX_SESSION_BYTES = MAX_SOURCE_BYTES;
 type AudioSaveResult = { durable: true } | { durable: false; warning: string };
 
 

@@ -1,8 +1,7 @@
+import { MAX_JOB_INPUT_BYTES, MAX_SOURCE_FRAMES } from "./audio-limits";
 const OFFLINE_ABI = "1.0";
 const MIB = 1024 * 1024;
-const MAX_INPUT_BYTES = 129 * MIB;
 const MAX_METADATA_BYTES = 2 * MIB + 128 * 1024;
-const MAX_FRAMES = 16_777_216;
 const LOCAL_FALLBACK = "Use the local Aurialis app on this device for this file. Your audio will not be uploaded.";
 
 interface JobRequest {
@@ -28,8 +27,12 @@ export function usesBrowserAudio(): boolean {
 function memoryBudget(): number {
   const memory: unknown = typeof navigator !== "undefined" && "deviceMemory" in navigator ? navigator.deviceMemory : undefined;
   if (typeof memory === "number" && Number.isFinite(memory) && memory <= 2) return 256 * MIB;
-  if (typeof memory === "number" && Number.isFinite(memory) && memory >= 8) return 1024 * MIB;
-  return 512 * MIB;
+  if (typeof memory === "number" && Number.isFinite(memory) && memory >= 8) return 2048 * MIB;
+  if (typeof memory === "number" && Number.isFinite(memory)) return 512 * MIB;
+  // Safari and Firefox do not report device memory. Phones and tablets get the
+  // smaller budget; desktop browsers comfortably hold a 1.5 GiB worker.
+  const coarse = typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+  return coarse ? 1024 * MIB : 1536 * MIB;
 }
 
 let reservedResidentBytes = 0;
@@ -60,7 +63,7 @@ export function reserveBrowserAudioMemory(initialBytes = 0): Readonly<{ update: 
 
 async function decodedBytes(blob: Blob): Promise<number> {
   if (blob.size === 0) return 0;
-  const fallback = Math.min(MAX_FRAMES * 8, blob.size * 8);
+  const fallback = Math.min(MAX_SOURCE_FRAMES * 8, blob.size * 8);
   const data = new DataView(await blob.slice(0, 65_536).arrayBuffer());
   const id = (offset: number) => String.fromCharCode(...Array.from({ length: 4 }, (_, i) => data.getUint8(offset + i)));
   // Capacity only. Go CDR remains the authoritative format/container validator.
@@ -69,8 +72,8 @@ async function decodedBytes(blob: Blob): Promise<number> {
   for (let offset = 12; offset + 8 <= data.byteLength;) {
     const size = data.getUint32(offset + 4, true);
     if (id(offset) === "data") {
-      const frames = align > 0 ? Math.floor(size / align) : MAX_FRAMES;
-      if (frames < 1 || frames > MAX_FRAMES) throw new Error("This WAV exceeds the local frame limit. " + LOCAL_FALLBACK);
+      const frames = align > 0 ? Math.floor(size / align) : MAX_SOURCE_FRAMES;
+      if (frames < 1 || frames > MAX_SOURCE_FRAMES) throw new Error("This WAV exceeds the local frame limit. " + LOCAL_FALLBACK);
       return frames * 8;
     }
     if (offset + 8 + size > data.byteLength) return fallback;
@@ -80,24 +83,26 @@ async function decodedBytes(blob: Blob): Promise<number> {
   return fallback;
 }
 
-async function preflight(request: JobRequest, source: Blob, reference: Blob, signal: AbortSignal): Promise<void> {
+async function preflight(request: JobRequest, source: Blob, reference: Blob, signal: AbortSignal): Promise<number> {
   signal.throwIfAborted();
   const input = source.size + reference.size;
-  if (input > MAX_INPUT_BYTES) throw new Error("The combined audio exceeds the 129 MiB local job limit. " + LOCAL_FALLBACK);
+  if (input > MAX_JOB_INPUT_BYTES) throw new Error("The combined audio exceeds the 257 MiB local job limit. " + LOCAL_FALLBACK);
   const decoded = await decodedBytes(source) + await decodedBytes(reference);
   signal.throwIfAborted();
-  // Conservative coexistence: original/canonical Blobs, live PCM/AudioBuffer,
-  // transfer input, Go raw/decoded/render/encode and returned buffer/Blob.
-  // Reference streams its output measurements and does not encode song-length WAVs.
-  const estimate = 64 * MIB + input * 4 + decoded * (request.operation === "render" ? 7 : 4);
+  // Measured Go worker linear memory peaks near 2.2x the decoded PCM (input
+  // copy, reconstructed and rendered channels, encoded WAV). Add the
+  // transferred input buffer and the returned audio, with headroom.
+  const estimate = 64 * MIB + input * 2 + decoded * (request.operation === "render" ? 4 : 3);
   if (estimate + reservedResidentBytes > memoryBudget()) throw new Error("This job exceeds the browser's conservative audio memory budget. " + LOCAL_FALLBACK);
   activeJobBytes = estimate;
+  // 130 s covers 16,777,216 frames; longer sources get proportionally longer.
+  return 130_000 * Math.max(1, decoded / (16_777_216 * 8));
 }
 
 let queue: Promise<void> = Promise.resolve();
 let pending = 0;
 
-function startWorker(request: JobRequest, source: ArrayBuffer, reference: ArrayBuffer, signal: AbortSignal, onProgress?: (progress: number, stage: string) => void): Promise<JobResult> {
+function startWorker(request: JobRequest, source: ArrayBuffer, reference: ArrayBuffer, signal: AbortSignal, timeoutMs: number, onProgress?: (progress: number, stage: string) => void): Promise<JobResult> {
   return new Promise<JobResult>((resolve, reject) => {
     signal.throwIfAborted();
     const worker = new Worker("/offline-job-worker.js");
@@ -116,7 +121,7 @@ function startWorker(request: JobRequest, source: ArrayBuffer, reference: ArrayB
       else reject(error ?? new Error("Local audio processing stopped."));
     };
     const abort = () => { finish(undefined, signal.reason instanceof Error ? signal.reason : new DOMException("Local audio canceled", "AbortError")); };
-    const deadline = setTimeout(() => { finish(undefined, new Error("Local audio processing exceeded its time limit. " + LOCAL_FALLBACK)); }, 130_000);
+    const deadline = setTimeout(() => { finish(undefined, new Error("Local audio processing exceeded its time limit. " + LOCAL_FALLBACK)); }, timeoutMs);
     signal.addEventListener("abort", abort, { once: true });
     worker.onerror = () => { finish(undefined, new Error("Audio processing stopped unexpectedly in this browser. " + LOCAL_FALLBACK)); };
     worker.onmessageerror = () => { finish(undefined, new Error("The local audio result was unreadable.")); };
@@ -131,7 +136,7 @@ function startWorker(request: JobRequest, source: ArrayBuffer, reference: ArrayB
         return;
       }
       if (data.kind === "error") { finish(undefined, new Error("error" in data && typeof data.error === "string" ? data.error.slice(0, 1024) : "Local audio processing failed.")); return; }
-      if (data.kind !== "result" || !("json" in data) || typeof data.json !== "string" || new TextEncoder().encode(data.json).byteLength > MAX_METADATA_BYTES || !("audio" in data) || !(data.audio instanceof ArrayBuffer) || data.audio.byteLength > MAX_INPUT_BYTES) { finish(undefined, new Error("Invalid local audio result.")); return; }
+      if (data.kind !== "result" || !("json" in data) || typeof data.json !== "string" || new TextEncoder().encode(data.json).byteLength > MAX_METADATA_BYTES || !("audio" in data) || !(data.audio instanceof ArrayBuffer) || data.audio.byteLength > MAX_JOB_INPUT_BYTES) { finish(undefined, new Error("Invalid local audio result.")); return; }
       finish({ json: data.json, audio: data.audio });
     };
     const metadata = JSON.stringify(request);
@@ -155,7 +160,7 @@ async function execute(request: JobRequest, source = new Blob(), reference = new
   signal.throwIfAborted();
   if (pending >= 2) throw new Error("Local audio processing is busy. Cancel the current job or try again shortly.");
   const inputBytes = source.size + reference.size;
-  if (inputBytes > MAX_INPUT_BYTES) throw new Error("The combined audio exceeds the 129 MiB local job limit. " + LOCAL_FALLBACK);
+  if (inputBytes > MAX_JOB_INPUT_BYTES) throw new Error("The combined audio exceeds the 257 MiB local job limit. " + LOCAL_FALLBACK);
   // A waiting request already retains these Blobs, before its full preflight.
   // Keep the raw input charged through actual settlement, even if its caller
   // cancels early. This conservatively overlaps the active job's estimate.
@@ -164,11 +169,11 @@ async function execute(request: JobRequest, source = new Blob(), reference = new
   const run = async () => {
     signal.throwIfAborted();
     try {
-      await preflight(request, source, reference, signal);
+      const timeoutMs = await preflight(request, source, reference, signal);
       onProgress?.(0, "Preparing local audio processing…");
       const input = await source.arrayBuffer(), comparison = await reference.arrayBuffer();
       signal.throwIfAborted();
-      return await startWorker(request, input, comparison, signal, onProgress);
+      return await startWorker(request, input, comparison, signal, timeoutMs, onProgress);
     } finally { activeJobBytes = 0; }
   };
   const result = queue.then(run, run).finally(() => { pending--; inputMemory.dispose(); });

@@ -1,3 +1,4 @@
+import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import type { EncodedInspection } from "./release-policy";
 
 function label(view: DataView, offset: number): string {
@@ -9,7 +10,7 @@ export async function inspectEncodedWAV(blob: Blob, bits: unknown, source: { sam
   signal.throwIfAborted();
   if (bits !== 16 && bits !== 24 && bits !== 32) throw new Error("Choose 16-bit, 24-bit or 32-bit output.");
   const bytes = bits / 8, align = bytes * 2, expectedSize = 44 + source.frames * align;
-  if (!Number.isSafeInteger(source.frames) || source.frames < 1 || source.frames > 16_777_216
+  if (!Number.isSafeInteger(source.frames) || source.frames < 1 || source.frames > MAX_SOURCE_FRAMES
     || !Number.isSafeInteger(source.sampleRate) || source.sampleRate < 8000 || source.sampleRate > 192000
     || blob.size !== expectedSize) throw new Error("The encoded master has an unexpected source layout or length.");
   const buffer = await blob.arrayBuffer();

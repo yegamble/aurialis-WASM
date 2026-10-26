@@ -457,7 +457,7 @@ function HomeView() {
             {message ||
               "Drop audio here, paste it, or choose a file from your device."}
           </p>
-          <span className="file-types">WAV, AIFF, FLAC or MP3 · up to 128 MiB · 16,777,216 frames maximum</span>
+          <span className="file-types">WAV, AIFF, FLAC or MP3 · up to 256 MiB · about 11½ minutes at 48 kHz</span>
           <Button
             variant="primary"
             icon={<Icon name="file-audio" />}

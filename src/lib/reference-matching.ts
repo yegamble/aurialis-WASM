@@ -1,3 +1,4 @@
+import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import { runAudioJob } from "./audio-jobs";
 import { engineParams } from "./browser-engine";
 import { sameSource } from "./library";
@@ -39,7 +40,7 @@ function bool(value: unknown): boolean { if (typeof value !== "boolean") throw f
 function text(value: unknown): string { if (typeof value !== "string" || value.length > 2048) throw failure(); return value; }
 function source(value: unknown): SourceIdentity {
   const item = object(value);
-  const pcmHash = text(item.pcmHash), sampleRate = number(item.sampleRate, 8000, 192000), frames = number(item.frames, 1, 16_777_216);
+  const pcmHash = text(item.pcmHash), sampleRate = number(item.sampleRate, 8000, 192000), frames = number(item.frames, 1, MAX_SOURCE_FRAMES);
   if (!/^[a-f0-9]{64}$/u.test(pcmHash) || !Number.isInteger(sampleRate) || !Number.isInteger(frames)) throw failure();
   return { pcmHash, sampleRate, frames };
 }

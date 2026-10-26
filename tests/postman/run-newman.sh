@@ -58,7 +58,7 @@ else
   go build -o "$BINARY" ./cmd/aurialis
 fi
 echo "==> Starting validated aurialis on ${BASE_URL} (max upload cap = 1 MB for fast 413 probe)..."
-"$BINARY" -addr "127.0.0.1:${PORT}" -max-upload-bytes 1048576 -workers 4 &
+"$BINARY" -addr "127.0.0.1:${PORT}" -max-upload-bytes 1048576 -workers 4 -stem-model-url "" &
 SERVER_PID=$!
 
 for _ in $(seq 1 40); do

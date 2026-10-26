@@ -81,15 +81,10 @@ import { useDeepPlayback } from "@/lib/use-deep-playback";
 import { appliedRevisionKey } from "@/lib/deep-mastering";
 import type { ScriptV2 } from "@/lib/deep-mastering";
 import { DeepTimeline } from "./shared/DeepTimeline";
+import { StemSplitPanel } from "./shared/StemSplitPanel";
 import { timeConstantMs } from "@/lib/control-conventions";
 
-const stemNames = new Map<number, string[]>([
-  [2, ["Vocals", "Instrumental"]],
-  [3, ["Vocals", "Drums", "Other"]],
-  [4, ["Vocals", "Drums", "Bass", "Other"]],
-  [5, ["Vocals", "Drums", "Bass", "Melody", "Other"]],
-  [6, ["Vocals", "Drums", "Bass", "Guitar", "Piano", "Other"]],
-]);
+
 
 
 
@@ -1560,27 +1555,14 @@ function DeepControls({ track, processing, sourceReady, onApply, selectedMoveId,
 function SplitView({ trackId }: { trackId: string }) {
   const { state } = useStore();
   const track = state.tracks.find((item) => item.id === trackId);
-  const [count, setCount] = useState(4);
   return (
     <div className="page">
       <PageTitle eyebrow="Smart stem splitter" title="A closer look inside the mix"
-        copy="Instrument separation is still in development. No stem audio is generated in this build."
+        copy="Split a song into vocals, drums, bass and more with a trained separation model. Your original audio is unchanged."
         action={<Link className={buttonClassName("secondary")} href={track ? `/master/${track.id}` : "/"}>
           {track ? "Back to master" : "Import a track"}
         </Link>} />
-      <section className="split-intro paper-panel">
-        <div><span className="eyebrow">Planned output layouts</span><h2>Choose a stem layout</h2>
-          <p>Preview the intended layout. Separation, stem playback and downloads are unavailable.</p></div>
-        <div className="stem-count" role="group" aria-label="Stem count">
-          {[2,3,4,5,6].map((number) => (
-            <button type="button" key={number} aria-pressed={count === number}
-              className={count === number ? "is-active" : ""}
-              onClick={() => { setCount(number); }}>{number}</button>
-          ))}
-        </div>
-        <div className="stem-preview">{(stemNames.get(count) ?? []).map((name) => <span key={name}>{name}</span>)}</div>
-        <p className="disclosure" role="status">Separation unavailable — your original audio is unchanged.</p>
-      </section>
+      <StemSplitPanel key={track?.id ?? "none"} audioId={track ? audioKey(track) : null} title={track?.title ?? "track"} />
     </div>
   );
 }
@@ -1968,7 +1950,7 @@ function ToolsView() {
           icon="scissors"
           eyebrow="Separation"
           title="Smart stem splitter"
-          copy="Instrument separation is not available. No stems will be generated."
+          copy="Split a song into 2 to 6 stems with a trained model. Runs in the desktop app."
           href={`/split/${targetId}`}
         />
         <ToolCard

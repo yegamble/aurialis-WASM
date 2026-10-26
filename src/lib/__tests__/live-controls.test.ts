@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createDefaultAdvancedParams } from "../audio-dsp";
 import { engineParams } from "../browser-engine";
 import { createLiveControls, packLiveControls } from "../live-controls";
+import { compressorTopologies, type CompressorTopology } from "../types";
 
 const params = () => engineParams(createDefaultAdvancedParams());
 
@@ -36,7 +37,7 @@ describe("fixed Go live control ABI", () => {
     ]);
   });
   it("encodes each supported compressor and saturation enumeration", () => {
-    for (const [code, topology] of ["optical", "vari_mu", "fet", "vca"].entries()) {
+    for (const [code, topology] of compressorTopologies.entries()) {
       const value = params();
       value.compressor.topology = topology;
       expect(packLiveControls(value)[38]).toBe(code);
@@ -66,7 +67,7 @@ describe("fixed Go live control ABI", () => {
   it("rejects incomplete bands and unsupported enums before publication", () => {
     const value = params();
     expect(() => packLiveControls({ ...value, bands: value.bands.slice(1) })).toThrow("five EQ");
-    expect(() => packLiveControls({ ...value, compressor: { ...value.compressor, topology: "unknown" } })).toThrow("unsupported");
+    expect(() => packLiveControls({ ...value, compressor: { ...value.compressor, topology: "unknown" as CompressorTopology } })).toThrow("unsupported");
   });
   it.each([2, 4])("rejects %i multiband bands before creating or changing a shared packet", (count) => {
     const value = params();

@@ -234,10 +234,10 @@ func TestDetectorPathsClearWithoutResettingCompression(t *testing.T) {
 	p.Compressor.SidechainHPFHz = 0
 	p.Compressor.AutoRelease = false
 	e.SetParams(p)
-	if e.scHPFState != ([2][2]svfState{}) || e.compSlowDB != 0 {
+	if e.scHPFState != ([2][2]svfState{}) || e.compModel.memory != 0 || e.compModel.crest != 0 {
 		t.Fatal("inactive detector subpath retained history")
 	}
-	if e.compPeakEnv != before.compPeakEnv || e.compEnvDB != before.compEnvDB || e.lastGRDB != before.lastGRDB {
+	if e.compModel.level != before.compModel.level || e.compEnvDB != before.compEnvDB || e.lastGRDB != before.lastGRDB {
 		t.Fatal("detector subpath edit reset active compressor")
 	}
 }

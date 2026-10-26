@@ -137,30 +137,35 @@ func TestCompressorTransferAndSidechainHPF(t *testing.T) {
 		inR[i] = v
 	}
 
-	params := DefaultParams()
-	params.Compressor.Enabled = true
-	params.Compressor.ThresholdDB = -16.0
-	params.Compressor.Ratio = 4.0
-	params.Compressor.KneeDB = 0.0
-	params.Compressor.AttackMS = 10.0
-	params.Compressor.ReleaseMS = 60.0
-	params.Compressor.SidechainHPFHz = 90.0
+	// Every topology is sine-calibrated, so the static curve holds for all four.
+	// Optical's second release stage holds reduction longer by design; its
+	// recovery is covered in compressor_models_test.go.
+	for _, topology := range []CompTopology{CompOptical, CompVariableMu, CompFET, CompVCA} {
+		params := DefaultParams()
+		params.Compressor.Enabled = true
+		params.Compressor.ThresholdDB = -16.0
+		params.Compressor.Ratio = 4.0
+		params.Compressor.KneeDB = 0.0
+		params.Compressor.AttackMS = 10.0
+		params.Compressor.ReleaseMS = 60.0
+		params.Compressor.SidechainHPFHz = 90.0
+		params.Compressor.Topology = topology
 
-	outL, _, _ := RenderBuffer(inL, inR, sr, params)
+		outL, _, _ := RenderBuffer(inL, inR, sr, params)
 
-	// Steady state during -4 dBFS burst (expected GR = (-4 - -16)*(1 - 1/4) = 9.0 dB -> output -13.0 dBFS)
-	burstSteady := outL[20000:34000]
-	burstMagDB := GoertzelMagnitudeDB(burstSteady, sr, 1000.0)
-	expectedOutDB := -4.0 - 9.0
-	if math.Abs(burstMagDB-expectedOutDB) > 0.55 {
-		t.Fatalf("compressor steady-state burst output = %0.2f dBFS, want %0.2f dBFS (+/-0.55 dB)", burstMagDB, expectedOutDB)
-	}
-
-	// Verify tail after release recovers back to -24 dBFS
-	tail := outL[42000:47500]
-	tailMagDB := GoertzelMagnitudeDB(tail, sr, 1000.0)
-	if math.Abs(tailMagDB-(-24.0)) > 0.4 {
-		t.Fatalf("compressor release tail did not recover to -24 dBFS: got %0.2f dBFS", tailMagDB)
+		// Steady state during -4 dBFS burst (expected GR = (-4 - -16)*(1 - 1/4) = 9.0 dB -> output -13.0 dBFS)
+		burstMagDB := GoertzelMagnitudeDB(outL[20000:34000], sr, 1000.0)
+		expectedOutDB := -4.0 - 9.0
+		if math.Abs(burstMagDB-expectedOutDB) > 0.55 {
+			t.Fatalf("%s steady-state burst output = %0.2f dBFS, want %0.2f dBFS (+/-0.55 dB)", topology, burstMagDB, expectedOutDB)
+		}
+		if topology == CompOptical {
+			continue
+		}
+		tailMagDB := GoertzelMagnitudeDB(outL[42000:47500], sr, 1000.0)
+		if math.Abs(tailMagDB-(-24.0)) > 0.4 {
+			t.Fatalf("%s release tail did not recover to -24 dBFS: got %0.2f dBFS", topology, tailMagDB)
+		}
 	}
 
 	// Verify 90 Hz sidechain HPF prevents 40 Hz sub-bass from pumping a 1 kHz tone

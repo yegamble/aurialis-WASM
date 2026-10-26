@@ -3,10 +3,10 @@
 import { createDefaultAdvancedParams, clampAdvancedToSampleRate } from "@/lib/audio-dsp";
 import { isMasteringShortcutActive, type MasteringShortcut } from "@/lib/mastering-shortcuts";
 import { useStore } from "@/lib/store";
-import type { MultibandBandParams, Track } from "@/lib/types";
+import type { CompressorTopology, MultibandBandParams, Track } from "@/lib/types";
 import { DSPModule } from "./DSPModule";
 import { Icon } from "./Icon";
-import { Button, SliderField } from "./Primitives";
+import { Button, ControlGroup, SliderField } from "./Primitives";
 import { monoBassMinus3dBHz } from "@/lib/control-conventions";
 
 function ModuleToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
@@ -30,11 +30,24 @@ export function MasteringShortcuts({ track }: { track: Track }) {
   </DSPModule>;
 }
 
+const topologyChoices: { id: CompressorTopology; label: string; detail: string }[] = [
+  { id: "optical", label: "Optical", detail: "Smooth and program-dependent. Brief peaks recover quickly; sustained reduction releases slowly, over up to 3.5 s." },
+  { id: "vari_mu", label: "Vari-Mu", detail: "Gentle near the threshold, firmer as level rises. Averaged sensing lets transients through." },
+  { id: "fet", label: "FET", detail: "Fast peak sensing that grabs transients. Auto release speeds up after brief hits." },
+  { id: "vca", label: "VCA", detail: "Clean RMS bus compression. Auto release is quick on sparse peaks and slower on dense material." },
+];
+
 export function ExtendedCompressorControls({ track }: { track: Track }) {
   const { dispatch } = useStore();
   const value = track.advanced.compressor;
   const defaults = createDefaultAdvancedParams().compressor;
   return <>
+    <ControlGroup label="Compressor type">
+      <div className="choice-grid" role="group" aria-label="Compressor type">
+        {topologyChoices.map(({ id, label }) => <button type="button" key={id} className={value.topology === id ? "choice is-active" : "choice"} aria-pressed={value.topology === id} onClick={() => { dispatch({ type: "UPDATE_COMPRESSOR", trackId: track.id, patch: { topology: id } }); }}>{label}</button>)}
+      </div>
+    </ControlGroup>
+    <p className="text-xs text-[var(--ink-soft)]">{topologyChoices.find((choice) => choice.id === value.topology)?.detail}</p>
     <SliderField label="Knee" value={value.knee} defaultValue={defaults.knee} min={0} max={24} step={0.5} unit="dB" onChange={(knee) => { dispatch({ type: "UPDATE_COMPRESSOR", trackId: track.id, patch: { knee } }); }} />
     <SliderField label="Makeup gain" value={value.makeup} defaultValue={defaults.makeup} min={-24} max={36} step={0.5} unit="dB" onChange={(makeup) => { dispatch({ type: "UPDATE_COMPRESSOR", trackId: track.id, patch: { makeup } }); }} />
     <SliderField label="Sidechain HPF" value={value.sidechainHpfHz} defaultValue={defaults.sidechainHpfHz} min={0} max={1000} step={5} unit="Hz" onChange={(sidechainHpfHz) => { dispatch({ type: "UPDATE_COMPRESSOR", trackId: track.id, patch: { sidechainHpfHz } }); }} />

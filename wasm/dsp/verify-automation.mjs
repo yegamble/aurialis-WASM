@@ -28,7 +28,7 @@ async function kernel(fixture){
 function assertPublicBaselineRoundTrip(params){
  const filters={low_shelf:"lowshelf",high_shelf:"highshelf",high_pass:"highpass",peaking:"peaking"};
  const advanced={input:params.inputGainDb,eqEnabled:params.eqEnabled,eqBands:params.bands.map((band,index)=>({...band,id:String(index),label:String(index),type:filters[band.type]})),
- compressor:{enabled:params.compressor.enabled,threshold:params.compressor.thresholdDb,ratio:params.compressor.ratio,attack:params.compressor.attackMs,release:params.compressor.releaseMs,knee:params.compressor.kneeDb,makeup:params.compressor.makeupDb,sidechainHpfHz:params.compressor.sidechainHpfHz,autoRelease:params.compressor.autoRelease},
+ compressor:{enabled:params.compressor.enabled,threshold:params.compressor.thresholdDb,ratio:params.compressor.ratio,attack:params.compressor.attackMs,release:params.compressor.releaseMs,knee:params.compressor.kneeDb,makeup:params.compressor.makeupDb,sidechainHpfHz:params.compressor.sidechainHpfHz,autoRelease:params.compressor.autoRelease,topology:params.compressor.topology},
  saturationModule:{enabled:params.saturation.enabled,drive:params.saturation.amount,character:params.saturation.character},stereo:{...params.stereo,width:params.stereo.widthPct},
  limiter:{enabled:params.limiter.enabled,ceiling:params.limiter.ceilingDbtp,targetLufs:params.limiter.targetLufs,release:params.limiter.releaseMs,truePeak:params.limiter.truePeak},repair:{enabled:params.repair.enabled,declick:false,declip:false,phaseAlign:false},deHarsh:params.deHarsh,multiband:params.multiband};
  assert.deepEqual(packLiveControls(engineParams(advanced),2),packLiveControls(params,2),"generated public v2 baseline cannot round-trip real Advanced/static controls");

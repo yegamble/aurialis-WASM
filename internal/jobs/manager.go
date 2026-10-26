@@ -84,7 +84,7 @@ type Job struct {
 	Features          *mastering.AnalysisFeatures  `json:"features,omitempty"`
 	Stems             []StemDescriptor             `json:"stems,omitempty"`
 
-	stemWAVs      map[string][]byte
+	stemPCM       map[string]stemAudio
 	cancel        context.CancelFunc
 	reservedBytes int64
 }
@@ -104,6 +104,12 @@ type Manager struct {
 	baseCtx   context.Context
 	stopFn    context.CancelFunc
 	usedBytes int64
+
+	// Stem separation runs one job at a time on its own queue and memory pool:
+	// it uses every core, needs far more memory and runs for minutes.
+	stemQueue     chan workItem
+	stemUsedBytes int64
+	separate      SeparateFunc
 }
 
 // MaxMemoryBytes bounds admitted inputs and retained encoded artifacts together.
@@ -128,10 +134,13 @@ func NewManager(workers int) *Manager {
 		baseCtx: baseCtx,
 		stopFn:  stopFn,
 	}
+	m.stemQueue = make(chan workItem, MaxQueuedSeparations)
 	for i := 0; i < workers; i++ {
 		m.wg.Add(1)
-		go m.workerLoop()
+		go m.workerLoop(m.queue, 2*time.Minute)
 	}
+	m.wg.Add(1)
+	go m.workerLoop(m.stemQueue, SeparationTimeout)
 	m.wg.Add(1)
 	go m.reapLoop()
 	return m
@@ -147,17 +156,18 @@ func (m *Manager) Close() {
 	m.closed = true
 	m.stopFn()
 	close(m.queue)
+	close(m.stemQueue)
 	m.mu.Unlock()
 	m.wg.Wait()
 	m.mu.Lock()
 	clear(m.jobs)
-	m.usedBytes = 0
+	m.usedBytes, m.stemUsedBytes = 0, 0
 	m.mu.Unlock()
 }
 
-func (m *Manager) workerLoop() {
+func (m *Manager) workerLoop(queue <-chan workItem, timeout time.Duration) {
 	defer m.wg.Done()
-	for item := range m.queue {
+	for item := range queue {
 		m.mu.RLock()
 		j, exists := m.jobs[item.jobID]
 		if !exists || j.Status == StatusCanceled || m.baseCtx.Err() != nil {
@@ -167,7 +177,7 @@ func (m *Manager) workerLoop() {
 		}
 		m.mu.RUnlock()
 
-		ctx, cancel := context.WithTimeout(m.baseCtx, 2*time.Minute)
+		ctx, cancel := context.WithTimeout(m.baseCtx, timeout)
 		m.mu.Lock()
 		if j.Status == StatusCanceled {
 			m.mu.Unlock()
@@ -209,7 +219,7 @@ func (m *Manager) reapLoop() {
 func (m *Manager) pruneLocked(now time.Time) {
 	for id, j := range m.jobs {
 		if j.reservedBytes == 0 && now.Sub(j.UpdatedAt) >= Retention {
-			m.usedBytes -= retainedBytes(j)
+			*m.pool(j) -= retainedBytes(j)
 			delete(m.jobs, id)
 		}
 	}
@@ -219,14 +229,14 @@ func (m *Manager) releaseReservation(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if j, ok := m.jobs[id]; ok && j.reservedBytes > 0 {
-		m.usedBytes -= j.reservedBytes
+		*m.pool(j) -= j.reservedBytes
 		j.reservedBytes = 0
-		m.usedBytes += retainedBytes(j)
+		*m.pool(j) += retainedBytes(j)
 		j.cancel = nil
 	}
 }
 
-func (m *Manager) admitLocked(job *Job, buf *audio.Buffer, stemCount int) error {
+func (m *Manager) admitLocked(job *Job, buf *audio.Buffer) error {
 	if m.closed {
 		return errors.New("job manager is closed")
 	}
@@ -234,17 +244,13 @@ func (m *Manager) admitLocked(job *Job, buf *audio.Buffer, stemCount int) error 
 	if buf == nil || buf.Frames < 1 || buf.Frames > audio.MaxDecodedFrames || len(buf.Left) != buf.Frames || len(buf.Right) != buf.Frames {
 		return errors.New("invalid audio buffer")
 	}
-	// Reserve input stereo float PCM plus all simultaneously live float stem
-	// buffers and encoded 16-bit artifacts. Deep rendering also needs a stereo
-	// float output. Scratch/headroom covers metering history and small objects.
+	// Reserve input stereo float PCM plus a stereo float output. Scratch and
+	// headroom cover metering history and small objects.
 	bytesPerFrame := int64(16)
 	if job.Kind == KindAnalyzeFeatures || job.Kind == KindAnalyzeDeepV2 {
 		bytesPerFrame = 8 // Input only; features and FFT scratch fit the reserved headroom.
 	}
-	if stemCount > 0 {
-		bytesPerFrame = 8 + int64(stemCount)*12
-	}
-	reservation := int64(buf.Frames)*bytesPerFrame + int64(stemCount)*44 + 16*1024*1024
+	reservation := int64(buf.Frames)*bytesPerFrame + 16*1024*1024
 	if job.Kind == KindAnalyzeDeepV2 {
 		reservation += 16 * 1024 * 1024
 	}
@@ -259,11 +265,15 @@ func (m *Manager) admitReservationLocked(job *Job, reservation int64) error {
 	if reservation < 1 {
 		return errors.New("invalid job reservation")
 	}
-	if len(m.jobs) >= MaxRetainedJobs || reservation > MaxMemoryBytes-m.usedBytes {
+	limit := MaxMemoryBytes
+	if job.Kind == KindSeparate {
+		limit = MaxSeparationBytes
+	}
+	if len(m.jobs) >= MaxRetainedJobs || reservation > limit-*m.pool(job) {
 		return ErrQueueFull
 	}
 	job.reservedBytes = reservation
-	m.usedBytes += reservation
+	*m.pool(job) += reservation
 	m.jobs[job.ID] = job
 	return nil
 }
@@ -274,99 +284,6 @@ func newJobID() string {
 		return fmt.Sprintf("job-%d", time.Now().UnixNano())
 	}
 	return "job-" + hex.EncodeToString(b[:])
-}
-
-// SubmitSeparate enqueues a 2..6 stem separation job.
-func (m *Manager) SubmitSeparate(buf *audio.Buffer, stemCount int) (*Job, error) {
-	if stemCount < 2 || stemCount > 6 {
-		return nil, errors.New("stem count must be between 2 and 6")
-	}
-	id := newJobID()
-	now := time.Now().UTC()
-	job := &Job{
-		ID:        id,
-		JobID:     id,
-		Kind:      KindSeparate,
-		Status:    StatusQueued,
-		Progress:  0,
-		Stage:     "Queued for Smart Split",
-		StemCount: stemCount,
-		CreatedAt: now,
-		UpdatedAt: now,
-		stemWAVs:  make(map[string][]byte),
-	}
-
-	m.mu.Lock()
-	if err := m.admitLocked(job, buf, stemCount); err != nil {
-		m.mu.Unlock()
-		return nil, err
-	}
-	snapshot := m.cloneJob(job)
-
-	work := workItem{
-		jobID: id,
-		run: func(ctx context.Context) {
-			// Brief cancellation window so immediate DELETE /jobs/{id} probes reliably cancel before completion
-			select {
-			case <-ctx.Done():
-				m.markCanceled(id)
-				return
-			case <-time.After(35 * time.Millisecond):
-			}
-
-			outputs, err := mastering.SeparateStems(ctx, buf, stemCount, func(pct int, stage string) {
-				m.updateProgress(id, pct, stage)
-			})
-			if err != nil {
-				if errors.Is(err, context.Canceled) || ctx.Err() != nil {
-					m.markCanceled(id)
-					return
-				}
-				m.markFailed(id, err)
-				return
-			}
-
-			descriptors := make([]StemDescriptor, 0, len(outputs))
-			wavMap := make(map[string][]byte, len(outputs))
-			for _, st := range outputs {
-				dlURL := fmt.Sprintf("/jobs/%s/stems/%s", id, st.ID)
-				descriptors = append(descriptors, StemDescriptor{
-					ID:          st.ID,
-					Name:        st.Name,
-					Role:        st.Role,
-					Color:       st.Color,
-					DownloadURL: dlURL,
-					URL:         dlURL,
-					Metrics:     st.Metrics,
-				})
-				wavMap[st.ID] = st.WAVBytes
-			}
-
-			m.mu.Lock()
-			defer m.mu.Unlock()
-			j, ok := m.jobs[id]
-			if !ok || j.Status == StatusCanceled {
-				return
-			}
-			j.Stems = descriptors
-			j.stemWAVs = wavMap
-			j.Progress = 100
-			j.Stage = "Complete"
-			j.Status = StatusDone
-			j.UpdatedAt = time.Now().UTC()
-		},
-	}
-
-	select {
-	case m.queue <- work:
-		m.mu.Unlock()
-		return snapshot, nil
-	default:
-		m.usedBytes -= job.reservedBytes
-		delete(m.jobs, id)
-		m.mu.Unlock()
-		return nil, ErrQueueFull
-	}
 }
 
 // SubmitAnalyzeDeep enqueues a Deep MasteringScript v1 generation job.
@@ -386,7 +303,7 @@ func (m *Manager) SubmitAnalyzeDeep(buf *audio.Buffer, profile mastering.Profile
 	}
 
 	m.mu.Lock()
-	if err := m.admitLocked(job, buf, 0); err != nil {
+	if err := m.admitLocked(job, buf); err != nil {
 		m.mu.Unlock()
 		return nil, err
 	}
@@ -461,7 +378,7 @@ func (m *Manager) markCanceled(id string) {
 	}
 	j.Status = StatusCanceled
 	j.Stage = "Canceled"
-	j.stemWAVs = nil
+	j.stemPCM = nil
 	j.UpdatedAt = time.Now().UTC()
 }
 
@@ -490,16 +407,23 @@ func (m *Manager) Get(id string) (*Job, bool) {
 	return m.cloneJob(j), true
 }
 
-// StemWAV returns the encoded WAV bytes for a completed stem separation job.
+// StemWAV encodes one stem of a completed separation job as a 24-bit WAV.
+// Stems are kept as float PCM and encoded per download, so retained memory
+// is not doubled by an encoded copy.
 func (m *Manager) StemWAV(jobID, stemName string) ([]byte, bool) {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
 	j, ok := m.jobs[jobID]
-	if !ok || j.Status != StatusDone || j.stemWAVs == nil {
+	if !ok || j.Status != StatusDone || j.stemPCM == nil {
+		m.mu.RUnlock()
 		return nil, false
 	}
-	wav, found := j.stemWAVs[stemName]
-	return wav, found
+	stem, found := j.stemPCM[stemName]
+	m.mu.RUnlock()
+	if !found {
+		return nil, false
+	}
+	wav, err := audio.EncodeWAV(stem.left, stem.right, stem.rate, stemBitDepth)
+	return wav, err == nil
 }
 
 // Cancel cancels an in-flight or queued job idempotently and frees its stem buffers.
@@ -513,11 +437,11 @@ func (m *Manager) Cancel(id string) (*Job, bool) {
 	cancelFn := j.cancel
 	if j.Status != StatusCanceled {
 		if j.reservedBytes == 0 {
-			m.usedBytes -= retainedBytes(j)
+			*m.pool(j) -= retainedBytes(j)
 		}
 		j.Status = StatusCanceled
 		j.Stage = "Canceled"
-		j.stemWAVs = nil
+		j.stemPCM = nil
 		j.Stems = nil
 		j.Script = nil
 		j.ScriptV2 = nil
@@ -554,10 +478,18 @@ func (m *Manager) cloneJob(j *Job) *Job {
 	return &cp
 }
 
+// pool is the memory budget a job is accounted against.
+func (m *Manager) pool(job *Job) *int64 {
+	if job.Kind == KindSeparate {
+		return &m.stemUsedBytes
+	}
+	return &m.usedBytes
+}
+
 func retainedBytes(job *Job) int64 {
 	var bytes int64
-	for _, wav := range job.stemWAVs {
-		bytes += int64(len(wav))
+	for _, stem := range job.stemPCM {
+		bytes += int64(len(stem.left)+len(stem.right)) * 4
 	}
 	if job.ScriptV2 != nil {
 		bytes += mastering.MaxScriptV2Bytes
@@ -574,7 +506,7 @@ func (m *Manager) SubmitAnalyzeFeatures(buf *audio.Buffer) (*Job, error) {
 	now := time.Now().UTC()
 	job := &Job{ID: id, JobID: id, Kind: KindAnalyzeFeatures, Status: StatusQueued, Stage: "Queued for measured feature analysis", CreatedAt: now, UpdatedAt: now}
 	m.mu.Lock()
-	if err := m.admitLocked(job, buf, 0); err != nil {
+	if err := m.admitLocked(job, buf); err != nil {
 		m.mu.Unlock()
 		return nil, err
 	}

@@ -50,6 +50,19 @@ type Config struct {
 	StaticFS       fs.FS
 	WasmFS         fs.FS
 	ListenAddress  string
+	// Separator runs Smart Split; nil reports separation as unavailable.
+	Separator jobs.SeparateFunc
+	// StemModelStatus reports the separation model's download state, if any.
+	StemModelStatus func() StemModelStatus
+}
+
+// StemModelStatus is the separation model state shown before Smart Split runs.
+type StemModelStatus struct {
+	Available   bool  `json:"available"`
+	Ready       bool  `json:"ready"`
+	Downloading bool  `json:"downloading"`
+	Downloaded  int64 `json:"downloadedBytes"`
+	Total       int64 `json:"totalBytes"`
 }
 
 // Server serves the Aurialis HTTP API and embedded Next.js + WASM assets.
@@ -73,6 +86,7 @@ func New(cfg Config) *Server {
 		uploads: make(chan struct{}, 1),
 		csp:     buildCSP(cfg.StaticFS),
 	}
+	s.jobs.SetSeparator(cfg.Separator)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -80,6 +94,7 @@ func New(cfg Config) *Server {
 
 	mux.HandleFunc("POST /separate", s.handleSeparate)
 	mux.HandleFunc("POST /api/separate", s.handleSeparate)
+	mux.HandleFunc("GET /api/stems/model", s.handleStemModel)
 
 	mux.HandleFunc("POST /analyze/deep", s.handleAnalyzeDeep)
 	mux.HandleFunc("POST /api/analyze/deep", s.handleAnalyzeDeep)
@@ -239,6 +254,10 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 			ready = true
 		}
 	}
+	models, separation := []string{}, "unavailable"
+	if s.cfg.Separator != nil {
+		models, separation = []string{"mega53-bs-roformer-5head"}, "trained-bs-roformer"
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"status":                     "ok",
 		"service":                    "aurialis-wasm",
@@ -246,8 +265,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"wasmDsp":                    true,
 		"wasmDspReady":               ready,
 		"gpu":                        false,
-		"models":                     []string{"deterministic-frequency-split"},
-		"separationMethod":           "deterministic-frequency-split",
+		"models":                     models,
+		"separationMethod":           separation,
 		"analysisMethod":             "deterministic-energy-heuristics",
 		"featureAnalysisMethod":      "normalized-hann-spectrum-and-novelty",
 		"featureAnalysisVersion":     "1.0",
@@ -427,11 +446,27 @@ func (s *Server) handleSeparate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job, err := s.jobs.SubmitSeparate(buf, stemCount)
-	if err != nil {
+	switch {
+	case errors.Is(err, jobs.ErrSeparationUnavailable):
+		writeErrorJSON(w, http.StatusServiceUnavailable, "stems_unavailable", err.Error())
+		return
+	case errors.Is(err, jobs.ErrQueueFull):
 		writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", err.Error())
+		return
+	case err != nil:
+		writeErrorJSON(w, http.StatusRequestEntityTooLarge, "too_long", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusAccepted, job)
+}
+
+func (s *Server) handleStemModel(w http.ResponseWriter, _ *http.Request) {
+	status := StemModelStatus{}
+	if s.cfg.StemModelStatus != nil {
+		status = s.cfg.StemModelStatus()
+	}
+	status.Available = s.cfg.Separator != nil
+	writeJSON(w, http.StatusOK, status)
 }
 
 func (s *Server) handleAnalyzeDeep(w http.ResponseWriter, r *http.Request) {

@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -27,27 +28,56 @@ func TestCloseAndSubmitAreRaceSafe(t *testing.T) {
 	}
 }
 
-func TestAdmissionReservesInputAndOutputMemory(t *testing.T) {
+func TestSeparationAdmissionUsesItsOwnPool(t *testing.T) {
 	manager := NewManager(1)
 	defer manager.Close()
-	frames := int((MaxMemoryBytes - 16*1024*1024 - 6*44) / (8 + 6*12))
+	block := make(chan struct{})
+	manager.SetSeparator(func(ctx context.Context, _, _ int, _, _ []float32, _ func(int, int, []float32, []float32) error, _ func(float64)) error {
+		select {
+		case <-block:
+		case <-ctx.Done():
+		}
+		return ctx.Err()
+	})
+	defer close(block)
+	// Two four-minute 48 kHz songs: the first fits, the second exceeds the pool.
+	frames := 48000 * 240
 	buf := &audio.Buffer{SampleRate: 48000, Channels: 2, Frames: frames, Left: make([]float32, frames), Right: make([]float32, frames)}
 	job, err := manager.SubmitSeparate(buf, 6)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer manager.Cancel(job.ID)
+	want, err := separationReservation(buf, 6)
+	if err != nil || job.reservedBytes != want || manager.stemUsedBytes != want || manager.usedBytes != 0 {
+		t.Fatalf("reservation %d want %d (%v); stem pool %d general %d", job.reservedBytes, want, err, manager.stemUsedBytes, manager.usedBytes)
+	}
 	if _, err := manager.SubmitSeparate(buf, 6); !errors.Is(err, ErrQueueFull) {
-		t.Fatalf("unbounded admission err=%v", err)
+		t.Fatalf("second full-length separation admitted: %v", err)
+	}
+	// The general pool is untouched, so other jobs still run.
+	if _, err := manager.SubmitAnalyzeFeatures(&audio.Buffer{SampleRate: 48000, Channels: 2, Frames: 16, Left: make([]float32, 16), Right: make([]float32, 16)}); err != nil {
+		t.Fatal(err)
 	}
 	manager.Cancel(job.ID)
+}
+
+func TestSeparationWithoutSeparatorIsUnavailable(t *testing.T) {
+	manager := NewManager(1)
+	defer manager.Close()
+	buf := &audio.Buffer{SampleRate: 48000, Channels: 2, Frames: 16, Left: make([]float32, 16), Right: make([]float32, 16)}
+	if _, err := manager.SubmitSeparate(buf, 4); !errors.Is(err, ErrSeparationUnavailable) {
+		t.Fatalf("err %v", err)
+	}
+	if manager.stemUsedBytes != 0 || len(manager.jobs) != 0 {
+		t.Fatal("rejected separation was retained")
+	}
 }
 
 func TestExpiredArtifactsReleaseBudget(t *testing.T) {
 	manager := NewManager(1)
 	defer manager.Close()
 	manager.mu.Lock()
-	manager.jobs["expired"] = &Job{ID: "expired", Status: StatusDone, UpdatedAt: time.Now().Add(-Retention - time.Second), stemWAVs: map[string][]byte{"vocals": make([]byte, 100)}}
+	manager.jobs["expired"] = &Job{ID: "expired", Status: StatusDone, UpdatedAt: time.Now().Add(-Retention - time.Second), stemPCM: map[string]stemAudio{"vocals": {left: make([]float32, 25)}}}
 	manager.usedBytes = 100
 	manager.pruneLocked(time.Now())
 	if manager.usedBytes != 0 || len(manager.jobs) != 0 {
@@ -56,26 +86,19 @@ func TestExpiredArtifactsReleaseBudget(t *testing.T) {
 	manager.mu.Unlock()
 }
 
-func TestReservationIncludesLiveFloatStemsAndDeepOutput(t *testing.T) {
+func TestReservationIncludesInputAndOutput(t *testing.T) {
 	manager := NewManager(1)
 	defer manager.Close()
 	const frames = 100
 	buf := &audio.Buffer{SampleRate: 48000, Channels: 2, Frames: frames, Left: make([]float32, frames), Right: make([]float32, frames)}
-	for _, stems := range []int{0, 2, 6} {
-		job := &Job{ID: newJobID()}
-		manager.mu.Lock()
-		err := manager.admitLocked(job, buf, stems)
-		manager.mu.Unlock()
-		if err != nil {
-			t.Fatal(err)
-		}
-		bytesPerFrame := int64(16)
-		if stems > 0 {
-			bytesPerFrame = 8 + int64(stems)*12
-		}
-		expected := frames*bytesPerFrame + int64(stems)*44 + 16*1024*1024
-		if job.reservedBytes != expected {
-			t.Fatalf("stems%d reservation %d want%d", stems, job.reservedBytes, expected)
-		}
+	job := &Job{ID: newJobID()}
+	manager.mu.Lock()
+	err := manager.admitLocked(job, buf)
+	manager.mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expected := int64(frames*16 + 16*1024*1024); job.reservedBytes != expected {
+		t.Fatalf("reservation %d want %d", job.reservedBytes, expected)
 	}
 }

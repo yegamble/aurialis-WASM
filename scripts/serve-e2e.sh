@@ -26,6 +26,6 @@ else
 fi
 printf 'Test-instrumented binary: %s\n' "$binary"
 if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$binary"; else sha256sum "$binary"; fi
-"$binary" --addr "127.0.0.1:$port" &
+"$binary" --addr "127.0.0.1:$port" --stem-model-url "" &
 server_pid="$!"
 wait "$server_pid"

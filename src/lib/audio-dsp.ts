@@ -1,5 +1,6 @@
 import type {
   AdvancedParams,
+  CompressorTopology,
   EQBandParams,
   ProfileId,
   SaturationCharacter,
@@ -101,6 +102,7 @@ export function createDefaultAdvancedParams(
       makeup: 0,
       sidechainHpfHz: 90,
       autoRelease: false,
+      topology: "optical",
     },
     saturationModule: {
       enabled: true,
@@ -303,6 +305,7 @@ export function mapProfileToDSP(
   let compRatio = 2.8;
   let compAttack = 25;
   let compRelease = 120;
+  let compTopology: CompressorTopology = "vca";
   let width = 115;
   let monoBass = true;
   let targetLufs = -14.0;
@@ -357,6 +360,7 @@ export function mapProfileToDSP(
       compRatio = 2.0;
       compAttack = 35;
       compRelease = 300;
+      compTopology = "optical";
       width = 100;
       monoBass = false;
       targetLufs = -14.0;
@@ -375,6 +379,7 @@ export function mapProfileToDSP(
       compRatio = 4.0;
       compAttack = 10;
       compRelease = 60;
+      compTopology = "fet";
       width = 120;
       monoBass = true;
       targetLufs = -10.0;
@@ -419,6 +424,7 @@ export function mapProfileToDSP(
       ratio: compRatio,
       attack: compAttack,
       release: compRelease,
+      topology: compTopology,
     },
     saturationModule: {
       ...base.saturationModule,

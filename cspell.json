@@ -391,6 +391,16 @@
     "yosefgamble",
     "sowt",
     "KSDATAFORMAT",
-    "ulaw"
+    "ulaw",
+    "steminfer",
+    "safetensors",
+    "roformer",
+    "STFT",
+    "softmax",
+    "GELU",
+    "mvsep",
+    "ckpt",
+    "mmap",
+    "Slakh"
   ]
 }

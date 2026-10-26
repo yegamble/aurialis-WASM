@@ -185,35 +185,39 @@ func TestExtendedSampleRateBounds(t *testing.T) {
 }
 
 func TestAutoReleaseRespondsToProgramHistory(t *testing.T) {
-	recovery := func(auto bool, hotBlocks int) float64 {
-		p := extendedTestParams()
-		p.Compressor.AutoRelease = auto
-		p.Compressor.SidechainHPFHz = 0
-		p.Compressor.ThresholdDB = -30
-		p.Compressor.Ratio = 4
-		p.Compressor.AttackMS = 1
-		p.Compressor.ReleaseMS = 100
-		e := NewEngine(48000)
-		e.SetParams(p)
-		var l, r, ol, or [128]float32
-		for b := 0; b < hotBlocks+40; b++ {
-			for i := range l {
-				l[i] = 0
-				r[i] = 0
-				if b < hotBlocks {
-					l[i] = .5
-					r[i] = .5
+	// Variable-mu and FET auto release lengthen with sustained reduction.
+	for _, topology := range []CompTopology{CompVariableMu, CompFET} {
+		recovery := func(auto bool, hotBlocks int) float64 {
+			p := extendedTestParams()
+			p.Compressor.Topology = topology
+			p.Compressor.AutoRelease = auto
+			p.Compressor.SidechainHPFHz = 0
+			p.Compressor.ThresholdDB = -30
+			p.Compressor.Ratio = 4
+			p.Compressor.AttackMS = 1
+			p.Compressor.ReleaseMS = 100
+			e := NewEngine(48000)
+			e.SetParams(p)
+			var l, r, ol, or [128]float32
+			for b := 0; b < hotBlocks+40; b++ {
+				for i := range l {
+					l[i] = 0
+					r[i] = 0
+					if b < hotBlocks {
+						l[i] = .5
+						r[i] = .5
+					}
 				}
+				e.ProcessBlock(l[:], r[:], ol[:], or[:])
 			}
-			e.ProcessBlock(l[:], r[:], ol[:], or[:])
+			return e.lastGRDB
 		}
-		return e.lastGRDB
-	}
-	short := recovery(true, 10)
-	long := recovery(true, 400)
-	manual := recovery(false, 400)
-	if long < short+1 || long < manual+1 {
-		t.Fatalf("auto short/long/manual %g/%g/%g", short, long, manual)
+		short := recovery(true, 10)
+		long := recovery(true, 400)
+		manual := recovery(false, 400)
+		if long < short+1 || long < manual+1 {
+			t.Fatalf("%s auto short/long/manual %g/%g/%g", topology, short, long, manual)
+		}
 	}
 }
 

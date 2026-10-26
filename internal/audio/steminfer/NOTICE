@@ -1,0 +1,23 @@
+Inference implementation derives architecture and signal conventions from:
+- Lloyd Chan, stemyla, MIT, commit fa41c9fd18cbc0d26b31e4f7fdad7bafd0a4e96a
+  https://github.com/lloydmeta/stemyla
+- Roman Solovyev (ZFTurbo), Music-Source-Separation-Training, MIT
+  https://github.com/ZFTurbo/Music-Source-Separation-Training
+  Python oracle source pinned at 6fdad13686bb7e84d029ec66f9dbe76e65c93ebf
+
+Model weights: ZFTurbo's MVSep Mega 53-stem BS-RoFormer, released under the
+MIT License by its author:
+https://github.com/ZFTurbo/Music-Source-Separation-Training/issues/245#issuecomment-5834608838
+The author does not hold copyright to all training audio and gives no warranty
+or indemnity regarding training data.
+
+Original checkpoint mvsep_mega_model_bs_roformer_53_stems_v1.ckpt
+SHA256 c62820893bbf86d4e734f966bd142d9157cfc8bb8e79e9d8f9ea553f3ff3519f
+
+The app downloads a five-head subset (vocal 49, drums 15, bass 4, guitar 20,
+piano 33) holding the original float16 tensors unchanged, from this
+repository's stem-model-v1 release:
+SHA256 0d51845078d4c075d825ba18f776f9af96e50d34d3491102a1215b6dbaf684b7
+(176487688 bytes). Other is the source minus the delivered heads; the 53-head
+taxonomy is never summed. The weights are not stored in this repository; see
+MODEL-LICENSE.txt for the license that ships with the release asset.

@@ -12,11 +12,13 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/yegamble/Aurialis-WASM/internal/audio/steminfer"
 	"github.com/yegamble/Aurialis-WASM/internal/server"
 	"github.com/yegamble/Aurialis-WASM/internal/webui"
 )
@@ -67,6 +69,8 @@ func run() error {
 	addrFlag := flag.String("addr", "127.0.0.1:8080", "HTTP listen address (loopback IP only)")
 	workersFlag := flag.Int("workers", 0, "Number of concurrent audio DSP workers (0 = auto)")
 	maxUploadFlag := flag.Int64("max-upload-bytes", server.DefaultMaxUploadBytes, "Maximum upload size in bytes")
+	stemURLFlag := flag.String("stem-model-url", steminfer.ModelURL, "Smart Split model download URL (empty disables separation)")
+	stemDirFlag := flag.String("stem-model-dir", "", "Smart Split model cache directory (default: user cache dir)")
 	flag.Parse()
 
 	listenAddr := resolveListenAddr(*addrFlag)
@@ -86,13 +90,17 @@ func run() error {
 	defer func() { _ = listener.Close() }()
 	listenAddr = listener.Addr().String()
 
-	srv := server.New(server.Config{
+	cfg := server.Config{
 		MaxUploadBytes: maxUpload,
 		Workers:        *workersFlag,
 		StaticFS:       resolveStaticFS(),
 		WasmFS:         resolveWasmFS(),
 		ListenAddress:  listenAddr,
-	})
+	}
+	if err := configureStems(&cfg, *stemURLFlag, *stemDirFlag); err != nil {
+		return err
+	}
+	srv := server.New(cfg)
 	defer srv.Close()
 
 	httpServer := &http.Server{
@@ -126,4 +134,32 @@ func main() {
 	if err := run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// configureStems wires Smart Split to the trained model, downloaded into the
+// cache directory on first use. An empty URL leaves separation unavailable.
+func configureStems(cfg *server.Config, url, dir string) error {
+	if url == "" {
+		return nil
+	}
+	if dir == "" {
+		cache, err := os.UserCacheDir()
+		if err != nil {
+			return fmt.Errorf("locate model cache: %w", err)
+		}
+		dir = filepath.Join(cache, "Aurialis", "models")
+	}
+	store := &steminfer.Store{Dir: dir, URL: url, Client: &http.Client{Timeout: 30 * time.Minute}}
+	cfg.Separator = func(ctx context.Context, rate, stems int, left, right []float32, sink func(int, int, []float32, []float32) error, progress func(float64)) error {
+		model, err := store.Model(ctx)
+		if err != nil {
+			return fmt.Errorf("load separation model: %w", err)
+		}
+		return model.Separate(ctx, rate, stems, left, right, sink, progress)
+	}
+	cfg.StemModelStatus = func() server.StemModelStatus {
+		ready, downloading, written := store.Status()
+		return server.StemModelStatus{Ready: ready, Downloading: downloading, Downloaded: written, Total: steminfer.ModelBytes}
+	}
+	return nil
 }

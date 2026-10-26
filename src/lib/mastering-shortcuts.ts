@@ -1,5 +1,5 @@
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "./audio-dsp";
-import type { AdvancedParams, ShortcutUndo, Track, EQBandParams, CompressorParams, SaturationParams } from "./types";
+import { compressorTopologies, type AdvancedParams, type ShortcutUndo, type Track, type EQBandParams, type CompressorParams, type SaturationParams } from "./types";
 
 export type MasteringShortcut = "air" | "mud" | "tape" | "glue";
 
@@ -118,7 +118,8 @@ export function toggleMasteringShortcut(track: Track, shortcut: MasteringShortcu
     delete undo.tape;
     delete undo.tapeLegacy;
   } else {
-    next.compressor = { ...(undo.glue ?? defaults.compressor) };
+    // Undo records saved before compressor types keep the current type.
+    next.compressor = { ...defaults.compressor, topology: current.compressor.topology, ...undo.glue };
     // Release remains editable while Auto is on through saved/API settings.
     if (current.compressor.release !== 200) next.compressor.release = current.compressor.release;
     const legacy = undo.glueLegacy ?? defaults;
@@ -149,9 +150,10 @@ function validBand(value: unknown): value is EQBandParams {
     ["highpass", "lowshelf", "peaking", "highshelf"].includes(String(item.type)) &&
     numbers(item, [["freqHz", 20, 18000], ["gainDb", -15, 15], ["q", 0.1, 18]]);
 }
-function validCompressor(value: unknown): value is CompressorParams {
+function validCompressor(value: unknown): value is Omit<CompressorParams, "topology"> & Partial<Pick<CompressorParams, "topology">> {
   const item = record(value);
   return !!item && typeof item.enabled === "boolean" && typeof item.autoRelease === "boolean" &&
+    (item.topology === undefined || compressorTopologies.includes(item.topology as CompressorParams["topology"])) &&
     numbers(item, [["threshold", -60, 0], ["ratio", 1, 20], ["attack", 0.1, 200], ["release", 10, 2000], ["knee", 0, 24], ["makeup", -24, 36], ["sidechainHpfHz", 0, 1000]]);
 }
 function validSaturation(value: unknown): value is SaturationParams {

@@ -37,6 +37,10 @@ export type EQBandParams = {
   enabled: boolean;
 };
 
+export type CompressorTopology = "optical" | "vari_mu" | "fet" | "vca";
+
+export const compressorTopologies: readonly CompressorTopology[] = ["optical", "vari_mu", "fet", "vca"];
+
 export type CompressorParams = {
   enabled: boolean;
   threshold: number;
@@ -47,6 +51,7 @@ export type CompressorParams = {
   makeup: number;
   sidechainHpfHz: number;
   autoRelease: boolean;
+  topology: CompressorTopology;
 };
 
 export type SaturationParams = {
@@ -155,7 +160,8 @@ export type ShortcutUndo = {
   mud?: EQBandParams;
   tape?: SaturationParams;
   tapeLegacy?: number;
-  glue?: CompressorParams;
+  /** Records saved before compressor types have no topology. */
+  glue?: Omit<CompressorParams, "topology"> & Partial<Pick<CompressorParams, "topology">>;
   glueLegacy?: Pick<AdvancedParams, "threshold" | "ratio" | "attack" | "release">;
   eqBaseline?: { enabled: boolean; bands: AdvancedParams["eqBands"] };
 };

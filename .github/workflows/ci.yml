@@ -489,3 +489,68 @@ jobs:
             fi
           done
           echo "All CI gates passed."
+
+  # Deploys the exact browser artifact every gate above verified. Not keyed on
+  # the ref: two merges must never deploy at once or production can go backwards.
+  cloudflare-deploy:
+    name: Deploy to Cloudflare
+    needs: [ci-passed, browser-build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: Production
+      url: https://aurialis.yosefgamble.com
+    concurrency:
+      group: cloudflare-production-deploy
+      cancel-in-progress: false
+    outputs:
+      version-id: ${{ steps.deploy.outputs.version-id }}
+    env:
+      NEXT_PUBLIC_AURIALIS_EXECUTION: browser
+      AURIALIS_CI_BUILD_ATTEMPT: ${{ needs.browser-build.outputs.build-attempt }}
+      CLOUDFLARE_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.12.0"
+          cache: pnpm
+      - name: Install Wrangler
+        run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.browser-build.outputs.artifact-name }}
+          path: artifacts/ci-browser-download
+      - name: Restore exact browser assets
+        run: python3 scripts/ci-browser-artifacts.py restore artifacts/ci-browser-download
+      - name: Deploy the Worker
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set -o pipefail
+          pnpm exec wrangler deploy -c deploy/cloudflare/wrangler.jsonc \
+            --message "$GITHUB_SHA" 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+          # `wrangler rollback` takes this id; the deploy log is the only place it is printed.
+          uuid='[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
+          version_id="$(sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' "$RUNNER_TEMP/deploy.log" \
+            | grep -iE 'current version id:' | tail -n 1 | grep -oE "$uuid")" || version_id=''
+          echo "version-id=$version_id" >> "$GITHUB_OUTPUT"
+          {
+            echo '### Deployed to production'
+            echo
+            echo "- Commit: \`${GITHUB_SHA}\`"
+            echo "- Worker version id: \`${version_id:-not found in deploy output}\`"
+            echo
+            echo 'To roll back, run the **Cloudflare Rollback** workflow with the id of a previous deploy.'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Smoke test production
+        timeout-minutes: 5
+        env:
+          SMOKE_FAILURE_HINT: Roll back with the Cloudflare Rollback workflow, using the version id of the previous deploy.
+        run: .github/scripts/smoke-cloudflare.sh https://aurialis.yosefgamble.com https://aurialis.yosef.app

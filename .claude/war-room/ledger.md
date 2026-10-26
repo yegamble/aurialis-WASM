@@ -893,3 +893,4 @@ The 13 native/actual Go-WASM oracles also passed: audio/source/control/geometry/
 
 | `TP-1` | P1 | wasm-dsp | Opt-in lookahead true-peak limiter as algorithm 2 (v1 frozen; offline renders latency-compensated) | merged (PR #20). Supersedes the MUB-2B reservation of ID 2 for the studio bundle, which moves to the next free ID. |
 | `TP-2` | P1 | frontend / wasm-dsp | Browser exports (download, album, release check) render with algorithm 2 and `limiter.truePeak`; previews and live stay on algorithm 1 | locally verified (`unit`); open — awaiting merge (`claude/project-thread-te7tdn`). |
+| `CF-1` | P1 | ci-cd | Main deploys the verified browser artifact to Cloudflare production; Workers Builds creates branch Worker Previews; rollback dispatch | locally verified (dry-run + live-domain smoke); open — awaiting merge (PR #29, Workers Builds dashboard setup pending). |

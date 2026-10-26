@@ -19,8 +19,11 @@ const (
 	// runners still finish.
 	exportPerSourceFrame    = 2 * time.Microsecond
 	exportPerConvertedFrame = 8 * time.Microsecond
-	// maxExportBudget caps any export; the largest valid export
-	// (33,554,432 source and converted frames) needs about 6.6 minutes.
+	// maxExportBudget caps any export. The QA-2 acceptance shapes need
+	// 362 s (16,777,216 frames, 48 to 96 kHz) and 374 s (33,554,432 frames,
+	// 48 to 44.1 kHz). The decoded-frame ceiling on both sides, 33,554,432
+	// source and 33,554,432 converted frames, bounds any export at about
+	// 395 s (6.6 minutes).
 	maxExportBudget = 10 * time.Minute
 
 	// Uploads and downloads get 10 s plus 8 MiB/s of body, at most 60 s, so a

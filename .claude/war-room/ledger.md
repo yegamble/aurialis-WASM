@@ -13,7 +13,7 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ## Faster Smart Split — 2026-10-26
 
-`open — awaiting merge`. Vectorized softmax/GELU, larger attention tiles and batched frequency-axis transformers cut one window's CPU time by about 42%, with output unchanged against PyTorch (85–90 dB SNR). Tier: `unit` plus opt-in real-model parity. Open: idle-machine song timing, faster plain-Go kernels for non-Mac platforms.
+`open — awaiting merge`. Vectorized softmax/GELU and larger attention tiles cut one window's CPU time by about 42% (295 s → 170 s); batched frequency-axis transformers also landed, their separate effect unmeasured. Accuracy unchanged against PyTorch (85–90 dB SNR; Accelerate output differs from before by about 1 float32 ulp). Tier: `unit` (model-free batching tests) plus opt-in real-model parity. Open: idle-machine song timing, faster plain-Go kernels for non-Mac platforms.
 
 ## Smart Split with a trained model — 2026-10-25
 

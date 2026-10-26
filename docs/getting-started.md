@@ -13,7 +13,7 @@ Use a mono or stereo WAV, AIFF, FLAC or MP3 at **8–192 kHz**. WAV and AIFF can
 
 Aurialis imports selected files one at a time. It validates each file on the local Go server, rebuilds its audio into a clean stereo-float WAV, prepares a waveform, and saves that reconstructed source in this browser. Invalid files are skipped with a reason. Select **Cancel import** to stop the queue; already imported projects remain in your Library. Keep your original files separately: the stored versions do not retain the original container metadata.
 
-The file cap is **128 MiB plus a 44-byte WAV header**, with at most **16,777,216 decoded frames**. That is about **5 min 50 s at 48 kHz**, or **2 min 55 s at 96 kHz**; the file-size limit may shorten this. Longer recordings need a shorter selection or a lower sample rate before import. Lowering bit depth alone does not increase the frame limit.
+The file cap is **256 MiB plus a 44-byte WAV header**, with at most **33,554,432 decoded frames**. That is about **11 min 39 s at 48 kHz**, **12 min 40 s at 44.1 kHz**, or **5 min 49 s at 96 kHz**; the file-size limit may shorten this. In the browser, memory admission may reject long tracks sooner on phones, 4 GB devices, and desktop Safari or Firefox (about 9½ minutes at 48 kHz there). Longer recordings need a shorter selection or a lower sample rate before import. Lowering bit depth alone does not increase the frame limit.
 
 When import finishes, the first successfully imported track opens in the mastering workspace in **Advanced** mode. Other imported projects are in **Library**. Select **Simple** to follow the next steps.
 
@@ -60,7 +60,7 @@ Export renders the current processing settings from the reconstructed source. Wi
 | **Release check** in **Tools** | Choose one of six destination profiles and an encoding, then review the exact rendered WAV. Download that measured file and its JSON report; saved reports retain measurements only. This is guidance, not platform certification. |
 | **Smart stem splitter** | Inspect the intended layout. Instrument separation, stem playback and stem downloads are unavailable. |
 
-Album downloads use a **128 MiB total cache**. Changing the sequence or processing settings invalidates them; leaving the album page discards them. Render a smaller sequence or export tracks individually if it exceeds the cache. Album rendering does not establish full album-consistency mastering.
+Rendered album masters are saved in your browser and survive reloads. Download each WAV, or choose **Download all as ZIP** for one numbered archive in running order. Changing the sequence or processing settings makes saved masters stale; render again to replace them. Before rendering, Aurialis checks that the browser has room for every master. Without browser storage, masters use a **128 MiB in-memory cache** and are lost when you leave the album page. **Delete album** removes the album and its saved masters but keeps your projects. Album rendering does not establish full album-consistency mastering.
 
 ## Keep your Library organized
 
@@ -141,7 +141,7 @@ Reconstructed audio lives in **IndexedDB**, the browser's local database. Projec
 
 Browser storage is not a backup: clearing site data, switching profiles, or storage failure can make your work unavailable. Library shows storage estimates when available and offers **Request persistent storage**; the browser may decline it, and permission does not replace a backup.
 
-If Aurialis warns that audio is available only in this tab, export before closing or reloading. Session-only audio survives navigation inside Aurialis, with a total cache cap of **128 MiB plus 44 bytes**; further imports fail when it fills. Use **Restore source** to reconnect a missing source from your original file.
+If Aurialis warns that audio is available only in this tab, export before closing or reloading. Session-only audio survives navigation inside Aurialis, with a total cache cap of **256 MiB plus 44 bytes**; further imports fail when it fills. Use **Restore source** to reconnect a missing source from your original file.
 
 ## If something gets stuck
 

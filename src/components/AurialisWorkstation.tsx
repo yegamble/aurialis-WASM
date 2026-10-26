@@ -61,6 +61,7 @@ import {
   BottomSheet,
   Button,
   buttonClassName,
+  ChoiceGroup,
   ControlGroup,
   Modal,
   PageTitle,
@@ -1133,58 +1134,25 @@ function MasterView({ trackId }: { trackId: string }) {
           </>
         }
       >
-        <ControlGroup label="Bit depth">
-          <div className="choice-grid">
-            {([16, 24, 32] as const).map((depth) => (
-              <button
-                type="button"
-                className={bitDepth === depth ? "choice is-active" : "choice"}
-                aria-pressed={bitDepth === depth}
-                key={depth}
-                onClick={() => {
-                  setBitDepth(depth);
-                }}
-              >
-                {depth === 32 ? "32-bit Float" : `${String(depth)}-bit PCM`}
-              </button>
-            ))}
-          </div>
-        </ControlGroup>
-        <ControlGroup label="Sample rate">
-          <div className="choice-grid">
-            {(["source", ...EXPORT_SAMPLE_RATES] as const).map((rate) => (
-              <button
-                type="button"
-                className={exportRate === rate ? "choice is-active" : "choice"}
-                aria-pressed={exportRate === rate}
-                key={rate}
-                onClick={() => {
-                  setExportRate(rate);
-                }}
-              >
-                {rate === "source" ? `Source (${String(track.sampleRate / 1000)} kHz)` : `${String(rate / 1000)} kHz`}
-              </button>
-            ))}
-          </div>
-        </ControlGroup>
+        <ChoiceGroup
+          label="Bit depth"
+          value={bitDepth}
+          options={([16, 24, 32] as const).map((depth) => ({ value: depth, label: depth === 32 ? "32-bit Float" : `${String(depth)}-bit PCM` }))}
+          onChange={setBitDepth}
+        />
+        <ChoiceGroup
+          label="Sample rate"
+          value={exportRate}
+          options={(["source", ...EXPORT_SAMPLE_RATES] as const).map((rate) => ({ value: rate, label: rate === "source" ? `Source (${String(track.sampleRate / 1000)} kHz)` : `${String(rate / 1000)} kHz` }))}
+          onChange={setExportRate}
+        />
         {bitDepth !== 32 && (
-          <ControlGroup label="Dither">
-            <div className="choice-grid">
-              {([true, false] as const).map((on) => (
-                <button
-                  type="button"
-                  className={dither === on ? "choice is-active" : "choice"}
-                  aria-pressed={dither === on}
-                  key={String(on)}
-                  onClick={() => {
-                    setDither(on);
-                  }}
-                >
-                  {on ? "TPDF" : "Off"}
-                </button>
-              ))}
-            </div>
-          </ControlGroup>
+          <ChoiceGroup
+            label="Dither"
+            value={dither}
+            options={[{ value: true, label: "TPDF" }, { value: false, label: "Off" }]}
+            onChange={setDither}
+          />
         )}
         <p className="disclosure">
           Source sample rate: {track.sampleRate / 1000} kHz. Original duration
@@ -1474,35 +1442,18 @@ function AdvancedControls({
       />
       </fieldset>
       {adv.saturationModule.character === "Clean" && <p className="text-xs text-[var(--ink-soft)]">Clean leaves the signal unchanged. Your drive setting is retained for the other characters.</p>}
-      <ControlGroup label="Saturation character">
-        <div
-          className="choice-grid"
-          role="group"
-          aria-label="Saturation character"
-        >
-          {(["Clean", "Tube", "Tape", "Transformer", ...(["Warm", "Thick", "Crisp"].includes(adv.saturationModule.character) ? [adv.saturationModule.character] : [])] as SaturationCharacter[]).map((char) => (
-            <button
-              type="button"
-              key={char}
-              className={
-                adv.saturationModule.character === char
-                  ? "choice is-active"
-                  : "choice"
-              }
-              aria-pressed={adv.saturationModule.character === char}
-              onClick={() => {
-                dispatch({
-                  type: "UPDATE_SATURATION",
-                  trackId: track.id,
-                  patch: { character: char },
-                });
-              }}
-            >
-              {char}
-            </button>
-          ))}
-        </div>
-      </ControlGroup>
+      <ChoiceGroup
+        label="Saturation character"
+        value={adv.saturationModule.character}
+        options={(["Clean", "Tube", "Tape", "Transformer", ...(["Warm", "Thick", "Crisp"].includes(adv.saturationModule.character) ? [adv.saturationModule.character] : [])] as SaturationCharacter[]).map((char) => ({ value: char, label: char }))}
+        onChange={(character) => {
+          dispatch({
+            type: "UPDATE_SATURATION",
+            trackId: track.id,
+            patch: { character },
+          });
+        }}
+      />
 
       </DSPModule>
       <FrequencyDynamicsControls track={track} />

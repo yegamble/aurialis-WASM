@@ -156,6 +156,8 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Audit shipped dependencies for high and critical advisories
+        run: pnpm audit --prod --audit-level high
       - name: Typecheck
         run: pnpm exec tsc --noEmit
       - name: Lint

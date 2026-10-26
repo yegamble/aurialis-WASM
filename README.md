@@ -99,10 +99,10 @@ The first public-domain trial was rolled back after Cloudflare injected an exter
 GitHub Actions deploys the site to Cloudflare Workers. Every deploy uses the browser build that CI already tested; nothing is rebuilt for release.
 
 - **Production**: each push to `main` that passes every CI gate deploys the `aurialis-wasm` Worker (`deploy/cloudflare/wrangler.jsonc`) to [aurialis.yosefgamble.com](https://aurialis.yosefgamble.com/) and [aurialis.yosef.app](https://aurialis.yosef.app/). Then it smoke-tests both domains. Deploys queue rather than overlap. The job summary records the Worker version id.
-- **Pull request previews**: each pull request opened from this repository gets an isolated Worker Preview named `pr-<number>`. Its URL is commented on the pull request and updates on every push. The preview is deleted when the pull request closes. Forks and Dependabot get no preview because they have no Cloudflare secrets.
+- **Branch previews**: Cloudflare Workers Builds, connected in the Worker's dashboard settings, builds every non-`main` branch into an isolated Worker Preview. It comments the preview URL on the branch's pull request, and the URL updates on every push. Its production deploy command is `wrangler versions upload`, so only GitHub Actions changes production.
 - **Rollback**: run the **Cloudflare Rollback** workflow from `main` with an earlier Worker version id.
 
-These workflows need the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. Create the token from the *Edit Cloudflare Workers* template, scoped to this account and the `yosefgamble.com` and `yosef.app` zones.
+The GitHub workflows need the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. Create the token from the *Edit Cloudflare Workers* template, scoped to this account and the `yosefgamble.com` and `yosef.app` zones.
 
 ## Know the current limits
 

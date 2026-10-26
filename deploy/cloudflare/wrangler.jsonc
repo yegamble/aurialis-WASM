@@ -1,7 +1,7 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  // Production Worker. `main` deploys it from CI; pull requests get isolated
-  // Worker Previews (`wrangler preview --name pr-<number>`) on workers.dev.
+  // Production Worker. GitHub Actions deploys `main` after CI passes; Workers
+  // Builds creates an isolated Worker Preview for every other branch.
   "name": "aurialis-wasm",
   "main": "worker.ts",
   "compatibility_date": "2026-10-23",

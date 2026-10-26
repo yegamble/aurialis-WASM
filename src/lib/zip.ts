@@ -105,10 +105,14 @@ export async function createStoredZip(entries: readonly ZipEntry[], signal?: Abo
 
 const UNSAFE_NAME_CHARACTERS = '<>:"/\\|?*';
 
-/** A filesystem-safe base name (no extension): control and reserved characters become "-", at most 120 characters. */
+/** Bidi overrides, zero-width and other invisible format characters, which can disguise a file's real extension. */
+const FORMAT_CHARACTER = /^\p{Cf}$/u;
+
+/** A filesystem-safe base name (no extension): control, format and reserved characters become "-", at most 120 code points. */
 export function safeFileBaseName(name: string, fallback: string): string {
-  const replaced = Array.from(name.normalize("NFC"), (char) => char.charCodeAt(0) < 0x20 || char === "\u007f" || UNSAFE_NAME_CHARACTERS.includes(char) ? "-" : char).join("");
-  const safe = replaced.replace(/-+/gu, "-").replace(/\s+/gu, " ").trim().slice(0, 120).replace(/^[.\s-]+|[.\s]+$/gu, "");
+  const replaced = Array.from(name.normalize("NFC"), (char) => char.charCodeAt(0) < 0x20 || char === "\u007f" || FORMAT_CHARACTER.test(char) || UNSAFE_NAME_CHARACTERS.includes(char) ? "-" : char).join("");
+  const collapsed = replaced.replace(/-+/gu, "-").replace(/\s+/gu, " ").trim();
+  const safe = Array.from(collapsed).slice(0, 120).join("").replace(/^[.\s-]+|[.\s]+$/gu, "");
   return safe || fallback;
 }
 

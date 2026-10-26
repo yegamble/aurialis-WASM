@@ -15,7 +15,7 @@ Evidence (local, 2026-10-26, Round E catch-up at `8ed74a6`; re-run by the tech w
 - `playwright-a11y-responsive` (reported by frontend/QA, not re-run here): browser Playwright 14/14, including a converted 44.1 kHz dither-off export byte-identical to the native oracle; native Playwright 26/26, including Export dialog axe at six widths.
 - Remote CI passed at the PR head `ca2ddd3` (run 40345818654, attempt 2). `e2e/finite-playback.spec.ts:50` failed once on shard 2 (speaker chunk time delta 0 instead of 128) and passed on rerun; it is a live-playback clock flake unrelated to export. The 44 commits after `ca2ddd3` have no remote CI yet.
 
-Open follow-ups: Release Check renders at the source rate only, and its CD guidance does not point to Export conversion; album renders and saved album masters stay at the source rate; upgrading the 4× meter's accuracy needs its own ruling; native `/api/master/render` has no memory admission for conversion buffers; the finite-playback clock flake. Status: **open — awaiting merge** (PR #28).
+Open follow-ups: Release Check renders at the source rate only, and its CD guidance does not point to Export conversion; album renders and saved album masters stay at the source rate; upgrading the 4× meter's accuracy needs its own ruling; native `/api/master/render` has no memory admission for conversion buffers; the finite-playback clock flake. Status: **merged** in PR #28 on 2026-10-26.
 
 ## Faster Smart Split — 2026-10-26
 

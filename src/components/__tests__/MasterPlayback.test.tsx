@@ -389,10 +389,15 @@ describe("master live playback lifecycle", () => {
     await ready();
     const render = vi.spyOn(engine, "renderDelivery").mockResolvedValueOnce({ blob: previewWAV(pcm), truePeakDbtp: null }).mockResolvedValueOnce({ blob: previewWAV(pcm), truePeakDbtp: -1.04 });
     // jsdom has no object URLs; restoreAllMocks does not reach defineProperty.
+    // Export revokes its URL 1 s after the click, so keep the stub until that
+    // timer has fired; otherwise it throws into a later test on a slow runner.
     const originals = (["createObjectURL", "revokeObjectURL"] as const).map((key) => [key, Object.getOwnPropertyDescriptor(URL, key)] as const);
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: () => "blob:export" });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: () => undefined });
-    onTestFinished(() => { for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(URL, key, descriptor); else Reflect.deleteProperty(URL, key); } });
+    onTestFinished(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(URL, key, descriptor); else Reflect.deleteProperty(URL, key); }
+    });
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
     const rates = within(screen.getByRole("group", { name: "Sample rate" })).getAllByRole("button");

@@ -11,9 +11,11 @@ import (
 const modelSampleRate = 44100
 const maximumPrivateJobBytes int64 = 1536 * 1024 * 1024
 
-// maximumWorkers bounds transformer lanes; each lane adds about 20 MB at the
-// full window.
+// maximumWorkers bounds transformer lanes; each lane adds about 23.5 MB at
+// the full window.
 const maximumWorkers = 16
+
+var errJobMemoryCeiling = errors.New("separation job exceeds its 1.5 GiB memory ceiling")
 
 // defaultWorkers uses every available core up to maximumWorkers.
 func defaultWorkers() int { return min(runtime.GOMAXPROCS(0), maximumWorkers) }
@@ -62,9 +64,22 @@ func estimatePipeline(sourceRate, frames, stems, window, workers int) (pipelineR
 	const backendAndMetadataAllowance = 32 * 1024 * 1024
 	result.requiredJobBytes = result.workingBytes + result.inputBytes + result.retainedOutputBytes + backendAndMetadataAllowance
 	if result.requiredJobBytes > maximumPrivateJobBytes {
-		return pipelineResources{}, errors.New("separation job exceeds its 1.5 GiB memory ceiling")
+		return pipelineResources{}, errJobMemoryCeiling
 	}
 	return result, nil
+}
+
+// planPipeline estimates a request with up to workers lanes. When the job
+// would pass the memory ceiling it drops lanes, down to one, so the longest
+// sources run slower rather than being refused.
+func planPipeline(sourceRate, frames, stems, window, workers int) (pipelineResources, error) {
+	for {
+		resources, err := estimatePipeline(sourceRate, frames, stems, window, workers)
+		if err == nil || !errors.Is(err, errJobMemoryCeiling) || workers <= 1 {
+			return resources, err
+		}
+		workers--
+	}
 }
 
 // stemNames describes the actual selected heads and residual grouping. "other"

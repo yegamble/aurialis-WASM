@@ -5,6 +5,8 @@ The blanket “all slices verified” claim at `ade7736` is withdrawn. The earli
 
 ## Deploy and supply-chain security — 2026-10-26
 
+Round E (Devil's Advocate) fixes, 2026-10-26: CI now runs the full `pnpm audit --audit-level high` instead of `--prod`, so wrangler (which runs with the deploy token), vitest and newman are covered. `pnpm.auditConfig.ignoreGhsas` lists the two documented newman advisories. The result is "9 moderate | 2 high (2 ignored)" with exit 0, and removing one ignore fails the gate. The static browser suite asserts the exact HSTS and Permissions-Policy values on the real Worker under `wrangler dev` before merge (14/14). Dependabot alerts and automated security fixes were enabled in repository settings.
+
 Status: **open — awaiting merge** (`fix/v1-08-deploy-security`, V1-08).
 
 - **Headers.** The native server and the Cloudflare Worker deny `payment` and `usb` in `Permissions-Policy` as well as camera, microphone and geolocation. The Worker adds `Strict-Transport-Security: max-age=63072000; includeSubDomains` without `preload`. `smoke-cloudflare.sh` asserts both exact values on each production domain.

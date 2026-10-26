@@ -624,7 +624,11 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 	}
 	outL, outR, afterMetrics, outRate, convertErr := mastering.ConvertExportContext(r.Context(), outL, outR, buf.SampleRate, bitDepth, params, afterMetrics, export)
 	if convertErr != nil {
-		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Sample-rate conversion canceled or timed out")
+		if r.Context().Err() != nil {
+			writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Sample-rate conversion canceled or timed out")
+		} else {
+			writeErrorJSON(w, http.StatusBadRequest, "invalid_export_options", convertErr.Error())
+		}
 		return
 	}
 

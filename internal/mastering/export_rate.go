@@ -4,8 +4,12 @@ import (
 	"context"
 	"errors"
 
+	"github.com/yegamble/Aurialis-WASM/internal/audio"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
 )
+
+// ErrExportTooLong rejects a conversion whose output would exceed the decoded-frame bound.
+var ErrExportTooLong = errors.New("the converted export would exceed the track length limit; choose a lower sample rate")
 
 // ExportOptions selects delivery conversion after mastering. SampleRate 0 keeps
 // the source rate; NoDither leaves 16/24-bit output undithered.
@@ -50,6 +54,9 @@ func (o ExportOptions) RenderDitherBits(sourceRate, bitDepth int) int {
 func ConvertExportContext(ctx context.Context, left, right []float32, sourceRate, bitDepth int, params dsp.Params, rendered dsp.Metrics, o ExportOptions) ([]float32, []float32, dsp.Metrics, int, error) {
 	if !o.Converts(sourceRate) {
 		return left, right, rendered, sourceRate, nil
+	}
+	if int64(len(left))*int64(o.SampleRate) > int64(audio.MaxDecodedFrames)*int64(sourceRate) {
+		return nil, nil, dsp.Metrics{}, 0, ErrExportTooLong
 	}
 	outL, outR, err := dsp.ResampleContext(ctx, left, right, sourceRate, o.SampleRate)
 	if err != nil {

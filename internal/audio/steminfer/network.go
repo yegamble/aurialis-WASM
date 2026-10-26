@@ -266,31 +266,7 @@ func (work *networkWorkspace) layer(ctx context.Context, archive *weightArchive,
 				return lane.transformer(ctx, work.rotations, work.hidden[band*work.frames*256:(band+1)*work.frames*256], work.frames, 1, weights)
 			})
 		} else {
-			// Frequency-axis sequences are short (62 bands), so each task
-			// packs as many frames as a lane holds into one batch.
-			bands := len(bandBins)
-			perBatch := max(1, work.laneRows/bands)
-			batches := (work.frames + perBatch - 1) / perBatch
-			err = work.parallel(ctx, batches, func(lane *transformerLane, batch int) error {
-				first := batch * perBatch
-				count := min(perBatch, work.frames-first)
-				for local := range count {
-					frame := first + local
-					for band := range bands {
-						copy(lane.frequencies[(local*bands+band)*256:(local*bands+band+1)*256], work.hidden[(band*work.frames+frame)*256:(band*work.frames+frame+1)*256])
-					}
-				}
-				if err := lane.transformer(ctx, work.rotations, lane.frequencies, bands, count, weights); err != nil {
-					return err
-				}
-				for local := range count {
-					frame := first + local
-					for band := range bands {
-						copy(work.hidden[(band*work.frames+frame)*256:(band*work.frames+frame+1)*256], lane.frequencies[(local*bands+band)*256:(local*bands+band+1)*256])
-					}
-				}
-				return nil
-			})
+			err = work.frequencyAxis(ctx, weights)
 		}
 		if err != nil {
 			return err
@@ -307,6 +283,35 @@ func (work *networkWorkspace) layer(ctx context.Context, archive *weightArchive,
 		}
 	}
 	return nil
+}
+
+// frequencyAxis runs one frequency-axis block over every frame. Sequences
+// are short (62 bands), so each task packs as many frames as a lane holds
+// into one batch.
+func (work *networkWorkspace) frequencyAxis(ctx context.Context, weights blockWeights) error {
+	bands := len(bandBins)
+	perBatch := max(1, work.laneRows/bands)
+	batches := (work.frames + perBatch - 1) / perBatch
+	return work.parallel(ctx, batches, func(lane *transformerLane, batch int) error {
+		first := batch * perBatch
+		count := min(perBatch, work.frames-first)
+		for local := range count {
+			frame := first + local
+			for band := range bands {
+				copy(lane.frequencies[(local*bands+band)*256:(local*bands+band+1)*256], work.hidden[(band*work.frames+frame)*256:(band*work.frames+frame+1)*256])
+			}
+		}
+		if err := lane.transformer(ctx, work.rotations, lane.frequencies, bands, count, weights); err != nil {
+			return err
+		}
+		for local := range count {
+			frame := first + local
+			for band := range bands {
+				copy(work.hidden[(band*work.frames+frame)*256:(band*work.frames+frame+1)*256], lane.frequencies[(local*bands+band)*256:(local*bands+band+1)*256])
+			}
+		}
+		return nil
+	})
 }
 
 // parallel runs task for every index in [0, count) across the workspace lanes.

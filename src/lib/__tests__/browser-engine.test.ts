@@ -1,6 +1,7 @@
 import { Blob as NodeBlob } from "node:buffer";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "../audio-dsp";
+import { exportParams } from "../engine-params";
 import {
   engineParams,
   importAudio,
@@ -362,6 +363,36 @@ describe("actual audio measurement and explicit Simple normalization", () => {
     expect(settings).toEqual(original);
     expect(next.compressor).toEqual(original.compressor);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it("measures every candidate with the export algorithm so the search converges on the delivered master", async () => {
+    const sent: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn((_url: string, request: { body: FormData }) => {
+      const raw = request.body.get("params");
+      if (typeof raw !== "string") throw new Error("Missing render parameters");
+      const params = JSON.parse(raw) as { inputGainDb: number };
+      sent.push(params);
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(measurementResponse({
+        ...measured, integratedLufs: -20 + params.inputGainDb, truePeakDbtp: -1.2,
+      })) });
+    }));
+    const settings = { ...createDefaultAdvancedParams(), limiter: { ...createDefaultAdvancedParams().limiter, enabled: true } };
+    const next = await normalizeSimpleAudio(new Blob(["fixture"]), settings, -14);
+    expect(next.input).toBe(6);
+    expect(sent).toHaveLength(2);
+    for (const params of sent) {
+      expect(params).toMatchObject({ algorithmVersion: 2, limiter: { enabled: true, truePeak: true, ceilingDbtp: -1 } });
+    }
+    expect(sent.at(-1)).toEqual(exportParams(next));
+    expect(next.limiter.truePeak).toBe(false);
+  });
+  it("gates the measured export true peak at the ceiling plus 0.05 dB", async () => {
+    const respond = (truePeakDbtp: number) => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(measurementResponse({ ...measured, integratedLufs: -14, truePeakDbtp })) }));
+    };
+    respond(-0.95);
+    expect((await normalizeSimpleAudio(new Blob(["fixture"]), createDefaultAdvancedParams(), -14)).input).toBe(0);
+    respond(-0.9);
+    await expect(normalizeSimpleAudio(new Blob(["fixture"]), createDefaultAdvancedParams(), -14)).rejects.toThrow("peak ceiling");
   });
   it("rejects unreachable targets, silence and peak violations", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(measurementResponse()) }));

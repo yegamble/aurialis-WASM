@@ -1,4 +1,4 @@
-import { engineParams } from "./engine-params";
+import { EXPORT_PEAK_TOLERANCE_DB, engineParams, exportParams } from "./engine-params";
 export { engineParams } from "./engine-params";
 import { deviceAudioRequest, usesBrowserAudio } from "./browser-jobs";
 import type { ScriptV2 } from "./deep-mastering";
@@ -417,8 +417,11 @@ export function trackMetrics(metrics: MeasuredAudioMetrics) {
 }
 
 // Explicit Simple-mode automatic gain. Advanced rendering never calls this.
-// Fail rather than claiming a target when nonlinear processing or available
-// sample-peak limiting cannot meet both loudness and the measured peak ceiling.
+// Every candidate is measured with the export parameters (algorithm 2, the
+// lookahead true-peak limiter) so the search converges on the delivered WAV,
+// not on the live sample-peak limiter whose inter-sample peaks overshoot.
+// Fail rather than claiming a target when nonlinear processing or limiting
+// cannot meet both loudness and the measured peak ceiling.
 export async function normalizeSimpleAudio(
   file: Blob,
   settings: AdvancedParams,
@@ -433,13 +436,13 @@ export async function normalizeSimpleAudio(
   let upper = 36;
   for (let attempt = 0; attempt < 8; attempt++) {
     signal?.throwIfAborted();
-    const { afterMetrics } = await measureAudio(file, engineParams(candidate), signal);
+    const { afterMetrics } = await measureAudio(file, exportParams(candidate), signal);
     signal?.throwIfAborted();
     const difference = targetLufs - afterMetrics.integratedLufs;
     if (afterMetrics.integratedLufs <= -69.9)
       throw new Error("The source is too quiet to normalize reliably.");
     if (Math.abs(difference) <= 0.2) {
-      if (afterMetrics.truePeakDbtp > candidate.limiter.ceiling + 0.2)
+      if (afterMetrics.truePeakDbtp > candidate.limiter.ceiling + EXPORT_PEAK_TOLERANCE_DB)
         throw new Error("This loudness target exceeds the measured peak ceiling. Choose a quieter target.");
       return candidate;
     }

@@ -15,12 +15,16 @@ Evidence (local, 2026-10-26). On a deterministic dense drum-and-bass fixture (so
 | Streaming −14/−1 | rejected at −0.27 dBTP | export −14.18 LUFS, −1.10 dBTP |
 | Loud −9/−0.2 | rejected at +2.31 dBTP | export −9.01 LUFS, −0.30 dBTP |
 | Elevated, +2 dB input | rejected | accepted, −14.5 LUFS, −1.21 dBTP |
+| Album, 3 dense tracks (sources −15.96, −18.66, −22.66 LUFS), Pop, −14/−1 | not covered | −14.04, −14.06, −14.08 LUFS; each −1.21 dBTP |
+| Browser worker (no audio server), Streaming | not covered | input +2.52 dB; export −14.03 LUFS, −1.21 dBTP |
+
+After Set target loudness, the status line now reports the export measurement ("Preview ready. Export measures −9.01 LUFS, −0.30 dBTP. Live meters and the offline preview use the preview limiter and can read higher."). The offline-preview note carries the same caveat. Album rendering reuses the normalization measurement instead of rendering each track a second time.
 
 Tests:
 - Go: `TestNormalizeDenseProgramReachesTarget`.
-- Vitest: 533/533.
-- Playwright `mastering-targets`: 4/4. The new dense cases failed on the pre-fix build.
-- Regression sweep: 27/27.
+- Vitest: 534/534 (with `--maxWorkers=4`; the default run timed out one unrelated MasterPlayback mount test on a machine at load average ~150, and that file passed 17/17 alone).
+- Playwright `mastering-targets` + `workflow-regressions`: 11/11, including the dense album case. The dense Set-target cases also check that the status-line LUFS/dBTP match the downloaded WAV. The new dense cases failed on the pre-fix build.
+- Browser worker `e2e-browser/workflows.spec.ts` dense case: 1/1.
 
 Offline preview and live playback still use algorithm 1 (tracked as V1-10). Status: **open — awaiting merge**.
 ## Export sample-rate conversion and dither — 2026-10-26

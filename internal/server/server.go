@@ -589,7 +589,8 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_export_options", exportErr.Error())
 		return
 	}
-	params.DitherBits = export.RenderDitherBits(buf.SampleRate, bitDepth)
+	deliveredDither := export.DitherBits(bitDepth, params.DitherBits)
+	params.DitherBits = export.RenderDitherBits(buf.SampleRate, bitDepth, params.DitherBits)
 	if script != nil {
 		script.ChainParams = params
 	}
@@ -623,7 +624,7 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio rendering canceled or timed out")
 		return
 	}
-	outL, outR, afterMetrics, outRate, convertErr := mastering.ConvertExportContext(r.Context(), outL, outR, buf.SampleRate, bitDepth, params, afterMetrics, export)
+	outL, outR, afterMetrics, outRate, convertErr := mastering.ConvertExportContext(r.Context(), outL, outR, buf.SampleRate, deliveredDither, params, afterMetrics, export)
 	if convertErr != nil {
 		if r.Context().Err() != nil {
 			writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Sample-rate conversion canceled or timed out")
@@ -632,6 +633,8 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	// Report the dither the delivered file carries; a conversion dithers after rendering.
+	params.DitherBits = deliveredDither
 
 	if r.FormValue("format") == "json" || strings.Contains(r.Header.Get("Accept"), "application/json") {
 		writeJSON(w, http.StatusOK, map[string]any{

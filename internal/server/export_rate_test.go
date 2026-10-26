@@ -86,6 +86,21 @@ func TestExportSampleRateAndDither(t *testing.T) {
 	if !differs {
 		t.Fatal("dither none produced the dithered export")
 	}
+	var metadata struct {
+		Params dsp.Params `json:"params"`
+	}
+	for _, c := range []struct {
+		dither string
+		want   int
+	}{{"", 16}, {"none", 0}} {
+		recorder := post(map[string]string{"params": string(encoded), "bitDepth": "16", "sampleRate": "48000", "dither": c.dither, "format": "json"})
+		if err := json.Unmarshal(recorder.Body.Bytes(), &metadata); err != nil || recorder.Code != http.StatusOK {
+			t.Fatalf("json render %d: %.200s", recorder.Code, recorder.Body.String())
+		}
+		if metadata.Params.DitherBits != c.want {
+			t.Errorf("dither %q: reported ditherBits %d, want the delivered %d", c.dither, metadata.Params.DitherBits, c.want)
+		}
+	}
 	for _, raw := range []string{"22050", "fast", "0", "+48000", "048000", " 48000 ", "48000\r\n", "48000.0", "4.8e4", "-48000"} {
 		recorder := post(map[string]string{"sampleRate": raw})
 		if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `"invalid_sample_rate"`) {

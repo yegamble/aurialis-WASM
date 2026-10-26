@@ -56,7 +56,8 @@ func render(ctx context.Context, request Request, buf *audio.Buffer) (*Result, e
 	if err := export.Validate(len(buf.Left), buf.SampleRate); err != nil {
 		return nil, err
 	}
-	params.DitherBits = export.RenderDitherBits(buf.SampleRate, bits)
+	deliveredDither := export.DitherBits(bits, params.DitherBits)
+	params.DitherBits = export.RenderDitherBits(buf.SampleRate, bits, params.DitherBits)
 	if script != nil {
 		script.ChainParams = params
 	}
@@ -75,10 +76,12 @@ func render(ctx context.Context, request Request, buf *audio.Buffer) (*Result, e
 			return nil, err
 		}
 	}
-	left, right, after, rate, err := mastering.ConvertExportContext(ctx, left, right, buf.SampleRate, bits, params, after, export)
+	left, right, after, rate, err := mastering.ConvertExportContext(ctx, left, right, buf.SampleRate, deliveredDither, params, after, export)
 	if err != nil {
 		return nil, err
 	}
+	// Report the dither the delivered file carries; a conversion dithers after rendering.
+	params.DitherBits = deliveredDither
 	fields := map[string]any{"status": "ok", "sampleRate": rate, "frames": len(left), "duration": float64(len(left)) / float64(rate), "bitDepth": bits, "params": params, "beforeMetrics": before, "afterMetrics": after}
 	if request.Format == "json" {
 		return metadata(fields)

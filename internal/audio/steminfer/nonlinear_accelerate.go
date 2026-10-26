@@ -35,17 +35,17 @@ static void aurialis_stem_softmax(float *values, int rows, int width) {
  }
 }
 static void aurialis_stem_gelu(float *values, int count) {
- // Exact-form GELU, x/2 * (1 + erf(x/sqrt2)), with erf from Abramowitz and
- // Stegun 7.1.26 (absolute error below 1.5e-7, under float32 resolution near
- // 1). Batches keep exp vectorized; this is not the tanh approximation.
+ // GELU as x/2 * (1 + erf(x/sqrt2)) with the Abramowitz and Stegun 7.1.26
+ // erf approximation (formula bound 1.5e-7). Measured in float32 against
+ // math.Erf, GELU deviates by at most 5e-7. Batches keep exp vectorized; this
+ // is not the tanh approximation.
  enum { batch = 1024 };
- float a[batch], t[batch], e[batch];
+ float t[batch], e[batch];
  for (int first=0; first<count; first+=batch) {
   int n = count-first < batch ? count-first : batch;
   float *x = values+first;
   for (int i=0; i<n; i++) {
    float z = fabsf(x[i])*0.7071067811865475244f;
-   a[i] = z;
    t[i] = 1.0f/(1.0f+0.3275911f*z);
    e[i] = -z*z;
   }
@@ -58,7 +58,6 @@ static void aurialis_stem_gelu(float *values, int count) {
    x[i] = 0.5f*x[i]*(1.0f+erf);
   }
  }
- (void)a;
 }
 static void aurialis_stem_tanh(float *values, int count) {
  vvtanhf(values, values, &count);

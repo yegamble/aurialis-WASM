@@ -162,7 +162,7 @@ test("Elevated accepts a dense program whose export true peak meets the ceiling"
   const [, , peak] = /(-?\d+\.\d) LUFS · (-?\d+\.\d{2}) dBTP/u.exec(await check.innerText()) ?? [];
   await info.attach("dense-elevated-check", { body: await check.innerText(), contentType: "text/plain" });
   const { ceiling } = (await savedTrack(page, id)).advanced.limiter;
-  expect(Number(peak)).toBeLessThanOrEqual(ceiling + 0.05);
+  expect(Number(peak)).toBeLessThanOrEqual(ceiling);
   await expect(page.getByRole("button", { name: "Elevated", exact: true })).toHaveAttribute("aria-pressed", "true");
   expect((await savedTrack(page, id)).advanced.input).toBe(2);
 });

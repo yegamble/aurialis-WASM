@@ -393,13 +393,13 @@ describe("actual audio measurement and explicit Simple normalization", () => {
       .toBe("Export measures −9.01 LUFS, −0.30 dBTP. Live meters and the offline preview use the preview limiter and can read higher.");
     expect(exportLevelSummary({ ...measured, integratedLufs: -14.004, truePeakDbtp: 0.004 })).toMatch(/^Export measures −14\.00 LUFS, 0\.00 dBTP\./u);
   });
-  it("gates the measured export true peak at the ceiling plus 0.05 dB", async () => {
+  it("gates the measured export true peak strictly at the ceiling", async () => {
     const respond = (truePeakDbtp: number) => {
       vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(measurementResponse({ ...measured, integratedLufs: -14, truePeakDbtp })) }));
     };
-    respond(-0.95);
+    respond(-1);
     expect((await normalizeSimpleAudio(new Blob(["fixture"]), createDefaultAdvancedParams(), -14)).advanced.input).toBe(0);
-    respond(-0.9);
+    respond(-0.999);
     await expect(normalizeSimpleAudio(new Blob(["fixture"]), createDefaultAdvancedParams(), -14)).rejects.toThrow("peak ceiling");
   });
   it("rejects unreachable targets, silence and peak violations", async () => {

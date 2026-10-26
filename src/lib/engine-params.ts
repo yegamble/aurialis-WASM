@@ -67,10 +67,6 @@ export function engineParams(advanced: AdvancedParams) {
  * because the worklet cannot absorb the limiter's latency. */
 export const EXPORT_ALGORITHM_VERSION = 2;
 
-/** dB a measured export true peak may exceed the limiter ceiling and still be
- * accepted by Set target loudness, album normalization and Elevated. */
-export const EXPORT_PEAK_TOLERANCE_DB = 0.05;
-
 function withExportLimiter<T extends { limiter: object }>(params: T): T & { algorithmVersion: number } {
   return { ...params, limiter: { ...params.limiter, truePeak: true }, algorithmVersion: EXPORT_ALGORITHM_VERSION };
 }

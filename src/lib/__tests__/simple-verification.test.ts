@@ -28,11 +28,16 @@ describe("measured Elevated acceptance", () => {
     expect(verifyCanonicalSource).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(change)).toBe(before);
   });
-  it("accepts a dense program whose export-algorithm true peak sits within 0.05 dB of the ceiling", async () => {
+  it("accepts an export true peak exactly at the ceiling and rejects anything above it", async () => {
     const ceiling = change.advanced.limiter.ceiling;
-    const result = measured(); Object.assign(result.afterMetrics, { truePeakDbtp: ceiling + 0.04, samplePeakDbfs: ceiling - 0.3 });
+    const result = measured(); Object.assign(result.afterMetrics, { truePeakDbtp: ceiling, samplePeakDbfs: ceiling - 0.3 });
     vi.mocked(measureAudio).mockResolvedValue(result);
-    expect(await verifyElevatedChange(source, track, change, new AbortController().signal)).toEqual({ lufs: -20, peak: ceiling + 0.04 });
+    expect(await verifyElevatedChange(source, track, change, new AbortController().signal)).toEqual({ lufs: -20, peak: ceiling });
+    for (const patch of [{ truePeakDbtp: ceiling + 0.001 }, { samplePeakDbfs: ceiling + 0.001 }]) {
+      const over = measured(); Object.assign(over.afterMetrics, { truePeakDbtp: ceiling, samplePeakDbfs: ceiling - 0.3 }, patch);
+      vi.mocked(measureAudio).mockResolvedValue(over);
+      await expect(verifyElevatedChange(source, track, change, new AbortController().signal)).rejects.toThrow(/peak ceiling/u);
+    }
   });
   it("rejects over-ceiling true peaks, samples and excess loudness without changing settings", async () => {
     for (const patch of [{ truePeakDbtp: -.8 }, { samplePeakDbfs: 0 }, { integratedLufs: -12 }]) {

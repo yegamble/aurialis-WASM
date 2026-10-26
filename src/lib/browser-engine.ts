@@ -1,4 +1,4 @@
-import { EXPORT_PEAK_TOLERANCE_DB, engineParams, exportParams } from "./engine-params";
+import { engineParams, exportParams } from "./engine-params";
 export { engineParams } from "./engine-params";
 import { deviceAudioRequest, usesBrowserAudio } from "./browser-jobs";
 import type { ScriptV2 } from "./deep-mastering";
@@ -457,7 +457,8 @@ export async function normalizeSimpleAudio(
     if (afterMetrics.integratedLufs <= -69.9)
       throw new Error("The source is too quiet to normalize reliably.");
     if (Math.abs(difference) <= 0.2) {
-      if (afterMetrics.truePeakDbtp > candidate.limiter.ceiling + EXPORT_PEAK_TOLERANCE_DB)
+      // Strict: the export true-peak limiter holds its ceiling with headroom.
+      if (afterMetrics.truePeakDbtp > candidate.limiter.ceiling)
         throw new Error("This loudness target exceeds the measured peak ceiling. Choose a quieter target.");
       return { advanced: candidate, measurement };
     }

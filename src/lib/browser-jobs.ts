@@ -63,6 +63,12 @@ export function reserveBrowserAudioMemory(initialBytes = 0): Readonly<{ update: 
   return Object.freeze({ update, dispose });
 }
 
+async function sourceRate(blob: Blob): Promise<number | undefined> {
+  const data = new DataView(await blob.slice(0, 28).arrayBuffer());
+  if (data.byteLength < 28 || String.fromCharCode(...Array.from({ length: 4 }, (_, i) => data.getUint8(i))) !== "RIFF") return undefined;
+  const rate = data.getUint32(24, true);
+  return rate >= 8000 && rate <= 192000 ? rate : undefined;
+}
 async function decodedBytes(blob: Blob): Promise<number> {
   if (blob.size === 0) return 0;
   const fallback = Math.min(MAX_SOURCE_FRAMES * 8, blob.size * 8);
@@ -94,7 +100,10 @@ async function preflight(request: JobRequest, source: Blob, reference: Blob, sig
   // Measured Go worker linear memory peaks near 2.2x the decoded PCM (input
   // copy, reconstructed and rendered channels, encoded WAV). Add the
   // transferred input buffer and the returned audio, with headroom.
-  const estimate = 64 * MIB + input * 2 + decoded * (request.operation === "render" ? 4 : 3);
+  let estimate = 64 * MIB + input * 2 + decoded * (request.operation === "render" ? 4 : 3);
+  // A converted export also holds resampled channels, their measurement and
+  // the larger encoded WAV. An unreadable source rate assumes 8 kHz (worst case).
+  if (request.sampleRate !== undefined) estimate += decoded * 3 * request.sampleRate / (await sourceRate(source) ?? 8000);
   if (estimate + reservedResidentBytes > memoryBudget()) throw new Error("This job exceeds the browser's conservative audio memory budget. " + LOCAL_FALLBACK);
   activeJobBytes = estimate;
   // 130 s covers 16,777,216 frames; longer sources get proportionally longer.

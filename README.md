@@ -40,7 +40,7 @@ Your audio  →  Choose a direction  →  Listen and refine  →  Download a WAV
 | Shape the details | **Advanced** five-band EQ, compression, saturation, stereo controls, sample-peak limiting, De-Harsh and multiband dynamics. EQ changes tonal balance; compression controls changes in level. |
 | Hear your decisions | **A Processed / B Original** listening, a measured live spectrum and waveform, and shared settings across Simple and Advanced. A/B does not automatically match loudness. |
 | Understand and compare | **Deep** proposes bounded, editable changes over source-frame intervals; review them before Apply. **Reference** compares your current starting chain with another track's original audio and proposes bounded EQ and optional width changes. |
-| Make a handoff | **Export** as 16/24-bit PCM or 32-bit float WAV at the source rate or converted to 44.1, 48, 88.2 or 96 kHz, with TPDF dither or none, preserving duration. **Release check** measures and retains the exact encoded WAV for download. Album rendering creates individual 24-bit WAV downloads. |
+| Make a handoff | **Export** as 16/24-bit PCM or 32-bit float WAV at the source rate or converted to 44.1, 48, 88.2 or 96 kHz, with TPDF dither or none, preserving duration. With the limiter on, a converted export is true-peak limited again at its new rate. **Release check** measures and retains the exact encoded WAV for download. Album rendering creates individual 24-bit WAV downloads. |
 
 The interface follows a warm paper-and-ink design, with a focused listening area and detailed controls when you need them. Aurialis-WASM builds on [Aurialis](https://github.com/yegamble/Aurialis); this repository contains the Go, Next.js and WebAssembly implementation.
 
@@ -74,7 +74,7 @@ The build embeds the interface, fonts, audio modules and worklets in one `aurial
 2. **Choose a direction.** Adjust genre, tone, style, modifiers and intensity. These update the shared settings while retaining explicit input gain and output targets. Elevated checks the rendered candidate before accepting it.
 3. **Listen.** Press Play and switch between **A Processed** and **B Original**. Volume controls listening level, not export gain. A louder result can sound more impressive, so judge tone and dynamics as well as loudness.
 4. **Set loudness when needed.** Choose a target and press **Set target loudness** to measure the current settings and adjust input gain. Selecting a target alone does not normalize the track.
-5. **Export.** Open Export, choose a bit depth, sample rate and dither, then press **Render & download WAV**. The default is 24-bit PCM at the source rate with TPDF dither. Export uses your current processing settings, including when you are listening to B Original. With Deep attached, it uses the acknowledged applied snapshot; draft or pending settings are excluded.
+5. **Export.** Open Export, choose a bit depth, a sample rate and, for 16/24-bit PCM, dither, then press **Render & download WAV**. The default is 24-bit PCM at the source rate with TPDF dither. Export uses your current processing settings, including when you are listening to B Original. With Deep attached, it uses the acknowledged applied snapshot; draft or pending settings are excluded.
 
 See the [first-master guide](docs/getting-started.md) for control explanations, keyboard shortcuts, file formats and troubleshooting.
 

@@ -46,15 +46,35 @@ func TestResamplePassbandAlignmentAndLength(t *testing.T) {
 	}
 }
 
-func TestResampleRejectsAliases(t *testing.T) {
-	// 30 kHz at 96 kHz would alias to 14.1 kHz at 44.1 kHz.
-	in := toneAt(96000, 30000, 0.9, 96000)
-	l, _, err := ResampleContext(context.Background(), in, in, 96000, 44100)
-	if err != nil {
-		t.Fatal(err)
+// fadedTone is a Hann-enveloped tone, so its spectrum has no broadband edges
+// that the conversion filter would pass next to the alias being measured.
+func fadedTone(rate, freq float64, frames int) []float32 {
+	out := toneAt(rate, freq, 0.9, frames)
+	for i := range out {
+		out[i] *= float32(0.5 * (1 - math.Cos(2*math.Pi*float64(i)/float64(frames-1))))
 	}
-	if alias := GoertzelMagnitudeDB(l, 44100, 14100) - 20*math.Log10(0.9); alias > -110 {
-		t.Fatalf("alias at 14.1 kHz %.1f dB relative to the input tone, want below -110", alias)
+	return out
+}
+
+func TestResampleRejectsAliases(t *testing.T) {
+	// Tones just past the lower Nyquist frequency, in the transition band,
+	// fold back next to it; 30 kHz at 96 kHz would alias to 14.1 kHz at 44.1 kHz.
+	// Every alias must sit at least the 120 dB design stopband below the tone.
+	for _, c := range []struct{ from, to, freq float64 }{
+		{48000, 44100, 22100}, {48000, 44100, 23000}, {96000, 44100, 22100}, {96000, 88200, 44200}, {96000, 44100, 30000},
+	} {
+		in := fadedTone(c.from, c.freq, int(c.from))
+		l, _, err := ResampleContext(context.Background(), in, in, int(c.from), int(c.to))
+		if err != nil {
+			t.Fatal(err)
+		}
+		alias := c.to - c.freq
+		reference := fadedTone(c.to, alias, len(l))
+		got := GoertzelMagnitudeDB(l, c.to, alias) - GoertzelMagnitudeDB(reference, c.to, alias)
+		t.Logf("%g→%g Hz: %g Hz tone aliases to %g Hz at %.1f dB", c.from, c.to, c.freq, alias, got)
+		if got > -resampleStopbandDB {
+			t.Errorf("%g→%g Hz: alias of %g Hz at %g Hz is %.1f dB relative to the tone, want ≤ -120", c.from, c.to, c.freq, alias, got)
+		}
 	}
 }
 

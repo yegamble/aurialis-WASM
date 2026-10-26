@@ -5,6 +5,13 @@ Read this once before forming any opinion. Then read `AGENTS.md`, `.claude/revie
 
 ---
 
+## 0. Reading Large Files
+
+Never read `.claude/war-room/ledger.md` (180 KB), `docs/tasks.md` (198 KB), `docs/architecture.md` (78 KB) and `docs/api.md` (73 KB) whole. Every later tool call re-sends what you have read.
+- Ledger: `python3 .claude/war-room/ledger.py start | live [P0 P1] | item <ID> | log [N] | grep <regex>`.
+- Docs: `grep -n '^#' <file>` for the outline, or `grep -n <term> <file>`, then read only that range.
+- Run gate commands through `.claude/war-room/quiet.sh <label> <command…>`: full output goes to a log file, you get a PASS line or the failure lines, and the exit status is kept. Quote those lines as evidence.
+
 ## 1. Repository Layout
 
 | Path | Owns |

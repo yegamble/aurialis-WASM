@@ -22,7 +22,7 @@ You are **always read-only** on application code (`Read`, `Grep`, `Glob`, `Bash`
 
 ## Before You Form Any Opinion
 
-Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS.md`, `docs/design/aurialis-redesign.md`, `.claude/war-room/ledger.md`, and the Round 0 Evidence Pack.
+Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS.md`, `docs/design/aurialis-redesign.md`, the ledger through `python3 .claude/war-room/ledger.py` (`start`, `live`, `item`, `grep`; never the whole file), and the Round 0 Evidence Pack.
 
 ## Your Four Lines of Attack
 

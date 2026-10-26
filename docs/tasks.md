@@ -6,27 +6,29 @@ The blanket “all slices verified” claim at `ade7736` is withdrawn. The earli
 
 ## Set target loudness on dense mixes — 2026-10-26
 
-V1-01 (P0), finding GV-1 from the v1 ruling. Set target loudness, album normalization and the Elevated check measured candidates with the live algorithm 1. Its sample-peak limiter overshoots in true peak on any program that needs limiting, so dense mixes were rejected ("exceeds the measured peak ceiling") even at −14 LUFS. The browser-test fixture was a pure tone, so it never caught this. Measurement now uses the export parameters (algorithm 2, true peak on), with the gate at ceiling + 0.05 dB.
+V1-01 (P0), finding GV-1 from the v1 ruling. Set target loudness, album normalization and the Elevated check measured candidates with the live algorithm 1. Its sample-peak limiter overshoots in true peak on any program that needs limiting, so dense mixes were rejected ("exceeds the measured peak ceiling") even at −14 LUFS. The browser-test fixture was a pure tone, so it never caught this. Measurement now uses the export parameters (algorithm 2, true peak on). The peak gate is strict: a measured export true peak (and, for Elevated, sample peak) above the ceiling is rejected, with no tolerance. The earlier 0.05 dB slack (`EXPORT_PEAK_TOLERANCE_DB`) is removed; the export limiter already keeps 0.2 dB of internal headroom.
 
-Evidence (local, 2026-10-26). On a deterministic dense drum-and-bass fixture (source −15.97 LUFS, −0.78 dBTP):
+Evidence (local, 2026-10-26). On a deterministic dense drum-and-bass fixture (source −15.97 LUFS, −0.78 dBTP), each export downloaded through the UI and measured by the native meter:
 
-| Target | Before | After |
-|---|---|---|
-| Streaming −14/−1 | rejected at −0.27 dBTP | export −14.18 LUFS, −1.10 dBTP |
-| Loud −9/−0.2 | rejected at +2.31 dBTP | export −9.01 LUFS, −0.30 dBTP |
-| Elevated, +2 dB input | rejected | accepted, −14.5 LUFS, −1.21 dBTP |
-| Album, 3 dense tracks (sources −15.96, −18.66, −22.66 LUFS), Pop, −14/−1 | not covered | −14.04, −14.06, −14.08 LUFS; each −1.21 dBTP |
-| Browser worker (no audio server), Streaming | not covered | input +2.52 dB; export −14.03 LUFS, −1.21 dBTP |
+| Target | Before | After (native) | After (browser worker) |
+|---|---|---|---|
+| Streaming −14/−1 | rejected at −0.27 dBTP | input +1.95 dB; −14.18 LUFS, −1.10 dBTP | −14.03 LUFS, −1.21 dBTP |
+| Loud preset −9/−0.2 | rejected at +2.31 dBTP | input +8.87 dB; −9.01 LUFS, −0.30 dBTP | not run |
+| Custom −9/−1 (seeded custom target) | not covered | input +9.38 dB; −9.05 LUFS, −1.10 dBTP | −9.08 LUFS, −1.12 dBTP |
+| Elevated, +2 dB input | rejected | accepted, −14.5 LUFS, −1.21 dBTP | not run |
+| Album, 3 dense tracks (sources −15.96, −18.66, −22.66 LUFS), Pop, −14/−1 | not covered | −14.04, −14.06, −14.08 LUFS; each −1.21 dBTP | same values |
 
 After Set target loudness, the status line now reports the export measurement ("Preview ready. Export measures −9.01 LUFS, −0.30 dBTP. Live meters and the offline preview use the preview limiter and can read higher."). The offline-preview note carries the same caveat. Album rendering reuses the normalization measurement instead of rendering each track a second time.
 
 Tests:
-- Go: `TestNormalizeDenseProgramReachesTarget`.
-- Vitest: 534/534 (with `--maxWorkers=4`; the default run timed out one unrelated MasterPlayback mount test on a machine at load average ~150, and that file passed 17/17 alone).
-- Playwright `mastering-targets` + `workflow-regressions`: 11/11, including the dense album case. The dense Set-target cases also check that the status-line LUFS/dBTP match the downloaded WAV. The new dense cases failed on the pre-fix build.
-- Browser worker `e2e-browser/workflows.spec.ts` dense case: 1/1.
+- Vitest: 534/534 with `--maxWorkers=4`. The default run timed out one unrelated MasterPlayback mount test at load average ~90; that file passed 17/17 alone. Unit tests pin the strict gate: a peak exactly at the ceiling passes, 0.001 dB over fails.
+- Playwright `mastering-targets` + `workflow-regressions` (native build): 12/12, including Streaming, Loud, Custom −9/−1 and the dense album. The dense Set-target cases also check that the status-line LUFS/dBTP match the downloaded WAV.
+- Browser worker `e2e-browser/workflows.spec.ts`: 8/8, including dense Streaming, Custom −9/−1 and the dense 3-track album.
+- The Go mirror of the browser search (`internal/browserjobs/normalize_test.go`) is removed: it hand-copied `normalizeSimpleAudio` and the dense fixture, so either copy could drift. `e2e/workflow-fixture.ts` `denseFixture` is the only copy.
+- Run the native Playwright specs after `bash scripts/build.sh`. The browser suite's global setup rebuilds the embedded assets for browser execution, and a native run on those assets silently uses the browser worker.
 
 Offline preview and live playback still use algorithm 1 (tracked as V1-10). Status: **open — awaiting merge**.
+
 ## Export sample-rate conversion and dither — 2026-10-26
 
 Audit finding 13. Export was locked to the source rate with fixed TPDF dither. The Export dialog now offers the source rate (shown once, as "48 kHz (source)") and 44.1, 48, 88.2 and 96 kHz, and TPDF or Off dither for 16/24-bit PCM. Rates are disabled with a visible reason when the converted output would exceed 33,554,432 frames or the ratio cannot be converted exactly. The native `/api/master/render` and `/master/render` and the browser worker accept `sampleRate` (exactly `44100`, `48000`, `88200` or `96000`, otherwise 400 `invalid_sample_rate`) and `dither` (`tpdf` or `none`); other upload endpoints reject both fields with 400 `invalid_multipart`. Over-length or unsupported conversions return 400 `invalid_export_options` before rendering. Conversion runs after mastering (so applied Deep scripts keep their source-rate timing) with a Go stdlib rational polyphase Kaiser-windowed sinc (120 dB stopband, flat to 90% of the lower Nyquist frequency) and FMA-free arithmetic. With the limiter on, the algorithm 2 true-peak lookahead limiter then runs again at the delivery rate; dither comes last, once. With the limiter off, levels are untouched. `params.ditherBits` reports the delivered dither, `afterMetrics.gainReductionDb` includes the delivery limiter, and the status line shows the delivered true peak from `X-Aurialis-After-Peak-dBTP`. Single-select choices across the app now share one `ChoiceGroup` primitive. Ten seconds of stereo 44.1→48 kHz converts in about 0.3 s natively.

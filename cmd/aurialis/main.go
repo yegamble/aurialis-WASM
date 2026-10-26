@@ -103,6 +103,9 @@ func run() error {
 	srv := server.New(cfg)
 	defer srv.Close()
 
+	// ReadTimeout and WriteTimeout are backstops: POST handlers size each
+	// body's read deadline to its length and give exports a work-proportional
+	// write deadline (internal/server/deadline.go).
 	httpServer := &http.Server{
 		Addr:              listenAddr,
 		Handler:           srv.Handler(),

@@ -26,8 +26,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - name: Enforce pnpm-only lockfile policy
         run: |
           if [ -f package-lock.json ] || [ -f yarn.lock ]; then
@@ -75,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/setup-go
         with:
           role: static-security
@@ -91,7 +90,7 @@ jobs:
           go mod verify
           go vet ./...
       - name: Run golangci-lint v2
-        uses: golangci/golangci-lint-action@v7
+        uses: golangci/golangci-lint-action@9fae48acfc02a90574d7c304a1758ef9895495fa # v7.0.1
         with:
           version: v2.15.0
           args: --timeout=5m
@@ -105,7 +104,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/setup-go
         with:
           role: race-meters
@@ -135,11 +134,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10.33.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "26.12.0"
           cache: pnpm
@@ -160,7 +159,7 @@ jobs:
           role: native-build
           embedded-source-key: ${{ hashFiles('src/**', 'public/**', 'scripts/**', 'package.json', 'pnpm-lock.yaml', 'next.config.ts', 'postcss.config.mjs', 'tsconfig.json') }}
       - name: Restore Next build cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .next/cache
           key: ${{ runner.os }}-${{ runner.arch }}-node26-next-${{ hashFiles('pnpm-lock.yaml', 'next.config.ts', 'postcss.config.mjs', 'tsconfig.json') }}-${{ hashFiles('src/**', 'public/**') }}
@@ -178,7 +177,7 @@ jobs:
           bash scripts/build-e2e.sh artifacts/ci-runtime/aurialis-e2e
           python3 scripts/ci-artifacts.py pack artifacts/ci-package
       - name: Publish same-run native build for quality, API and browser jobs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ steps.build-identity.outputs.name }}
           path: artifacts/ci-package/
@@ -196,11 +195,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10.33.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "26.12.0"
           cache: pnpm
@@ -211,7 +210,7 @@ jobs:
           role: browser-build
           embedded-source-key: ${{ hashFiles('src/**', 'public/**', 'scripts/**', 'package.json', 'pnpm-lock.yaml', 'next.config.ts', 'postcss.config.mjs', 'tsconfig.json') }}
       - name: Restore only browser-target Next build cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: .next/cache
           key: ${{ runner.os }}-${{ runner.arch }}-node26-next-browser-${{ hashFiles('pnpm-lock.yaml', 'next.config.ts', 'postcss.config.mjs', 'tsconfig.json') }}-${{ hashFiles('src/**', 'public/**') }}
@@ -231,7 +230,7 @@ jobs:
           pnpm exec eslint deploy/cloudflare/worker.ts e2e-browser --max-warnings=0
           python3 scripts/ci-browser-artifacts.py pack artifacts/ci-browser-package
       - name: Publish exact browser build without native UI substitution
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ steps.build-identity.outputs.name }}
           path: artifacts/ci-browser-package/
@@ -247,14 +246,14 @@ jobs:
     needs: frontend-quality
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/setup-go
         with:
           role: wasm-parity
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "26.12.0"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ needs.frontend-quality.outputs.artifact-name }}
           path: artifacts/ci-download
@@ -271,7 +270,7 @@ jobs:
           node scripts/verify-browser-jobs.mjs | tee artifacts/browser-local/wasm-oracle.log
       - name: Retain local-job native and WASM oracle evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: browser-job-wasm-oracle-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/browser-local/
@@ -298,17 +297,17 @@ jobs:
     needs: frontend-quality
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10.33.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "26.12.0"
           cache: pnpm
       - name: Install test dependencies
         run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ needs.frontend-quality.outputs.artifact-name }}
           path: artifacts/ci-download
@@ -331,14 +330,14 @@ jobs:
       matrix:
         shard: [1, 2, 3]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/setup-go
         with:
           role: browser-oracles-${{ matrix.shard }}
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10.33.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "26.12.0"
           cache: pnpm
@@ -355,7 +354,7 @@ jobs:
         run: pnpm exec playwright install-deps chromium
       - name: Restore Chromium browser cache
         id: chromium-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -365,11 +364,11 @@ jobs:
         run: pnpm exec playwright install chromium
       - name: Save Chromium from one designated shard
         if: matrix.shard == 1 && steps.chromium-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
           key: ${{ steps.chromium-cache.outputs.cache-primary-key }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ needs.frontend-quality.outputs.artifact-name }}
           path: artifacts/ci-download
@@ -382,7 +381,7 @@ jobs:
         run: pnpm exec playwright test --shard=${{ matrix.shard }}/3 --workers=1 --retries=0 --global-timeout=720000 --reporter=list,json
       - name: Retain actual shard outcomes and PCM evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: playwright-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
           path: |
@@ -401,14 +400,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/setup-go
         with:
           role: browser-static-oracles
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10.33.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "26.12.0"
           cache: pnpm
@@ -425,7 +424,7 @@ jobs:
         run: pnpm exec playwright install-deps chromium
       - name: Restore Chromium without adding another cache writer
         id: chromium-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-chromium-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -433,7 +432,7 @@ jobs:
         timeout-minutes: 4
         if: steps.chromium-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install chromium
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ needs.browser-build.outputs.artifact-name }}
           path: artifacts/ci-browser-download
@@ -445,7 +444,7 @@ jobs:
         run: pnpm exec playwright test --config playwright.browser.config.ts --workers=1 --retries=0 --global-timeout=540000
       - name: Retain static browser outcomes, exact WAV and request inventories
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: static-browser-local-audio-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/browser-local/
@@ -511,17 +510,17 @@ jobs:
       AURIALIS_CI_BUILD_ATTEMPT: ${{ needs.browser-build.outputs.build-attempt }}
       CLOUDFLARE_SEND_METRICS: "false"
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
         with:
           version: 10.33.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "26.12.0"
           cache: pnpm
       - name: Install Wrangler
         run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: ${{ needs.browser-build.outputs.artifact-name }}
           path: artifacts/ci-browser-download

@@ -582,6 +582,9 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	export, exportErr := mastering.ParseExportOptions(exportRate, r.FormValue("dither"))
+	if exportErr == nil {
+		exportErr = export.Validate(len(buf.Left), buf.SampleRate)
+	}
 	if exportErr != nil {
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_export_options", exportErr.Error())
 		return

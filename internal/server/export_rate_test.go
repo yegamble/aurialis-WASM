@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
@@ -153,5 +154,38 @@ func TestExportFieldsRejectedOutsideRender(t *testing.T) {
 				t.Errorf("%s %v: status %d %s, want 400 invalid_multipart", target, fields, recorder.Code, recorder.Body.String())
 			}
 		}
+	}
+}
+
+// Conversions that cannot be delivered are rejected before rendering.
+func TestExportConversionLimitsRejectBeforeRender(t *testing.T) {
+	if testing.Short() {
+		t.Skip("uploads a 5.6 MB source")
+	}
+	srv := server.New(server.Config{Workers: 1})
+	defer srv.Close()
+	post := func(rate, frames int, to string) *httptest.ResponseRecorder {
+		t.Helper()
+		silent := make([]float32, frames)
+		wav, err := audio.EncodeWAV(silent, silent, rate, 16)
+		if err != nil {
+			t.Fatal(err)
+		}
+		recorder := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(recorder, newMultipartRequest(t, http.MethodPost, "/api/master/render", "source.wav", wav, map[string]string{"sampleRate": to, "format": "json"}))
+		return recorder
+	}
+	// 8 kHz × 12 = 96 kHz: one frame past the 33,554,432-frame output bound.
+	frames := audio.MaxDecodedFrames/12 + 1
+	start := time.Now()
+	recorder := post(8000, frames, "96000")
+	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `"invalid_export_options"`) || !strings.Contains(recorder.Body.String(), "track length limit") {
+		t.Fatalf("over-length conversion: status %d %s", recorder.Code, recorder.Body.String())
+	}
+	t.Logf("over-length conversion rejected in %v", time.Since(start))
+	// 44056 Hz → 48 kHz reduces to 6000/5507, beyond the exact polyphase bound.
+	recorder = post(44056, 4096, "48000")
+	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `"invalid_export_options"`) || !strings.Contains(recorder.Body.String(), "too complex") {
+		t.Fatalf("complex ratio: status %d %s", recorder.Code, recorder.Body.String())
 	}
 }

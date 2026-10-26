@@ -53,6 +53,9 @@ func render(ctx context.Context, request Request, buf *audio.Buffer) (*Result, e
 	if err != nil {
 		return nil, err
 	}
+	if err := export.Validate(len(buf.Left), buf.SampleRate); err != nil {
+		return nil, err
+	}
 	params.DitherBits = export.RenderDitherBits(buf.SampleRate, bits)
 	if script != nil {
 		script.ChainParams = params

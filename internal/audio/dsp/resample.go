@@ -48,14 +48,30 @@ func besselI0(x float64) float64 {
 	return sum
 }
 
-func newResampler(from, to int) (*resampler, error) {
+// resampleRatio reduces to/from to the polyphase up/down factors.
+func resampleRatio(from, to int) (up, down int, err error) {
 	if from < 8000 || from > 192000 || !IsExportSampleRate(to) {
-		return nil, errors.New("unsupported sample-rate conversion")
+		return 0, 0, errors.New("unsupported sample-rate conversion")
 	}
 	g := gcd(from, to)
-	up, down := to/g, from/g
+	up, down = to/g, from/g
 	if up > 4096 || down > 4096 {
-		return nil, errors.New("sample-rate ratio is too complex to convert exactly")
+		return 0, 0, errors.New("sample-rate ratio is too complex to convert exactly")
+	}
+	return up, down, nil
+}
+
+// ValidateResampleRates reports whether ResampleContext can convert from to
+// to, without building the filter.
+func ValidateResampleRates(from, to int) error {
+	_, _, err := resampleRatio(from, to)
+	return err
+}
+
+func newResampler(from, to int) (*resampler, error) {
+	up, down, err := resampleRatio(from, to)
+	if err != nil {
+		return nil, err
 	}
 	upRate := float64(from) * float64(up)
 	nyquist := 0.5 * math.Min(float64(from), float64(to))

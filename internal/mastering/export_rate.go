@@ -67,6 +67,19 @@ func (o ExportOptions) RenderDitherBits(sourceRate, bitDepth int) int {
 	return bitDepth
 }
 
+// Validate rejects, before any rendering, a conversion that cannot be
+// delivered: output beyond the decoded-frame bound, or a rate ratio too
+// complex to convert exactly.
+func (o ExportOptions) Validate(frames, sourceRate int) error {
+	if !o.Converts(sourceRate) {
+		return nil
+	}
+	if int64(frames)*int64(o.SampleRate) > int64(audio.MaxDecodedFrames)*int64(sourceRate) {
+		return ErrExportTooLong
+	}
+	return dsp.ValidateResampleRates(sourceRate, o.SampleRate)
+}
+
 // ConvertExportContext resamples rendered audio to the requested rate, then
 // finishes it there (true-peak limiting when the limiter is enabled, then the
 // requested dither) and measures the delivered audio. Gain reduction adds the
@@ -76,8 +89,8 @@ func ConvertExportContext(ctx context.Context, left, right []float32, sourceRate
 	if !o.Converts(sourceRate) {
 		return left, right, rendered, sourceRate, nil
 	}
-	if int64(len(left))*int64(o.SampleRate) > int64(audio.MaxDecodedFrames)*int64(sourceRate) {
-		return nil, nil, dsp.Metrics{}, 0, ErrExportTooLong
+	if err := o.Validate(len(left), sourceRate); err != nil {
+		return nil, nil, dsp.Metrics{}, 0, err
 	}
 	outL, outR, err := dsp.ResampleContext(ctx, left, right, sourceRate, o.SampleRate)
 	if err != nil {

@@ -197,7 +197,7 @@ jobs:
           bash scripts/build-e2e.sh artifacts/ci-runtime/aurialis-e2e
           python3 scripts/ci-artifacts.py pack artifacts/ci-package
       - name: Publish same-run native build for quality, API and browser jobs
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.build-identity.outputs.name }}
           path: artifacts/ci-package/
@@ -250,7 +250,7 @@ jobs:
           pnpm exec eslint deploy/cloudflare/worker.ts e2e-browser --max-warnings=0
           python3 scripts/ci-browser-artifacts.py pack artifacts/ci-browser-package
       - name: Publish exact browser build without native UI substitution
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ steps.build-identity.outputs.name }}
           path: artifacts/ci-browser-package/
@@ -290,7 +290,7 @@ jobs:
           node scripts/verify-browser-jobs.mjs | tee artifacts/browser-local/wasm-oracle.log
       - name: Retain local-job native and WASM oracle evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: browser-job-wasm-oracle-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/browser-local/
@@ -401,7 +401,7 @@ jobs:
         run: pnpm exec playwright test --shard=${{ matrix.shard }}/3 --workers=1 --retries=0 --global-timeout=720000 --reporter=list,json
       - name: Retain actual shard outcomes and PCM evidence
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
           path: |
@@ -464,7 +464,7 @@ jobs:
         run: pnpm exec playwright test --config playwright.browser.config.ts --workers=1 --retries=0 --global-timeout=540000
       - name: Retain static browser outcomes, exact WAV and request inventories
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: static-browser-local-audio-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: artifacts/browser-local/

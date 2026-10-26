@@ -64,6 +64,9 @@ jobs:
           echo "$OUT_AGY_2" | grep -q '"decision": "allow"'
           rm -rf .claude/hooks/.state
 
+      - name: Require SHA-pinned actions and explicit tool versions
+        run: python3 .github/scripts/check-workflow-pins.py
+
       - name: Validate GitHub Actions workflows with actionlint
         env:
           ACTIONLINT_VERSION: 1.7.12

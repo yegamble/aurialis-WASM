@@ -22,18 +22,23 @@ const (
 	truePeakHeadroom = 0.977237221 // 10^(-0.2/20)
 )
 
+// besselI0 is the zeroth-order modified Bessel function of the first kind for
+// the Kaiser windows of the true-peak detector and the export resampler. Forty
+// series terms converge to double precision for arguments up to about 13,
+// beyond either window's beta.
+func besselI0(x float64) float64 {
+	sum, term := 1.0, 1.0
+	for k := 1; k < 40; k++ {
+		term *= x / 2 / float64(k)
+		sum += term * term
+	}
+	return sum
+}
+
 // truePeakFIR is a Kaiser-windowed sinc interpolator split into polyphase
 // branches. It is deliberately stricter than the BS.1770-style 4x meter
 // (peakFIR), whose 49 taps under-read content near Nyquist by more than 1 dB.
 var truePeakFIR = func() [truePeakPhases][2 * truePeakHalfTaps]float64 {
-	bessel := func(x float64) float64 {
-		sum, term := 1.0, 1.0
-		for k := 1; k < 40; k++ {
-			term *= x / 2 / float64(k)
-			sum += term * term
-		}
-		return sum
-	}
 	var coefficients [truePeakPhases][2 * truePeakHalfTaps]float64
 	for phase := range coefficients {
 		for tap := range coefficients[phase] {
@@ -46,7 +51,7 @@ var truePeakFIR = func() [truePeakPhases][2 * truePeakHalfTaps]float64 {
 			w := distance / float64(truePeakHalfTaps)
 			window := 0.0
 			if math.Abs(w) < 1 {
-				window = bessel(truePeakKaiser*math.Sqrt(1-w*w)) / bessel(truePeakKaiser)
+				window = besselI0(truePeakKaiser*math.Sqrt(1-w*w)) / besselI0(truePeakKaiser)
 			}
 			coefficients[phase][tap] = sinc * window
 		}

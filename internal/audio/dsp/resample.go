@@ -35,19 +35,6 @@ func gcd(a, b int) int {
 	return a
 }
 
-// besselI0 is the zeroth-order modified Bessel function used by the Kaiser window.
-func besselI0(x float64) float64 {
-	sum, term := 1.0, 1.0
-	for k := 1.0; k < 64; k++ {
-		term *= (x / (2 * k)) * (x / (2 * k))
-		sum += term
-		if term < sum*1e-17 {
-			break
-		}
-	}
-	return sum
-}
-
 // resampleRatio reduces to/from to the polyphase up/down factors.
 func resampleRatio(from, to int) (up, down int, err error) {
 	if from < 8000 || from > 192000 || !IsExportSampleRate(to) {

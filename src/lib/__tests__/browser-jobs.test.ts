@@ -87,6 +87,24 @@ describe("device-local browser audio transport", () => {
     expect(TestWorker.all).toHaveLength(1);
   });
 
+  it("extends the worker deadline by the conversion cost only when the rate changes", async () => {
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    const timer = vi.spyOn(globalThis, "setTimeout");
+    const deadline = async (sampleRate?: string) => {
+      timer.mockClear();
+      const pending = deviceAudioRequest("/api/master/render", { method: "POST", body: render(paddedSource(48000, 4_194_304), sampleRate) });
+      await waitFor(() => { expect(TestWorker.all.at(-1)?.message).toBeDefined(); });
+      const delays = timer.mock.calls.map(([, delay]) => delay ?? 0).filter((delay) => delay >= 100_000);
+      TestWorker.all.at(-1)?.reply(); await pending;
+      return delays;
+    };
+    expect(await deadline()).toEqual([130_000]);
+    expect(await deadline("48000")).toEqual([130_000]);
+    expect(await deadline("44100")).toEqual([325_000]);
+    expect(await deadline("96000")).toEqual([520_000]);
+    timer.mockRestore();
+  });
+
   it("terminates an active canceled worker before the queued job creates another", async () => {
     const { deviceAudioRequest } = await import("../browser-jobs");
     const controller = new AbortController();

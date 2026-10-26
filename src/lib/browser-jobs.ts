@@ -92,6 +92,11 @@ async function wavShape(blob: Blob): Promise<WavShape> {
   return { bytes: fallback, rate };
 }
 
+// Measured under WASM on 8,388,608 frames at 48 kHz: 7.5 s unconverted,
+// 26.5 s to 88.2 kHz and 28.1 s to 96 kHz, about 1 + 1.4 × the rate ratio.
+// 1.5 keeps headroom; downsampling still filters every input frame.
+const CONVERSION_COST_PER_RATIO = 1.5;
+
 async function preflight(request: JobRequest, source: Blob, reference: Blob, signal: AbortSignal): Promise<number> {
   signal.throwIfAborted();
   const input = source.size + reference.size;
@@ -109,8 +114,9 @@ async function preflight(request: JobRequest, source: Blob, reference: Blob, sig
   estimate += decoded * 3 * ratio;
   if (estimate + reservedResidentBytes > memoryBudget()) throw new Error("This job exceeds the browser's conservative audio memory budget. " + LOCAL_FALLBACK);
   activeJobBytes = estimate;
-  // 130 s covers 16,777,216 frames; longer sources get proportionally longer.
-  return 130_000 * Math.max(1, decoded / (16_777_216 * 8));
+  // 130 s covers 16,777,216 frames; longer sources and conversions get proportionally longer.
+  const conversion = ratio > 0 ? 1 + CONVERSION_COST_PER_RATIO * Math.max(1, ratio) : 1;
+  return 130_000 * Math.max(1, decoded / (16_777_216 * 8)) * conversion;
 }
 
 let queue: Promise<void> = Promise.resolve();

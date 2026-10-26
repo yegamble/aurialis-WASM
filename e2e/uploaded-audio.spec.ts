@@ -4,7 +4,7 @@ import { decode, fixture, dbRatio } from "./audio-fixture"
 
 async function upload(page: Page, name: string, frequency = 1000): Promise<string> {
   await page.goto("/")
-  await page.getByLabel("Upload audio file").setInputFiles({ name, mimeType: "audio/wav", buffer: fixture(frequency) })
+  await page.getByLabel("Import audio file").setInputFiles({ name, mimeType: "audio/wav", buffer: fixture(frequency) })
   await expect(page).toHaveURL(/\/master\/track-/)
   await expect(page.getByRole("heading", { name: name.replace(/\.wav$/, "").replace(/-/g, " "), exact: true })).toBeVisible()
   return page.url()

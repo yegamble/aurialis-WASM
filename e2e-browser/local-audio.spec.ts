@@ -16,7 +16,7 @@ test("imports, measures and exports native-equivalent PCM with zero audio networ
   expect(response?.headers()["cross-origin-embedder-policy"]).toBe("require-corp");
   expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
   const source = fixture(997, 1);
-  await page.getByLabel("Upload audio file").setInputFiles({ name: "browser-private.wav", mimeType: "audio/wav", buffer: source });
+  await page.getByLabel("Import audio file").setInputFiles({ name: "browser-private.wav", mimeType: "audio/wav", buffer: source });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
   await page.getByRole("slider", { name: "Input gain", exact: true }).fill("3");
@@ -47,7 +47,7 @@ test("rejects hostile audio in actual Go WASM without sending a network body", a
   context.on("request", (request) => { if (!["GET", "HEAD"].includes(request.method()) || request.postDataBuffer()?.length) requests.push(request.url()); });
   await page.goto("/");
   const hostile = Buffer.concat([fixture(997, .1), Buffer.from("%PDF- hidden payload")]);
-  await page.getByLabel("Upload audio file").setInputFiles({ name: "hostile.wav", mimeType: "audio/wav", buffer: hostile });
+  await page.getByLabel("Import audio file").setInputFiles({ name: "hostile.wav", mimeType: "audio/wav", buffer: hostile });
   await expect(page.getByText(/polyglot|payload|corrupt/iu)).toBeVisible({ timeout: 30_000 });
   expect(requests).toEqual([]);
   expect(new URL(page.url()).pathname).toBe("/");
@@ -64,10 +64,10 @@ test("rejects a stale real Go module before processing and retries with a fresh 
     else await route.continue();
   });
   await page.goto("/");
-  await page.getByLabel("Upload audio file").setInputFiles({ name: "stale-engine.wav", mimeType: "audio/wav", buffer: fixture(997, .1) });
+  await page.getByLabel("Import audio file").setInputFiles({ name: "stale-engine.wav", mimeType: "audio/wav", buffer: fixture(997, .1) });
   await expect(page.getByText(/engine version is incompatible/iu)).toBeVisible({ timeout: 30_000 });
   expect(new URL(page.url()).pathname).toBe("/");
-  await page.getByLabel("Upload audio file").setInputFiles({ name: "fresh-engine.wav", mimeType: "audio/wav", buffer: fixture(997, .1) });
+  await page.getByLabel("Import audio file").setInputFiles({ name: "fresh-engine.wav", mimeType: "audio/wav", buffer: fixture(997, .1) });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
   expect(served).toBeGreaterThanOrEqual(2);
   expect(forbidden).toEqual([]);
@@ -102,7 +102,7 @@ test("imports FLAC and MP3 through the real Go WASM decoder without network audi
   context.on("request", (request) => { if (!["GET", "HEAD"].includes(request.method()) || request.postDataBuffer()?.length) forbidden.push(request.method() + " " + request.url()); });
   for (const [name, mimeType, label] of [["tone-96k-s24.flac", "audio/flac", "96 kHz · FLAC"], ["tone-44k-cbr.mp3", "audio/mpeg", "44.1 kHz · MP3"]] as const) {
     await page.goto("/");
-    await page.getByLabel("Upload audio file").setInputFiles({ name, mimeType, buffer: await readFile("internal/audio/testdata/" + name) });
+    await page.getByLabel("Import audio file").setInputFiles({ name, mimeType, buffer: await readFile("internal/audio/testdata/" + name) });
     await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
     await expect(page.getByText(label)).toBeVisible();
   }

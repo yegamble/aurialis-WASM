@@ -27,7 +27,7 @@ test("a failed import can retry the same file without reloading the page", async
     else await route.continue();
   });
   const file = { name: "retry-same-source.wav", mimeType: "audio/wav", buffer: fixture() };
-  const input = page.getByLabel("Upload audio file");
+  const input = page.getByLabel("Import audio file");
   await input.setInputFiles(file);
   await expect(page.getByText("Could not reach the local audio server", { exact: false })).toBeVisible();
   expect(await input.inputValue(), "clearing the native chooser allows its next selection of the same file to fire change").toBe("");
@@ -40,7 +40,7 @@ test("leaving Home cancels a pending import without creating or opening a stale 
   await page.goto("/");
   const held = await holdRender(page);
   try {
-    await page.getByLabel("Upload audio file").setInputFiles({ name: "cancel-import.wav", mimeType: "audio/wav", buffer: fixture() });
+    await page.getByLabel("Import audio file").setInputFiles({ name: "cancel-import.wav", mimeType: "audio/wav", buffer: fixture() });
     const request = await held.seen;
     const canceled = page.waitForEvent("requestfailed", (candidate) => candidate === request);
     await page.getByRole("link", { name: "Library", exact: true }).first().click();
@@ -60,7 +60,7 @@ test("Cancel import aborts the pending request and leaves the chooser ready to r
   await page.goto("/");
   const held = await holdRender(page);
   try {
-    await page.getByLabel("Upload audio file").setInputFiles({ name: "cancel-button.wav", mimeType: "audio/wav", buffer: fixture() });
+    await page.getByLabel("Import audio file").setInputFiles({ name: "cancel-button.wav", mimeType: "audio/wav", buffer: fixture() });
     const request = await held.seen;
     const canceled = page.waitForEvent("requestfailed", (candidate) => candidate === request);
     await page.getByRole("button", { name: "Cancel import", exact: true }).click();

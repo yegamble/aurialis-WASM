@@ -27,7 +27,7 @@ async function evict(page: Page, key: string) {
 
 test("multiple imports retain successes, report a corrupt file and sort Library projects without changing their queue", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("Upload audio file").setInputFiles([file("Zulu.wav"), { name: "broken.wav", mimeType: "audio/wav", buffer: Buffer.from("corrupt") }, file("Alpha.wav", 500)]);
+  await page.getByLabel("Import audio file").setInputFiles([file("Zulu.wav"), { name: "broken.wav", mimeType: "audio/wav", buffer: Buffer.from("corrupt") }, file("Alpha.wav", 500)]);
   await expect(page).toHaveURL(/\/master\/track-/);
   await expect(page.getByRole("heading", { name: "Zulu", exact: true })).toBeVisible();
   await expect(page.getByText(/2 imported\. Skipped broken.wav:/u)).toBeVisible();
@@ -182,7 +182,7 @@ test("leaving a pending import queue retains completed projects and cancels the 
   await page.goto("/"); let calls = 0; let release: (() => void) | undefined; let intercepted = false;
   const pending = new Promise<void>((resolve) => { release = resolve; });
   await page.route("**/api/master/render", async (route) => { calls += 1; if (calls === 2) { intercepted = true; await pending; } await route.continue().catch(() => undefined); });
-  await page.getByLabel("Upload audio file").setInputFiles([file("retained.wav"), file("pending.wav", 500)]);
+  await page.getByLabel("Import audio file").setInputFiles([file("retained.wav"), file("pending.wav", 500)]);
   await expect.poll(() => intercepted).toBe(true); expect((await projects(page)).map((track) => track.title)).toEqual(["retained"]);
   await page.getByRole("link", { name: "Library", exact: true }).first().click();
   await expect(page).toHaveURL(/\/library$/u); release?.();
@@ -201,7 +201,7 @@ test("editable paste and native history preserve denied-storage audio through Li
     editable.dispatchEvent(new ClipboardEvent("paste", { clipboardData: clipboard, bubbles: true })); editable.remove();
   }, Array.from(fixture()));
   await expect(page.getByRole("region", { name: "Bring in a track: drop audio or choose a file", exact: true })).toHaveAttribute("aria-busy", "false"); expect(imports).toBe(0);
-  await page.getByLabel("Upload audio file").setInputFiles(file("session-only.wav", 1000, 8));
+  await page.getByLabel("Import audio file").setInputFiles(file("session-only.wav", 1000, 8));
   await expect(page).toHaveURL(/\/master\/track-/u); const masterURL = page.url();
   await expect(page.getByText(/Audio is available only in this tab/u)).toBeVisible(); await expect(page.getByRole("button", { name: "Play", exact: true })).toBeEnabled();
   await expect(page.getByRole("heading", { name: "session only", exact: true })).toBeFocused(); await expect(page).toHaveTitle("session only — Aurialis");

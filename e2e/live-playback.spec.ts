@@ -78,7 +78,7 @@ test("meters and measured spectrum follow tone into silence instead of whole-tra
   const wav = fixture(997, 10);
   wav.fill(0, 44 + 48000 * 4 * 2);
   await page.goto("/");
-  await page.getByLabel("Upload audio file").setInputFiles({ name: "qa-tone-then-silence.wav", mimeType: "audio/wav", buffer: wav });
+  await page.getByLabel("Import audio file").setInputFiles({ name: "qa-tone-then-silence.wav", mimeType: "audio/wav", buffer: wav });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
   await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");

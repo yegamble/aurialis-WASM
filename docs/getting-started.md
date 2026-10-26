@@ -7,7 +7,7 @@ Open **[aurialis.yosefgamble.com](https://aurialis.yosefgamble.com/)** (or [auri
 
 ## 1. Bring in a track
 
-On **Home**, drop WAV files onto the upload area, paste audio files from the clipboard, or select **Choose audio**. The library starts empty; there are no bundled songs.
+On **Home**, drop audio files onto the import area, paste audio files from the clipboard, or select **Choose audio**. The library starts empty; there are no bundled songs.
 
 Use a mono or stereo WAV, AIFF, FLAC or MP3 at **8–192 kHz**. WAV and AIFF can be 8/16/24/32-bit integer PCM or 32-bit float, including the extensible WAV header most DAWs write for 24-bit and high-rate files. Mono is converted to stereo. OGG, M4A, AAC and compressed AIFF-C need conversion first.
 

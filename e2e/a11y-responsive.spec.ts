@@ -103,7 +103,7 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
     wav.writeUInt32LE(32000, 24)
     wav.writeUInt32LE(32000 * 4, 28)
     await page.goto("/")
-    await page.getByLabel("Upload audio file").setInputFiles({ name: "qa-export-32k.wav", mimeType: "audio/wav", buffer: wav })
+    await page.getByLabel("Import audio file").setInputFiles({ name: "qa-export-32k.wav", mimeType: "audio/wav", buffer: wav })
     await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 })
     for (const vp of VIEWPORTS) {
       await page.setViewportSize({ width: vp.width, height: vp.height })

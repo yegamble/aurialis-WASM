@@ -449,7 +449,7 @@ function HomeView() {
             multiple
             accept={SOURCE_ACCEPT}
             hidden
-            aria-label="Upload audio file"
+            aria-label="Import audio file"
             onChange={(event) => {
               const files = Array.from(event.currentTarget.files ?? []);
               event.currentTarget.value = "";
@@ -795,7 +795,7 @@ function MasterView({ trackId }: { trackId: string }) {
     renderSettings.current = appliedRevisionKey(track) ?? masteringSettingsKey(params);
     setProcessing(true);
     setMessage(
-      track.deepMastering?.applied ? "Rendering the applied script with the common native Go engine…" : "Rendering the uploaded audio with the shared Go WebAssembly engine…",
+      track.deepMastering?.applied ? "Rendering the applied script on this device…" : "Rendering the imported audio on this device…",
     );
     try {
       const pcm = track.deepMastering?.applied && sourceBlob
@@ -853,7 +853,7 @@ function MasterView({ trackId }: { trackId: string }) {
     renderAbort.current = controller;
     setProcessing(true);
     renderSettings.current = settingsKey;
-    setMessage("Rendering WAV from the uploaded source…");
+    setMessage("Rendering WAV from the imported source…");
     try {
       const outputRate = deliveryRate === "source" ? track.sampleRate : deliveryRate;
       const delivery: ExportDelivery = {

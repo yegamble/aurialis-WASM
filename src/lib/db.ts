@@ -1,7 +1,7 @@
 const memoryAudio = new Map<string, Blob>();
 const freshAssets = new Set<string>();
 /** Audio assets are immutable: only this factory can issue a writable new ID. */
-export function newAudioAssetId(prefix: "track" | "source"): string {
+export function newAudioAssetId(prefix: "track" | "source" | "master"): string {
   const id = `${prefix}-${crypto.randomUUID()}`;
   freshAssets.add(id);
   return id;
@@ -135,4 +135,61 @@ export async function storageSummary(): Promise<{ usage?: number; quota?: number
 export async function discardStagedAudio(id: string, durable: boolean): Promise<void> {
   if (!durable) { memoryAudio.delete(id); return; }
   await deleteAudio(id);
+}
+
+/** Rendered album masters saved for one album. Audio lives in the immutable audio store. */
+export type SavedAlbumMasters = { key: string; createdAt: string; files: { trackId: string; title: string; audioId: string; bytes: number }[] };
+
+function readAlbumMasters(value: unknown): SavedAlbumMasters | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const record = value as Partial<SavedAlbumMasters>;
+  if (typeof record.key !== "string" || record.key.length > 65_536 || typeof record.createdAt !== "string" || !Array.isArray(record.files) || record.files.length === 0 || record.files.length > 512) return undefined;
+  const files = (record.files as unknown[]).filter((file): file is SavedAlbumMasters["files"][number] => typeof file === "object" && file !== null && "trackId" in file && typeof file.trackId === "string" && "title" in file && typeof file.title === "string" && "audioId" in file && typeof file.audioId === "string" && /^master-[a-zA-Z0-9-]{1,96}$/u.test(file.audioId) && "bytes" in file && Number.isSafeInteger(file.bytes) && typeof file.bytes === "number" && file.bytes > 0);
+  return files.length === record.files.length ? { key: record.key, createdAt: record.createdAt, files } : undefined;
+}
+
+async function albumRequest<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest | undefined): Promise<T | undefined> {
+  const db = await openDb();
+  try {
+    return await new Promise<T | undefined>((resolve, reject) => {
+      const transaction = db.transaction(ALBUMS_STORE, mode);
+      const request = run(transaction.objectStore(ALBUMS_STORE));
+      transaction.oncomplete = () => { resolve(request?.result as T | undefined); };
+      transaction.onerror = transaction.onabort = () => { reject(request?.error ?? transaction.error ?? new Error("Album storage failed.")); };
+    });
+  } finally { db.close(); }
+}
+
+/** The saved masters for an album, or undefined when none (or storage is unavailable). */
+export async function loadAlbumMasters(albumId: string): Promise<SavedAlbumMasters | undefined> {
+  if (!hasIndexedDb()) return undefined;
+  try { return readAlbumMasters(await albumRequest<unknown>("readonly", (store) => store.get(albumId))); }
+  catch { return undefined; }
+}
+
+/** Replace an album's saved masters, then delete the audio of the record it replaced. */
+export async function saveAlbumMasters(albumId: string, record: SavedAlbumMasters): Promise<void> {
+  const previous = await loadAlbumMasters(albumId);
+  await albumRequest("readwrite", (store) => store.put(record, albumId));
+  const kept = new Set(record.files.map((file) => file.audioId));
+  for (const file of previous?.files ?? []) if (!kept.has(file.audioId)) await deleteAudio(file.audioId).catch(() => undefined);
+}
+
+/** Delete an album's saved masters and their audio. */
+export async function deleteAlbumMasters(albumId: string): Promise<void> {
+  const previous = await loadAlbumMasters(albumId);
+  for (const file of previous?.files ?? []) await deleteAudio(file.audioId);
+  if (hasIndexedDb()) await albumRequest("readwrite", (store) => store.delete(albumId));
+}
+
+/** Fail early, before rendering, when the browser reports too little free storage. */
+export async function ensureStorageFor(bytes: number): Promise<void> {
+  const { usage, quota } = await storageSummary();
+  if (usage === undefined || quota === undefined) return;
+  // Leave headroom for IndexedDB overhead and other writes.
+  const needed = Math.ceil(bytes * 1.1) + 16 * 1024 * 1024;
+  if (quota - usage < needed) {
+    const mib = (value: number) => (value / 1048576).toFixed(0);
+    throw new Error(`Saving these album masters needs about ${mib(needed)} MiB of browser storage, but only ${mib(Math.max(0, quota - usage))} MiB is free. Delete unused projects in the Library to free space, then render again.`);
+  }
 }

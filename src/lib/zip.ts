@@ -8,12 +8,11 @@ const MAX_ENTRIES = 0xffff;
 let crcTable: Uint32Array | undefined;
 function table(): Uint32Array {
   if (crcTable) return crcTable;
-  crcTable = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
+  crcTable = Uint32Array.from({ length: 256 }, (_, n) => {
     let c = n;
     for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb8_8320 ^ (c >>> 1) : c >>> 1;
-    crcTable[n] = c >>> 0;
-  }
+    return c >>> 0;
+  });
   return crcTable;
 }
 
@@ -46,7 +45,7 @@ function dosTimestamp(date: Date): { time: number; day: number } {
   };
 }
 
-export type ZipEntry = { name: string; blob: Blob };
+type ZipEntry = { name: string; blob: Blob };
 
 /** Build a stored ZIP of the entries. Names must be unique, relative and at most 255 UTF-8 bytes. */
 export async function createStoredZip(entries: readonly ZipEntry[], signal?: AbortSignal, now = new Date()): Promise<Blob> {
@@ -55,10 +54,10 @@ export async function createStoredZip(entries: readonly ZipEntry[], signal?: Abo
   const seen = new Set<string>();
   const { time, day } = dosTimestamp(now);
   const parts: BlobPart[] = [];
-  const central: Uint8Array[] = [];
+  const central: Uint8Array<ArrayBuffer>[] = [];
   let offset = 0;
   for (const entry of entries) {
-    const name = encoder.encode(entry.name);
+    const name = new Uint8Array(encoder.encode(entry.name));
     if (name.length === 0 || name.length > 255 || seen.has(entry.name) || entry.name.startsWith("/") || entry.name.includes("\\") || entry.name.split("/").includes("..")) throw new Error("ZIP file names must be unique, relative and short.");
     seen.add(entry.name);
     const crc = await blobCrc32(entry.blob, signal);
@@ -104,11 +103,14 @@ export async function createStoredZip(entries: readonly ZipEntry[], signal?: Abo
   return new Blob([...parts, ...central, end.buffer], { type: "application/zip" });
 }
 
+const UNSAFE_NAME_CHARACTERS = '<>:"/\\|?*';
+
 /** Numbered, filesystem-safe WAV names in running order, unique within one archive. */
 export function albumEntryNames(titles: readonly string[]): string[] {
   const width = Math.max(2, String(titles.length).length);
   return titles.map((title, index) => {
-    const safe = title.normalize("NFC").replace(/[\u0000-\u001f\u007f<>:"/\\|?*]+/gu, "-").replace(/\s+/gu, " ").trim().slice(0, 120).replace(/^[.\s-]+|[.\s]+$/gu, "");
+    const replaced = Array.from(title.normalize("NFC"), (char) => char.charCodeAt(0) < 0x20 || char === "\u007f" || UNSAFE_NAME_CHARACTERS.includes(char) ? "-" : char).join("");
+    const safe = replaced.replace(/-+/gu, "-").replace(/\s+/gu, " ").trim().slice(0, 120).replace(/^[.\s-]+|[.\s]+$/gu, "");
     return `${String(index + 1).padStart(width, "0")} ${safe || "Track"}.wav`;
   });
 }

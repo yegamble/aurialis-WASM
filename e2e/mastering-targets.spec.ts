@@ -17,6 +17,21 @@ async function savedTrack(page: Page, id: string): Promise<Track> {
   }, id);
 }
 
+/** There is no arbitrary LUFS input: persist a custom/profile target the way a
+ * saved project carries one, then reload so the real UI and engine pick it up. */
+async function seedCustomTarget(page: Page, id: string, advanced: Track["advanced"]): Promise<void> {
+  await page.evaluate(({ id: trackId, advanced: next }) => {
+    const raw = localStorage.getItem("aurialis-state-v1");
+    if (!raw) throw new Error("Missing saved project");
+    const state = JSON.parse(raw) as { tracks: Track[] };
+    state.tracks = state.tracks.map((track) => track.id === trackId
+      ? { ...track, mode: "simple", target: "Loud", simpleCustom: true, advanced: next }
+      : track);
+    localStorage.setItem("aurialis-state-v1", JSON.stringify(state));
+  }, { id, advanced });
+  await page.reload();
+}
+
 test("canonical loudness targets survive reset and custom project normalization", async ({ page }, info) => {
   test.setTimeout(90_000);
   await page.addInitScript(() => {
@@ -47,16 +62,7 @@ test("canonical loudness targets survive reset and custom project normalization"
   // There is no arbitrary LUFS input. Seed a persisted custom/profile project,
   // then exercise the real UI and native normalization without mocking either.
   const custom = { ...reset, limiter: { ...reset.limiter, targetLufs: -12, ceiling: -0.7 } };
-  await page.evaluate(({ id: trackId, advanced }) => {
-    const raw = localStorage.getItem("aurialis-state-v1");
-    if (!raw) throw new Error("Missing saved project");
-    const state = JSON.parse(raw) as { tracks: Track[] };
-    state.tracks = state.tracks.map((track) => track.id === trackId
-      ? { ...track, mode: "simple", target: "Loud", simpleCustom: true, advanced }
-      : track);
-    localStorage.setItem("aurialis-state-v1", JSON.stringify(state));
-  }, { id, advanced: custom });
-  await page.reload();
+  await seedCustomTarget(page, id, custom);
   await expect(page.getByRole("button", { name: "Set target loudness", exact: true })).toBeEnabled({ timeout: 30_000 });
   await expect(page.getByRole("combobox", { name: "Output target", exact: true })).toHaveValue("custom");
   await expect(page.getByRole("option", { name: "Custom (−12 LUFS)", exact: true })).toBeAttached();
@@ -101,8 +107,15 @@ async function measureWAV(request: APIRequestContext, buffer: Buffer): Promise<M
 // A dense program needs limiting to reach these targets. Normalization must
 // measure the export algorithm (true-peak limiter), not the live sample-peak
 // limiter whose inter-sample overshoot used to reject it.
-for (const { name, targetLufs, ceiling } of [{ name: "Streaming", targetLufs: -14, ceiling: -1 }, { name: "Loud", targetLufs: -9, ceiling: -0.2 }]) {
-  test(`Set target loudness exports a dense program at the ${name} target`, async ({ page, request }, info) => {
+// Custom holds the Loud −9 LUFS target under the Streaming −1 dBTP ceiling,
+// which needs about 0.8 dB more limiting than the shipped Loud preset (−0.2).
+const denseTargets = [
+  { name: "Streaming", targetLufs: -14, ceiling: -1 },
+  { name: "Loud", targetLufs: -9, ceiling: -0.2 },
+  { name: "Custom", targetLufs: -9, ceiling: -1 },
+];
+for (const { name, targetLufs, ceiling } of denseTargets) {
+  test(`Set target loudness exports a dense program at ${String(targetLufs)} LUFS / ${String(ceiling)} dBTP (${name})`, async ({ page, request }, info) => {
     test.setTimeout(180_000);
     const source = await measureWAV(request, denseFixture(8));
     expect(source.integratedLufs).toBeGreaterThan(-17);
@@ -114,10 +127,19 @@ for (const { name, targetLufs, ceiling } of [{ name: "Streaming", targetLufs: -1
     // A Simple direction enables the limiter that every named target relies on.
     await page.getByRole("button", { name: "Pop", exact: true }).click();
     await page.getByRole("button", { name: "Clean", exact: true }).click();
-    await page.getByRole("combobox", { name: "Output target", exact: true }).selectOption(name);
+    const target = page.getByRole("combobox", { name: "Output target", exact: true });
+    await target.selectOption(name === "Custom" ? "Loud" : name);
+    if (name === "Custom") {
+      await expect.poll(async () => (await savedTrack(page, id)).advanced.limiter.targetLufs).toBe(targetLufs);
+      const loud = (await savedTrack(page, id)).advanced;
+      await seedCustomTarget(page, id, { ...loud, limiter: { ...loud.limiter, ceiling } });
+      await expect(target).toHaveValue("custom", { timeout: 30_000 });
+      await expect(page.getByText("Current target: −9 LUFS · ceiling −1 dBFS. Set target loudness measures these current settings.", { exact: true })).toBeVisible();
+    }
     await expect.poll(async () => (await savedTrack(page, id)).advanced.limiter).toMatchObject({ enabled: true, targetLufs, ceiling });
     const before = (await savedTrack(page, id)).advanced;
     const apply = page.getByRole("button", { name: "Set target loudness", exact: true });
+    await expect(apply).toBeEnabled({ timeout: 30_000 });
     await apply.click();
     await expect(page.getByRole("button", { name: "Setting loudness…", exact: true })).toHaveCount(0, { timeout: 120_000 });
     await expect(apply).toBeEnabled();

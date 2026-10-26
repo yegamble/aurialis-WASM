@@ -37,7 +37,7 @@ You can also select **Render offline preview** for a full-track render using the
 
 ## 4. Export a WAV
 
-Select **Export**, choose a bit depth, then select **Render & download WAV**.
+Select **Export**, choose a bit depth, a sample rate and, for 16/24-bit PCM, dither. Then select **Render & download WAV**.
 
 | Choice | What it saves |
 | --- | --- |
@@ -45,7 +45,12 @@ Select **Export**, choose a bit depth, then select **Render & download WAV**.
 | **16-bit PCM** | A lower-bit-depth integer WAV. |
 | **32-bit Float** | A float WAV that can retain audio above integer full scale. |
 
-Exports keep the source sample rate and frame count. Integer exports clip samples outside ±1; enable the sample-peak limiter or reduce gain before exporting a signal that exceeds that range. The limiter is not a certified true-peak limiter.
+| Choice | What it does |
+| --- | --- |
+| **Sample rate** | The source rate (marked *source*) keeps every frame. 44.1, 48, 88.2 or 96 kHz converts after mastering and keeps the duration. With the limiter on, the converted audio is limited again to the true-peak ceiling at the new rate. A converted export may not exceed 33,554,432 frames (about 5:49 at 96 kHz). Rates that would exceed it, or that the source rate cannot convert to, are disabled and the dialog says why. |
+| **Dither** | **TPDF** (default) or **Off** for 16/24-bit PCM. Turn it off only for material that is already dithered. 32-bit Float is never dithered. |
+
+After export, the status line shows the delivered true peak at the delivery rate. It comes from a 4× meter that can read slightly high at 88.2/96 kHz, so it is a guide, not a certification. Integer exports clip samples outside ±1; enable the limiter or reduce gain before exporting a signal that exceeds that range.
 
 Export renders the current processing settings from the reconstructed source. With Deep attached, the acknowledged applied script is authoritative; draft edits and pending revisions are excluded. Listening to **B Original**, changing monitor volume, or leaving an older offline preview on screen does not change those export settings. The download is a separate file; keep it and your original source in your own backup.
 

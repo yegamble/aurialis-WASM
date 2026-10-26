@@ -6,6 +6,7 @@ import {
   measureAudio,
   trackMetrics,
   normalizeSimpleAudio,
+  exportLevelSummary,
   processPreview,
   previewWAV,
   renderDelivery,
@@ -787,7 +788,7 @@ function MasterView({ trackId }: { trackId: string }) {
     };
   }, [track?.id, track?.sourceRevision, sourceAttempt]);
 
-  async function renderPreview(params: AdvancedParams = track?.advanced ?? createDefaultAdvancedParams(), pending?: AbortController) {
+  async function renderPreview(params: AdvancedParams = track?.advanced ?? createDefaultAdvancedParams(), pending?: AbortController, ready = "Preview ready. Playback uses the shared Go DSP engine.") {
     if (!track || !source) return;
     if (!pending) renderAbort.current?.abort();
     const controller = pending ?? new AbortController();
@@ -805,7 +806,7 @@ function MasterView({ trackId }: { trackId: string }) {
       setPreview(pcm);
       setRenderedKey(appliedRevisionKey(track) ?? masteringSettingsKey(params));
       live.current?.setBypass(false);
-      setMessage(track.deepMastering?.applied ? "Preview ready. The applied script uses the common Go DSP engine." : "Preview ready. Playback uses the shared Go DSP engine.");
+      setMessage(track.deepMastering?.applied ? "Preview ready. The applied script uses the common Go DSP engine." : ready);
       dispatch({
         type: "UPDATE_TRACK",
         id: track.id,
@@ -833,13 +834,13 @@ function MasterView({ trackId }: { trackId: string }) {
     setProcessing(true);
     setMessage("Measuring the current settings and requested loudness…");
     try {
-      const measured = await normalizeSimpleAudio(sourceBlob, expected, expected.limiter.targetLufs, controller.signal);
+      const { advanced: measured, measurement } = await normalizeSimpleAudio(sourceBlob, expected, expected.limiter.targetLufs, controller.signal);
       if (controller.signal.aborted) return;
       if (canonicalSettings.current !== expected) { setMessage("Settings changed. Set target loudness again."); return; }
       const next = { ...expected, input: measured.input };
       renderSettings.current = masteringSettingsKey(next);
       dispatch({ type: "APPLY_NORMALIZED_GAIN", id: track.id, expected, input: next.input });
-      await renderPreview(next, controller);
+      await renderPreview(next, controller, `Preview ready. ${exportLevelSummary(measurement.afterMetrics)}`);
     } catch (error) {
       if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Could not prepare this master.");
     } finally {
@@ -1063,7 +1064,7 @@ function MasterView({ trackId }: { trackId: string }) {
               {track.deepMastering?.applied
                 ? "Playback and export use the acknowledged applied revision. Draft edits wait for Apply; pending baseline edits wait for acknowledgment."
                 : fresh
-                  ? "Offline preview matches your settings. Live playback updates independently."
+                  ? "Offline preview matches your settings. It and live meters use the preview limiter, so peaks can read higher than the export. Live playback updates independently."
                   : track.mode === "simple"
                     ? "Simple and Advanced share these settings. Set target loudness to measure the requested level; export uses the current settings."
                     : "Playback responds to your controls immediately. Render an offline preview for a full-track check; export always uses current settings."}
@@ -1792,8 +1793,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                 if (track.deepMastering?.applied) throw new Error("Detach Deep automation in the master before applying album normalization. Your applied script is preserved.");
                 const file = await getAudio(audioKey(track));
                 if (!file) throw new Error(`The source for “${track.title}” is missing. Import it again.`);
-                const advanced = await normalizeSimpleAudio(file, track.advanced, -14, controller.signal);
-                const measurement = await measureAudio(file, exportParams(advanced), controller.signal);
+                const { advanced, measurement } = await normalizeSimpleAudio(file, track.advanced, -14, controller.signal);
                 const expectedBytes = totalBytes + measurement.frames * 6 + 44;
                 if (durable === false && expectedBytes > 128 * 1024 * 1024) throw new Error("Browser storage is unavailable and the rendered album exceeds the 128 MiB in-memory cache. Allow site storage, or render a smaller sequence.");
                 // Claim the final retained allocation before rendering; no gap while

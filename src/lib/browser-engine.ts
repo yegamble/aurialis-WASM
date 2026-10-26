@@ -416,6 +416,20 @@ export function trackMetrics(metrics: MeasuredAudioMetrics) {
   };
 }
 
+/** Normalized settings and the export-parameter measurement that accepted them. */
+export type NormalizedLoudness = { advanced: AdvancedParams; measurement: AudioMeasurement };
+
+function signedDb(value: number): string {
+  const fixed = value.toFixed(2);
+  return fixed === "-0.00" ? "0.00" : fixed.replace("-", "−");
+}
+
+/** Report the accepted export level. Preview and live meters run algorithm 1,
+ * whose sample-peak limiter can read higher than the true-peak export. */
+export function exportLevelSummary(metrics: MeasuredAudioMetrics): string {
+  return `Export measures ${signedDb(metrics.integratedLufs)} LUFS, ${signedDb(metrics.truePeakDbtp)} dBTP. Live meters and the offline preview use the preview limiter and can read higher.`;
+}
+
 // Explicit Simple-mode automatic gain. Advanced rendering never calls this.
 // Every candidate is measured with the export parameters (algorithm 2, the
 // lookahead true-peak limiter) so the search converges on the delivered WAV,
@@ -427,7 +441,7 @@ export async function normalizeSimpleAudio(
   settings: AdvancedParams,
   targetLufs: number,
   signal?: AbortSignal,
-): Promise<AdvancedParams> {
+): Promise<NormalizedLoudness> {
   if (!Number.isFinite(targetLufs) || targetLufs < -36 || targetLufs > -5)
     throw new Error("Choose a loudness target between −36 and −5 LUFS.");
   let candidate = structuredClone(settings);
@@ -436,7 +450,8 @@ export async function normalizeSimpleAudio(
   let upper = 36;
   for (let attempt = 0; attempt < 8; attempt++) {
     signal?.throwIfAborted();
-    const { afterMetrics } = await measureAudio(file, exportParams(candidate), signal);
+    const measurement = await measureAudio(file, exportParams(candidate), signal);
+    const { afterMetrics } = measurement;
     signal?.throwIfAborted();
     const difference = targetLufs - afterMetrics.integratedLufs;
     if (afterMetrics.integratedLufs <= -69.9)
@@ -444,7 +459,7 @@ export async function normalizeSimpleAudio(
     if (Math.abs(difference) <= 0.2) {
       if (afterMetrics.truePeakDbtp > candidate.limiter.ceiling + EXPORT_PEAK_TOLERANCE_DB)
         throw new Error("This loudness target exceeds the measured peak ceiling. Choose a quieter target.");
-      return candidate;
+      return { advanced: candidate, measurement };
     }
     // Input gain precedes compression and saturation, so one dB of input does
     // not necessarily produce one LU of output. Estimate that response from

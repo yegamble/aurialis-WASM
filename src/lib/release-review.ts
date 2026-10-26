@@ -1,3 +1,4 @@
+import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import { measureAudio, serverRender, serverRenderScript } from "./browser-engine";
 import { reserveBrowserAudioMemory } from "./browser-jobs";
 import { engineParams, exportParams, exportScript } from "./engine-params";
@@ -34,7 +35,7 @@ export type ReleaseArtifact = { report: ReleaseReport; wav: Blob; dispose: () =>
 function reviewIdentity(track: Track, bits: OutputBits): SourceIdentity {
   const identity = track.sourceIdentity;
   if (!identity || !/^[a-f0-9]{64}$/u.test(identity.pcmHash)
-    || !Number.isSafeInteger(identity.frames) || identity.frames < 1 || identity.frames > 16_777_216
+    || !Number.isSafeInteger(identity.frames) || identity.frames < 1 || identity.frames > MAX_SOURCE_FRAMES
     || !Number.isSafeInteger(identity.sampleRate) || identity.sampleRate < 8000 || identity.sampleRate > 192000
     || identity.sampleRate !== track.sampleRate || !Number.isFinite(track.duration)
     || Math.abs(identity.frames / identity.sampleRate - track.duration) > 0.001)
@@ -98,7 +99,7 @@ export function readReleaseReport(value: unknown): ReleaseReport | undefined {
   const output = item.output, source = item.source;
   const channels = (output as { channels: unknown }).channels;
   const silenceThreshold = (output as { silenceThresholdDbfs: unknown }).silenceThresholdDbfs;
-  if (!Number.isSafeInteger(source.frames) || source.frames < 1 || source.frames > 16_777_216
+  if (!Number.isSafeInteger(source.frames) || source.frames < 1 || source.frames > MAX_SOURCE_FRAMES
     || !Number.isSafeInteger(source.sampleRate) || source.sampleRate < 8000 || source.sampleRate > 192000
     || output.frames !== source.frames || output.sampleRate !== source.sampleRate || channels !== 2
     || ![16, 24, 32].includes(output.bitDepth) || silenceThreshold !== -60

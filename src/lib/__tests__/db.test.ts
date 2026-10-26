@@ -12,7 +12,7 @@ describe("bounded audio persistence", () => {
   });
   it("rejects a source without storage when the aggregate session budget is exhausted", async () => {
     vi.stubGlobal("indexedDB", { open: () => { throw new DOMException("Full", "QuotaExceededError"); } });
-    const db = await import("../db"); const first = db.newAudioAssetId("source"); const second = db.newAudioAssetId("source"); const full = new Blob(["bounded source"]); Object.defineProperty(full, "size", { value: 128 * 1024 * 1024 + 44 });
+    const db = await import("../db"); const first = db.newAudioAssetId("source"); const second = db.newAudioAssetId("source"); const full = new Blob(["bounded source"]); Object.defineProperty(full, "size", { value: 256 * 1024 * 1024 + 44 });
     await db.saveAudio(first, full); await expect(db.saveAudio(second, new Blob(["x"]))).rejects.toThrow("cache is full");
     expect(await db.getAudio(second)).toBeUndefined(); await db.discardStagedAudio(first, false);
     expect(await db.saveAudio(db.newAudioAssetId("source"), new Blob(["x"]))).toMatchObject({ durable: false });

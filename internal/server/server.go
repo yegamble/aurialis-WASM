@@ -27,7 +27,7 @@ import (
 )
 
 // DefaultMaxUploadBytes allows a maximum canonical stereo-float WAV plus bounded multipart fields.
-const DefaultMaxUploadBytes int64 = 129 * 1024 * 1024
+const DefaultMaxUploadBytes int64 = 257 * 1024 * 1024
 
 // MaxAudioFileBytes bounds one file at the decoded-frame ceiling, including its WAV header.
 const MaxAudioFileBytes int64 = int64(audio.MaxDecodedFrames)*8 + 44

@@ -1,9 +1,8 @@
+import { MAX_SOURCE_BYTES, MAX_SOURCE_FRAMES } from "./audio-limits";
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "./audio-dsp";
 import { importAudio, readCanonicalWAV, serverRender, trackMetrics, type StereoPCM } from "./browser-engine";
 import { newAudioAssetId } from "./db";
 import type { SourceIdentity, Track } from "./types";
-const MAX_SOURCE_FRAMES = 16 * 1024 * 1024;
-const MAX_SOURCE_BYTES = MAX_SOURCE_FRAMES * 8 + 44;
 /** File-picker filter for sources the Go CDR decoder reconstructs. */
 export const SOURCE_ACCEPT = "audio/wav,audio/x-wav,audio/aiff,audio/x-aiff,audio/flac,audio/x-flac,audio/mpeg,.wav,.wave,.aif,.aiff,.aifc,.flac,.mp3";
 const SOURCE_EXTENSION = /\.(wav|wave|aif|aiff|aifc|flac|mp3)$/iu;
@@ -44,10 +43,10 @@ async function wavCapacity(file: File): Promise<{ frames: number; sampleRate: nu
 
 export async function prepareProjectFile(file: File, signal: AbortSignal, progress: (stage: string) => void) {
   signal.throwIfAborted();
-  if (!isSourceFileName(file.name) || file.size === 0 || file.size > MAX_SOURCE_BYTES) throw new Error("Choose a nonempty WAV, AIFF, FLAC or MP3 file up to 128 MiB. Other formats are not supported.");
+  if (!isSourceFileName(file.name) || file.size === 0 || file.size > MAX_SOURCE_BYTES) throw new Error("Choose a nonempty WAV, AIFF, FLAC or MP3 file up to 256 MiB. Other formats are not supported.");
   const capacity = await wavCapacity(file);
   signal.throwIfAborted();
-  if (capacity && capacity.frames > MAX_SOURCE_FRAMES) throw new Error("This WAV exceeds the 16,777,216 frame limit. Use a shorter source or lower sample rate.");
+  if (capacity && capacity.frames > MAX_SOURCE_FRAMES) throw new Error("This WAV exceeds the 33,554,432 frame limit. Use a shorter source or lower sample rate.");
   progress(`Decoding and reconstructing your ${sourceFormat(file.name)} on this device…`);
   const imported = await importAudio(file, signal);
   signal.throwIfAborted();

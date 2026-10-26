@@ -86,7 +86,7 @@ describe("device-local browser audio transport", () => {
   it("rejects unsafe browser memory before creating a worker or reading the full file", async () => {
     const { deviceAudioRequest } = await import("../browser-jobs");
     const oversized = new File([source()], "source.wav");
-    Object.defineProperty(oversized, "size", { value: 128 * 1024 * 1024 });
+    Object.defineProperty(oversized, "size", { value: 200 * 1024 * 1024 });
     const read = vi.spyOn(oversized, "arrayBuffer");
     const form = new FormData(); form.append("file", oversized);
     await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: form })).rejects.toThrow("memory budget");
@@ -145,7 +145,7 @@ describe("device-local browser audio transport", () => {
     const first = deviceAudioRequest("/api/master/render", { method: "POST", body: activeBody });
     await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
     const waiting = new File([source()], "waiting.wav");
-    Object.defineProperty(waiting, "size", { value: 129 * 1024 * 1024 });
+    Object.defineProperty(waiting, "size", { value: 160 * 1024 * 1024 });
     const read = vi.spyOn(waiting, "arrayBuffer");
     const waitingBody = new FormData(); waitingBody.append("file", waiting);
     await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: waitingBody })).rejects.toThrow("memory budget");
@@ -178,6 +178,23 @@ describe("device-local browser audio transport", () => {
       expect(read).not.toHaveBeenCalled(); expect(TestWorker.all).toHaveLength(1);
     } finally { owner.dispose(); controller.abort(); }
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["an 8 GB-class device", { deviceMemory: 8 }, undefined, 2048],
+    ["a desktop browser that hides device memory", {}, false, 1536],
+    ["a touch device that hides device memory", {}, true, 1024],
+    ["a 4 GB device", { deviceMemory: 4 }, undefined, 512],
+    ["a 2 GB device", { deviceMemory: 2 }, undefined, 256],
+  ])("sizes the local audio memory budget for %s", async (_name, device, coarse, budgetMiB) => {
+    vi.stubGlobal("navigator", device);
+    if (coarse !== undefined) vi.stubGlobal("matchMedia", (query: string) => ({ matches: coarse && query === "(pointer: coarse)" }));
+    const { reserveBrowserAudioMemory } = await import("../browser-jobs");
+    const mib = 1024 * 1024;
+    // Retained audio plus the 64 MiB job floor must fit the budget.
+    const fits = reserveBrowserAudioMemory((budgetMiB - 64) * mib);
+    fits.dispose();
+    expect(() => reserveBrowserAudioMemory((budgetMiB - 63) * mib)).toThrow("memory budget");
   });
 
   it("rejects malformed or unsafe retained-byte counts without changing existing reservations", async () => {

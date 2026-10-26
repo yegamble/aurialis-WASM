@@ -21,7 +21,7 @@ import (
 const ABIVersion = "1.0"
 
 // MaxInputBytes bounds the combined binary inputs independently of metadata.
-const MaxInputBytes = 129 * 1024 * 1024
+const MaxInputBytes = 257 * 1024 * 1024
 
 // MaxMetadataBytes permits one bounded ScriptV2 plus small closed operation fields.
 const MaxMetadataBytes = mastering.MaxScriptV2Bytes + 128*1024
@@ -119,7 +119,7 @@ func Execute(ctx context.Context, raw, source, reference []byte, progress func(i
 		return nil, err
 	}
 	if len(source) > MaxInputBytes || len(reference) > MaxInputBytes-len(source) {
-		return nil, errors.New("combined local audio inputs exceed 129 MiB")
+		return nil, errors.New("combined local audio inputs exceed 257 MiB")
 	}
 	if request.Operation == "compile" {
 		if len(source) != 0 || len(reference) != 0 {

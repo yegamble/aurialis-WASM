@@ -113,7 +113,7 @@ type Manager struct {
 }
 
 // MaxMemoryBytes bounds admitted inputs and retained encoded artifacts together.
-const MaxMemoryBytes int64 = 256 * 1024 * 1024
+const MaxMemoryBytes int64 = 512 * 1024 * 1024
 
 // MaxRetainedJobs limits metadata and result retention independently of bytes.
 const MaxRetainedJobs = 64

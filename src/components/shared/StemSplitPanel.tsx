@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { usesBrowserAudio } from "@/lib/browser-jobs";
+import { useBrowserBuild } from "@/lib/build-mode";
 import { getAudio } from "@/lib/db";
 import { runStemSplit, StemSplitError, stemSplitFailureMessage, stemModelStatus, type StemModelStatus, type StemSplit, type StemSplitFailure } from "@/lib/stem-split";
+import { stemSplitAvailability } from "@/lib/stem-split-copy";
 import { Button, buttonClassName } from "./Primitives";
 
 const stemLayouts = new Map<number, string[]>([
@@ -18,9 +19,10 @@ function megabytes(bytes: number): string {
   return `${String(Math.round(bytes / 1_000_000))} MB`;
 }
 
+/** The browser build's availability sentence already explains why nothing can run, so it has no model note. */
 function modelNote(status: StemModelStatus | null, lastFailure: StemSplitFailure | null): string {
   if (!status) return "Checking the separation model…";
-  if (!status.available) return usesBrowserAudio() ? "Smart Split runs in the Aurialis desktop app. This browser build cannot separate stems." : "Smart Split is turned off in this build of the app.";
+  if (!status.available) return "Smart Split is turned off in this Aurialis server: it was started with the separation model disabled.";
   if (status.downloading) return `Downloading the separation model: ${megabytes(status.downloadedBytes)} of ${megabytes(status.totalBytes)}.`;
   if (status.ready) return "The separation model is ready.";
   if (lastFailure === "model") return `The ${megabytes(status.totalBytes)} separation model could not be downloaded or verified. The next split retries the download.`;
@@ -28,6 +30,7 @@ function modelNote(status: StemModelStatus | null, lastFailure: StemSplitFailure
 }
 
 export function StemSplitPanel({ audioId, title }: { audioId: string | null; title: string }) {
+  const browser = useBrowserBuild();
   const operation = useRef<AbortController | null>(null);
   const [count, setCount] = useState(4);
   const [status, setStatus] = useState<StemModelStatus | null>(null);
@@ -95,13 +98,14 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
     setStage("");
   }
 
-  const available = status?.available === true;
+  const available = !browser && status?.available === true;
   return (
     <section className="split-intro paper-panel" aria-label="Smart Split">
       <div>
         <span className="eyebrow">Trained stem separation</span>
         <h2>Choose a stem layout</h2>
-        <p>Separation runs on this computer; your audio never leaves it. Vocals, drums, bass and guitar separate cleanly; piano and Other are less reliable. A song takes a few minutes. The stems add up to the original mix.</p>
+        <p>{stemSplitAvailability(browser)}</p>
+        <p>Your audio stays on this device. Vocals, drums, bass and guitar separate cleanly; piano and Other are less reliable. The stems add up to the original mix.</p>
       </div>
       <div className="stem-count" role="group" aria-label="Stem count">
         {[2, 3, 4, 5, 6].map((number) => (
@@ -111,7 +115,7 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
         ))}
       </div>
       <div className="stem-preview">{(stemLayouts.get(count) ?? []).map((name) => <span key={name}>{name}</span>)}</div>
-      <p className="disclosure" role="status">{modelNote(status, lastFailure)}</p>
+      {!browser && <p className="disclosure" role="status">{modelNote(status, lastFailure)}</p>}
       <div className="flex flex-wrap gap-2">
         {busy
           ? <Button variant="secondary" onClick={cancel}>Cancel split</Button>

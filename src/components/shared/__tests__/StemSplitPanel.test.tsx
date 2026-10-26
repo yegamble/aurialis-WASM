@@ -1,17 +1,32 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { stemSplitAvailability } from "@/lib/stem-split-copy";
 import { StemSplitPanel } from "../StemSplitPanel";
 
 vi.mock("@/lib/db", () => ({ getAudio: () => Promise.resolve(new Blob(["x"])) }));
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("Smart Split panel", () => {
-  it("disables splitting when the build has no model", async () => {
+  it("explains a native server started without the model and disables splitting", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ available: false, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 0 }))));
     render(<StemSplitPanel audioId="a" title="Song" />);
-    expect(await screen.findByText("Smart Split is turned off in this build of the app.")).toBeTruthy();
+    expect(await screen.findByText("Smart Split is turned off in this Aurialis server: it was started with the separation model disabled.")).toBeTruthy();
+    expect(screen.getByText(stemSplitAvailability(false))).toBeTruthy();
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Split Song into 4 stems" }).disabled).toBe(true);
+  });
+
+  it("states browser-build availability once, without a model note or network request", async () => {
+    vi.stubEnv("NEXT_PUBLIC_AURIALIS_EXECUTION", "browser");
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = render(<StemSplitPanel audioId="a" title="Song" />);
+    await act(() => Promise.resolve());
+    expect(screen.getByText(stemSplitAvailability(true))).toBeTruthy();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(container.textContent).not.toMatch(/desktop app|this computer|server/iu);
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Split Song into 4 stems" }).disabled).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("splits into the chosen layout and offers playback and download per stem", async () => {

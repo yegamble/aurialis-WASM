@@ -90,6 +90,8 @@ import { appliedRevisionKey } from "@/lib/deep-mastering";
 import type { ScriptV2 } from "@/lib/deep-mastering";
 import { DeepTimeline } from "./shared/DeepTimeline";
 import { StemSplitPanel } from "./shared/StemSplitPanel";
+import { processingCopy, useBrowserBuild } from "@/lib/build-mode";
+import { STEM_SPLIT_PITCH, stemSplitAvailability } from "@/lib/stem-split-copy";
 import { timeConstantMs } from "@/lib/control-conventions";
 
 
@@ -347,6 +349,7 @@ export function AurialisWorkstation({
 
 function HomeView() {
   const { state, dispatch } = useStore();
+  const browser = useBrowserBuild();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("");
@@ -419,10 +422,7 @@ function HomeView() {
           </p>
           <div className="hero-trust">
             <Icon name="headphones" />
-            <span>
-              Local by default. Audio is processed by your local Go server and
-              browser.
-            </span>
+            <span>{processingCopy(browser)}</span>
           </div>
         </div>
         <div
@@ -516,7 +516,7 @@ function HomeView() {
             number="02"
             icon="scissors"
             title="Split"
-            copy="Instrument separation is planned. It is not available in this build."
+            copy={`${STEM_SPLIT_PITCH} ${stemSplitAvailability(browser)}`}
           />
           <WorkflowCard
             number="03"
@@ -2027,6 +2027,7 @@ function AlbumView({ albumId }: { albumId: string }) {
 
 function ToolsView() {
   const { state } = useStore();
+  const browser = useBrowserBuild();
   const first = state.tracks[0];
   const targetId = first?.id ?? "placeholder";
   return (
@@ -2041,7 +2042,7 @@ function ToolsView() {
           icon="scissors"
           eyebrow="Separation"
           title="Smart stem splitter"
-          copy="Split a song into 2 to 6 stems with a trained model. Runs in the desktop app."
+          copy={`${STEM_SPLIT_PITCH} ${stemSplitAvailability(browser)}`}
           href={`/split/${targetId}`}
         />
         <ToolCard

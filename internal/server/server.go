@@ -292,7 +292,9 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request) (*audio.Buffer, bool) {
+// readAndDisarmUpload reads one audio file and bounded form fields. The export
+// fields sampleRate and dither are accepted only when exportFields is set.
+func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request, exportFields bool) (*audio.Buffer, bool) {
 	if r.ContentLength > s.cfg.MaxUploadBytes {
 		writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large",
 			fmt.Sprintf("Upload exceeds maximum size of %d bytes", s.cfg.MaxUploadBytes))
@@ -342,7 +344,7 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request) (*a
 				writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Audio file exceeds the decoded-frame storage limit")
 				return nil, false
 			}
-		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "sampleRate" || name == "dither" || name == "format" || name == "script" || name == "scriptVersion") && disposition["filename"] == "" && values[name] == nil:
+		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "format" || name == "script" || name == "scriptVersion" || (exportFields && (name == "sampleRate" || name == "dither"))) && disposition["filename"] == "" && values[name] == nil:
 			var value []byte
 			fieldLimit := 64 * 1024
 			if name == "script" {
@@ -435,7 +437,7 @@ func parseStemCountAndModel(r *http.Request) (int, error) {
 }
 
 func (s *Server) handleSeparate(w http.ResponseWriter, r *http.Request) {
-	buf, ok := s.readAndDisarmUpload(w, r)
+	buf, ok := s.readAndDisarmUpload(w, r, false)
 	if !ok {
 		return
 	}
@@ -470,7 +472,7 @@ func (s *Server) handleStemModel(w http.ResponseWriter, _ *http.Request) {
 }
 
 func (s *Server) handleAnalyzeDeep(w http.ResponseWriter, r *http.Request) {
-	buf, ok := s.readAndDisarmUpload(w, r)
+	buf, ok := s.readAndDisarmUpload(w, r, false)
 	if !ok {
 		return
 	}
@@ -530,7 +532,7 @@ func (s *Server) handleAnalyzeDeep(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
-	buf, ok := s.readAndDisarmUpload(w, r)
+	buf, ok := s.readAndDisarmUpload(w, r, true)
 	if !ok {
 		return
 	}
@@ -858,7 +860,7 @@ func (s *Server) handleAnalyzeFeatures(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "Measured analysis accepts a file only")
 		return
 	}
-	buf, ok := s.readAndDisarmUpload(w, r)
+	buf, ok := s.readAndDisarmUpload(w, r, false)
 	if !ok {
 		return
 	}

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio"
@@ -90,6 +91,26 @@ func TestExportSampleRateAndDither(t *testing.T) {
 	} {
 		if code := post(fields).Code; code != http.StatusBadRequest {
 			t.Errorf("%s: status %d, want 400", name, code)
+		}
+	}
+}
+
+// Export conversion fields belong to the render endpoint only.
+func TestExportFieldsRejectedOutsideRender(t *testing.T) {
+	srv := server.New(server.Config{Workers: 1})
+	defer srv.Close()
+	l := make([]float32, 8000)
+	wav, err := audio.EncodeWAV(l, l, 8000, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{"/api/analyze/deep", "/api/separate", "/api/analyze/features"} {
+		for _, fields := range []map[string]string{{"sampleRate": "48000"}, {"dither": "none"}, {"sampleRate": "22050", "dither": "bogus"}} {
+			recorder := httptest.NewRecorder()
+			srv.Handler().ServeHTTP(recorder, newMultipartRequest(t, http.MethodPost, target, "source.wav", wav, fields))
+			if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `"invalid_multipart"`) {
+				t.Errorf("%s %v: status %d %s, want 400 invalid_multipart", target, fields, recorder.Code, recorder.Body.String())
+			}
 		}
 	}
 }

@@ -3,6 +3,26 @@
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
+
+## Set target loudness on dense mixes — 2026-10-26
+
+V1-01 (P0), finding GV-1 from the v1 ruling. Set target loudness, album normalization and the Elevated check measured candidates with the live algorithm 1. Its sample-peak limiter overshoots in true peak on any program that needs limiting, so dense mixes were rejected ("exceeds the measured peak ceiling") even at −14 LUFS. The browser-test fixture was a pure tone, so it never caught this. Measurement now uses the export parameters (algorithm 2, true peak on), with the gate at ceiling + 0.05 dB.
+
+Evidence (local, 2026-10-26). On a deterministic dense drum-and-bass fixture (source −15.97 LUFS, −0.78 dBTP):
+
+| Target | Before | After |
+|---|---|---|
+| Streaming −14/−1 | rejected at −0.27 dBTP | export −14.18 LUFS, −1.10 dBTP |
+| Loud −9/−0.2 | rejected at +2.31 dBTP | export −9.01 LUFS, −0.30 dBTP |
+| Elevated, +2 dB input | rejected | accepted, −14.5 LUFS, −1.21 dBTP |
+
+Tests:
+- Go: `TestNormalizeDenseProgramReachesTarget`.
+- Vitest: 533/533.
+- Playwright `mastering-targets`: 4/4. The new dense cases failed on the pre-fix build.
+- Regression sweep: 27/27.
+
+Offline preview and live playback still use algorithm 1 (tracked as V1-10). Status: **open — awaiting merge**.
 ## Export sample-rate conversion and dither — 2026-10-26
 
 Audit finding 13. Export was locked to the source rate with fixed TPDF dither. The Export dialog now offers the source rate (shown once, as "48 kHz (source)") and 44.1, 48, 88.2 and 96 kHz, and TPDF or Off dither for 16/24-bit PCM. Rates are disabled with a visible reason when the converted output would exceed 33,554,432 frames or the ratio cannot be converted exactly. The native `/api/master/render` and `/master/render` and the browser worker accept `sampleRate` (exactly `44100`, `48000`, `88200` or `96000`, otherwise 400 `invalid_sample_rate`) and `dither` (`tpdf` or `none`); other upload endpoints reject both fields with 400 `invalid_multipart`. Over-length or unsupported conversions return 400 `invalid_export_options` before rendering. Conversion runs after mastering (so applied Deep scripts keep their source-rate timing) with a Go stdlib rational polyphase Kaiser-windowed sinc (120 dB stopband, flat to 90% of the lower Nyquist frequency) and FMA-free arithmetic. With the limiter on, the algorithm 2 true-peak lookahead limiter then runs again at the delivery rate; dither comes last, once. With the limiter off, levels are untouched. `params.ditherBits` reports the delivered dither, `afterMetrics.gainReductionDb` includes the delivery limiter, and the status line shows the delivered true peak from `X-Aurialis-After-Peak-dBTP`. Single-select choices across the app now share one `ChoiceGroup` primitive. Ten seconds of stereo 44.1→48 kHz converts in about 0.3 s natively.

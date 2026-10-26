@@ -2,7 +2,7 @@
 
 package steminfer
 
-// cspell:words softmax steminfer GELU FLT erff vvexpf vvtanhf vDSP maxv vsmsa Abramowitz Stegun
+// cspell:words softmax steminfer GELU FLT erff vvexpf vvtanhf vDSP maxv vsmsa Abramowitz Stegun fabsf
 
 /*
 #cgo LDFLAGS: -framework Accelerate

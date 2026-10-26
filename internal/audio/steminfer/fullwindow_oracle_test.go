@@ -1,6 +1,6 @@
 package steminfer
 
-// cspell:words steminfer
+// cspell:words steminfer fullwindow
 
 import (
 	"context"

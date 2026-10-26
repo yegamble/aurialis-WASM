@@ -133,6 +133,7 @@ func (work *networkWorkspace) loadBlock(archive *weightArchive, layer, axis int)
 	}
 	return result, nil
 }
+
 // transformer runs one block over groups independent sequences stored back
 // to back in input. Projections and the feed-forward run over all rows at
 // once; attention and rotary positions stay within each sequence.

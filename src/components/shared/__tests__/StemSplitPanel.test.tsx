@@ -84,7 +84,48 @@ describe("Smart Split panel", () => {
     render(<StemSplitPanel audioId="a" title="Song" />);
     fireEvent.click(await screen.findByRole("button", { name: "Split Song into 4 stems" }));
     fireEvent.click(await screen.findByRole("button", { name: "Download Vocals" }));
-    expect((await screen.findByRole("alert")).textContent).toBe("These stems are no longer available; stems are kept for 15 minutes. Split the song again.");
+    expect((await screen.findByRole("alert")).textContent).toBe("These stems are no longer available. Stems are kept for 15 minutes, and restarting the local server clears them. Split the song again.");
     expect(mocks.download).not.toHaveBeenCalled();
+  });
+
+  it("treats a dropped connection as unreachable, keeps checking and re-enables Split when the server is back", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      let serverUp = true;
+      const ready = { available: true, ready: true, downloading: false, downloadedBytes: 1, totalBytes: 1 };
+      vi.stubGlobal("fetch", vi.fn((input: string) => {
+        if (!serverUp) return Promise.reject(new TypeError("Failed to fetch"));
+        if (input === "/api/stems/model") return Promise.resolve(json(ready));
+        if (input === "/api/separate") { serverUp = false; return Promise.reject(new TypeError("Failed to fetch")); }
+        return Promise.resolve(json({}));
+      }));
+      render(<StemSplitPanel audioId="a" title="Song" />);
+      expect(await screen.findByText("The separation model is ready.")).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Split Song into 4 stems" }));
+      expect((await screen.findByRole("alert")).textContent).toContain("lost contact with its local server");
+      const note = screen.getByRole("status");
+      await waitFor(() => { expect(note.textContent).toContain("can't reach its local server"); });
+      expect(note.textContent).not.toMatch(/disabled|turned off/iu);
+      expect(screen.getByRole<HTMLButtonElement>("button", { name: "Split Song into 4 stems" }).disabled).toBe(true);
+      serverUp = true;
+      await act(() => vi.advanceTimersByTimeAsync(3000));
+      await waitFor(() => { expect(note.textContent).toBe("The separation model is ready."); });
+      expect(screen.getByRole<HTMLButtonElement>("button", { name: "Split Song into 4 stems" }).disabled).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows a memory-budget refusal in its own words when saving a stem", async () => {
+    mocks.download.mockImplementation(() => { throw new Error("Retained audio exceeds the browser's conservative memory budget."); });
+    vi.stubGlobal("fetch", vi.fn((input: string) => {
+      if (input === "/api/stems/model") return Promise.resolve(json({ available: true, ready: true, downloading: false, downloadedBytes: 1, totalBytes: 1 }));
+      if (input === "/api/separate") return Promise.resolve(json({ jobId: "job-6", status: "done", stems }, 202));
+      return Promise.resolve(new Response(new Blob(["RIFF"], { type: "audio/wav" })));
+    }));
+    render(<StemSplitPanel audioId="a" title="Song" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Split Song into 4 stems" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Download Vocals" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Retained audio exceeds the browser's conservative memory budget.");
   });
 });

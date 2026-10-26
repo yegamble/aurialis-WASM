@@ -2,6 +2,8 @@ import { usesBrowserAudio } from "./browser-jobs";
 import { safeFileBaseName } from "./zip";
 
 export interface StemModelStatus {
+  /** False when the local server did not answer; only a reachable server with available: false means disabled. */
+  reachable: boolean;
   available: boolean;
   ready: boolean;
   downloading: boolean;
@@ -24,22 +26,28 @@ export interface StemSplit {
 }
 
 /** Why a split failed, so the panel can explain it in plain language and adjust the model note. */
-export type StemSplitFailure = "unavailable" | "busy" | "queue_full" | "too_long" | "memory" | "model" | "stopped" | "expired" | "unreadable" | "missing_source" | "connection" | "internal";
+export type StemSplitFailure = "unavailable" | "busy" | "queue_full" | "too_long" | "memory" | "model" | "model_cache" | "stopped" | "lost" | "expired" | "unreadable" | "missing_source" | "connection" | "timeout" | "internal";
+
+/** The one sentence for a native server started with Smart Split disabled. */
+export const STEM_MODEL_DISABLED = "Smart Split is turned off in this Aurialis server: it was started with the separation model disabled.";
 
 const INTERNAL_FAILURE = "Smart Split ran into an internal error. Try again; if it keeps failing, report the song's length and sample rate.";
 
 const failureCopy = new Map<StemSplitFailure, string>([
-  ["unavailable", "Smart Split is turned off in this Aurialis server: it was started with the separation model disabled, so it can't split stems."],
+  ["unavailable", STEM_MODEL_DISABLED],
   ["busy", "Aurialis is finishing another audio task. Wait for it to complete, then split again."],
   ["queue_full", "Smart Split is already working on other songs and can't take another right now. Try again after one finishes."],
   ["too_long", "This song is too long to split. Smart Split handles up to about 5.8 minutes at 48 kHz."],
   ["memory", "This song needs more memory than Smart Split allows. Try a shorter section or a lower sample rate."],
   ["model", "The separation model couldn't be downloaded or verified. Check your internet connection, then split again to retry the download."],
+  ["model_cache", "The separation model couldn't be saved to or loaded from its cache folder on this computer. Check that your user cache folder is writable and has about 180 MB free, then split again."],
   ["stopped", "Smart Split stopped before it finished. A long song on a slower computer can reach the 90-minute job limit."],
-  ["expired", "These stems are no longer available; stems are kept for 15 minutes. Split the song again."],
+  ["lost", "Aurialis lost track of this split; the local server may have restarted. Split the song again."],
+  ["expired", "These stems are no longer available. Stems are kept for 15 minutes, and restarting the local server clears them. Split the song again."],
   ["unreadable", "Aurialis couldn't read this audio for splitting. Re-import the original file and try again."],
   ["missing_source", "The original audio is missing. Restore the source before splitting."],
   ["connection", "Aurialis lost contact with its local server. Check that it is still running, then try again."],
+  ["timeout", "Aurialis's local server didn't answer in time; it may be busy with other audio. Wait a moment, then try again."],
 ]);
 
 function copyFor(kind: StemSplitFailure): string {
@@ -54,11 +62,18 @@ export class StemSplitError extends Error {
   }
 }
 
-/** The message to show for any error thrown while splitting or downloading stems. */
+/** Classifies any error thrown while splitting or fetching stems. */
+export function stemSplitFailureKind(error: unknown): StemSplitFailure {
+  if (error instanceof StemSplitError) return error.kind;
+  // AbortSignal.timeout() rejects fetch with a TimeoutError DOMException.
+  if (error instanceof DOMException && error.name === "TimeoutError") return "timeout";
+  if (error instanceof TypeError) return "connection";
+  return "internal";
+}
+
+/** The message to show for any error thrown while splitting or fetching stems. */
 export function stemSplitFailureMessage(error: unknown): string {
-  if (error instanceof StemSplitError) return error.message;
-  if (error instanceof TypeError) return copyFor("connection");
-  return INTERNAL_FAILURE;
+  return error instanceof StemSplitError ? error.message : copyFor(stemSplitFailureKind(error));
 }
 
 /** "<title> - <Stem>.wav", safe on common filesystems. */
@@ -67,7 +82,8 @@ export function stemDownloadName(title: string, stem: string): string {
   return track ? `${track} - ${part}.wav` : `${part}.wav`;
 }
 
-const unavailable: StemModelStatus = { available: false, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 0 };
+const unavailable: StemModelStatus = { reachable: true, available: false, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 0 };
+const unreachable: StemModelStatus = { ...unavailable, reachable: false };
 
 function record(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Invalid Smart Split response.");
@@ -83,12 +99,12 @@ export async function stemModelStatus(signal?: AbortSignal): Promise<StemModelSt
   if (usesBrowserAudio()) return unavailable;
   try {
     const response = await fetch("/api/stems/model", { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5000)]) : AbortSignal.timeout(5000) });
-    if (!response.ok) return unavailable;
+    if (!response.ok) return unreachable;
     const body = record(await response.json());
-    return { available: body.available === true, ready: body.ready === true, downloading: body.downloading === true, downloadedBytes: count(body.downloadedBytes), totalBytes: count(body.totalBytes) };
+    return { reachable: true, available: body.available === true, ready: body.ready === true, downloading: body.downloading === true, downloadedBytes: count(body.downloadedBytes), totalBytes: count(body.totalBytes) };
   } catch (error) {
     if (signal?.aborted) throw error;
-    return unavailable;
+    return unreachable;
   }
 }
 
@@ -123,7 +139,9 @@ function rejected(response: Response, body: unknown): StemSplitError {
 
 /** Maps a failed job's raw Go error to a failure kind. */
 function jobFailure(raw: string): StemSplitError {
-  if (/stem model|separation model/iu.test(raw)) return new StemSplitError("model", raw);
+  if (/stem model download|dial tcp|no such host|connection (?:refused|reset)|certificate|tls|timeout|Get "/iu.test(raw)) return new StemSplitError("model", raw);
+  // Anything else while loading is local: an unwritable cache folder or a damaged cached file.
+  if (/stem model|separation model|model cache/iu.test(raw)) return new StemSplitError("model_cache", raw);
   if (/memory ceiling/iu.test(raw)) return new StemSplitError("memory", raw);
   if (/too long/iu.test(raw)) return new StemSplitError("too_long", raw);
   return new StemSplitError("internal", raw);
@@ -159,7 +177,7 @@ export async function runStemSplit(source: Blob, stems: number, signal: AbortSig
       if (Date.now() > deadline) throw new StemSplitError("stopped", "Client deadline exceeded.");
       onProgress(Math.max(0, Math.min(100, count(job.progress))), typeof job.stage === "string" ? job.stage.slice(0, 120) : "");
       const response = await fetch(`${url}?wait=1`, { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) });
-      if (response.status === 404) throw new StemSplitError("expired", "Job not found.");
+      if (response.status === 404) throw new StemSplitError("lost", "Job not found.");
       if (!response.ok) throw new StemSplitError("internal", `Status HTTP ${String(response.status)}`);
       job = record(await response.json());
       if (job.jobId !== id) throw new StemSplitError("internal", "Smart Split job identity changed.");

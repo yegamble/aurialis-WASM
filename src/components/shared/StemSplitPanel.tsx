@@ -5,7 +5,7 @@ import { useBrowserBuild } from "@/lib/build-mode";
 import { getAudio } from "@/lib/db";
 import { downloadLocalBlob } from "@/lib/download";
 import {
-  fetchStemAudio, runStemSplit, stemDownloadName, StemSplitError, stemSplitFailureMessage, stemModelStatus,
+  fetchStemAudio, runStemSplit, stemDownloadName, STEM_MODEL_DISABLED, StemSplitError, stemSplitFailureKind, stemSplitFailureMessage, stemModelStatus,
   type SplitStem, type StemModelStatus, type StemSplit, type StemSplitFailure,
 } from "@/lib/stem-split";
 import { stemSplitAvailability } from "@/lib/stem-split-copy";
@@ -24,12 +24,17 @@ function megabytes(bytes: number): string {
 }
 
 /** The browser build's availability sentence already explains why nothing can run, so it has no model note. */
+/** How often the panel re-checks a local server that stopped answering. */
+const RECHECK_MS = 3000;
+
 function modelNote(status: StemModelStatus | null, lastFailure: StemSplitFailure | null): string {
   if (!status) return "Checking the separation model…";
-  if (!status.available) return "Smart Split is turned off in this Aurialis server: it was started with the separation model disabled.";
+  if (!status.reachable) return "Aurialis can't reach its local server to check the separation model. Checking again every few seconds; Split comes back when the server answers.";
+  if (!status.available) return STEM_MODEL_DISABLED;
   if (status.downloading) return `Downloading the separation model: ${megabytes(status.downloadedBytes)} of ${megabytes(status.totalBytes)}.`;
   if (status.ready) return "The separation model is ready.";
   if (lastFailure === "model") return `The ${megabytes(status.totalBytes)} separation model could not be downloaded or verified. The next split retries the download.`;
+  if (lastFailure === "model_cache") return `The ${megabytes(status.totalBytes)} separation model could not be saved to or loaded from its cache folder. The next split tries again.`;
   return `The first split downloads the ${megabytes(status.totalBytes)} separation model once.`;
 }
 
@@ -40,7 +45,13 @@ function StemRow({ stem, title }: { stem: SplitStem; title: string }) {
     setSaving(true);
     setError("");
     try {
-      downloadLocalBlob(await fetchStemAudio(stem), stemDownloadName(title, stem.name));
+      const blob = await fetchStemAudio(stem);
+      try {
+        downloadLocalBlob(blob, stemDownloadName(title, stem.name));
+      } catch (failure) {
+        // A memory-budget refusal already explains itself in plain language.
+        setError(failure instanceof Error ? failure.message : "This stem could not be saved.");
+      }
     } catch (failure) {
       setError(stemSplitFailureMessage(failure));
     } finally {
@@ -84,6 +95,13 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
     const timer = setInterval(() => { void stemModelStatus().then(setStatus); }, 1000);
     return () => { clearInterval(timer); };
   }, [busy, status?.available, status?.ready]);
+  // A server that stopped answering is not a disabled model: keep checking until it is back.
+  const unreachable = status?.reachable === false;
+  useEffect(() => {
+    if (!unreachable || busy) return;
+    const timer = setInterval(() => { void stemModelStatus().then(setStatus); }, RECHECK_MS);
+    return () => { clearInterval(timer); };
+  }, [unreachable, busy]);
   useEffect(() => () => { operation.current?.abort(); }, []);
   useEffect(() => () => { split?.release(); }, [split]);
 
@@ -111,7 +129,7 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
     } catch (failure) {
       if (!controller.signal.aborted) {
         setError(stemSplitFailureMessage(failure));
-        setLastFailure(failure instanceof StemSplitError ? failure.kind : "internal");
+        setLastFailure(stemSplitFailureKind(failure));
         // A failed first download leaves the "downloading" note stale; re-read the model state.
         void stemModelStatus().then(setStatus);
       }

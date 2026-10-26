@@ -105,12 +105,15 @@ export async function createStoredZip(entries: readonly ZipEntry[], signal?: Abo
 
 const UNSAFE_NAME_CHARACTERS = '<>:"/\\|?*';
 
+/** A filesystem-safe base name (no extension): control and reserved characters become "-", at most 120 characters. */
+export function safeFileBaseName(name: string, fallback: string): string {
+  const replaced = Array.from(name.normalize("NFC"), (char) => char.charCodeAt(0) < 0x20 || char === "\u007f" || UNSAFE_NAME_CHARACTERS.includes(char) ? "-" : char).join("");
+  const safe = replaced.replace(/-+/gu, "-").replace(/\s+/gu, " ").trim().slice(0, 120).replace(/^[.\s-]+|[.\s]+$/gu, "");
+  return safe || fallback;
+}
+
 /** Numbered, filesystem-safe WAV names in running order, unique within one archive. */
 export function albumEntryNames(titles: readonly string[]): string[] {
   const width = Math.max(2, String(titles.length).length);
-  return titles.map((title, index) => {
-    const replaced = Array.from(title.normalize("NFC"), (char) => char.charCodeAt(0) < 0x20 || char === "\u007f" || UNSAFE_NAME_CHARACTERS.includes(char) ? "-" : char).join("");
-    const safe = replaced.replace(/-+/gu, "-").replace(/\s+/gu, " ").trim().slice(0, 120).replace(/^[.\s-]+|[.\s]+$/gu, "");
-    return `${String(index + 1).padStart(width, "0")} ${safe || "Track"}.wav`;
-  });
+  return titles.map((title, index) => `${String(index + 1).padStart(width, "0")} ${safeFileBaseName(title, "Track")}.wav`);
 }

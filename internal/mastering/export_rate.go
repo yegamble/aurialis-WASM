@@ -3,6 +3,7 @@ package mastering
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
@@ -18,10 +19,29 @@ type ExportOptions struct {
 	NoDither   bool
 }
 
+// ErrInvalidSampleRate rejects a sampleRate form value that is not the exact
+// decimal of a supported export rate.
+var ErrInvalidSampleRate = errors.New("sampleRate must be 44100, 48000, 88200 or 96000")
+
+// ParseExportSampleRate parses the optional sampleRate form value. Only the
+// canonical decimal of a supported rate is accepted (no sign, leading zeros or
+// whitespace); empty keeps the source rate and returns 0.
+func ParseExportSampleRate(raw string) (int, error) {
+	if raw == "" {
+		return 0, nil
+	}
+	for _, rate := range dsp.ExportSampleRates {
+		if raw == strconv.Itoa(rate) {
+			return rate, nil
+		}
+	}
+	return 0, ErrInvalidSampleRate
+}
+
 // ParseExportOptions validates the optional sampleRate and dither form values.
 func ParseExportOptions(sampleRate int, dither string) (ExportOptions, error) {
 	if sampleRate != 0 && !dsp.IsExportSampleRate(sampleRate) {
-		return ExportOptions{}, errors.New("sampleRate must be 44100, 48000, 88200 or 96000")
+		return ExportOptions{}, ErrInvalidSampleRate
 	}
 	switch dither {
 	case "", "tpdf":

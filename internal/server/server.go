@@ -576,16 +576,12 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		}
 		bitDepth = parsed
 	}
-	exportRate := 0
-	if rawRate := strings.TrimSpace(r.FormValue("sampleRate")); rawRate != "" {
-		parsed, err := strconv.Atoi(rawRate)
-		if err != nil {
-			writeErrorJSON(w, http.StatusBadRequest, "invalid_sample_rate", "sampleRate must be 44100, 48000, 88200 or 96000")
-			return
-		}
-		exportRate = parsed
+	exportRate, rateErr := mastering.ParseExportSampleRate(r.FormValue("sampleRate"))
+	if rateErr != nil {
+		writeErrorJSON(w, http.StatusBadRequest, "invalid_sample_rate", rateErr.Error())
+		return
 	}
-	export, exportErr := mastering.ParseExportOptions(exportRate, strings.TrimSpace(r.FormValue("dither")))
+	export, exportErr := mastering.ParseExportOptions(exportRate, r.FormValue("dither"))
 	if exportErr != nil {
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_export_options", exportErr.Error())
 		return

@@ -31,4 +31,14 @@ func TestConvertExportRejectsOutputBeyondFrameLimit(t *testing.T) {
 	if o.RenderDitherBits(44100, 16) != 0 || (ExportOptions{}).RenderDitherBits(44100, 16) != 16 || (ExportOptions{NoDither: true}).RenderDitherBits(44100, 24) != 0 {
 		t.Fatal("render dither must wait for conversion and honor dither none")
 	}
+	for raw, want := range map[string]int{"": 0, "44100": 44100, "48000": 48000, "88200": 88200, "96000": 96000} {
+		if got, err := ParseExportSampleRate(raw); err != nil || got != want {
+			t.Errorf("ParseExportSampleRate(%q) = %d, %v", raw, got, err)
+		}
+	}
+	for _, raw := range []string{"0", "+48000", "048000", " 48000", "48000\n", "22050", "48e3"} {
+		if _, err := ParseExportSampleRate(raw); !errors.Is(err, ErrInvalidSampleRate) {
+			t.Errorf("ParseExportSampleRate(%q) accepted", raw)
+		}
+	}
 }

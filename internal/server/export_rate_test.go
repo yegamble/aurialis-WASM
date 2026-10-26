@@ -2,8 +2,10 @@ package server_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"math"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -83,16 +85,55 @@ func TestExportSampleRateAndDither(t *testing.T) {
 	if !differs {
 		t.Fatal("dither none produced the dithered export")
 	}
-	for name, fields := range map[string]map[string]string{
-		"rate":       {"sampleRate": "22050"},
-		"rate text":  {"sampleRate": "fast"},
-		"dither":     {"dither": "shaped"},
-		"duplicated": {"sampleRate": "48000", "dither": "none,none"},
-	} {
-		if code := post(fields).Code; code != http.StatusBadRequest {
-			t.Errorf("%s: status %d, want 400", name, code)
+	for _, raw := range []string{"22050", "fast", "0", "+48000", "048000", " 48000 ", "48000\r\n", "48000.0", "4.8e4", "-48000"} {
+		recorder := post(map[string]string{"sampleRate": raw})
+		if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `"invalid_sample_rate"`) {
+			t.Errorf("sampleRate %q: status %d %.200s, want 400 invalid_sample_rate", raw, recorder.Code, recorder.Body.String())
 		}
 	}
+	for _, raw := range []string{"shaped", " none", "NONE", "tpdf\n"} {
+		recorder := post(map[string]string{"dither": raw})
+		if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `"invalid_export_options"`) {
+			t.Errorf("dither %q: status %d %.200s, want 400 invalid_export_options", raw, recorder.Code, recorder.Body.String())
+		}
+	}
+	// A comma inside one field is just an invalid value; a field sent twice is
+	// rejected by the multipart reader before any value is used.
+	if code := post(map[string]string{"dither": "none,none"}).Code; code != http.StatusBadRequest {
+		t.Errorf("dither none,none: status %d, want 400", code)
+	}
+	for _, field := range []string{"sampleRate", "dither"} {
+		recorder := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(recorder, repeatedFieldRequest(t, "/api/master/render", wav, field, []string{"48000", "48000"}))
+		if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `"invalid_multipart"`) {
+			t.Errorf("repeated %s: status %d %.200s, want 400 invalid_multipart", field, recorder.Code, recorder.Body.String())
+		}
+	}
+}
+
+func repeatedFieldRequest(t *testing.T, target string, wav []byte, field string, values []string) *http.Request {
+	t.Helper()
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	file, err := form.CreateFormFile("file", "source.wav")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.Write(wav); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range values {
+		if err := form.WriteField(field, value); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := form.Close(); err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequestWithContext(context.Background(), http.MethodPost, target, &body)
+	request.Host = "127.0.0.1:8080"
+	request.Header.Set("Content-Type", form.FormDataContentType())
+	return request
 }
 
 // Export conversion fields belong to the render endpoint only.

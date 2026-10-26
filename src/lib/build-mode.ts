@@ -4,16 +4,16 @@ import { usesBrowserAudio } from "./browser-jobs";
 const subscribe = () => () => undefined;
 
 /**
- * Static pages are prerendered without a location, so the server snapshot
+ * Static pages are rendered at build time without a location, so the server snapshot
  * follows the build flag alone; the client then settles on the real origin.
  */
-function prerenderedBrowserBuild(): boolean {
+function buildTimeBrowserBuild(): boolean {
   return process.env.NEXT_PUBLIC_AURIALIS_EXECUTION === "browser";
 }
 
 /** True in the browser build (all processing in WebAssembly), false on the native app's loopback studio. */
 export function useBrowserBuild(): boolean {
-  return useSyncExternalStore(subscribe, usesBrowserAudio, prerenderedBrowserBuild);
+  return useSyncExternalStore(subscribe, usesBrowserAudio, buildTimeBrowserBuild);
 }
 
 /** Where audio is processed, for the Home trust line. */

@@ -8,7 +8,7 @@ const ROUTES = ["/", "/library", "/albums", "/albums/placeholder", "/tools", "/m
 test("no browser-build page claims a desktop app or a local Go server, before or after hydration", async ({ page, request }) => {
   for (const route of ROUTES) {
     const html = await (await request.get(route)).text();
-    expect(html, `prerendered ${route}`).not.toMatch(FALSE_IN_BROWSER);
+    expect(html, `static HTML ${route}`).not.toMatch(FALSE_IN_BROWSER);
     await page.goto(route);
     await expect(page.locator("main")).toBeVisible();
     expect(await page.locator("body").innerText(), `rendered ${route}`).not.toMatch(FALSE_IN_BROWSER);

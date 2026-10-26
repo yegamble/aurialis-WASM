@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runStemSplit, StemSplitError, stemSplitFailureMessage, stemModelStatus } from "../stem-split";
+import { runStemSplit, stemDownloadName, StemSplitError, stemSplitFailureMessage, stemModelStatus } from "../stem-split";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
@@ -51,7 +51,7 @@ describe("Smart Split client", () => {
       const failure = error as StemSplitError;
       expect(failure.kind, code).toBe(kind);
       expect(failure.message).not.toContain("raw");
-      expect(failure.message).not.toMatch(/desktop app/iu);
+      expect(failure.message).not.toMatch(/desktop\s+app/iu);
       expect(failure.detail).toBe(`raw ${code} detail`);
       seen.set(kind, failure.message);
     }
@@ -77,6 +77,14 @@ describe("Smart Split client", () => {
     await expect(runStemSplit(new Blob(["x"]), 4, new AbortController().signal, () => undefined)).rejects.toThrow("90-minute job limit");
     expect(stemSplitFailureMessage(new TypeError("Failed to fetch"))).toContain("lost contact with its local server");
     expect(stemSplitFailureMessage(new Error("Invalid Smart Split response."))).toContain("internal error");
+  });
+
+  it("names stem downloads after the track, safe for every filesystem", () => {
+    expect(stemDownloadName("Song", "Vocals")).toBe("Song - Vocals.wav");
+    expect(stemDownloadName("../a:b*c?", "Guitar & piano")).toBe("a-b-c- - Guitar & piano.wav");
+    expect(stemDownloadName("   ", "Bass")).toBe("Bass.wav");
+    expect(stemDownloadName("Song", "../x")).toBe("Song - x.wav");
+    expect(stemDownloadName("x".repeat(300), "Drums")).toBe(`${"x".repeat(120)} - Drums.wav`);
   });
 
   it("deletes the job when a split fails or is cancelled", async () => {

@@ -1,4 +1,5 @@
 import { usesBrowserAudio } from "./browser-jobs";
+import { safeFileBaseName } from "./zip";
 
 export interface StemModelStatus {
   available: boolean;
@@ -58,6 +59,12 @@ export function stemSplitFailureMessage(error: unknown): string {
   if (error instanceof StemSplitError) return error.message;
   if (error instanceof TypeError) return copyFor("connection");
   return INTERNAL_FAILURE;
+}
+
+/** "<title> - <Stem>.wav", safe on common filesystems. */
+export function stemDownloadName(title: string, stem: string): string {
+  const track = safeFileBaseName(title, ""), part = safeFileBaseName(stem, "Stem");
+  return track ? `${track} - ${part}.wav` : `${part}.wav`;
 }
 
 const unavailable: StemModelStatus = { available: false, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 0 };
@@ -161,4 +168,16 @@ export async function runStemSplit(source: Blob, stems: number, signal: AbortSig
     release();
     throw error;
   }
+}
+
+/**
+ * Reads one stem into memory. Downloading through a Blob lets the page name the
+ * file "<title> - <Stem>.wav"; the server's attachment name is the bare stem ID.
+ */
+export async function fetchStemAudio(stem: SplitStem, signal?: AbortSignal): Promise<Blob> {
+  const response = await fetch(stem.url, signal ? { signal } : {});
+  if (response.status === 404) throw new StemSplitError("expired", "Stem not found.");
+  if (!response.ok) throw new StemSplitError("internal", `Stem HTTP ${String(response.status)}`);
+  const blob = await response.blob();
+  return blob.type === "audio/wav" ? blob : new Blob([blob], { type: "audio/wav" });
 }

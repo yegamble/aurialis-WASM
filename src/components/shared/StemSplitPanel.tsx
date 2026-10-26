@@ -3,9 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useBrowserBuild } from "@/lib/build-mode";
 import { getAudio } from "@/lib/db";
-import { runStemSplit, StemSplitError, stemSplitFailureMessage, stemModelStatus, type StemModelStatus, type StemSplit, type StemSplitFailure } from "@/lib/stem-split";
+import { downloadLocalBlob } from "@/lib/download";
+import {
+  fetchStemAudio, runStemSplit, stemDownloadName, StemSplitError, stemSplitFailureMessage, stemModelStatus,
+  type SplitStem, type StemModelStatus, type StemSplit, type StemSplitFailure,
+} from "@/lib/stem-split";
 import { stemSplitAvailability } from "@/lib/stem-split-copy";
-import { Button, buttonClassName } from "./Primitives";
+import { Button } from "./Primitives";
 
 const stemLayouts = new Map<number, string[]>([
   [2, ["Vocals", "Instrumental"]],
@@ -27,6 +31,34 @@ function modelNote(status: StemModelStatus | null, lastFailure: StemSplitFailure
   if (status.ready) return "The separation model is ready.";
   if (lastFailure === "model") return `The ${megabytes(status.totalBytes)} separation model could not be downloaded or verified. The next split retries the download.`;
   return `The first split downloads the ${megabytes(status.totalBytes)} separation model once.`;
+}
+
+function StemRow({ stem, title }: { stem: SplitStem; title: string }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  async function download() {
+    setSaving(true);
+    setError("");
+    try {
+      downloadLocalBlob(await fetchStemAudio(stem), stemDownloadName(title, stem.name));
+    } catch (failure) {
+      setError(stemSplitFailureMessage(failure));
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <li className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+      <span aria-hidden="true" className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ background: stem.color }} />
+      <span className="min-w-0 flex-1 font-medium md:min-w-24 md:flex-none">{stem.name}</span>
+      {/* Below md the player takes its own full-width line so its play control never collapses. */}
+      <audio className="order-last w-full md:order-none md:w-auto md:min-w-0 md:flex-1" controls preload="none" src={stem.url} aria-label={`Play ${stem.name}`} />
+      <Button variant="secondary" disabled={saving} aria-label={`Download ${stem.name}`} onClick={() => { void download(); }}>
+        {saving ? "Preparing…" : "Download"}
+      </Button>
+      {error && <p className="order-last w-full text-xs text-danger" role="alert">{error}</p>}
+    </li>
+  );
 }
 
 export function StemSplitPanel({ audioId, title }: { audioId: string | null; title: string }) {
@@ -125,18 +157,11 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
       {busy && <div className="space-y-1"><progress className="w-full" max={100} value={progress} aria-label="Smart Split progress" /><p className="text-xs text-[var(--ink-soft)]">{stage}</p></div>}
       {error && <p className="disclosure text-danger" role="alert">{error}</p>}
       {split && (
-        <ul className="space-y-3" aria-label="Separated stems">
-          {split.stems.map((stem) => (
-            <li key={stem.id} className="flex min-w-0 flex-wrap items-center gap-3">
-              <span aria-hidden="true" className="inline-block h-3 w-3 shrink-0 rounded-full" style={{ background: stem.color }} />
-              <span className="min-w-24 font-medium">{stem.name}</span>
-              <audio className="min-w-0 max-w-full flex-1" controls preload="none" src={stem.url} aria-label={`Play ${stem.name}`} />
-              <a className={buttonClassName("secondary")} href={stem.url} download={`${title} - ${stem.name}.wav`}>Download</a>
-            </li>
-          ))}
+        <ul className="col-span-full space-y-3" aria-label="Separated stems">
+          {split.stems.map((stem) => <StemRow key={stem.id} stem={stem} title={title} />)}
         </ul>
       )}
-      {split && <p className="text-xs text-[var(--ink-soft)]">Stems are 24-bit WAV at the source sample rate. They stay available for 15 minutes or until you leave this page.</p>}
+      {split && <p className="col-span-full text-xs text-[var(--ink-soft)]">Stems are 24-bit WAV at the source sample rate. They stay available for 15 minutes or until you leave this page.</p>}
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StoreProvider } from "@/lib/store";
 import { stemSplitAvailability } from "@/lib/stem-split-copy";
@@ -37,9 +37,9 @@ describe.each([
     }
   });
 
-  it("never mentions a desktop app or a mode it is not running in", () => {
+  it("never promises a downloadable app or a mode it is not running in", () => {
     const text = (["home", "tools", "split"] as const).map(textOf).join("\n");
-    expect(text).not.toMatch(/desktop app/iu);
+    expect(text).not.toMatch(/desktop\s+app/iu);
     expect(text).not.toMatch(/planned/iu);
     if (browser) {
       expect(text).not.toMatch(/local Go server|Aurialis server/iu);
@@ -56,5 +56,4 @@ describe.each([
 it("keeps the two availability statements distinct and honest about speed", () => {
   expect(stemSplitAvailability(true)).toBe("Smart Split runs only in the native Aurialis build (built from source); it isn't available in the browser.");
   expect(stemSplitAvailability(false)).toMatch(/about 32 seconds.*at least 18 times slower/su);
-  expect(screen.queryByText(/desktop app/iu)).toBeNull();
 });

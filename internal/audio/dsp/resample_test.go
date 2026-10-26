@@ -199,12 +199,13 @@ func TestConvertedExportHoldsTruePeakCeiling(t *testing.T) {
 						t.Errorf("delivered true peak %.3f dBTP (32x reference %.3f) exceeds the %g dBTP ceiling", detector, reference, ceiling)
 					}
 					// afterMetrics.truePeakDbtp is the 49-tap 4x meter, which is
-					// less accurate than both references: on full-band noise it
-					// has read up to 0.21 dB over the ceiling at 96→88.2 kHz and
-					// 0.004 dB over at 44.1→48 kHz while they held it. It is only
-					// bounded loosely here.
-					if metrics.TruePeakDBTP > ceiling+0.3 {
-						t.Errorf("4x meter %.3f dBTP is far above the %g dBTP ceiling", metrics.TruePeakDBTP, ceiling)
+					// less accurate than both references: on other full-band
+					// noise it has read up to 0.21 dB over the ceiling at
+					// 96→88.2 kHz while they held it. On this fixed program it
+					// stays under the ceiling, so any rise past it is a
+					// regression.
+					if metrics.TruePeakDBTP > ceiling {
+						t.Errorf("4x meter %.3f dBTP is above the %g dBTP ceiling", metrics.TruePeakDBTP, ceiling)
 					}
 					// Peaks are pulled under the ceiling by gain, so no sample
 					// sits at the clip level.

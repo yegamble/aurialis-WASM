@@ -537,9 +537,12 @@ jobs:
           PREVIEW_NAME: pr-${{ github.event.pull_request.number }}
         run: |
           set -o pipefail
+          # --json reports failures on stdout; print them before exiting.
+          status=0
           output="$(pnpm exec wrangler preview -c deploy/cloudflare/wrangler.jsonc \
-            --name "$PREVIEW_NAME" --message "$AURIALIS_CI_HEAD_SHA" --json)"
+            --name "$PREVIEW_NAME" --message "$AURIALIS_CI_HEAD_SHA" --json)" || status=$?
           printf '%s\n' "$output"
+          [ "$status" -eq 0 ] || exit "$status"
           url="$(printf '%s' "$output" | jq -er '.preview.urls[0]')"
           echo "url=$url" >> "$GITHUB_OUTPUT"
       - name: Smoke test the Preview

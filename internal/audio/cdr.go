@@ -43,7 +43,7 @@ var pcmSlicePool = sync.Pool{
 }
 
 // MaxDecodedFrames bounds the memory expansion of compressed-width PCM input.
-const MaxDecodedFrames = 16 * 1024 * 1024
+const MaxDecodedFrames = 32 * 1024 * 1024
 
 // AcquirePCM returns a pooled float32 slice of length n.
 func AcquirePCM(n int) []float32 {

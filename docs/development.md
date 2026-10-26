@@ -57,7 +57,7 @@ The executable accepts only loopback IP addresses. It has no supported public or
 | --- | --- | --- | --- |
 | `-addr` | `127.0.0.1:8080` | `AURIALIS_ADDR`, then `PORT` | First nonempty environment value overrides the flag. A numeric `PORT` becomes `127.0.0.1:<port>`; an address must use a loopback IP. |
 | `-workers` | `0` (automatic) | None | Automatic starts the smaller of two workers or the available logical CPU count; explicit worker counts are capped at four. This configures background analysis jobs, not simultaneous synchronous renders. |
-| `-max-upload-bytes` | `135266304` (129 MiB) | `MAX_UPLOAD_BYTES_OVERRIDE` | Caps the entire multipart request, including overhead. A positive integer environment value overrides the flag. The resolved value must be between 1 and the hard 129 MiB ceiling. |
+| `-max-upload-bytes` | `269484032` (257 MiB) | `MAX_UPLOAD_BYTES_OVERRIDE` | Caps the entire multipart request, including overhead. A positive integer environment value overrides the flag. The resolved value must be between 1 and the hard 257 MiB ceiling. |
 
 For example, when address environment overrides are unset:
 
@@ -67,7 +67,7 @@ For example, when address environment overrides are unset:
 
 Open `http://127.0.0.1:8081` for that example. `pnpm dev` sets `AURIALIS_ADDR` to `127.0.0.1:3000` unless it is already set. An existing `AURIALIS_ADDR` or `PORT` can also change the normal executable's address; check the startup message for the effective URL.
 
-The browser file limit remains 134,217,772 bytes (128 MiB + 44), with 16,777,216 decoded frames. Lowering the request ceiling can reject a file that passes browser preflight. Increasing it beyond the hard cap fails startup. One expensive audio POST runs at a time; a second receives retryable `503` with `Retry-After: 1`. See [the API resource contract](api.md#security-and-resource-contract) for decoding, job memory, timeouts and retention.
+The browser file limit is 268,435,500 bytes (256 MiB + 44), with 33,554,432 decoded frames. Lowering the request ceiling can reject a file that passes browser preflight. Increasing it beyond the hard cap fails startup. One expensive audio POST runs at a time; a second receives retryable `503` with `Retry-After: 1`. See [the API resource contract](api.md#security-and-resource-contract) for decoding, job memory, timeouts and retention.
 
 ## Verify changes
 

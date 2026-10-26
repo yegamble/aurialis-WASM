@@ -13,7 +13,7 @@ Use the same **browser profile and site address** that you used before. Differen
 
 The old original, project settings and scripts remain in their existing storage. Recovery does not apply or translate old DSP settings. Recovered audio is clean PCM, rather than a byte-for-byte backup of the original container.
 
-The current source limits are 128 MiB plus the canonical header and 16,777,216 frames. A browser's conservative memory admission can reject smaller files when retained audio or processing would exceed its budget. Recovery requires durable browser storage; it does not substitute a session-only copy for a successful recovery.
+The current source limits are 256 MiB plus the canonical header and 33,554,432 frames; recovering an old original still accepts at most 128 MiB plus the header, the limit those originals were imported under. A browser's conservative memory admission can reject smaller files when retained audio or processing would exceed its budget. Recovery requires durable browser storage; it does not substitute a session-only copy for a successful recovery.
 
 ## When recovery cannot continue
 

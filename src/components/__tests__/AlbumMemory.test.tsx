@@ -4,10 +4,12 @@ import * as engine from "@/lib/browser-engine";
 import * as memory from "@/lib/browser-jobs";
 import { StoreProvider } from "@/lib/store";
 import { testStore } from "@/lib/__tests__/fixtures";
+import { engineParams } from "@/lib/engine-params";
 import { AurialisWorkstation } from "../AurialisWorkstation";
 
-const mocks = vi.hoisted(() => ({ getAudio: vi.fn() }));
-vi.mock("@/lib/db", () => ({ getAudio: mocks.getAudio, saveAudio: vi.fn(), deleteAudio: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getAudio: vi.fn(), saveAudio: vi.fn(), deleteAudio: vi.fn(), loadAlbumMasters: vi.fn(), saveAlbumMasters: vi.fn() }));
+// Browser storage is unavailable by default, exercising the bounded in-memory album cache.
+vi.mock("@/lib/db", () => ({ getAudio: mocks.getAudio, saveAudio: mocks.saveAudio, deleteAudio: mocks.deleteAudio, newAudioAssetId: (prefix: string) => `${prefix}-${String(Math.random()).slice(2)}`, loadAlbumMasters: mocks.loadAlbumMasters, saveAlbumMasters: mocks.saveAlbumMasters, deleteAlbumMasters: vi.fn(), ensureStorageFor: () => Promise.resolve() }));
 vi.mock("next/navigation", () => ({ usePathname: () => null }));
 const reserve = memory.reserveBrowserAudioMemory;
 const owners: { update: ReturnType<typeof vi.fn<(bytes: number) => void>>; dispose: ReturnType<typeof vi.fn<() => void>> }[] = [];
@@ -23,6 +25,10 @@ beforeEach(() => {
   vi.stubGlobal("localStorage", { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value); } });
   window.history.replaceState(null, "", "/albums/memory-album");
   mocks.getAudio.mockReset().mockResolvedValue(new Blob(["source fixture"]));
+  mocks.saveAudio.mockReset().mockRejectedValue(new Error("Storage unavailable"));
+  mocks.deleteAudio.mockReset().mockResolvedValue(undefined);
+  mocks.loadAlbumMasters.mockReset().mockResolvedValue(undefined);
+  mocks.saveAlbumMasters.mockReset().mockResolvedValue(undefined);
   vi.spyOn(memory, "reserveBrowserAudioMemory").mockImplementation((bytes = 0) => {
     const owned = reserve(bytes);
     const observed = { update: vi.fn(owned.update), dispose: vi.fn(owned.dispose) };
@@ -77,4 +83,44 @@ it("surfaces download allocation failure while preserving the already rendered c
   expect(await screen.findByText("Controlled download memory budget")).toBeDefined();
   expect(screen.getByRole("region", { name: "Rendered album downloads" })).toBeDefined();
   expect(owners[0]?.dispose).not.toHaveBeenCalled();
+});
+
+it("saves masters to browser storage as they render, holding only the current track in memory", async () => {
+  mocks.saveAudio.mockResolvedValue({ durable: true });
+  mount(); await start();
+  await waitFor(() => { expect(mocks.saveAlbumMasters).toHaveBeenCalled(); });
+  await screen.findByRole("button", { name: "Download all as ZIP" });
+  expect(mocks.saveAudio).toHaveBeenCalledTimes(2);
+  expect(owners[0]?.update).toHaveBeenLastCalledWith(0);
+  expect(owners[0]?.dispose).toHaveBeenCalledOnce();
+  const [albumId, record] = mocks.saveAlbumMasters.mock.calls[0] as [string, { files: { title: string; audioId: string }[] }];
+  expect(albumId).toBe("memory-album");
+  expect(record.files.map((file) => file.title)).toEqual(["Album source 1", "Album source 2"]);
+  expect(mocks.deleteAudio).not.toHaveBeenCalled();
+});
+
+it("deletes partially saved masters when a later render fails", async () => {
+  mocks.saveAudio.mockResolvedValue({ durable: true });
+  mount(); vi.mocked(engine.serverRender).mockResolvedValueOnce(wav).mockRejectedValueOnce(new Error("Controlled second-render failure"));
+  await start();
+  await screen.findByText("Controlled second-render failure");
+  const saved = mocks.saveAudio.mock.calls[0]?.[0] as string;
+  expect(mocks.deleteAudio).toHaveBeenCalledWith(saved);
+  expect(mocks.saveAlbumMasters).not.toHaveBeenCalled();
+});
+
+it("offers saved masters after a reload when the sequence and settings still match", async () => {
+  const tracks = testStore.tracks;
+  const key = JSON.stringify(tracks.map((track) => [track.id, track.sourceRevision, engineParams(track.advanced)]));
+  mocks.loadAlbumMasters.mockResolvedValue({ key, createdAt: "2026-10-26T00:00:00Z", files: tracks.map((track, index) => ({ trackId: track.id, title: "Album source " + String(index + 1), audioId: "master-" + String(index), bytes: 10 })) });
+  mount();
+  expect(await screen.findByRole("button", { name: "Download Album source 2" })).toBeDefined();
+  expect(screen.getByRole("button", { name: "Download all as ZIP" })).toBeDefined();
+});
+
+it("explains that saved masters are stale once the sequence changes", async () => {
+  mocks.loadAlbumMasters.mockResolvedValue({ key: "an earlier sequence", createdAt: "2026-10-26T00:00:00Z", files: [{ trackId: "x", title: "Old", audioId: "master-old", bytes: 10 }] });
+  mount();
+  expect(await screen.findByText(/Saved masters no longer match/u)).toBeDefined();
+  expect(screen.queryByRole("region", { name: "Rendered album downloads" })).toBeNull();
 });

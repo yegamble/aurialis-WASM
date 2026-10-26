@@ -2,8 +2,13 @@ import { reserveBrowserAudioMemory } from "./browser-jobs";
 
 const downloads = new WeakMap<Blob, { memory: ReturnType<typeof reserveBrowserAudioMemory>; references: number }>();
 
-/** Keep downloadable audio charged until every object URL for this Blob is revoked. */
-export function downloadLocalBlob(blob: Blob, filename: string): void {
+/**
+ * Keep downloadable audio charged until every object URL for this Blob is revoked.
+ * Pass `charge: false` only for Blobs read back from browser storage (or composed
+ * from them), which the browser keeps on disk rather than in memory.
+ */
+export function downloadLocalBlob(blob: Blob, filename: string, { charge = true }: { charge?: boolean } = {}): void {
+  if (!charge) { clickDownload(blob, filename, () => undefined); return; }
   let owner = downloads.get(blob);
   if (!owner) {
     // This temporary owner conservatively overlaps an existing UI cache owner.
@@ -19,6 +24,10 @@ export function downloadLocalBlob(blob: Blob, filename: string): void {
       retained.memory.dispose();
     }
   };
+  clickDownload(blob, filename, release);
+}
+
+function clickDownload(blob: Blob, filename: string, release: () => void): void {
   let url: string | undefined;
   try {
     url = URL.createObjectURL(blob);

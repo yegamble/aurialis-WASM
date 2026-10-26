@@ -2,6 +2,7 @@
   "name": "aurialis-wasm",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Single-binary Go 1.26 + Next.js 16 + WebAssembly (WASM) audio mastering workstation",
   "packageManager": "pnpm@10.33.0",
   "engines": {

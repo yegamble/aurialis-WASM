@@ -11,7 +11,7 @@ self.onmessage = (event) => {
     self.close();
   };
   const run = async () => {
-    if (!request || request.abi !== OFFLINE_ABI || typeof request.id !== "string" || request.id.length > 80 || typeof request.metadata !== "string" || request.metadata.length > 2_228_224 || !(request.source instanceof ArrayBuffer) || !(request.reference instanceof ArrayBuffer) || request.source.byteLength + request.reference.byteLength > 135_266_304) throw new Error("Invalid local audio request.");
+    if (!request || request.abi !== OFFLINE_ABI || typeof request.id !== "string" || request.id.length > 80 || typeof request.metadata !== "string" || request.metadata.length > 2_228_224 || !(request.source instanceof ArrayBuffer) || !(request.reference instanceof ArrayBuffer) || request.source.byteLength + request.reference.byteLength > 269_484_032) throw new Error("Invalid local audio request.");
     importScripts("/wasm/wasm_exec.js");
     if (typeof self.Go !== "function") throw new Error("The local Go audio runtime is unavailable.");
     const go = new self.Go();

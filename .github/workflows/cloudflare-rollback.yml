@@ -1,0 +1,68 @@
+name: Cloudflare Rollback
+
+# Incident response: points production back at an earlier Worker version
+# without waiting for CI. Version ids are in each deploy's job summary or in
+# `wrangler versions list -c deploy/cloudflare/wrangler.jsonc`.
+on:
+  workflow_dispatch:
+    inputs:
+      version_id:
+        description: Worker version id to roll production back to
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    name: Roll back Cloudflare production
+    # The ref check keeps a dispatch from another branch away from production credentials.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: Production
+      url: https://aurialis.yosefgamble.com
+    concurrency:
+      group: cloudflare-production-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26.12.0"
+          cache: pnpm
+      - name: Install Wrangler
+        run: pnpm install --frozen-lockfile
+      - name: Roll back the Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_SEND_METRICS: "false"
+          VERSION_ID: ${{ inputs.version_id }}
+          TRIGGERED_BY: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          uuid='^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+          if [[ ! "$VERSION_ID" =~ $uuid ]]; then
+            echo "::error::'$VERSION_ID' is not a Worker version id."
+            exit 1
+          fi
+          pnpm exec wrangler rollback "$VERSION_ID" -c deploy/cloudflare/wrangler.jsonc -y \
+            --message "manual rollback by $TRIGGERED_BY"
+          {
+            echo '### Rolled back production'
+            echo
+            echo "- Worker version id: \`${VERSION_ID}\`"
+            echo "- Triggered by: @${TRIGGERED_BY}"
+          } >> "$GITHUB_STEP_SUMMARY"
+      # The deployed bytes are an older build, so only check the headers and boundary.
+      - name: Check production responds
+        run: |
+          for origin in https://aurialis.yosefgamble.com https://aurialis.yosef.app; do
+            curl -fsS --max-time 20 -D - -o /dev/null "$origin/" | grep -qi '^cross-origin-embedder-policy: require-corp' \
+              || { echo "::error::$origin is unhealthy after rollback."; exit 1; }
+          done

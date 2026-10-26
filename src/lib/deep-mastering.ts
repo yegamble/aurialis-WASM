@@ -1,3 +1,4 @@
+import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import { createDefaultAdvancedParams } from "./audio-dsp";
 import { runAudioJob } from "./audio-jobs";
 import { deviceAudioRequest } from "./browser-jobs";
@@ -58,7 +59,7 @@ function list(value: unknown, maximum: number, minimum = 0): unknown[] { if (!Ar
 function source(value: unknown): SourceIdentity {
   const record = object(value, ["pcmHash", "sampleRate", "frames"]);
   const pcmHash = text(record.pcmHash, 64); if (!/^[a-f0-9]{64}$/u.test(pcmHash)) throw failure();
-  return { pcmHash, sampleRate: number(record.sampleRate, 8000, 192000, true), frames: number(record.frames, 1, 16_777_216, true) };
+  return { pcmHash, sampleRate: number(record.sampleRate, 8000, 192000, true), frames: number(record.frames, 1, MAX_SOURCE_FRAMES, true) };
 }
 function typedShape<T>(template: T, value: unknown): T {
   function check(expected: unknown, candidate: unknown): void {

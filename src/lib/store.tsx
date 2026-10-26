@@ -1,5 +1,6 @@
 "use client";
 
+import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import {
   createContext,
   useContext,
@@ -450,7 +451,7 @@ function normalizeSourceMetadata<T extends Omit<Track, "advanced">>(track: T): T
   if (restored.sourceRevision !== undefined && (!Number.isSafeInteger(restored.sourceRevision) || restored.sourceRevision < 0)) { delete restored.sourceRevision; invalid = true; }
   if (restored.retiredSourceAudioIds !== undefined && (!Array.isArray(restored.retiredSourceAudioIds) || restored.retiredSourceAudioIds.length > 64 || !restored.retiredSourceAudioIds.every(asset))) { delete restored.retiredSourceAudioIds; invalid = true; }
   const identity: unknown = restored.sourceIdentity;
-  if (identity !== undefined && (typeof identity !== "object" || identity === null || !("pcmHash" in identity) || !("sampleRate" in identity) || !("frames" in identity) || typeof identity.pcmHash !== "string" || !/^[a-f0-9]{64}$/u.test(identity.pcmHash) || typeof identity.sampleRate !== "number" || !Number.isSafeInteger(identity.sampleRate) || identity.sampleRate < 8000 || identity.sampleRate > 192000 || identity.sampleRate !== track.sampleRate || typeof identity.frames !== "number" || !Number.isSafeInteger(identity.frames) || identity.frames < 1 || identity.frames > 16_777_216 || Math.abs(identity.frames / track.sampleRate - track.duration) > 0.001)) { delete restored.sourceIdentity; invalid = true; }
+  if (identity !== undefined && (typeof identity !== "object" || identity === null || !("pcmHash" in identity) || !("sampleRate" in identity) || !("frames" in identity) || typeof identity.pcmHash !== "string" || !/^[a-f0-9]{64}$/u.test(identity.pcmHash) || typeof identity.sampleRate !== "number" || !Number.isSafeInteger(identity.sampleRate) || identity.sampleRate < 8000 || identity.sampleRate > 192000 || identity.sampleRate !== track.sampleRate || typeof identity.frames !== "number" || !Number.isSafeInteger(identity.frames) || identity.frames < 1 || identity.frames > MAX_SOURCE_FRAMES || Math.abs(identity.frames / track.sampleRate - track.duration) > 0.001)) { delete restored.sourceIdentity; invalid = true; }
   if (restored.deepMastering !== undefined) {
     try { restored.deepMastering = readDeepMasteringState(restored.deepMastering, restored.sourceIdentity, restored.sourceRevision ?? 0); }
     catch { delete restored.deepMastering; invalid = true; }

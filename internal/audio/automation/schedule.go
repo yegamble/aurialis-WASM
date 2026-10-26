@@ -17,7 +17,7 @@ const (
 	// TargetCount is the closed number of initially supported scalar targets.
 	TargetCount = 10
 	// MaxSourceFrames retains the canonical PCM frame admission limit.
-	MaxSourceFrames = 16 * 1024 * 1024
+	MaxSourceFrames = 32 * 1024 * 1024
 )
 
 // Target identifies a fixed control, never an evaluated object path.

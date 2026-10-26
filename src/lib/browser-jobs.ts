@@ -1,4 +1,5 @@
 import { MAX_JOB_INPUT_BYTES, MAX_SOURCE_FRAMES } from "./audio-limits";
+import { EXPORT_SAMPLE_RATES } from "./types";
 const OFFLINE_ABI = "1.0";
 const MIB = 1024 * 1024;
 const MAX_METADATA_BYTES = 2 * MIB + 128 * 1024;
@@ -230,8 +231,9 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
     request.bitDepth = Number(bitDepth);
   }
   if (sampleRate !== undefined) {
-    if (!["44100", "48000", "88200", "96000"].includes(sampleRate)) throw new Error("Invalid local audio export rate.");
-    request.sampleRate = Number(sampleRate);
+    const rate = EXPORT_SAMPLE_RATES.find((item) => String(item) === sampleRate);
+    if (rate === undefined) throw new Error("Invalid local audio export rate.");
+    request.sampleRate = rate;
   }
   if (dither !== undefined) {
     if (dither !== "tpdf" && dither !== "none") throw new Error("Invalid local audio dither.");

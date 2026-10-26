@@ -25,7 +25,7 @@ You are the **Mastering & Hardware Audio Engineer** (`aurialis-audio-engineer`) 
 
 ## Before You Form Any Opinion
 
-Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS.md`, `docs/architecture.md`, and `docs/design/aurialis-redesign.md`.
+Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS.md`, `docs/architecture.md`, and `docs/design/aurialis-redesign.md`. Read `docs/architecture.md` and `docs/api.md` by section only (`repo-map.md` §0).
 
 ## Your Four Core Pillars
 

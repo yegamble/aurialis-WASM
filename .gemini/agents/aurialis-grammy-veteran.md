@@ -27,7 +27,7 @@ Your core question:
 
 ## Before You Form Any Opinion
 
-Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS.md`, `docs/architecture.md`, and the Figma design in `docs/design/` (`docs/design/aurialis-redesign.md`, `docs/design/aurialis-redesign-d7a69d24.md`, and `docs/design/figma-make-reference/`).
+Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS.md`, `docs/architecture.md`, and the Figma design in `docs/design/` (`docs/design/aurialis-redesign.md`, `docs/design/aurialis-redesign-d7a69d24.md`, and `docs/design/figma-make-reference/`). Read `docs/architecture.md` and `docs/api.md` by section only (`repo-map.md` §0).
 
 ## Your Studio Standards Across Every Mainstream Genre
 

@@ -1,6 +1,7 @@
-# Weekly dependency updates. Minor and patch bumps arrive as one grouped PR per
+# Version updates: weekly. Minor and patch bumps arrive as one grouped PR per
 # ecosystem; major bumps stay separate so each breaking change is reviewed alone.
-# Security updates are not grouped and open as soon as an advisory is published.
+# Security updates are not configured here: Dependabot alerts and security
+# updates are enabled in repository settings and open their own PRs.
 version: 2
 updates:
   - package-ecosystem: gomod

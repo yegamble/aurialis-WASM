@@ -401,6 +401,9 @@
     "mvsep",
     "ckpt",
     "mmap",
-    "Slakh"
+    "Slakh",
+    "Abramowitz",
+    "Stegun",
+    "erff"
   ]
 }

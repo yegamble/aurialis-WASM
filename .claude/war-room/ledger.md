@@ -11,6 +11,10 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Faster Smart Split — 2026-10-26
+
+`open — awaiting merge`. Vectorized softmax/GELU, larger attention tiles and batched frequency-axis transformers cut one window's CPU time by about 42%, with output unchanged against PyTorch (85–90 dB SNR). Tier: `unit` plus opt-in real-model parity. Open: idle-machine song timing, faster plain-Go kernels for non-Mac platforms.
+
 ## Smart Split with a trained model — 2026-10-25
 
 `verified (PR #24, unit · api-curl · playwright-a11y-responsive)`; merged 2026-10-26. The `stem-model-v1` release asset is still to be published. Trained BS-RoFormer separation (Mega53 five-head subset, MIT) runs Smart Split in the desktop app, replacing the heuristic splitter; first-use model download is checksum-pinned. Tier: `unit`, `api-curl`. Open: plain-Go speed for non-Mac platforms, browser inference, quality beyond the single measured track.

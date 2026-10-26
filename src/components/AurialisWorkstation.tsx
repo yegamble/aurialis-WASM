@@ -47,10 +47,13 @@ import type {
   AdvancedParams,
   EQBandId,
   ExportBitDepth,
+  ExportDelivery,
+  ExportSampleRate,
   ProfileId,
   SaturationCharacter,
   Track,
 } from "@/lib/types";
+import { EXPORT_SAMPLE_RATES } from "@/lib/types";
 import { Icon, type IconName } from "./shared/Icon";
 import {
   Artwork,
@@ -604,6 +607,8 @@ function MasterView({ trackId }: { trackId: string }) {
   const selectDeepMove = useCallback((id: string) => { setDeepMoveId(id); setDeepEditorOpen(Boolean(id)); }, []);
   const closeDeepEditor = useCallback(() => { setDeepEditorOpen(false); }, []);
   const [bitDepth, setBitDepth] = useState<ExportBitDepth>(24);
+  const [exportRate, setExportRate] = useState<ExportSampleRate | "source">("source");
+  const [dither, setDither] = useState(true);
   const [message, setMessage] = useState("");
   const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
   const renderAbort = useRef<AbortController | null>(null);
@@ -841,20 +846,25 @@ function MasterView({ trackId }: { trackId: string }) {
     renderSettings.current = settingsKey;
     setMessage("Rendering WAV from the uploaded source…");
     try {
+      const outputRate = exportRate === "source" ? track.sampleRate : exportRate;
+      const delivery: ExportDelivery = {
+        ...(outputRate !== track.sampleRate && exportRate !== "source" ? { sampleRate: exportRate } : {}),
+        ...(bitDepth !== 32 && !dither ? { dither: "none" as const } : {}),
+      };
       const blob = track.deepMastering?.applied
-        ? await serverRenderScript(sourceBlob, exportScript(track.deepMastering.applied), bitDepth, controller.signal)
-        : await serverRender(sourceBlob, exportParams(track.advanced), bitDepth, controller.signal);
+        ? await serverRenderScript(sourceBlob, exportScript(track.deepMastering.applied), bitDepth, controller.signal, delivery)
+        : await serverRender(sourceBlob, exportParams(track.advanced), bitDepth, controller.signal, delivery);
       if (controller.signal.aborted || renderAbort.current !== controller) return;
       const url = URL.createObjectURL(blob),
         anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `${track.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-${String(bitDepth)}bit.wav`;
+      anchor.download = `${track.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-${String(outputRate / 1000)}k-${String(bitDepth)}bit.wav`;
       anchor.click();
       setTimeout(() => {
         URL.revokeObjectURL(url);
       }, 1000);
       setMessage(
-        `Exported ${bitDepth === 32 ? "32-bit float" : `${String(bitDepth)}-bit PCM`} WAV at the source rate ${track.deepMastering?.applied ? "from applied revision " + String(track.deepMastering.applied.revision) : "using the same Go DSP parameters"}.`,
+        `Exported ${bitDepth === 32 ? "32-bit float" : `${String(bitDepth)}-bit PCM`} WAV${bitDepth === 32 ? "" : dither ? " with TPDF dither" : " without dither"} at ${outputRate === track.sampleRate ? "the source rate" : `${String(outputRate / 1000)} kHz (converted from ${String(track.sampleRate / 1000)} kHz)`} ${track.deepMastering?.applied ? "from applied revision " + String(track.deepMastering.applied.revision) : "using the same Go DSP parameters"}.`,
       );
     } catch (error) {
       if (!controller.signal.aborted) setMessage(
@@ -1139,11 +1149,51 @@ function MasterView({ trackId }: { trackId: string }) {
             ))}
           </div>
         </ControlGroup>
+        <ControlGroup label="Sample rate">
+          <div className="choice-grid">
+            {(["source", ...EXPORT_SAMPLE_RATES] as const).map((rate) => (
+              <button
+                type="button"
+                className={exportRate === rate ? "choice is-active" : "choice"}
+                aria-pressed={exportRate === rate}
+                key={rate}
+                onClick={() => {
+                  setExportRate(rate);
+                }}
+              >
+                {rate === "source" ? `Source (${String(track.sampleRate / 1000)} kHz)` : `${String(rate / 1000)} kHz`}
+              </button>
+            ))}
+          </div>
+        </ControlGroup>
+        {bitDepth !== 32 && (
+          <ControlGroup label="Dither">
+            <div className="choice-grid">
+              {([true, false] as const).map((on) => (
+                <button
+                  type="button"
+                  className={dither === on ? "choice is-active" : "choice"}
+                  aria-pressed={dither === on}
+                  key={String(on)}
+                  onClick={() => {
+                    setDither(on);
+                  }}
+                >
+                  {on ? "TPDF" : "Off"}
+                </button>
+              ))}
+            </div>
+          </ControlGroup>
+        )}
         <p className="disclosure">
           Source sample rate: {track.sampleRate / 1000} kHz. Original duration
-          and stereo frames are preserved. 16-bit and 24-bit PCM clip samples
-          outside ±1. Choose 32-bit Float to preserve headroom, or enable the
-          limiter before exporting integer PCM.
+          and stereo frames are preserved; a converted rate keeps the duration
+          with a 120 dB windowed-sinc filter flat to 90% of the lower Nyquist
+          frequency, then reapplies the limiter ceiling and dither at the new
+          rate. 16-bit and 24-bit PCM clip samples outside ±1. Choose 32-bit
+          Float to preserve headroom, or enable the limiter before exporting
+          integer PCM. Turn dither off only for material that is already
+          dithered.
         </p>
         <p className="disclosure" role="status">
           {message}

@@ -11,6 +11,8 @@ interface JobRequest {
   script?: string;
   profile?: string;
   bitDepth?: number;
+  sampleRate?: number;
+  dither?: string;
   format?: string;
   deviceRate?: number;
   options?: string;
@@ -185,7 +187,7 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
   let request: JobRequest;
   let allowed: string[];
   switch (path) {
-    case "/api/master/render": request = { operation: "render" }; allowed = ["file", "params", "script", "profile", "bitDepth", "format"]; break;
+    case "/api/master/render": request = { operation: "render" }; allowed = ["file", "params", "script", "profile", "bitDepth", "sampleRate", "dither", "format"]; break;
     case "/api/analyze/features": request = { operation: "features" }; allowed = ["file"]; break;
     case "/api/analyze/deep": request = { operation: "deep" }; allowed = ["file", "profile", "scriptVersion"]; break;
     case "/api/analyze/reference": request = { operation: "reference" }; allowed = ["source", "reference", "params", "options"]; break;
@@ -193,7 +195,7 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
   }
   for (const key of fields.keys()) if (!allowed.includes(key)) throw new Error("Unsupported local audio field.");
   const text = (key: string) => { const value = fields.get(key); if (value !== undefined && typeof value !== "string") throw new Error("Invalid local audio field."); return value; };
-  const params = text("params"), script = text("script"), profile = text("profile"), format = text("format"), options = text("options"), scriptVersion = text("scriptVersion"), bitDepth = text("bitDepth");
+  const params = text("params"), script = text("script"), profile = text("profile"), format = text("format"), options = text("options"), scriptVersion = text("scriptVersion"), bitDepth = text("bitDepth"), sampleRate = text("sampleRate"), dither = text("dither");
   if (params !== undefined) request.params = params;
   if (script !== undefined) request.script = script;
   if (profile !== undefined) request.profile = profile;
@@ -203,6 +205,14 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
   if (bitDepth !== undefined) {
     if (!["16", "24", "32"].includes(bitDepth)) throw new Error("Invalid local audio bit depth.");
     request.bitDepth = Number(bitDepth);
+  }
+  if (sampleRate !== undefined) {
+    if (!["44100", "48000", "88200", "96000"].includes(sampleRate)) throw new Error("Invalid local audio export rate.");
+    request.sampleRate = Number(sampleRate);
+  }
+  if (dither !== undefined) {
+    if (dither !== "tpdf" && dither !== "none") throw new Error("Invalid local audio dither.");
+    request.dither = dither;
   }
   const source = fields.get(request.operation === "reference" ? "source" : "file"), reference = fields.get("reference");
   if (!(source instanceof Blob) || (reference !== undefined && !(reference instanceof Blob))) throw new Error("Missing local audio source.");

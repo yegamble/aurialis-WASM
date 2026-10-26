@@ -51,6 +51,19 @@ describe("device-local browser audio transport", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("forwards validated export rate and dither fields to the render worker", async () => {
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    const form = body(); form.append("bitDepth", "16"); form.append("sampleRate", "44100"); form.append("dither", "none");
+    const pending = deviceAudioRequest("/api/master/render", { method: "POST", body: form });
+    await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
+    expect(JSON.parse(TestWorker.all[0]?.message?.metadata ?? "{}")).toEqual({ operation: "render", bitDepth: 16, sampleRate: 44100, dither: "none" });
+    TestWorker.all[0]?.reply(); await pending;
+    for (const [field, value] of [["sampleRate", "22050"], ["sampleRate", "48k"], ["dither", "shaped"]] as const) {
+      const invalid = body(); invalid.append(field, value);
+      await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: invalid })).rejects.toThrow(field === "dither" ? "dither" : "export rate");
+    }
+    expect(TestWorker.all).toHaveLength(1);
+  });
   it("terminates an active canceled worker before the queued job creates another", async () => {
     const { deviceAudioRequest } = await import("../browser-jobs");
     const controller = new AbortController();

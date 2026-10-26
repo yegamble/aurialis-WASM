@@ -2,7 +2,7 @@ import { engineParams } from "./engine-params";
 export { engineParams } from "./engine-params";
 import { deviceAudioRequest, usesBrowserAudio } from "./browser-jobs";
 import type { ScriptV2 } from "./deep-mastering";
-import type { AdvancedParams, MeasuredAudioMetrics, SourceIdentity } from "./types";
+import type { AdvancedParams, ExportDelivery, MeasuredAudioMetrics, SourceIdentity } from "./types";
 
 export interface StereoPCM {
   left: Float32Array<ArrayBuffer>;
@@ -160,25 +160,31 @@ export function processPreview(
   engineQueue = result.then(() => undefined, () => undefined);
   return result;
 }
+function appendDelivery(data: FormData, delivery: ExportDelivery | undefined): void {
+  if (delivery?.sampleRate !== undefined) data.append("sampleRate", String(delivery.sampleRate));
+  if (delivery?.dither !== undefined) data.append("dither", delivery.dither);
+}
 export async function serverRender(
   file: Blob,
   params: object,
   bitDepth: 16 | 24 | 32,
   signal?: AbortSignal,
+  delivery?: ExportDelivery,
 ): Promise<Blob> {
   signal?.throwIfAborted();
   const data = new FormData();
   data.append("file", file, "source.wav");
   data.append("params", JSON.stringify(params));
   data.append("bitDepth", String(bitDepth));
+  appendDelivery(data, delivery);
   const response = await audioRequest(data, signal);
   if (!response.ok)
     throw await audioError(response, "Audio processing failed. Please try again.");
   return readAudioResponse(() => response.blob(), signal);
 }
-export async function serverRenderScript(file: Blob, script: ScriptV2, bitDepth: 16 | 24 | 32, signal?: AbortSignal): Promise<Blob> {
+export async function serverRenderScript(file: Blob, script: ScriptV2, bitDepth: 16 | 24 | 32, signal?: AbortSignal, delivery?: ExportDelivery): Promise<Blob> {
   signal?.throwIfAborted();
-  const data = new FormData(); data.append("file", file, "source.wav"); data.append("script", JSON.stringify(script)); data.append("bitDepth", String(bitDepth));
+  const data = new FormData(); data.append("file", file, "source.wav"); data.append("script", JSON.stringify(script)); data.append("bitDepth", String(bitDepth)); appendDelivery(data, delivery);
   const response = await audioRequest(data, signal);
   if (!response.ok) throw await audioError(response, "The applied script could not be rendered. Restore its matching source and retry.");
   return readAudioResponse(() => response.blob(), signal);

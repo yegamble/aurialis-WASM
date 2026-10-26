@@ -216,3 +216,8 @@ export type Album = {
 };
 
 export type ExportBitDepth = 16 | 24 | 32;
+/** Delivery rates the Go sample-rate converter supports. */
+export const EXPORT_SAMPLE_RATES = [44100, 48000, 88200, 96000] as const;
+export type ExportSampleRate = (typeof EXPORT_SAMPLE_RATES)[number];
+/** Omitted fields keep the source rate and TPDF dither for 16/24-bit PCM. */
+export type ExportDelivery = { sampleRate?: ExportSampleRate; dither?: "none" };

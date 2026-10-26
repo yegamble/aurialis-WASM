@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runStemSplit, stemModelStatus } from "../stem-split";
+import { runStemSplit, StemSplitError, stemSplitFailureMessage, stemModelStatus } from "../stem-split";
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
@@ -34,15 +34,49 @@ describe("Smart Split client", () => {
     expect(progress).toEqual([0]);
   });
 
-  it("explains unavailable, busy and too-long rejections", async () => {
-    for (const [status, detail, message] of [
-      [503, "stem separation is not available in this build", "desktop app"],
-      [503, "job queue is full", "busy"],
-      [413, "audio is too long", "too long"],
+  it("maps each server rejection code to distinct plain-language copy", async () => {
+    const seen = new Map<string, string>();
+    for (const [status, code, kind] of [
+      [503, "stems_unavailable", "unavailable"],
+      [503, "busy", "busy"],
+      [503, "queue_full", "queue_full"],
+      [413, "too_long", "too_long"],
+      [413, "payload_too_large", "too_long"],
+      [400, "invalid_multipart", "unreadable"],
+      [500, "internal", "internal"],
     ] as const) {
-      vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ detail }, status))));
-      await expect(runStemSplit(new Blob(["x"]), 4, new AbortController().signal, () => undefined)).rejects.toThrow(message);
+      vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ error: code, detail: `raw ${code} detail`, status }, status))));
+      const error = await runStemSplit(new Blob(["x"]), 4, new AbortController().signal, () => undefined).then(() => null, (failure: unknown) => failure);
+      expect(error).toBeInstanceOf(StemSplitError);
+      const failure = error as StemSplitError;
+      expect(failure.kind, code).toBe(kind);
+      expect(failure.message).not.toContain("raw");
+      expect(failure.message).not.toMatch(/desktop app/iu);
+      expect(failure.detail).toBe(`raw ${code} detail`);
+      seen.set(kind, failure.message);
     }
+    // Busy, a full queue and a disabled model each read differently.
+    expect(new Set([seen.get("busy"), seen.get("queue_full"), seen.get("unavailable")]).size).toBe(3);
+  });
+
+  it("never shows raw Go job errors", async () => {
+    for (const [raw, expected] of [
+      ["load separation model: stem model download: 404 Not Found", "separation model couldn't be downloaded or verified"],
+      ["load separation model: stem model download failed its checksum", "separation model couldn't be downloaded or verified"],
+      ["separation job exceeds its 1.5 GiB memory ceiling", "needs more memory"],
+      ["source is too long to separate", "too long to split"],
+      ["non-finite trained chunk output", "internal error"],
+    ] as const) {
+      vi.stubGlobal("fetch", vi.fn((_input: string, init?: RequestInit) => Promise.resolve(init?.method === "DELETE" ? json({}) : json({ jobId: "job-7", status: "failed", error: raw }, 202))));
+      const error = await runStemSplit(new Blob(["x"]), 4, new AbortController().signal, () => undefined).then(() => null, (failure: unknown) => failure);
+      const message = stemSplitFailureMessage(error);
+      expect(message).toContain(expected);
+      expect(message).not.toContain(raw);
+    }
+    vi.stubGlobal("fetch", vi.fn((_input: string, init?: RequestInit) => Promise.resolve(init?.method === "DELETE" ? json({}) : json({ jobId: "job-8", status: "cancel" + "led" }, 202))));
+    await expect(runStemSplit(new Blob(["x"]), 4, new AbortController().signal, () => undefined)).rejects.toThrow("90-minute job limit");
+    expect(stemSplitFailureMessage(new TypeError("Failed to fetch"))).toContain("lost contact with its local server");
+    expect(stemSplitFailureMessage(new Error("Invalid Smart Split response."))).toContain("internal error");
   });
 
   it("deletes the job when a split fails or is cancelled", async () => {
@@ -61,7 +95,7 @@ describe("Smart Split client", () => {
       if (input === "/api/separate") return Promise.resolve(json({ jobId: "job-3", status: "failed", error: "load separation model: checksum mismatch" }, 202));
       return Promise.resolve(json({}));
     }));
-    await expect(runStemSplit(new Blob(["x"]), 4, new AbortController().signal, () => undefined)).rejects.toThrow("checksum mismatch");
+    await expect(runStemSplit(new Blob(["x"]), 4, new AbortController().signal, () => undefined)).rejects.toThrow("separation model couldn't be downloaded or verified");
     expect(deleted).toEqual(["/api/jobs/job-2", "/api/jobs/job-3"]);
   });
 });

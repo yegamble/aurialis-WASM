@@ -32,4 +32,19 @@ describe("Smart Split panel", () => {
     expect(screen.getByLabelText("Play Vocals").getAttribute("src")).toBe("/api/jobs/job-9/stems/vocals");
     expect(screen.getAllByRole("link", { name: "Download" })[1]?.getAttribute("download")).toBe("Song - Instrumental.wav");
   });
+
+  it("shows plain-language copy for a failed model download and updates the model note", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: string, init?: RequestInit) => {
+      if (input === "/api/stems/model") return Promise.resolve(json({ available: true, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688 }));
+      if (input === "/api/separate") return Promise.resolve(json({ jobId: "job-4", status: "failed", error: "load separation model: stem model download: 404 Not Found" }, 202));
+      if (init?.method === "DELETE") return Promise.resolve(json({}));
+      return Promise.resolve(json({}));
+    }));
+    render(<StemSplitPanel audioId="a" title="Song" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Split Song into 4 stems" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("The separation model couldn't be downloaded or verified. Check your internet connection, then split again to retry the download.");
+    expect(alert.textContent).not.toMatch(/404|load separation model/u);
+    expect(await screen.findByText("The 176 MB separation model could not be downloaded or verified. The next split retries the download.")).toBeTruthy();
+  });
 });

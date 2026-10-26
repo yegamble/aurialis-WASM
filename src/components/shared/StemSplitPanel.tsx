@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { usesBrowserAudio } from "@/lib/browser-jobs";
 import { getAudio } from "@/lib/db";
-import { runStemSplit, stemModelStatus, type StemModelStatus, type StemSplit } from "@/lib/stem-split";
+import { runStemSplit, StemSplitError, stemSplitFailureMessage, stemModelStatus, type StemModelStatus, type StemSplit, type StemSplitFailure } from "@/lib/stem-split";
 import { Button, buttonClassName } from "./Primitives";
 
 const stemLayouts = new Map<number, string[]>([
@@ -18,11 +18,12 @@ function megabytes(bytes: number): string {
   return `${String(Math.round(bytes / 1_000_000))} MB`;
 }
 
-function modelNote(status: StemModelStatus | null): string {
+function modelNote(status: StemModelStatus | null, lastFailure: StemSplitFailure | null): string {
   if (!status) return "Checking the separation model…";
   if (!status.available) return usesBrowserAudio() ? "Smart Split runs in the Aurialis desktop app. This browser build cannot separate stems." : "Smart Split is turned off in this build of the app.";
   if (status.downloading) return `Downloading the separation model: ${megabytes(status.downloadedBytes)} of ${megabytes(status.totalBytes)}.`;
   if (status.ready) return "The separation model is ready.";
+  if (lastFailure === "model") return `The ${megabytes(status.totalBytes)} separation model could not be downloaded or verified. The next split retries the download.`;
   return `The first split downloads the ${megabytes(status.totalBytes)} separation model once.`;
 }
 
@@ -34,6 +35,7 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
   const [progress, setProgress] = useState(0);
   const [stage, setStage] = useState("");
   const [error, setError] = useState("");
+  const [lastFailure, setLastFailure] = useState<StemSplitFailure | null>(null);
   const [split, setSplit] = useState<StemSplit | null>(null);
 
   useEffect(() => {
@@ -57,12 +59,13 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
     operation.current = controller;
     setSplit(null);
     setError("");
+    setLastFailure(null);
     setProgress(0);
     setStage("Reading the original audio…");
     setBusy(true);
     try {
       const blob = await getAudio(audioId);
-      if (!blob) throw new Error("Original audio is missing. Restore the source before splitting.");
+      if (!blob) throw new StemSplitError("missing_source");
       const result = await runStemSplit(blob, count, controller.signal, (value, label) => { setProgress(value); setStage(label); });
       if (operation.current === controller) {
         setSplit(result);
@@ -71,7 +74,12 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
         result.release();
       }
     } catch (failure) {
-      if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : "Smart Split failed.");
+      if (!controller.signal.aborted) {
+        setError(stemSplitFailureMessage(failure));
+        setLastFailure(failure instanceof StemSplitError ? failure.kind : "internal");
+        // A failed first download leaves the "downloading" note stale; re-read the model state.
+        void stemModelStatus().then(setStatus);
+      }
     } finally {
       if (operation.current === controller) {
         operation.current = null;
@@ -103,7 +111,7 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
         ))}
       </div>
       <div className="stem-preview">{(stemLayouts.get(count) ?? []).map((name) => <span key={name}>{name}</span>)}</div>
-      <p className="disclosure" role="status">{modelNote(status)}</p>
+      <p className="disclosure" role="status">{modelNote(status, lastFailure)}</p>
       <div className="flex flex-wrap gap-2">
         {busy
           ? <Button variant="secondary" onClick={cancel}>Cancel split</Button>

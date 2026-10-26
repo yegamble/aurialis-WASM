@@ -553,7 +553,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PREVIEW_URL: ${{ steps.preview.outputs.url }}
         run: |
-          body="$(printf '**Cloudflare Preview:** %s\n\nBuilt from `%s`; updates on every push and is deleted when this pull request closes.' "$PREVIEW_URL" "$AURIALIS_CI_HEAD_SHA")"
+          body="**Cloudflare Preview:** ${PREVIEW_URL}"$'\n\n'"Built from \`${AURIALIS_CI_HEAD_SHA}\`; updates on every push and is deleted when this pull request closes."
           gh pr comment "$PR_NUMBER" --edit-last --create-if-none --body "$body"
 
   # Deploys the exact browser artifact every gate above verified. Not keyed on

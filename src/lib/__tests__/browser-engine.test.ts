@@ -10,6 +10,7 @@ import {
   previewWAV,
   processPreview,
   readCanonicalWAV,
+  renderDelivery,
   serverRender,
   sourcePeaks,
 } from "../browser-engine";
@@ -68,6 +69,20 @@ describe("shared engine browser boundary", () => {
     fetch.mockClear();
     await expect(serverRender(new Blob(["source"]), {}, 32, controller.signal)).rejects.toThrow();
     expect(fetch).not.toHaveBeenCalled();
+  });
+  it("sends delivery options and returns the delivered true peak only when the server reports one", async () => {
+    const respond = (peak?: string) => Promise.resolve(new Response("wav", { headers: peak === undefined ? {} : { "X-Aurialis-After-Peak-dBTP": peak } }));
+    const fetch = vi.fn().mockImplementationOnce(() => respond("-0.31")).mockImplementationOnce(() => respond()).mockImplementationOnce(() => respond("-Inf"));
+    vi.stubGlobal("fetch", fetch);
+    const delivered = await renderDelivery(new Blob(["source"]), { params: { bypass: true } }, 16, { sampleRate: 44100, dither: "none" });
+    expect(delivered.truePeakDbtp).toBe(-0.31);
+    expect(delivered.blob.size).toBe(3);
+    const form = (fetch.mock.calls[0]?.[1] as { body: FormData }).body;
+    expect([form.get("bitDepth"), form.get("sampleRate"), form.get("dither"), form.get("params")]).toEqual(["16", "44100", "none", '{"bypass":true}']);
+    expect((await renderDelivery(new Blob(["source"]), { script: { version: 2 } as never }, 24, {})).truePeakDbtp).toBeNull();
+    const script = (fetch.mock.calls[1]?.[1] as { body: FormData }).body;
+    expect([script.has("script"), script.has("params"), script.has("sampleRate"), script.has("dither")]).toEqual([true, false, false, false]);
+    expect((await renderDelivery(new Blob(["source"]), { params: {} }, 32, {})).truePeakDbtp).toBeNull();
   });
   it("preserves every uploaded frame and both channels in a float WAV roundtrip", async () => {
     vi.stubGlobal("Blob", NodeBlob);

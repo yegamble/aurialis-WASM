@@ -8,6 +8,7 @@ import {
   normalizeSimpleAudio,
   processPreview,
   previewWAV,
+  renderDelivery,
   serverRender,
   serverRenderScript,
   readCanonicalWAV,
@@ -859,9 +860,13 @@ function MasterView({ trackId }: { trackId: string }) {
         ...(deliveryRate !== "source" ? { sampleRate: deliveryRate } : {}),
         ...(bitDepth !== 32 && !dither ? { dither: "none" as const } : {}),
       };
-      const blob = track.deepMastering?.applied
-        ? await serverRenderScript(sourceBlob, exportScript(track.deepMastering.applied), bitDepth, controller.signal, delivery)
-        : await serverRender(sourceBlob, exportParams(track.advanced), bitDepth, controller.signal, delivery);
+      const { blob, truePeakDbtp } = await renderDelivery(
+        sourceBlob,
+        track.deepMastering?.applied ? { script: exportScript(track.deepMastering.applied) } : { params: exportParams(track.advanced) },
+        bitDepth,
+        delivery,
+        controller.signal,
+      );
       if (controller.signal.aborted || renderAbort.current !== controller) return;
       const url = URL.createObjectURL(blob),
         anchor = document.createElement("a");
@@ -872,7 +877,7 @@ function MasterView({ trackId }: { trackId: string }) {
         URL.revokeObjectURL(url);
       }, 1000);
       setMessage(
-        `Exported ${bitDepth === 32 ? "32-bit float" : `${String(bitDepth)}-bit PCM`} WAV${bitDepth === 32 ? "" : dither ? " with TPDF dither" : " without dither"} at ${outputRate === track.sampleRate ? "the source rate" : `${String(outputRate / 1000)} kHz (converted from ${String(track.sampleRate / 1000)} kHz)`} ${track.deepMastering?.applied ? "from applied revision " + String(track.deepMastering.applied.revision) : "using the same Go DSP parameters"}.`,
+        `Exported ${bitDepth === 32 ? "32-bit float" : `${String(bitDepth)}-bit PCM`} WAV${bitDepth === 32 ? "" : dither ? " with TPDF dither" : " without dither"} at ${outputRate === track.sampleRate ? "the source rate" : `${String(outputRate / 1000)} kHz (converted from ${String(track.sampleRate / 1000)} kHz)`} ${track.deepMastering?.applied ? "from applied revision " + String(track.deepMastering.applied.revision) : "using the same Go DSP parameters"}.${truePeakDbtp === null ? "" : ` Delivered true peak ${truePeakDbtp.toFixed(2)} dBTP at ${formatRate(outputRate)}.`}`,
       );
     } catch (error) {
       if (!controller.signal.aborted) setMessage(

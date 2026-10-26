@@ -244,6 +244,15 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
   return { request, source, reference: reference ?? new Blob() };
 }
 
+/** The render's afterMetrics true peak, which the native server sends as X-Aurialis-After-Peak-dBTP. */
+function deliveredPeak(json: string): number | undefined {
+  let body: unknown;
+  try { body = JSON.parse(json); } catch { return undefined; }
+  if (typeof body !== "object" || body === null || !("afterMetrics" in body) || typeof body.afterMetrics !== "object" || body.afterMetrics === null || !("truePeakDbtp" in body.afterMetrics)) return undefined;
+  const peak = body.afterMetrics.truePeakDbtp;
+  return typeof peak === "number" && Number.isFinite(peak) ? peak : undefined;
+}
+
 /** Same contract as the device-local HTTP transport, implemented without network audio on websites. */
 export async function deviceAudioRequest(path: string, init: RequestInit, onProgress?: (progress: number, stage: string) => void): Promise<Response> {
   const url = new URL(path, typeof location === "undefined" ? "https://local.invalid" : location.origin);
@@ -266,6 +275,10 @@ export async function deviceAudioRequest(path: string, init: RequestInit, onProg
   } else throw new Error("Invalid local audio request body.");
   const result = await execute(request, source, reference, init.signal ?? undefined, onProgress);
   const headers = new Headers({ "Content-Type": result.audio.byteLength ? "audio/wav" : "application/json", "Cache-Control": "no-store" });
-  if (result.audio.byteLength) headers.set("X-Aurialis-Source-Metrics", result.json);
+  if (result.audio.byteLength) {
+    headers.set("X-Aurialis-Source-Metrics", result.json);
+    const peak = deliveredPeak(result.json);
+    if (peak !== undefined) headers.set("X-Aurialis-After-Peak-dBTP", peak.toFixed(2));
+  }
   return new Response(result.audio.byteLength ? new Blob([result.audio], { type: "audio/wav" }) : result.json, { status: 200, headers });
 }

@@ -106,6 +106,18 @@ describe("device-local browser audio transport", () => {
     timer.mockRestore();
   });
 
+  it("mirrors the native delivered true-peak header from the render metrics", async () => {
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    const pending = deviceAudioRequest("/api/master/render", { method: "POST", body: render(source(), "44100") });
+    await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
+    const worker = TestWorker.all[0];
+    const json = JSON.stringify({ status: "ok", sampleRate: 44100, afterMetrics: { truePeakDbtp: -1.004 } });
+    worker?.onmessage?.({ data: { abi: "1.0", kind: "result", id: worker.message?.id, json, audio: new ArrayBuffer(52) } } as MessageEvent<unknown>);
+    const response = await pending;
+    expect(response.headers.get("X-Aurialis-After-Peak-dBTP")).toBe("-1.00");
+    expect(response.headers.get("X-Aurialis-Source-Metrics")).toBe(json);
+  });
+
   it("terminates an active canceled worker before the queued job creates another", async () => {
     const { deviceAudioRequest } = await import("../browser-jobs");
     const controller = new AbortController();

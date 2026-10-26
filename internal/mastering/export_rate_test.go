@@ -29,6 +29,6 @@ func TestConvertExportRejectsOutputBeyondFrameLimit(t *testing.T) {
 		}
 	}
 	if o.RenderDitherBits(44100, 16) != 0 || (ExportOptions{}).RenderDitherBits(44100, 16) != 16 || (ExportOptions{NoDither: true}).RenderDitherBits(44100, 24) != 0 {
-		t.Fatal("render dither must wait for conversion and honour dither none")
+		t.Fatal("render dither must wait for conversion and honor dither none")
 	}
 }

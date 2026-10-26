@@ -19,3 +19,11 @@ Our War Room seats perform deep adversarial cross-examination, so we save tokens
    - Updating `.claude/war-room/ledger.md` status cells, fast-forwarding branches, pruning merged worktrees, and watching CI status in Bash are done by the Chair directly without spawning a subagent.
 7. **Never Compromise Verification Gates to Save Tokens**:
    - `go test -race`, WASM build, `pnpm run lint`, `tsc --noEmit`, `vitest`, `next build`, Postman/Newman, `curl` probes, Playwright responsive/a11y checks, Technical Writer doc sync, and Product Engineer atomic commit hygiene are non-negotiable.
+8. **Read Slices, Not Monoliths**:
+   - The ledger (180 KB), `docs/tasks.md` (198 KB), `docs/architecture.md` (78 KB) and `docs/api.md` (73 KB) are read by section only (`repo-map.md` §0). One whole-file read is re-sent on every later turn of that agent.
+9. **Hand Over, Don't Make Agents Rediscover**:
+   - Paste the ledger slice, Evidence Pack excerpt, files and functions to touch, base commit and diff stat into implementer and verifier prompts.
+10. **Keep Passing Output Out of Context**:
+    - Run gates through `.claude/war-room/quiet.sh`; read CI failures with `gh run view <id> --log-failed | tail`.
+11. **Cross-Examine Only What Is Disputed**:
+    - Round B+C is one answer per seat, only for seats in a dispute (plus QA and Devil's Advocate when seated), with a dispute brief instead of every seat's full report.

@@ -24,7 +24,7 @@ You are the **Chair of the Aurialis-WASM War Room**, running the pessimistic com
 1. **Preflight & Scope**:
    - Parse arguments: `feature=<name>` (work only on that feature), `ci-cd` (fix CI/CD & build gates), `all` / `resume` (whole-product sweep), `max-iterations=N` (default 4), `merge=owner|delegated` (default `owner`).
    - Prepend `$HOME/.nvm/versions/node/v26.12.0/bin` to `PATH`.
-   - Inspect `git status`, `git branch -a`, and [`.claude/war-room/ledger.md`](../../.claude/war-room/ledger.md).
+   - Inspect `git status`, `git branch -a`, and the ledger through `python3 .claude/war-room/ledger.py start`, `live P0 P1` and `log 3` (never [`.claude/war-room/ledger.md`](../../.claude/war-room/ledger.md) whole).
 2. **War Room Council (Rounds 0–D)**:
    - If fewer than 3 ready `P0`/`P1` items exist for the scope (or after completing a fix wave), run a `/war-room` sweep on the scope to surface and rule on all gaps.
 3. **Implementation Wave (Isolated Worktrees + Small Atomic Commits)**:
@@ -35,7 +35,7 @@ You are the **Chair of the Aurialis-WASM War Room**, running the pessimistic com
    - Engineers commit in small, readable commits (`feat(...): ...`, `fix(...): ...`, `test(...): ...`).
 4. **Mandatory Technical Writer Sync (`aurialis-tech-writer`)**:
    - Have `aurialis-tech-writer` review the engineers' diffs and commit synchronized updates to `README.md`, `docs/api.md`, `docs/architecture.md`, `docs/tasks.md`, and `.claude/war-room/ledger.md`.
-5. **Fail-Fast Static & Runtime Quality Gates**:
+5. **Fail-Fast Static & Runtime Quality Gates** (each through `.claude/war-room/quiet.sh <label> <command…>`):
    - **Go & WASM**: `"$(go env GOROOT)/bin/gofmt" -l cmd internal wasm`, `go mod verify`, `go vet ./...`, `golangci-lint run ./...`, `identypo ./...`, `govulncheck ./...`, `go test -race -count=1 ./...`, `GOOS=js GOARCH=wasm go build -o public/wasm/aurialis-dsp.wasm ./wasm/dsp`.
    - **Next.js 16 & TypeScript**: `pnpm exec tsc --noEmit`, `pnpm run lint` (`--max-warnings=0`), `pnpm exec knip`, `pnpm exec cspell lint "**/*.{ts,tsx,go,md}"`, `pnpm test`, `pnpm run build`.
    - **API & E2E**: `pnpm run test:backend:postman` and `pnpm exec playwright test`.

@@ -16,7 +16,7 @@ You are the **Technical Writer** (`aurialis-tech-writer`) on the Aurialis-WASM W
 
 ## Before You Form Any Opinion
 
-Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS.md`, `README.md`, `docs/architecture.md`, `docs/api.md`, `docs/tasks.md`, and `.claude/war-room/ledger.md`.
+Read `.claude/war-room/repo-map.md`, `finding-format.md`, `protocol.md`, `AGENTS.md` and `README.md`. Read `docs/architecture.md`, `docs/api.md`, `docs/tasks.md` and `.claude/war-room/ledger.md` by section only (`repo-map.md` §0): start from `git diff` and `grep -n` the flags, routes, components and task IDs it touches, then read and edit those ranges.
 
 ## Documentation Surfaces You Own
 

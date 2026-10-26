@@ -22,14 +22,14 @@ Arguments:
 
 ## Read First
 
-1. `AGENTS.md`, `.claude/review-loop.md`, `.claude/war-room/repo-map.md`, `.claude/war-room/finding-format.md`, `.claude/war-room/protocol.md`, `.claude/war-room/ledger.md`, and `.claude/agents/README.md`.
+1. Once per loop, not per iteration: `.claude/war-room/repo-map.md` and `.claude/war-room/protocol.md`. Skip files your tool already loaded as project instructions (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`). Read the ledger and the large docs by section only (`repo-map.md` §0).
 2. Check `git status` and `git branch -a`; never discard unrelated work.
 3. Ensure Node `v26.12.0` (`$HOME/.nvm/versions/node/v26.12.0/bin`) and Go `1.26+` are on `PATH`.
 
 ## One Loop Iteration
 
 ### Step 1: State & Branch Hygiene (`aurialis-product-engineer`)
-- Read `.claude/war-room/ledger.md` and `docs/tasks.md`.
+- `python3 .claude/war-room/ledger.py start`, `live P0 P1` and `log 3`; `grep -n` the scope in `docs/tasks.md`. Never read either file whole.
 - Create or reuse the working branch (or integration branch `war-room/integration` off `main`).
 - Audit for any unmerged finished branches or uncommitted changes left behind from prior runs.
 
@@ -37,7 +37,8 @@ Arguments:
 - If fewer than 3 ruled `P0`/`P1` items exist for the current scope (or if running a fresh scrutiny sweep after fixes), run a `/war-room` session on the target scope (specific feature, `ci-cd`, or next product area in rotation: `go-wasm-binary` → `design-mobile-shell` → `wasm-dsp-engine` → `concurrent-jobs-api` → `upload-library` → `mastering-simple-advanced` → `deep-mastering-script` → `smart-split-2-6` → `albums-reference-release` → `ci-cd`).
 
 ### Step 3: Implementation Wave (Small, Readable Commits)
-- Pick up to **3** non-overlapping `P0`/`P1` items from `.claude/war-room/ledger.md` (grouped so no two agents edit the same files concurrently).
+- Pick up to **3** non-overlapping `P0`/`P1` items from `ledger.py live P0 P1` (grouped so no two agents edit the same files concurrently).
+- Paste into each implementer's prompt: the `ledger.py item <ID>` output (row, acceptance criteria, test plan), the files and functions the ruling names, and the base commit, so it does not rediscover them. While iterating it runs only the tests it is changing; it runs the full gate once at the end, through `quiet.sh`.
 - Dispatch the owning implementation specialists (`aurialis-backend`, `aurialis-dsp-plugin-engineer`, `aurialis-audio-engineer`, `aurialis-grammy-veteran`, `aurialis-frontend`, `aurialis-designer`, `aurialis-security`, `aurialis-qa`) in isolated worktrees (`isolation: "worktree"` in Claude Code, `Workspace: "share"`/`"branch"` in Gemini Argon, or separate worktrees in Codex).
 - **Enforce `aurialis-product-engineer` rules**:
   - Commit early and often in **small, atomic, readable commits** (`feat(wasm): ...`, `feat(ui): ...`, `fix(jobs): ...`, `test(qa): ...`).
@@ -48,13 +49,13 @@ Arguments:
 - `aurialis-tech-writer` updates `README.md`, `docs/api.md`, `docs/architecture.md`, `docs/tasks.md`, and `.claude/war-room/ledger.md` in an atomic `docs(...): ...` commit on the branch.
 
 ### Step 5: Full Quality Gate Execution
-Run all applicable fail-fast gates from `AGENTS.md`:
+Run all applicable fail-fast gates from `AGENTS.md`, each through `.claude/war-room/quiet.sh <label> <command…>` so passing output stays in a log file. Read a red CI job with `gh run view <id> --log-failed | tail -n 80`, not the full log:
 1. **Go & WASM**: `"$(go env GOROOT)/bin/gofmt" -l cmd internal wasm`, `go mod verify`, `go vet ./...`, `golangci-lint run ./...`, `identypo ./...`, `govulncheck ./...`, `go test -race -count=1 ./...`, `GOOS=js GOARCH=wasm go build -o public/wasm/aurialis-dsp.wasm ./wasm/dsp`.
 2. **Next.js 16 & TypeScript**: `pnpm exec tsc --noEmit`, `pnpm run lint` (`--max-warnings=0`), `pnpm exec knip`, `pnpm exec cspell lint "**/*.{ts,tsx,go,md}"`, `pnpm test`, `pnpm run build`.
 3. **API & E2E**: `pnpm run test:backend:postman` + `pnpm exec playwright test`.
 
 ### Step 6: Round E — Pessimistic Adversarial Verification (`aurialis-qa` + `aurialis-devils-advocate` + `aurialis-tech-writer` + `aurialis-product-engineer`)
-- Dispatch **`aurialis-qa`** and **`aurialis-devils-advocate`** concurrently against the integrated branch:
+- Dispatch **`aurialis-qa`** and **`aurialis-devils-advocate`** concurrently against the integrated branch. Paste into each prompt the items' acceptance criteria, the commits, `git diff --stat main...HEAD` and the Step 5 gate results, so they start from the diff. They still run the probes and tests each criterion names; a criterion that calls for a test is never accepted from the diff alone:
   - `aurialis-qa` runs Newman, crafts adversarial `curl` requests (corrupt WAVs, 250 MB `413` payloads, CRLF/path traversal, 15-way concurrent POST/DELETE races, COOP/COEP headers), and checks mobile (`320px`/`375px`) & desktop (`1024px`/`1440px`) Playwright viewports and keyboard/a11y flows.
   - `aurialis-devils-advocate` inspects the diff to verify the feature is genuinely wired end-to-end (no placebo UI), introduces zero bloat, and leaves no required vertical-slice gap open.
 - **If ANY check or probe fails**: Mark the item back to `open` with the exact failing reproduction, and continue to the next iteration to fix it.
@@ -65,7 +66,7 @@ Run all applicable fail-fast gates from `AGENTS.md`:
 ## Stop Conditions (Checked After Every Iteration)
 
 1. **`VERDICT: 100% COMPLETE` (Scope Satisfied)**:
-   - Zero open `P0`/`P1` items remain for the requested scope, `aurialis-qa` and `aurialis-devils-advocate` ran a fresh pessimistic sweep that found zero new `BLOCKER`/`REQUIRED` defects, `aurialis-tech-writer` confirmed all docs are synchronized, all quality gates are green, and `aurialis-product-engineer` confirmed branches are merged and cleaned up.
+   - Zero open `P0`/`P1` items remain for the requested scope (`ledger.py live P0 P1` empty, and `ledger.py grep 'reopened|NOT VERIFIED|still open'` shows no unresolved recent hit), `aurialis-qa` and `aurialis-devils-advocate` ran a fresh pessimistic sweep that found zero new `BLOCKER`/`REQUIRED` defects, `aurialis-tech-writer` confirmed all docs are synchronized, all quality gates are green, and `aurialis-product-engineer` confirmed branches are merged and cleaned up.
 2. **Max Iterations Reached** (default `4`): Stop and report exact progress, verified commits, and remaining open ledger items.
 3. **Owner Decision or External Blocker**: Ask the user clearly, mark the item `blocked (<reason>)`, and finish independent items first.
 4. **No Progress Across 3 Consecutive Iterations**: Stop and report the root blocker with diagnostic evidence.

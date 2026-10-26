@@ -23,7 +23,8 @@ Both `/war-room` and `/war-room-loop` accept a scope argument so the user can ta
 
 Enumeration is not judgment. Before Round A, the Chair builds one **Evidence Pack** for the target scope (either directly or with one lightweight retrieval subagent):
 - Relevant Go files (`cmd/aurialis/`, `internal/`, `wasm/`), Next.js routes & components (`src/`), tests (`tests/postman/`, `e2e/`), CI logs, and docs (`README.md`, `docs/api.md`, `docs/architecture.md`, `docs/tasks.md`, `docs/design/aurialis-redesign.md`).
-- Current `git status`, `git branch -a`, recent commit log (`git log -n 10 --oneline`), and open rows in `.claude/war-room/ledger.md`.
+- Current `git status`, `git branch -a`, recent commit log (`git log -n 10 --oneline`), and open rows from `python3 .claude/war-room/ledger.py live` / `item <ID>`.
+- The pack cites `path:line` ranges and quotes only the lines that matter. Docs come from `grep -n` ranges; the large files in `repo-map.md` §0 are never pasted whole.
 - Every spawned seat receives this exact Evidence Pack so all seats argue over the same files and state rather than paying 5× to grep the repo independently.
 
 ---
@@ -47,7 +48,7 @@ The Chair spawns the selected **3–5 specialist seats concurrently** in a singl
 
 ## 4. Round B — Cross-Examination & Adversarial Break-Testing
 
-When Round A completes, the Chair sends each seat's Round A findings to the other seats (continuing existing subagent sessions via `send_message` / `SendMessage` so context is preserved).
+When Round A produced a disputed `BLOCKER` or `REQUIRED` item, the Chair sends a dispute brief (the disputed findings in full and a one-line index of the other seats' `BLOCKER`/`REQUIRED` titles; never `SHOULD`, `EXPERIMENT` or `NOT WORTH DOING`) to the seats party to a dispute, plus `aurialis-qa` and `aurialis-devils-advocate` when seated, continuing existing subagent sessions via `send_message` / `SendMessage` so context is preserved. Rounds B and C run as one answer per seat; a second exchange runs only when an answer raises a new disputed `BLOCKER`.
 - **Special QA ↔ Security ↔ Devil's Advocate Pairing**:
   - `aurialis-devils-advocate` attacks every claim that a feature "works", questions whether proposed features/abstractions are even needed or are bloat, and flags any gap between studio-grade expectations and current code.
   - `aurialis-security` audits every upload, parser, temp-file, header, and localhost route for polyglot stashing, path/RTLO traversal, header integer overflows, DNS rebinding, and cross-origin CSRF.
@@ -62,7 +63,7 @@ When Round A completes, the Chair sends each seat's Round A findings to the othe
 
 ## 5. Round C — Rebuttal & Position Revision
 
-Each seat responds concisely to Round B challenges:
+In the same answer as Round B, each seat responds concisely to the challenges:
 ```text
 RETRACTED: <finding-id> — <who disproved it and with what evidence>
 REVISED:   <finding-id> — <old severity/scope> → <new severity/scope> — <why>

@@ -22,11 +22,11 @@ You are the **Chair of the Aurialis-WASM War Room**. When this skill is activate
 Determine the target scope from the user's prompt:
 - **Specific Feature** (`feature=<name>` or named feature such as `deep-mastering`, `smart-split`, `wasm-dsp`, `albums`, `reference-match`, `release-check`, `upload-library`, `mobile-ui`): Restrict all investigation and rulings to that feature's vertical slice.
 - **CI/CD Fix** (`ci-cd`, `fix-ci`, `pipeline`, `build`): Focus on GitHub Actions workflows, Go 1.26 / WASM compilation, Next.js 16 + `pnpm` build, `golangci-lint` / `eslint` / `tsc` / `knip` / `cspell` quality gates, Postman/Newman runner, and Playwright harness.
-- **General / Omitted**: Select the highest-priority `open` item in [`.claude/war-room/ledger.md`](../../.claude/war-room/ledger.md).
+- **General / Omitted**: Select the highest-priority `open` item from `python3 .claude/war-room/ledger.py live P0 P1` (never read [`.claude/war-room/ledger.md`](../../.claude/war-room/ledger.md) whole).
 
 ## 2. Read Shared Contracts First
 
-1. Read [`AGENTS.md`](../../AGENTS.md), [`.claude/war-room/repo-map.md`](../../.claude/war-room/repo-map.md), [`.claude/war-room/finding-format.md`](../../.claude/war-room/finding-format.md), [`.claude/war-room/protocol.md`](../../.claude/war-room/protocol.md), and [`.claude/war-room/ledger.md`](../../.claude/war-room/ledger.md).
+1. Read [`AGENTS.md`](../../AGENTS.md), [`.claude/war-room/repo-map.md`](../../.claude/war-room/repo-map.md), [`.claude/war-room/finding-format.md`](../../.claude/war-room/finding-format.md), and [`.claude/war-room/protocol.md`](../../.claude/war-room/protocol.md). Skip files your tool already loaded as project instructions. Read the ledger and the large docs by section only ([`repo-map.md`](../../.claude/war-room/repo-map.md) §0).
 2. Prepend `$HOME/.nvm/versions/node/v26.12.0/bin` to `PATH` before running any `node` or `pnpm` command.
 
 ## 3. Select & Spawn 3–5 Specialist Seats
@@ -49,7 +49,7 @@ Read the corresponding specialist definitions from [`.claude/agents/`](../../.cl
   1. Build the Round 0 Evidence Pack once.
   2. For each selected seat, call `define_subagent` (using the system prompt from `.claude/agents/<seat>.md` and `EnableWriteTools: false` for review rounds) and launch all selected seats in parallel via `invoke_subagent` (`Model: "inherit"`).
   3. Stop calling tools at the end of the turn so the system reactively wakes you when the subagents finish Round A.
-  4. For Round B (Cross-Examination, including `aurialis-qa` ↔ `aurialis-devils-advocate` collaboration) and Round C (Rebuttal), use `send_message` to pass Round A findings to each active subagent's `conversationId`.
+  4. For Round B+C (one answer per seat: cross-examination, including `aurialis-qa` ↔ `aurialis-devils-advocate` collaboration, and rebuttal), run it only for disputed `BLOCKER`/`REQUIRED` items. Use `send_message` to pass a dispute brief (not every seat's full report) to the seats party to a dispute, plus QA and Devil's Advocate when seated.
 - **In Claude Code**:
   Spawn the selected subagents from `.claude/agents/<seat>.md` in a single message and continue them via `SendMessage`.
 - **In OpenAI Codex**:

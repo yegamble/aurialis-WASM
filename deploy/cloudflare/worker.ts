@@ -30,7 +30,9 @@ function secure(response: Response, method: string, path: string): Response {
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("X-Frame-Options", "DENY");
   headers.set("Referrer-Policy", "no-referrer");
-  headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+  // Both production hosts are HTTPS-only; no preload so the domains can still leave HSTS.
+  headers.set("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
   // Keep edge injection from modifying the app's pinned HTML and request boundary.
   headers.set("Cache-Control", "no-store, no-transform");
   if (path.endsWith(".wasm") && response.ok) headers.set("Content-Type", "application/wasm");

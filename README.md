@@ -94,6 +94,16 @@ Projects and settings are saved in this browser's local storage, and reconstruct
 
 The first public-domain trial was rolled back after Cloudflare injected an external analytics script. The response-header and Reference review-state corrections then merged in [PR #18](https://github.com/yegamble/aurialis-WASM/pull/18), followed by successful checks on both public addresses. The older app’s resources remain intact until compressed recovery is qualified. [The task record](docs/tasks.md#reference-state-and-public-domain-trial) retains the failed trial and exact deployment evidence.
 
+## Deployment
+
+GitHub Actions deploys the site to Cloudflare Workers. Every deploy uses the browser build that CI already tested; nothing is rebuilt for release.
+
+- **Production**: each push to `main` that passes every CI gate deploys the `aurialis-wasm` Worker (`deploy/cloudflare/wrangler.jsonc`) to [aurialis.yosefgamble.com](https://aurialis.yosefgamble.com/) and [aurialis.yosef.app](https://aurialis.yosef.app/). Then it smoke-tests both domains. Deploys queue rather than overlap. The job summary records the Worker version id.
+- **Pull request previews**: each pull request opened from this repository gets an isolated Worker Preview named `pr-<number>`. Its URL is commented on the pull request and updates on every push. The preview is deleted when the pull request closes. Forks and Dependabot get no preview because they have no Cloudflare secrets.
+- **Rollback**: run the **Cloudflare Rollback** workflow from `main` with an earlier Worker version id.
+
+These workflows need the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` repository secrets. Create the token from the *Edit Cloudflare Workers* template, scoped to this account and the `yosefgamble.com` and `yosef.app` zones.
+
 ## Know the current limits
 
 | Area | Current boundary |

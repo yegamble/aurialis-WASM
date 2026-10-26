@@ -27,7 +27,7 @@ async function expectedDryPrefix(page: Page, track: Track, deviceRate: number, s
 for (const [sourceRate, frames, deviceRate] of [[8001, 129, 44100], [48000, 48001, 48000], [44100, 44101, 96000], [48000, 48001, 192000]] as const) {
   test(`actual delayed source epoch and first mid-play Apply match native PCM at ${sourceRate}→${deviceRate}`, async ({ page }, info) => {
     test.setTimeout(120000); await observeOutput(page); await captureDeepDevice(page, deviceRate, 35);
-    await page.goto("/"); await page.getByLabel("Upload audio file").setInputFiles({ name: "clock-source.wav", mimeType: "audio/wav", buffer: shortSource(sourceRate, frames) });
+    await page.goto("/"); await page.getByLabel("Import audio file").setInputFiles({ name: "clock-source.wav", mimeType: "audio/wav", buffer: shortSource(sourceRate, frames) });
     await expect(page).toHaveURL(/\/master\/track-/u); await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
     let compileCount = 0; page.on("request", (request) => { if (request.url().includes("/api/automation/compile")) compileCount++; });
     const original = await current(page); await page.getByRole("tab", { name: "deep", exact: true }).click();

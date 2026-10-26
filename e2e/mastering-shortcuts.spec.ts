@@ -24,7 +24,7 @@ async function settings(page: Page): Promise<AdvancedParams> {
 
 async function upload(page: Page, frequency: number) {
   await page.goto("/");
-  await page.getByLabel("Upload audio file").setInputFiles({ name: "qa-shortcut.wav", mimeType: "audio/wav", buffer: fixture(frequency, 2) });
+  await page.getByLabel("Import audio file").setInputFiles({ name: "qa-shortcut.wav", mimeType: "audio/wav", buffer: fixture(frequency, 2) });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "Export", exact: true })).toBeEnabled({ timeout: 30_000 });
   await page.getByRole("button", { name: "Reset modules", exact: true }).click();
@@ -180,7 +180,7 @@ for (const shortcut of shortcuts) {
     const wav = fixture(frequency, 30);
     for (let offset = 44; offset < wav.length; offset += 2) wav.writeInt16LE(wav.readInt16LE(offset) * 3, offset);
     await page.goto("/");
-    await page.getByLabel("Upload audio file").setInputFiles({ name: "qa-shortcut-live.wav", mimeType: "audio/wav", buffer: wav });
+    await page.getByLabel("Import audio file").setInputFiles({ name: "qa-shortcut-live.wav", mimeType: "audio/wav", buffer: wav });
     await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
     await expect(page.getByRole("button", { name: "Play", exact: true })).toBeEnabled();
     await page.getByRole("button", { name: "Reset modules", exact: true }).click();

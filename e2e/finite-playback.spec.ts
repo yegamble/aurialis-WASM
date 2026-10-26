@@ -65,7 +65,7 @@ async function finiteDry(page: Page, track: Track, deviceRate: number, seek: num
 for (const [sourceRate, frames, deviceRate] of [[8001, 129, 44100], [8000, 129, 48000], [44100, 129, 96000], [8001, 4001, 44100]] as const) {
   test(`finite zero-exterior source, complete audible tail and native wet PCM at ${sourceRate}/${frames}→${deviceRate}`, async ({ page }, info) => {
     test.setTimeout(90000); await captureDeepDevice(page, deviceRate, 35); await observeFiniteSpeaker(page);
-    await page.goto("/"); await page.getByLabel("Upload audio file").setInputFiles({ name: "finite-boundary.wav", mimeType: "audio/wav", buffer: boundarySource(sourceRate, frames) });
+    await page.goto("/"); await page.getByLabel("Import audio file").setInputFiles({ name: "finite-boundary.wav", mimeType: "audio/wav", buffer: boundarySource(sourceRate, frames) });
     await expect(page).toHaveURL(/\/master\/track-/u); await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
     await page.getByRole("tab", { name: "deep", exact: true }).click(); await page.getByRole("button", { name: "Analyze Deep proposal", exact: true }).click();
     await expect(page.getByText("Measured proposal ready. Your applied processing has not changed.", { exact: true })).toBeVisible({ timeout: 30000 });
@@ -126,7 +126,7 @@ test("129-frame Repeat latest intent cancels a deferred clean epoch and removes 
       if (this.context instanceof AudioContext && (window as RepeatWindow).finiteSpeaker?.starts.length === 1) setTimeout(() => { document.querySelector<HTMLButtonElement>('button[aria-label="Repeat track"]')?.click(); }, Math.max(0, when - this.context.currentTime + .03) * 1000);
     };
   });
-  await page.goto("/"); await page.getByLabel("Upload audio file").setInputFiles({ name: "repeat-boundary.wav", mimeType: "audio/wav", buffer: boundarySource(8001, 129) });
+  await page.goto("/"); await page.getByLabel("Import audio file").setInputFiles({ name: "repeat-boundary.wav", mimeType: "audio/wav", buffer: boundarySource(8001, 129) });
   await expect(page).toHaveURL(/\/master\/track-/u); await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as RepeatWindow).repeatProbe?.held)).toBe(true);
@@ -176,7 +176,7 @@ test("enabling Repeat after finite input EOF drains the whole pass before a clea
       if (this.context instanceof AudioContext && (window as SpeakerWindow).finiteSpeaker?.starts.length === 1) setTimeout(() => { document.querySelector<HTMLButtonElement>('button[aria-label="Repeat track"]')?.click(); }, Math.max(0, when - this.context.currentTime + .03) * 1000);
     };
   });
-  await page.goto("/"); await page.getByLabel("Upload audio file").setInputFiles({ name: "repeat-drain.wav", mimeType: "audio/wav", buffer: boundarySource(8001, 129) });
+  await page.goto("/"); await page.getByLabel("Import audio file").setInputFiles({ name: "repeat-drain.wav", mimeType: "audio/wav", buffer: boundarySource(8001, 129) });
   await expect(page).toHaveURL(/\/master\/track-/u); await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled(); await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as SpeakerWindow).finiteSpeaker?.starts.length)).toBe(2);
   const starts = await page.evaluate(() => (window as SpeakerWindow).finiteSpeaker?.starts); if (!starts?.[0] || !starts[1]) throw new Error("Missing repeat epochs");

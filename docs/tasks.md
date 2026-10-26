@@ -1,5 +1,5 @@
 # Aurialis-WASM task tracker
-<!-- cspell:words automator Turbopack yyosefgamble yosefgamble ENOENT -->
+<!-- cspell:words HSTS automator Turbopack yyosefgamble yosefgamble ENOENT cpqp -->
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
@@ -8,6 +8,45 @@ The blanket “all slices verified” claim at `ade7736` is withdrawn. The earli
 QA-2 found that long converted native exports hit the fixed 60-second POST deadline and returned 408. `/api/master/render` and `/master/render` now replace that deadline, after validation, with a work budget (60 s + 2 µs per source frame + 8 µs per converted frame, at most 10 minutes) and extend the connection write deadline to match; uploads keep the 60 s base deadline plus a length-sized body read deadline (10 s + 8 MiB/s, at most 60 s). An exhausted budget returns 408 `export_timeout` naming the next step. See [limits](api.md).
 
 Evidence (local, 2026-10-26, reported by backend): `unit` budget/transfer math and ceiling, a render outliving the base deadline and server write timeout, next-step 408 text, a slow upload denied the budget, client disconnect cancelling an export. `compiled-binary-smoke` with curl on a loaded Mac (load average 120–160): 16,777,216 frames 48 → 96 kHz returned 408 after 60.0 s on `main` and 200 in 105 s with the fix; 33,554,432 frames 48 → 44.1 kHz returned 200 in 179 s; a 1 MiB body sent at 20 KiB/s was cut off after 10.6 s (400). Not yet run on CI: the full-size shapes are too slow for the 10-minute Newman job, so CI timing is unmeasured. Status: **open — awaiting merge** (`fix/v1-07-export-deadline`).
+
+## Set target loudness on dense mixes — 2026-10-26
+
+V1-01 (P0), finding GV-1 from the v1 ruling. Set target loudness, album normalization and the Elevated check measured candidates with the live algorithm 1. Its sample-peak limiter overshoots in true peak on any program that needs limiting, so dense mixes were rejected ("exceeds the measured peak ceiling") even at −14 LUFS. The browser-test fixture was a pure tone, so it never caught this. Measurement now uses the export parameters (algorithm 2, true peak on). The peak gate is strict: a measured export true peak (and, for Elevated, sample peak) above the ceiling is rejected, with no tolerance. The earlier 0.05 dB slack (`EXPORT_PEAK_TOLERANCE_DB`) is removed; the export limiter already keeps 0.2 dB of internal headroom.
+
+Evidence (local, 2026-10-26). On a deterministic dense drum-and-bass fixture (source −15.97 LUFS, −0.78 dBTP), each export downloaded through the UI and measured by the native meter:
+
+| Target | Before | After (native) | After (browser worker) |
+|---|---|---|---|
+| Streaming −14/−1 | rejected at −0.27 dBTP | input +1.95 dB; −14.18 LUFS, −1.10 dBTP | −14.03 LUFS, −1.21 dBTP |
+| Loud preset −9/−0.2 | rejected at +2.31 dBTP | input +8.87 dB; −9.01 LUFS, −0.30 dBTP | not run |
+| Custom −9/−1 (seeded custom target) | not covered | input +9.38 dB; −9.05 LUFS, −1.10 dBTP | −9.08 LUFS, −1.12 dBTP |
+| Elevated, +2 dB input | rejected | accepted, −14.5 LUFS, −1.21 dBTP | not run |
+| Album, 3 dense tracks (sources −15.96, −18.66, −22.66 LUFS), Pop, −14/−1 | not covered | −14.04, −14.06, −14.08 LUFS; each −1.21 dBTP | same values |
+
+After Set target loudness, the status line now reports the export measurement ("Preview ready. Export measures −9.01 LUFS, −0.30 dBTP. Live meters and the offline preview use the preview limiter and can read higher."). The offline-preview note carries the same caveat. Album rendering reuses the normalization measurement instead of rendering each track a second time.
+
+Tests:
+- Vitest: 534/534 with `--maxWorkers=4`. The default run timed out one unrelated MasterPlayback mount test at load average ~90; that file passed 17/17 alone. Unit tests pin the strict gate: a peak exactly at the ceiling passes, 0.001 dB over fails.
+- Playwright `mastering-targets` + `workflow-regressions` (native build): 12/12, including Streaming, Loud, Custom −9/−1 and the dense album. The dense Set-target cases also check that the status-line LUFS/dBTP match the downloaded WAV.
+- Browser worker `e2e-browser/workflows.spec.ts`: 8/8, including dense Streaming, Custom −9/−1 and the dense 3-track album.
+- The Go mirror of the browser search (`internal/browserjobs/normalize_test.go`) is removed: it hand-copied `normalizeSimpleAudio` and the dense fixture, so either copy could drift. `e2e/workflow-fixture.ts` `denseFixture` is the only copy.
+- Run the native Playwright specs after `bash scripts/build.sh`. The browser suite's global setup rebuilds the embedded assets for browser execution, and a native run on those assets silently uses the browser worker.
+
+Offline preview and live playback still use algorithm 1 (tracked as V1-10). Status: **open — awaiting merge**.
+
+## Deploy and supply-chain security — 2026-10-26
+
+Round E (Devil's Advocate) fixes, 2026-10-26: CI now runs the full `pnpm audit --audit-level high` instead of `--prod`, so wrangler (which runs with the deploy token), vitest and newman are covered. `pnpm.auditConfig.ignoreGhsas` lists the two documented newman advisories. The result is "9 moderate | 2 high (2 ignored)" with exit 0, and removing one ignore fails the gate. The static browser suite asserts the exact HSTS and Permissions-Policy values on the real Worker under `wrangler dev` before merge (14/14). Dependabot alerts and automated security fixes were enabled in repository settings.
+
+Status: **open — awaiting merge** (`fix/v1-08-deploy-security`, V1-08).
+
+- **Headers.** The native server and the Cloudflare Worker deny `payment` and `usb` in `Permissions-Policy` as well as camera, microphone and geolocation. The Worker adds `Strict-Transport-Security: max-age=63072000; includeSubDomains` without `preload`. `smoke-cloudflare.sh` asserts both exact values on each production domain.
+- **Production environment.** The `Production` environment admits deployments only from `main` through a custom branch policy; `cloudflare-deploy` and the rollback job already run in it. The Cloudflare secrets belong there as environment secrets. On 2026-10-26 the environment held no secrets and the two repository-level secrets were still present; moving them is an owner step.
+- **Pins and hygiene.** Every third-party action is pinned to a commit SHA with a version comment; `check-workflow-pins.py` enforces that and rejects `@latest`. govulncheck is `v1.9.0`, actionlint 1.7.12 comes from a SHA-256-checked tarball, and identypo is pinned to its newest commit, although its two dependencies still float.
+- **Dependencies.** Dependabot opens weekly grouped minor/patch updates for Go modules, pnpm and GitHub Actions. CI runs the full `pnpm audit --audit-level high`, development tools included, with two documented GHSA ignores in `pnpm.auditConfig`. Vitest is now 4.1.12, Wrangler 4.153.0 and Newman 6.2.3, with range-scoped overrides for `flatted`, `handlebars`, `lodash`, `node-forge` and `underscore`. High and critical advisories in the full lockfile fell from 22 to 2. Both remaining advisories are development-only under Newman (`@faker-js/faker` 5.5.3, GHSA-qxc2-j82w-r537; `node-forge` 1.4.0, GHSA-86w9-cpqp-85rv, no fixed release).
+- **New workflows.** `model-asset.yml` (daily, dispatch and pin-file pull requests) checks the Smart Split model asset with a HEAD request, its size and GitHub's asset digest against the pinned SHA-256. `steminfer-macos.yml` runs the steminfer race tests with the cgo Accelerate kernels on `macos-latest`. It is path-filtered on pull requests and runs on every push to `main`, so it is not a required check.
+
+Evidence (local, 2026-10-26, tech-writer re-run at `9d4e429`): `unit`: `go test -run TestHealthAndSecurityHeaders ./internal/server` passed with the new `Permissions-Policy` assertion. `check-workflow-pins.py` passed on five workflow files. `pnpm audit --prod --audit-level high` found no advisories. A full `pnpm audit --audit-level high` reported 2 high and 0 critical advisories, against 17 high and 5 critical for the `main` lockfile. `check-model-asset.sh` passed against the live release (HTTP 200, 176,487,688 bytes, matching digest). Not run here: actionlint, the Cloudflare smoke against deployed domains, the macOS workflow, and remote CI. The new `Strict-Transport-Security` and `Permissions-Policy` smoke assertions take effect only after a deploy from `main`.
 
 ## Export sample-rate conversion and dither — 2026-10-26
 
@@ -22,6 +61,18 @@ Evidence (local, 2026-10-26, Round E catch-up at `8ed74a6`; re-run by the tech w
 - Remote CI passed at the PR head `ca2ddd3` (run 40345818654, attempt 2). `e2e/finite-playback.spec.ts:50` failed once on shard 2 (speaker chunk time delta 0 instead of 128) and passed on rerun; it is a live-playback clock flake unrelated to export. The 44 commits after `ca2ddd3` have no remote CI yet.
 
 Open follow-ups: Release Check renders at the source rate only, and its CD guidance does not point to Export conversion; album renders and saved album masters stay at the source rate; upgrading the 4× meter's accuracy needs its own ruling; native `/api/master/render` has no memory admission for conversion buffers; the finite-playback clock flake. Status: **merged** in PR #28 on 2026-10-26.
+
+## Truthful build copy and Smart Split handoff — 2026-10-26
+
+The owner set the browser build as the v1 release target; the native single binary is a source-built fallback and the only build that runs Smart Split. No binaries are distributed, so no copy may mention a "desktop app".
+
+- **Build-aware copy.** The Home trust line said a local Go server processes audio even in the browser build. It now follows `useBrowserBuild()` (`src/lib/build-mode.ts`). Home ("planned"), Tools ("runs in the desktop app") and Split ("a few minutes") disagreed about Smart Split; all three now render the one statement in `src/lib/stem-split-copy.ts`, with the recorded native timings (the four-minute figure is an estimate).
+- **Failures.** `src/lib/stem-split.ts` maps the server's `error` code (`busy`, `queue_full`, `stems_unavailable`, `too_long`, upload rejections) and failed-job Go errors (model download/checksum, memory ceiling, timeout cancellation, expired job) to distinct plain-language copy. After a failure the model note is re-read and says when the model download failed.
+- **Phones.** Each stem player takes its own full-width line below 768 px (246 px at 320 px instead of 17–83 px with no play control).
+- **Downloads.** Stems download through a Blob as a sanitized `<title> - <Stem>.wav` (shared sanitizer in `src/lib/zip.ts`), because the server's attachment name was the bare stem ID.
+- **Round E corrections.** An unanswered `/api/stems/model` is now `reachable: false` (re-checked every 3 s) instead of "model disabled"; fetch timeouts, a job lost to a server restart and model-cache failures each have their own copy; retained-audio memory advice is build-aware; render status no longer names an engine and audio is "imported", not "uploaded"; album ZIP and master names use the shared sanitizer, which truncates by code point (no split emoji) and replaces direction overrides and other invisible format characters such as U+202E, so a title cannot disguise its extension; the speed copy states only recorded timings.
+
+Status: **open — awaiting merge** on branch `fix/v1-02-truthful-copy`.
 
 ## Faster Smart Split — 2026-10-26
 
@@ -46,7 +97,7 @@ Speed: a 20-second window took 97 s on one core; band and frame transformers now
 
 Full-song check (2026-10-25): the built binary split the 247-second BabySlakh Track00005 mix into six stems through `POST /api/separate`; the 24-bit stems summed back to the mix within 2.4e-7.
 
-Evidence (local, 2026-10-25): `go test -race ./...` passed, including a one-lane vs six-lane exactness test on the real model, download verification (tampered, truncated, oversized, wrong length, 404) and a shared first-use download that replaces a corrupt cache. Jobs tests cover named stems summing to the mix, 24-bit WAVs, failure, cancellation and the separate memory pool. Vitest (497 tests), tsc, ESLint, knip and cspell passed; Newman runs with separation disabled. Status: merged in PR #24 on 2026-10-26 with all 15 CI checks green; the `stem-model-v1` release asset must be published before the download works.
+Evidence (local, 2026-10-25): `go test -race ./...` passed, including a one-lane vs six-lane exactness test on the real model, download verification (tampered, truncated, oversized, wrong length, 404) and a shared first-use download that replaces a corrupt cache. Jobs tests cover named stems summing to the mix, 24-bit WAVs, failure, cancellation and the separate memory pool. Vitest (497 tests), tsc, ESLint, knip and cspell passed; Newman runs with separation disabled. Status: merged in PR #24 on 2026-10-26 with all 15 CI checks green. The `stem-model-v1` release asset is now published and its download verified.
 
 ## Distinct compressor types — 2026-10-25
 
@@ -494,7 +545,7 @@ The first build failed because dependencies were linked outside the isolated che
 | WASM-5 | Actual upload/library and recovery | Empty state, canonical cache, source/reactor retry and missing-source guards; actual one-POST imports and current cached reopen/503 retry/held-load cancellation passed. | corrective subset merged in PR #2; expanded controls merged in PR #3; validation and state/recovery merged in PR #4; current bridge/prediction locally verified, open — awaiting merge |
 | WASM-6 | Independent mastering controls, honest A/B and source export | A Processed default/B Original; one canonical Simple/Advanced chain; actual target normalization, view invariance and current 31-control GUI/native-export matrix passed. Recorded actual-song output and fresh pending-init Media Session/Space fixes passed. Export controls are not 31 independent live captures. | corrective subset merged in PR #2; expanded controls merged in PR #3; validation and state/recovery merged in PR #4; current bridge/prediction locally verified, open — awaiting merge |
 | WASM-7 | Source-derived Deep analysis, automation and AI repair | Five static profiles apply actual settings; unavailable analysis/automation/AI workflows remain open requirements. | open |
-| WASM-8 | Validated 2–6 instrument stems and effective handoff | Honest unavailable state; experimental frequency decomposition is not trained instrument separation. | open |
+| WASM-8 | Validated 2–6 instrument stems and effective handoff | Native build: trained BS-RoFormer separation with per-stem playback, named `<title> - <Stem>.wav` downloads and plain-language failures. Browser build: one shared availability statement, no fabricated stems. Idle sustained timing and faster plain-Go kernels remain open. | open |
 | WASM-9 | Album consistency, measured reference match, release checks | Measured Reference is merged in PR #9. Exact encoded Release artifacts passed 405 units / 107 local browser cases; exact CI/merge remain open. Bounded album WAVs do not establish full album-scale consistency or platform certification. | open |
 | WASM-10 | Required local and remote gates green | Applicable native/frontend/parity/API/packaging gates and all 39 local browser cases passed. All six source CI jobs passed at `e91d2f0`; live PR checks report newer documentation-commit status. | prior corrective checkpoint merged in PR #2; expanded controls merged in PR #3; validation and state/recovery merged in PR #4; current bridge/prediction locally verified, open — awaiting merge |
 

@@ -157,7 +157,7 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Content-Security-Policy", s.csp)
 		h.Set("Cache-Control", "no-store")
-		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
 
 		// 1. Validate Host header against DNS rebinding attacks
 		if !isAllowedLocalHost(r.Host) || !s.listenerMatches(r) {

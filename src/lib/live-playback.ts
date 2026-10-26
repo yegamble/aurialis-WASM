@@ -1,5 +1,6 @@
 import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import { engineParams, type StereoPCM } from "./browser-engine";
+import { usesBrowserAudio } from "./browser-jobs";
 import { prepareLiveAutomation, verifiedSourceVector } from "./live-automation";
 import { sameSource } from "./library";
 import type { ScriptV2 } from "./deep-mastering";
@@ -366,7 +367,9 @@ export function createLivePlayback(
   async function initialize(): Promise<void> {
     if (disposed) return;
     if (!globalThis.crossOriginIsolated || typeof SharedArrayBuffer === "undefined")
-      throw new Error("Live playback requires cross-origin isolation. Restart the local app and reload.");
+      throw new Error(usesBrowserAudio()
+        ? "Live playback requires cross-origin isolation. Reload the page; if this continues, use a current version of Chrome, Edge, Firefox or Safari."
+        : "Live playback requires cross-origin isolation. Restart the Aurialis server and reload.");
     // Called synchronously from play(), before its first await, preserving the
     // user's activation for AudioContext creation/resume in Brave and Safari.
     const context = new AudioContext({ latencyHint: "interactive" });

@@ -10,6 +10,8 @@ Single source of truth for all AI coding agents and services operating in this r
 
 Our architectural goal is a **single compiled Go binary** (`aurialis`) that embeds the Next.js frontend, serves the HTTP/JSON API, compiles and ships the client/server WASM DSP modules, orchestrates concurrent audio jobs, and runs smart AI/LLM mastering (`MasteringScript` v1), stem separation (`2–6` stems), reference track matching, album consistency mastering, and platform release checks **in-house**.
 
+**v1 release target (owner ruling):** the **browser build** served from Cloudflare ([aurialis.yosefgamble.com](https://aurialis.yosefgamble.com/), [aurialis.yosef.app](https://aurialis.yosef.app/)) is the primary product; every audio job runs on the user's device in Go/WASM Web Workers and nothing is uploaded. The native single binary is a documented, **source-built fallback** (no prebuilt binaries are distributed) for files beyond a browser's memory budget, and it is the only build that runs Smart Split. User-facing copy must say "native Aurialis build (built from source)", never "desktop app", and must branch on `usesBrowserAudio()` / `useBrowserBuild()` wherever the two builds differ.
+
 ---
 
 ## 2. Stack & Non-Negotiable Technical Constraints

@@ -27,6 +27,7 @@ type Callbacks = {
 type Instance = { controller: LivePlaybackController; callbacks: Callbacks; state: LivePlaybackState };
 const instances: Instance[] = [];
 const pcm: StereoPCM = { left: Float32Array.from({ length: 4800 }, (_, index) => 0.25 * Math.sin(index / 13)), right: new Float32Array(4800), sampleRate: 48000 };
+const exportMetrics = { integratedLufs: -9.0143, shortTermLufs: -9, truePeakDbtp: -0.3006, samplePeakDbfs: -0.44, dynamicRangeDb: 8, correlation: 1, lowBassCorrelation: 1, dcLeftDbfs: -120, dcRightDbfs: -120, clippingSamples: 0, gainReductionDb: 3 };
 
 function mount() { return render(<StoreProvider><AurialisWorkstation route="master" paramId="demo-1" /></StoreProvider>); }
 async function ready() { await waitFor(() => { expect(screen.getByRole<HTMLButtonElement>("button", { name: "A Processed" }).disabled).toBe(false); }, { timeout: 10000 }); }
@@ -200,7 +201,7 @@ describe("master live playback lifecycle", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Mid" }));
     fireEvent.change(screen.getByRole("slider", { name: "Mid gain" }), { target: { value: "5" } });
     const expected = savedTrack().advanced;
-    let resolveMeasured: ((params: AdvancedParams) => void) | undefined;
+    let resolveMeasured: ((result: Awaited<ReturnType<typeof engine.normalizeSimpleAudio>>) => void) | undefined;
     const normalize = vi.spyOn(engine, "normalizeSimpleAudio").mockReturnValue(new Promise((resolve) => { resolveMeasured = resolve; }));
     const offline = vi.spyOn(engine, "processPreview").mockResolvedValue(pcm);
     fireEvent.click(screen.getByRole("tab", { name: "simple" }));
@@ -209,8 +210,10 @@ describe("master live playback lifecycle", () => {
     const calls = vi.mocked(instance.controller.setParams).mock.calls.length;
     fireEvent.click(screen.getByRole("tab", { name: "advanced" }));
     expect(instance.controller.setParams).toHaveBeenCalledTimes(calls);
-    await act(async () => { resolveMeasured?.({ ...expected, input: 4, stereo: { ...expected.stereo, width: 199 } }); await Promise.resolve(); });
+    await act(async () => { resolveMeasured?.({ advanced: { ...expected, input: 4, stereo: { ...expected.stereo, width: 199 } }, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } }); await Promise.resolve(); });
     const prepared = { ...expected, input: 4 };
+    // The export, not the algorithm 1 preview, is what was measured; say so.
+    expect(await screen.findByText("Preview ready. Export measures −9.01 LUFS, −0.30 dBTP. Live meters and the offline preview use the preview limiter and can read higher.")).toBeTruthy();
     expect(savedTrack().advanced).toEqual(prepared);
     expect(instance.controller.setParams).toHaveBeenLastCalledWith(prepared);
     expect(offline).toHaveBeenCalledWith(pcm, prepared, expect.any(AbortSignal));
@@ -240,7 +243,7 @@ describe("master live playback lifecycle", () => {
     expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Output target" }).value).toBe("custom");
     expect(screen.getByRole("option", { name: "Custom (−12 LUFS)" })).toBeTruthy();
     expect(screen.getByText(/Current target: −12 LUFS · ceiling −0.7 dBFS/)).toBeTruthy();
-    const normalize = vi.spyOn(engine, "normalizeSimpleAudio").mockResolvedValue(custom);
+    const normalize = vi.spyOn(engine, "normalizeSimpleAudio").mockResolvedValue({ advanced: custom, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } });
     vi.spyOn(engine, "processPreview").mockResolvedValue(pcm);
     fireEvent.click(screen.getByRole("button", { name: "Set target loudness" }));
     await waitFor(() => { expect(normalize).toHaveBeenCalledWith(expect.any(Blob), custom, -12, expect.any(AbortSignal)); });

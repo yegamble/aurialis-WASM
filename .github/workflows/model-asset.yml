@@ -1,0 +1,33 @@
+name: Smart Split Model Asset
+
+# Smart Split downloads its model from a GitHub release at first use. If that
+# asset is deleted, renamed or replaced, every new install loses stem
+# separation, and nothing in CI would notice. This checks the live asset
+# against the pins compiled into internal/audio/steminfer.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - internal/audio/steminfer/model.go
+      - internal/audio/steminfer/weights.go
+      - .github/scripts/check-model-asset.sh
+      - .github/workflows/model-asset.yml
+
+permissions:
+  contents: read
+
+jobs:
+  model-asset:
+    name: Model release asset matches pinned size and SHA-256
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: HEAD the model URL and compare the release digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/check-model-asset.sh

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Blob as NativeBlob } from "node:buffer";
-import { albumEntryNames, crc32, createStoredZip } from "../zip";
+import { albumEntryNames, crc32, createStoredZip, safeFileBaseName } from "../zip";
 
 afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -45,6 +45,14 @@ describe("stored album ZIP", () => {
     await expect(createStoredZip([{ name: "a.wav", blob }, { name: "a.wav", blob }])).rejects.toThrow("unique");
     await expect(createStoredZip([{ name: "../a.wav", blob }])).rejects.toThrow("relative");
     await expect(createStoredZip([{ name: "/a.wav", blob }])).rejects.toThrow("relative");
+  });
+
+  it("never splits a surrogate pair and drops bidi and invisible format controls", () => {
+    const long = safeFileBaseName(`${"a".repeat(119)}\u{1F3B5}tail`, "Track");
+    expect(long).toBe(`${"a".repeat(119)}\u{1F3B5}`);
+    expect(safeFileBaseName(`${"a".repeat(120)}\u{1F3B5}`, "Track")).toBe("a".repeat(120));
+    expect(safeFileBaseName("\u202Egnp.exe", "Track")).toBe("gnp.exe");
+    expect(safeFileBaseName("mix\u200B\u2066final\u2069\uFEFF", "Track")).toBe("mix-final-");
   });
 
   it("numbers titles in running order with filesystem-safe names", () => {

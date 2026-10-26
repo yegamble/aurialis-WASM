@@ -34,8 +34,8 @@ beforeEach(() => {
     const observed = { update: vi.fn(owned.update), dispose: vi.fn(owned.dispose) };
     owners.push(observed); return observed;
   });
-  vi.spyOn(engine, "normalizeSimpleAudio").mockImplementation((_source, advanced) => Promise.resolve(advanced));
-  vi.spyOn(engine, "measureAudio").mockResolvedValue({ sampleRate: 48000, frames: 48000, duration: 1, beforeMetrics: metrics, afterMetrics: metrics });
+  vi.spyOn(engine, "normalizeSimpleAudio").mockImplementation((_source, advanced) => Promise.resolve({ advanced, measurement: { sampleRate: 48000, frames: 48000, duration: 1, beforeMetrics: metrics, afterMetrics: metrics } }));
+  vi.spyOn(engine, "measureAudio").mockRejectedValue(new Error("Album render must reuse the normalization measurement"));
   vi.spyOn(engine, "serverRender").mockResolvedValue(wav);
 });
 afterEach(() => { cleanup(); for (const owner of owners) owner.dispose(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });

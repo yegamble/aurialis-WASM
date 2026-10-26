@@ -5,8 +5,8 @@ import { fixture } from "./audio-fixture";
 /** Deterministic 48 kHz 16-bit stereo drum-and-bass loop, by default at a
  * -1.3 dBFS sample peak (≈ -16 LUFS, ≈ -0.8 dBTP): pitched kick and click, noise snare, stereo
  * noise hats and harmonic bass. Its full-band transients overshoot a sample-peak
- * limiter between samples, which a pure tone never does. Mirrors denseProgram in
- * internal/browserjobs/normalize_test.go; never uses application DSP. */
+ * limiter between samples, which a pure tone never does. The single source of
+ * the dense fixture for native and browser e2e; never uses application DSP. */
 export function denseFixture(seconds = 8, peakDbfs = -1.3): Buffer {
   const rate = 48000;
   const frames = rate * seconds;

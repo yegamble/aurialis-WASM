@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -72,6 +73,11 @@ type Server struct {
 	handler http.Handler
 	uploads chan struct{}
 	csp     string
+	// postTimeout and exportBudget size request deadlines (deadline.go);
+	// exportStarted, nil outside tests, runs once an export budget applies.
+	postTimeout   time.Duration
+	exportBudget  func(frames, sourceRate, outputRate int) time.Duration
+	exportStarted func(context.Context)
 }
 
 // New constructs a new Aurialis HTTP server and starts the worker pool.
@@ -85,6 +91,9 @@ func New(cfg Config) *Server {
 		jobs:    jobs.NewManager(cfg.Workers),
 		uploads: make(chan struct{}, 1),
 		csp:     buildCSP(cfg.StaticFS),
+
+		postTimeout:  postRequestTimeout,
+		exportBudget: exportBudget,
 	}
 	s.jobs.SetSeparator(cfg.Separator)
 
@@ -149,7 +158,7 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("Content-Security-Policy", s.csp)
 		h.Set("Cache-Control", "no-store")
-		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()")
 
 		// 1. Validate Host header against DNS rebinding attacks
 		if !isAllowedLocalHost(r.Host) || !s.listenerMatches(r) {
@@ -185,9 +194,9 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 				writeErrorJSON(w, http.StatusServiceUnavailable, "busy", "One audio request is already running; retry after it completes")
 				return
 			}
-			ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+			var cancel context.CancelFunc
+			r, cancel = s.withPostDeadline(w, r)
 			defer cancel()
-			r = r.WithContext(ctx)
 		}
 
 		next.ServeHTTP(w, r)
@@ -367,7 +376,7 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request, exp
 			return uploadReadError(w, err)
 		}
 		if r.Context().Err() != nil {
-			writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio request canceled")
+			writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio upload was canceled or ran past its upload deadline; retry, or send a smaller file")
 			return nil, false
 		}
 	}
@@ -388,9 +397,14 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request, exp
 
 func uploadReadError(w http.ResponseWriter, err error) (*audio.Buffer, bool) {
 	var limitErr *http.MaxBytesError
-	if errors.As(err, &limitErr) {
+	var netErr net.Error
+	switch {
+	case errors.As(err, &limitErr):
 		writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Uploaded request exceeds size limit")
-	} else {
+	case errors.Is(err, os.ErrDeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()):
+		writeErrorJSON(w, http.StatusRequestTimeout, "upload_timeout",
+			"The upload was too slow and timed out; retry, or export from a less busy machine or connection")
+	default:
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_multipart", "Malformed or incomplete multipart upload")
 	}
 	return nil, false
@@ -589,6 +603,16 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_export_options", exportErr.Error())
 		return
 	}
+	outputRate := buf.SampleRate
+	if export.Converts(buf.SampleRate) {
+		outputRate = export.SampleRate
+	}
+	r, cancelExport, inBudget := s.withExportBudget(w, r, s.exportBudget(len(buf.Left), buf.SampleRate, outputRate))
+	defer cancelExport()
+	if !inBudget {
+		writeExportCanceled(w, r, "Audio upload")
+		return
+	}
 	deliveredDither := export.DitherBits(bitDepth, params.DitherBits)
 	params.DitherBits = export.RenderDitherBits(buf.SampleRate, bitDepth, params.DitherBits)
 	if script != nil {
@@ -597,7 +621,7 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 
 	beforeMetrics, measureErr := dsp.MeasureStereoContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate))
 	if measureErr != nil {
-		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio measurement canceled or timed out")
+		writeExportCanceled(w, r, "Audio measurement")
 		return
 	}
 	// A bypass render is the reconstructed source, including finite float
@@ -613,7 +637,7 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		}
 		if renderErr != nil {
 			if r.Context().Err() != nil {
-				writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio rendering canceled or timed out")
+				writeExportCanceled(w, r, "Audio rendering")
 			} else {
 				writeErrorJSON(w, http.StatusBadRequest, "invalid_script", renderErr.Error())
 			}
@@ -621,13 +645,13 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if r.Context().Err() != nil {
-		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio rendering canceled or timed out")
+		writeExportCanceled(w, r, "Audio rendering")
 		return
 	}
 	outL, outR, afterMetrics, outRate, convertErr := mastering.ConvertExportContext(r.Context(), outL, outR, buf.SampleRate, deliveredDither, params, afterMetrics, export)
 	if convertErr != nil {
 		if r.Context().Err() != nil {
-			writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Sample-rate conversion canceled or timed out")
+			writeExportCanceled(w, r, "Sample-rate conversion")
 		} else {
 			writeErrorJSON(w, http.StatusBadRequest, "invalid_export_options", convertErr.Error())
 		}
@@ -654,7 +678,7 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 	if params.Bypass && bitDepth == 32 && outRate == buf.SampleRate {
 		identity, identityErr := mastering.SourceIdentityContext(r.Context(), buf)
 		if identityErr != nil {
-			writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio source identity canceled or timed out")
+			writeExportCanceled(w, r, "Audio source identity")
 			return
 		}
 		var metadataErr error
@@ -674,9 +698,10 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Context().Err() != nil {
-		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio encoding canceled or timed out")
+		writeExportCanceled(w, r, "Audio encoding")
 		return
 	}
+	setConnDeadline(http.NewResponseController(w).SetWriteDeadline, transferBudget(int64(len(wavBytes))))
 	w.Header().Set("Content-Type", "audio/wav")
 	w.Header().Set("Content-Length", strconv.Itoa(len(wavBytes)))
 	if sourceMetricsJSON != nil {

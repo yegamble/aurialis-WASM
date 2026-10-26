@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fixture, decode } from "../e2e/audio-fixture";
+import { denseFixture } from "../e2e/workflow-fixture";
 import { engineParams, exportParams, exportScript } from "../src/lib/engine-params";
 import type { AdvancedParams, ExportDelivery, MeasuredAudioMetrics, Track } from "../src/lib/types";
 import type { ReleaseReport } from "../src/lib/release-review";
@@ -19,7 +20,7 @@ function observeNetwork(context: BrowserContext) {
 }
 async function upload(page: Page, source: Buffer, name: string) {
   await page.goto("/");
-  await page.getByLabel("Upload audio file").setInputFiles({ name, mimeType: "audio/wav", buffer: source });
+  await page.getByLabel("Import audio file").setInputFiles({ name, mimeType: "audio/wav", buffer: source });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
   const id = new URL(page.url()).pathname.split("/")[2];
@@ -148,7 +149,7 @@ test("album WAVs and release measurements run on the device without an audio ser
   await page.getByRole("button", { name: "Download all as ZIP", exact: true }).click();
   const zipped = await zipping, zipPath = await zipped.path();
   if (!zipPath) throw new Error("Missing local album ZIP");
-  expect(zipped.suggestedFilename()).toBe("Untitled-sequence-1-album-masters.zip");
+  expect(zipped.suggestedFilename()).toBe("Untitled sequence 1 - album masters.zip");
   const archive = await readFile(zipPath), name = "01 private album source.wav";
   expect(archive.readUInt32LE(0)).toBe(0x04034b50);
   expect(archive.subarray(30, 30 + Buffer.byteLength(name)).toString("utf8")).toBe(name);
@@ -170,6 +171,96 @@ test("Release retains native-equivalent final 16/24/32-bit WAVs and exact encode
     await page.getByRole("combobox", { name: "Review encoding", exact: true }).selectOption(String(bitDepth));
     const native = await nativeRender(info, source, advanced, bitDepth);
     await reviewEncoded(page, info, native.audio, String(bitDepth));
+  }
+  await assertPrivate(info, requests);
+});
+
+/** Native BS.1770 loudness and 4x true peak of a downloaded WAV, unprocessed. */
+async function nativeLevel(info: TestInfo, wav: Buffer, label: string): Promise<MeasuredAudioMetrics> {
+  const directory = info.outputPath(`native-meter-${label}`);
+  await mkdir(directory, { recursive: true }); await writeFile(directory + "/source.wav", wav);
+  await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", params: '{"bypass":true}', format: "json" }));
+  execFileSync("go", ["test", "./internal/browserjobs", "-run", "^TestWriteBrowserOracle$", "-count=1"], { env: { ...process.env, AURIALIS_BROWSER_ORACLE_DIR: directory }, stdio: "pipe" });
+  return (JSON.parse(await readFile(directory + "/native.json", "utf8")) as { afterMetrics: MeasuredAudioMetrics }).afterMetrics;
+}
+
+// Streaming is the Pop default; Custom keeps the Loud −9 LUFS target under a
+// −1 dBTP ceiling, seeded the way a saved custom/profile project carries it.
+for (const { name, targetLufs, ceiling } of [{ name: "Streaming", targetLufs: -14, ceiling: -1 }, { name: "Custom", targetLufs: -9, ceiling: -1 }]) {
+  test(`Set target loudness on a dense program converges in the browser worker and exports at ${String(targetLufs)} LUFS / ${String(ceiling)} dBTP`, async ({ page, context }, info) => {
+    test.setTimeout(180_000);
+    const requests = observeNetwork(context);
+    const id = await upload(page, denseFixture(8), "private-dense-source.wav");
+    await page.getByRole("tab", { name: "simple", exact: true }).click();
+    await page.getByRole("button", { name: "Pop", exact: true }).click();
+    await expect.poll(async () => (await settings(page, id)).limiter).toMatchObject({ enabled: true, targetLufs: -14, ceiling: -1 });
+    if (name === "Custom") {
+      await page.getByRole("combobox", { name: "Output target", exact: true }).selectOption("Loud");
+      await expect.poll(async () => (await settings(page, id)).limiter.targetLufs).toBe(targetLufs);
+      await page.evaluate(({ trackId, ceiling: next }) => {
+        const state = JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as { tracks: Track[] };
+        state.tracks = state.tracks.map((track) => track.id === trackId
+          ? { ...track, mode: "simple", target: "Loud", simpleCustom: true, advanced: { ...track.advanced, limiter: { ...track.advanced.limiter, ceiling: next } } }
+          : track);
+        localStorage.setItem("aurialis-state-v1", JSON.stringify(state));
+      }, { trackId: id, ceiling });
+      await page.reload();
+      await expect(page.getByRole("combobox", { name: "Output target", exact: true })).toHaveValue("custom", { timeout: 30_000 });
+      await expect.poll(async () => (await settings(page, id)).limiter).toMatchObject({ enabled: true, targetLufs, ceiling });
+    }
+    const before = (await settings(page, id)).input;
+    const apply = page.getByRole("button", { name: "Set target loudness", exact: true });
+    await expect(apply).toBeEnabled({ timeout: 30_000 });
+    await apply.click();
+    await expect(page.getByText(/^Preview ready\. Export measures −\d+\.\d{2} LUFS, −\d+\.\d{2} dBTP\./u)).toBeVisible({ timeout: 120_000 });
+    await expect.poll(async () => (await settings(page, id)).input).not.toBe(before);
+    await page.getByRole("button", { name: "Export", exact: true }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("group", { name: "Bit depth", exact: true }).getByRole("button", { name: "24-bit PCM", exact: true }).click();
+    const downloading = page.waitForEvent("download");
+    await dialog.getByRole("button", { name: "Render & download WAV", exact: true }).click();
+    const path = await (await downloading).path();
+    if (!path) throw new Error("Missing browser-local dense export");
+    const afterMetrics = await nativeLevel(info, await readFile(path), `dense-${name}`);
+    await info.attach(`dense-browser-export-${name}`, { body: JSON.stringify({ input: (await settings(page, id)).input, afterMetrics }, null, 2), contentType: "application/json" });
+    expect(Math.abs(afterMetrics.integratedLufs - targetLufs)).toBeLessThanOrEqual(0.2);
+    expect(afterMetrics.truePeakDbtp).toBeLessThanOrEqual(ceiling);
+    await assertPrivate(info, requests);
+  });
+}
+
+// Album normalization runs the same export-parameter search per track in the
+// worker. Dense programs at different levels all need limiting to reach −14.
+test("a dense 3-track album renders every browser-local master at −14 LUFS within the −1 dBTP ceiling", async ({ page, context }, info) => {
+  test.setTimeout(300_000);
+  const requests = observeNetwork(context);
+  const tracks = [{ title: "private dense album 1", peak: -1.3 }, { title: "private dense album 2", peak: -4 }, { title: "private dense album 3", peak: -8 }];
+  for (const track of tracks) {
+    await upload(page, denseFixture(6, track.peak), `${track.title.replaceAll(" ", "-")}.wav`);
+    await page.getByRole("tab", { name: "simple", exact: true }).click();
+    await page.getByRole("button", { name: "Pop", exact: true }).click();
+  }
+  await page.goto("/albums");
+  await page.getByRole("button", { name: "New album", exact: true }).click();
+  await page.getByRole("link", { name: /Untitled sequence 1/u }).click();
+  for (const track of tracks) await page.getByRole("button", { name: track.title, exact: true }).click();
+  await page.getByRole("button", { name: "Render album masters", exact: true }).click();
+  const levels: MeasuredAudioMetrics[] = [];
+  for (const [index, track] of tracks.entries()) {
+    const ready = page.getByRole("button", { name: `Download ${track.title}`, exact: true });
+    await expect(ready).toBeVisible({ timeout: 240_000 });
+    const downloading = page.waitForEvent("download");
+    await ready.click();
+    const path = await (await downloading).path();
+    if (!path) throw new Error("Missing browser-local album master");
+    const wav = await readFile(path);
+    expect(decode(wav).bits).toBe(24);
+    levels.push(await nativeLevel(info, wav, `album-${String(index + 1)}`));
+  }
+  await info.attach("dense-browser-album-levels", { body: JSON.stringify(levels, null, 2), contentType: "application/json" });
+  for (const level of levels) {
+    expect(Math.abs(level.integratedLufs + 14)).toBeLessThanOrEqual(0.2);
+    expect(level.truePeakDbtp).toBeLessThanOrEqual(-1);
   }
   await assertPrivate(info, requests);
 });

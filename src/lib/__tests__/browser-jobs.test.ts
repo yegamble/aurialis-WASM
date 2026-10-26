@@ -314,3 +314,18 @@ describe("device-local browser audio transport", () => {
   });
 
 });
+
+describe("retained-audio memory advice", () => {
+  it.each([
+    { mode: "browser", hostname: "aurialis.yosefgamble.com", advice: "use the native Aurialis build", absent: "Download or discard" },
+    { mode: "native loopback", hostname: "127.0.0.1", advice: "Download or discard finished audio", absent: "native Aurialis build" },
+  ])("gives $mode advice when the tab's audio budget is full", async ({ hostname, advice, absent }) => {
+    vi.stubEnv("NEXT_PUBLIC_AURIALIS_EXECUTION", "native");
+    vi.stubGlobal("location", { hostname, origin: `http://${hostname}` });
+    const { reserveBrowserAudioMemory } = await import("../browser-jobs");
+    const failure = (() => { try { reserveBrowserAudioMemory(4 * 1024 * 1024 * 1024); return null; } catch (error) { return error; } })();
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toContain(advice);
+    expect((failure as Error).message).not.toContain(absent);
+  });
+});

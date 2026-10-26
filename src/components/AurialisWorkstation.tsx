@@ -6,6 +6,7 @@ import {
   measureAudio,
   trackMetrics,
   normalizeSimpleAudio,
+  exportLevelSummary,
   processPreview,
   previewWAV,
   renderDelivery,
@@ -43,7 +44,7 @@ import {
   mapProfileToDSP,
 } from "@/lib/audio-dsp";
 import { saveAudio, getAudio, discardStagedAudio, deleteAudio, newAudioAssetId, loadAlbumMasters, saveAlbumMasters, deleteAlbumMasters, ensureStorageFor, type SavedAlbumMasters } from "@/lib/db";
-import { albumEntryNames, createStoredZip } from "@/lib/zip";
+import { albumEntryNames, createStoredZip, safeFileBaseName } from "@/lib/zip";
 import { profiles, useStore } from "@/lib/store";
 import type {
   Album,
@@ -90,6 +91,8 @@ import { appliedRevisionKey } from "@/lib/deep-mastering";
 import type { ScriptV2 } from "@/lib/deep-mastering";
 import { DeepTimeline } from "./shared/DeepTimeline";
 import { StemSplitPanel } from "./shared/StemSplitPanel";
+import { processingCopy, useBrowserBuild } from "@/lib/build-mode";
+import { STEM_SPLIT_PITCH, stemSplitAvailability } from "@/lib/stem-split-copy";
 import { timeConstantMs } from "@/lib/control-conventions";
 
 
@@ -347,6 +350,7 @@ export function AurialisWorkstation({
 
 function HomeView() {
   const { state, dispatch } = useStore();
+  const browser = useBrowserBuild();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState("");
@@ -419,10 +423,7 @@ function HomeView() {
           </p>
           <div className="hero-trust">
             <Icon name="headphones" />
-            <span>
-              Local by default. Audio is processed by your local Go server and
-              browser.
-            </span>
+            <span>{processingCopy(browser)}</span>
           </div>
         </div>
         <div
@@ -449,7 +450,7 @@ function HomeView() {
             multiple
             accept={SOURCE_ACCEPT}
             hidden
-            aria-label="Upload audio file"
+            aria-label="Import audio file"
             onChange={(event) => {
               const files = Array.from(event.currentTarget.files ?? []);
               event.currentTarget.value = "";
@@ -516,7 +517,7 @@ function HomeView() {
             number="02"
             icon="scissors"
             title="Split"
-            copy="Instrument separation is planned. It is not available in this build."
+            copy={`${STEM_SPLIT_PITCH} ${stemSplitAvailability(browser)}`}
           />
           <WorkflowCard
             number="03"
@@ -787,7 +788,7 @@ function MasterView({ trackId }: { trackId: string }) {
     };
   }, [track?.id, track?.sourceRevision, sourceAttempt]);
 
-  async function renderPreview(params: AdvancedParams = track?.advanced ?? createDefaultAdvancedParams(), pending?: AbortController) {
+  async function renderPreview(params: AdvancedParams = track?.advanced ?? createDefaultAdvancedParams(), pending?: AbortController, ready = "Preview ready. Playback uses the shared Go DSP engine.") {
     if (!track || !source) return;
     if (!pending) renderAbort.current?.abort();
     const controller = pending ?? new AbortController();
@@ -795,7 +796,7 @@ function MasterView({ trackId }: { trackId: string }) {
     renderSettings.current = appliedRevisionKey(track) ?? masteringSettingsKey(params);
     setProcessing(true);
     setMessage(
-      track.deepMastering?.applied ? "Rendering the applied script with the common native Go engine…" : "Rendering the uploaded audio with the shared Go WebAssembly engine…",
+      track.deepMastering?.applied ? "Rendering the applied script on this device…" : "Rendering the imported audio on this device…",
     );
     try {
       const pcm = track.deepMastering?.applied && sourceBlob
@@ -805,7 +806,7 @@ function MasterView({ trackId }: { trackId: string }) {
       setPreview(pcm);
       setRenderedKey(appliedRevisionKey(track) ?? masteringSettingsKey(params));
       live.current?.setBypass(false);
-      setMessage(track.deepMastering?.applied ? "Preview ready. The applied script uses the common Go DSP engine." : "Preview ready. Playback uses the shared Go DSP engine.");
+      setMessage(track.deepMastering?.applied ? "Preview ready. The applied script uses the common Go DSP engine." : ready);
       dispatch({
         type: "UPDATE_TRACK",
         id: track.id,
@@ -833,13 +834,13 @@ function MasterView({ trackId }: { trackId: string }) {
     setProcessing(true);
     setMessage("Measuring the current settings and requested loudness…");
     try {
-      const measured = await normalizeSimpleAudio(sourceBlob, expected, expected.limiter.targetLufs, controller.signal);
+      const { advanced: measured, measurement } = await normalizeSimpleAudio(sourceBlob, expected, expected.limiter.targetLufs, controller.signal);
       if (controller.signal.aborted) return;
       if (canonicalSettings.current !== expected) { setMessage("Settings changed. Set target loudness again."); return; }
       const next = { ...expected, input: measured.input };
       renderSettings.current = masteringSettingsKey(next);
       dispatch({ type: "APPLY_NORMALIZED_GAIN", id: track.id, expected, input: next.input });
-      await renderPreview(next, controller);
+      await renderPreview(next, controller, `Preview ready. ${exportLevelSummary(measurement.afterMetrics)}`);
     } catch (error) {
       if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Could not prepare this master.");
     } finally {
@@ -853,7 +854,7 @@ function MasterView({ trackId }: { trackId: string }) {
     renderAbort.current = controller;
     setProcessing(true);
     renderSettings.current = settingsKey;
-    setMessage("Rendering WAV from the uploaded source…");
+    setMessage("Rendering WAV from the imported source…");
     try {
       const outputRate = deliveryRate === "source" ? track.sampleRate : deliveryRate;
       const delivery: ExportDelivery = {
@@ -1063,7 +1064,7 @@ function MasterView({ trackId }: { trackId: string }) {
               {track.deepMastering?.applied
                 ? "Playback and export use the acknowledged applied revision. Draft edits wait for Apply; pending baseline edits wait for acknowledgment."
                 : fresh
-                  ? "Offline preview matches your settings. Live playback updates independently."
+                  ? "Offline preview matches your settings. It and live meters use the preview limiter, so peaks can read higher than the export. Live playback updates independently."
                   : track.mode === "simple"
                     ? "Simple and Advanced share these settings. Set target loudness to measure the requested level; export uses the current settings."
                     : "Playback responds to your controls immediately. Render an offline preview for a full-track check; export always uses current settings."}
@@ -1792,8 +1793,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                 if (track.deepMastering?.applied) throw new Error("Detach Deep automation in the master before applying album normalization. Your applied script is preserved.");
                 const file = await getAudio(audioKey(track));
                 if (!file) throw new Error(`The source for “${track.title}” is missing. Import it again.`);
-                const advanced = await normalizeSimpleAudio(file, track.advanced, -14, controller.signal);
-                const measurement = await measureAudio(file, exportParams(advanced), controller.signal);
+                const { advanced, measurement } = await normalizeSimpleAudio(file, track.advanced, -14, controller.signal);
                 const expectedBytes = totalBytes + measurement.frames * 6 + 44;
                 if (durable === false && expectedBytes > 128 * 1024 * 1024) throw new Error("Browser storage is unavailable and the rendered album exceeds the 128 MiB in-memory cache. Allow site storage, or render a smaller sequence.");
                 // Claim the final retained allocation before rendering; no gap while
@@ -1861,12 +1861,12 @@ function AlbumView({ albumId }: { albumId: string }) {
           if (blobs.some((blob) => blob === undefined)) throw new Error("A saved album master is missing. Render the album again.");
           const names = albumEntryNames(artifacts.map((file) => file.title));
           const zip = await createStoredZip(blobs.map((blob, index) => ({ name: names.at(index) ?? `${String(index + 1)}.wav`, blob: blob ?? new Blob() })));
-          downloadLocalBlob(zip, `${album.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-album-masters.zip`, { charge: !artifacts.every((file) => file.durable) });
+          downloadLocalBlob(zip, `${safeFileBaseName(album.title, "Aurialis album")} - album masters.zip`, { charge: !artifacts.every((file) => file.durable) });
         }); }}>Download all as ZIP</Button>
         {artifacts.map((file) => <Button key={file.id} variant="secondary" icon={<Icon name="arrow-down-to-line" />} onClick={() => { download(async () => {
           const blob = await file.blob();
           if (!blob) throw new Error("This saved album master is missing. Render the album again.");
-          downloadLocalBlob(blob, `${file.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-album-master.wav`, { charge: !file.durable });
+          downloadLocalBlob(blob, `${safeFileBaseName(file.title, "Track")} - master.wav`, { charge: !file.durable });
         }); }}>Download {file.title}</Button>)}
       </section>}
       <div className="flex flex-wrap gap-2">
@@ -2027,6 +2027,7 @@ function AlbumView({ albumId }: { albumId: string }) {
 
 function ToolsView() {
   const { state } = useStore();
+  const browser = useBrowserBuild();
   const first = state.tracks[0];
   const targetId = first?.id ?? "placeholder";
   return (
@@ -2041,7 +2042,7 @@ function ToolsView() {
           icon="scissors"
           eyebrow="Separation"
           title="Smart stem splitter"
-          copy="Split a song into 2 to 6 stems with a trained model. Runs in the desktop app."
+          copy={`${STEM_SPLIT_PITCH} ${stemSplitAvailability(browser)}`}
           href={`/split/${targetId}`}
         />
         <ToolCard

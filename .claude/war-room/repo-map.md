@@ -38,7 +38,8 @@ Never read `.claude/war-room/ledger.md` (180 KB), `docs/tasks.md` (198 KB), `doc
 These are product requirements, not claims that every workflow is enabled or certified. Current implemented scope and evidence are in `docs/tasks.md`.
 
 1. **Single Self-Contained Go + Next.js + WASM Binary**:
-   - Production compiles into a single Go binary (`aurialis`) that serves the Next.js UI, `.wasm` modules, AudioWorklets, and JSON/multipart APIs in-house without requiring an external Python FastAPI container at runtime.
+   - The v1 product is the **browser build** on Cloudflare: static Next.js UI plus Go/WASM Web Workers, all audio processed on the device and nothing uploaded (AGENTS.md §1 ruling).
+   - The native single Go binary (`aurialis`) is a source-built fallback (no prebuilt binaries are distributed) that serves the same UI, `.wasm` modules, AudioWorklets and JSON/multipart APIs on loopback without an external Python FastAPI container, and is the only build that runs Smart Split.
    - All responses serving the app shell and worklets must include `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` so `SharedArrayBuffer` and WASM `AudioWorklet` pipelines work in Chrome, Firefox, and Safari.
 2. **Latest Node, Next.js 16, and `pnpm` Only**:
    - Node `26.12.0` (`>=24.0.0`), `pnpm@10.33.0`, Next.js `^16.4.2`, React 19, TypeScript 5.8+, Go `1.26.10`.

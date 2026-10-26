@@ -41,7 +41,7 @@ function maxError(actual: ArrayLike<number>, expected: ArrayLike<number>) {
   return error;
 }
 async function upload(page: Page, file: Buffer, name: string) {
-  await page.goto("/"); await page.getByLabel("Upload audio file").setInputFiles({ name, mimeType: "audio/wav", buffer: file });
+  await page.goto("/"); await page.getByLabel("Import audio file").setInputFiles({ name, mimeType: "audio/wav", buffer: file });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
   return new URL(page.url()).pathname.split("/")[2] ?? "";

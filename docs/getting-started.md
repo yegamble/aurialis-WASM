@@ -3,15 +3,15 @@
 
 Bring in a WAV, find a direction you like, and download a new version. Your first session can stay entirely in **Simple** mode.
 
-Need to launch Aurialis first? Follow the [README setup steps](../README.md#run-the-studio). Keep the local server running while you work.
+Open **[aurialis.yosefgamble.com](https://aurialis.yosefgamble.com/)** (or [aurialis.yosef.app](https://aurialis.yosef.app/)) in a current browser. There is nothing to install or sign in to: audio is processed on your device with WebAssembly and never uploaded. Running the native build you compiled from source instead? See [the native build appendix](#appendix-the-native-build) for the differences.
 
 ## 1. Bring in a track
 
-On **Home**, drop WAV files onto the upload area, paste audio files from the clipboard, or select **Choose audio**. The library starts empty; there are no bundled songs.
+On **Home**, drop audio files onto the import area, paste audio files from the clipboard, or select **Choose audio**. The library starts empty; there are no bundled songs.
 
 Use a mono or stereo WAV, AIFF, FLAC or MP3 at **8–192 kHz**. WAV and AIFF can be 8/16/24/32-bit integer PCM or 32-bit float, including the extensible WAV header most DAWs write for 24-bit and high-rate files. Mono is converted to stereo. OGG, M4A, AAC and compressed AIFF-C need conversion first.
 
-Aurialis imports selected files one at a time. It validates each file on the local Go server, rebuilds its audio into a clean stereo-float WAV, prepares a waveform, and saves that reconstructed source in this browser. Invalid files are skipped with a reason. Select **Cancel import** to stop the queue; already imported projects remain in your Library. Keep your original files separately: the stored versions do not retain the original container metadata.
+Aurialis imports selected files one at a time. It validates each file on your device (in a browser Web Worker, or through the native build's local server), rebuilds its audio into a clean stereo-float WAV, prepares a waveform, and saves that reconstructed source in this browser. Invalid files are skipped with a reason. Select **Cancel import** to stop the queue; already imported projects remain in your Library. Keep your original files separately: the stored versions do not retain the original container metadata.
 
 The file cap is **256 MiB plus a 44-byte WAV header**, with at most **33,554,432 decoded frames**. That is about **11 min 39 s at 48 kHz**, **12 min 40 s at 44.1 kHz**, or **5 min 49 s at 96 kHz**; the file-size limit may shorten this. In the browser, memory admission may reject long tracks sooner on phones, 4 GB devices, and desktop Safari or Firefox (about 9½ minutes at 48 kHz there). Longer recordings need a shorter selection or a lower sample rate before import. Lowering bit depth alone does not increase the frame limit.
 
@@ -63,7 +63,9 @@ Export renders the current processing settings from the reconstructed source. Wi
 | **Albums** | Create and order a sequence, then select **Render album masters** to measure and render individual 24-bit WAVs. Download them before leaving the page. |
 | **Reference match** in **Tools** | Measure your track against another imported recording, review a bounded EQ and optional width proposal, then explicitly apply it. |
 | **Release check** in **Tools** | Choose one of six destination profiles and an encoding, then review the exact rendered WAV. Download that measured file and its JSON report; saved reports retain measurements only. This is guidance, not platform certification. |
-| **Smart stem splitter** | Inspect the intended layout. Instrument separation, stem playback and stem downloads are unavailable. |
+| **Smart stem splitter** | In the native build, split a song into 2–6 stems, play each one and download it as `<title> - <Stem>.wav`. In the browser, inspect the layouts only. See the status below. |
+
+**Smart Split status:** Smart Split runs only in the native Aurialis build, which you build from source; the browser build cannot separate stems. On an idle Apple-silicon Mac (8-core M2) one 20-second window took about 32 seconds; at that rate a four-minute song would take roughly 15 minutes, but no idle full-song timing has been recorded, and a busy machine took up to about three minutes per window. On Linux and Windows, plain Go did not finish one 20-second window in 30 minutes, so songs will generally not finish within the 90-minute job limit.
 
 Rendered album masters are saved in your browser and survive reloads. Download each WAV, or choose **Download all as ZIP** for one numbered archive in running order. Changing the sequence or processing settings makes saved masters stale; render again to replace them. Before rendering, Aurialis checks that the browser has room for every master. Without browser storage, masters use a **128 MiB in-memory cache** and are lost when you leave the album page. **Delete album** removes the album and its saved masters but keeps your projects. Album rendering does not establish full album-consistency mastering.
 
@@ -140,9 +142,9 @@ Tap **Restart track** to return to the beginning. The forward control opens the 
 
 ## Where your work lives
 
-Audio processing uses the browser and your local Go server. The standard app does not require a cloud audio service or an account. Build-time dependency downloads are separate from audio processing.
+Audio processing happens on your device: in the browser build, Go/WebAssembly workers in this tab do all the work and nothing is uploaded. The site serves only the app and its audio-engine files, and needs no account.
 
-Reconstructed audio lives in **IndexedDB**, the browser's local database. Project settings and album metadata live in **localStorage**, another browser storage area. Use the same browser profile and local address to return to that workspace. Changing the host or port uses a different browser storage location.
+Reconstructed audio lives in **IndexedDB**, the browser's local database. Project settings and album metadata live in **localStorage**, another browser storage area. Use the same browser profile and address to return to that workspace. A different address (the other public domain, or the native build's local address and port) uses a different browser storage location.
 
 Browser storage is not a backup: clearing site data, switching profiles, or storage failure can make your work unavailable. Library shows storage estimates when available and offers **Request persistent storage**; the browser may decline it, and permission does not replace a backup.
 
@@ -152,9 +154,8 @@ If Aurialis warns that audio is available only in this tab, export before closin
 
 | What you see | What to try |
 | --- | --- |
-| The local page will not open | Check that `./aurialis` is still running and use the address it is serving. See [startup and configuration](development.md). |
-| “Failed to fetch” or a local-server connection error | Confirm the local server is running at the page's address, then retry. The message alone does not establish why the connection failed. |
-| The server is busy | Let the current import or render finish, or cancel it, then retry. One expensive audio request is admitted at a time. |
+| Audio processing is busy | Let the current import or render finish, or cancel it, then retry. One expensive audio job runs at a time, with at most one waiting. |
+| A file exceeds the browser's memory budget | Try a shorter selection or a lower sample rate, close other heavy tabs, or use [the native build](#appendix-the-native-build). Aurialis never uploads or silently shortens a rejected file. |
 | Import rejects the file | Check its format, channel count, size and duration against step 1. Renaming a compressed file to `.wav` does not convert it. |
 | “The source audio is missing” | Use **Retry source** if offered, then **Restore source** to reconnect the original WAV without creating a new project. |
 | Playback initialization fails | Select **Retry playback** when shown, then Play. A current Chromium-based browser is a useful starting point; recorded Chromium/Brave results do not establish support for every browser or device. |
@@ -181,5 +182,16 @@ For a bug report, include your browser and operating system, the action that fai
 | **Sample rate** | Samples per second; 48 kHz means 48,000 samples per second per channel. |
 | **Bit depth** | How sample values are represented. Float WAV can preserve headroom beyond the integer PCM range. |
 | **DSP / WASM** | Digital signal processing is the audio math. WebAssembly lets the Go processing engine run in the browser. |
+
+## Appendix: the native build
+
+The native single binary is a fallback you build from source; no prebuilt binaries are published. Follow [the README build steps](../README.md#build-the-native-fallback-from-source), keep `./aurialis` running while you work, and open the address it prints (by default `http://127.0.0.1:8080`). It uses the same interface and the same Go processing, served by its own local server, and it is the only build that runs Smart Split.
+
+| What you see | What to try |
+| --- | --- |
+| The local page will not open | Check that `./aurialis` is still running and use the address it is serving. See [startup and configuration](development.md). |
+| “Failed to fetch” or a local-server connection error | Confirm the local server is running at the page's address, then retry. The message alone does not establish why the connection failed. |
+| The server is busy | Let the current import or render finish, or cancel it, then retry. One expensive audio request is admitted at a time. |
+| Smart Split says the model could not be downloaded | The first split downloads the 176 MB model from the `stem-model-v1` release; check your internet connection and split again to retry. |
 
 [Back to the README](../README.md) · [All documentation](README.md) · [Processing architecture](architecture.md)

@@ -1,8 +1,10 @@
 import { Blob as NodeBlob } from "node:buffer";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "../audio-dsp";
+import { exportParams } from "../engine-params";
 import {
   engineParams,
+  exportLevelSummary,
   importAudio,
   measureAudio,
   normalizeSimpleAudio,
@@ -357,11 +359,48 @@ describe("actual audio measurement and explicit Simple normalization", () => {
     vi.stubGlobal("fetch", fetch);
     const settings = createDefaultAdvancedParams();
     const original = structuredClone(settings);
-    const next = await normalizeSimpleAudio(new Blob(["fixture"]), settings, -14);
+    const { advanced: next, measurement } = await normalizeSimpleAudio(new Blob(["fixture"]), settings, -14);
     expect(next.input).toBe(6);
+    expect(measurement.afterMetrics).toMatchObject({ integratedLufs: -14.1, truePeakDbtp: -2 });
     expect(settings).toEqual(original);
     expect(next.compressor).toEqual(original.compressor);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it("measures every candidate with the export algorithm so the search converges on the delivered master", async () => {
+    const sent: unknown[] = [];
+    vi.stubGlobal("fetch", vi.fn((_url: string, request: { body: FormData }) => {
+      const raw = request.body.get("params");
+      if (typeof raw !== "string") throw new Error("Missing render parameters");
+      const params = JSON.parse(raw) as { inputGainDb: number };
+      sent.push(params);
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(measurementResponse({
+        ...measured, integratedLufs: -20 + params.inputGainDb, truePeakDbtp: -1.2,
+      })) });
+    }));
+    const settings = { ...createDefaultAdvancedParams(), limiter: { ...createDefaultAdvancedParams().limiter, enabled: true } };
+    const { advanced: next, measurement } = await normalizeSimpleAudio(new Blob(["fixture"]), settings, -14);
+    expect(next.input).toBe(6);
+    expect(measurement.afterMetrics).toMatchObject({ integratedLufs: -14, truePeakDbtp: -1.2 });
+    expect(sent).toHaveLength(2);
+    for (const params of sent) {
+      expect(params).toMatchObject({ algorithmVersion: 2, limiter: { enabled: true, truePeak: true, ceilingDbtp: -1 } });
+    }
+    expect(sent.at(-1)).toEqual(exportParams(next));
+    expect(next.limiter.truePeak).toBe(false);
+  });
+  it("summarizes the export-measured level and warns that preview meters can read higher", () => {
+    expect(exportLevelSummary({ ...measured, integratedLufs: -9.0143, truePeakDbtp: -0.3006 }))
+      .toBe("Export measures −9.01 LUFS, −0.30 dBTP. Live meters and the offline preview use the preview limiter and can read higher.");
+    expect(exportLevelSummary({ ...measured, integratedLufs: -14.004, truePeakDbtp: 0.004 })).toMatch(/^Export measures −14\.00 LUFS, 0\.00 dBTP\./u);
+  });
+  it("gates the measured export true peak strictly at the ceiling", async () => {
+    const respond = (truePeakDbtp: number) => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(measurementResponse({ ...measured, integratedLufs: -14, truePeakDbtp })) }));
+    };
+    respond(-1);
+    expect((await normalizeSimpleAudio(new Blob(["fixture"]), createDefaultAdvancedParams(), -14)).advanced.input).toBe(0);
+    respond(-0.999);
+    await expect(normalizeSimpleAudio(new Blob(["fixture"]), createDefaultAdvancedParams(), -14)).rejects.toThrow("peak ceiling");
   });
   it("rejects unreachable targets, silence and peak violations", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(measurementResponse()) }));
@@ -384,7 +423,7 @@ describe("actual audio measurement and explicit Simple normalization", () => {
     }));
     const settings = createDefaultAdvancedParams();
     const before = structuredClone(settings);
-    const next = await normalizeSimpleAudio(new Blob(["fixture"]), settings, -14);
+    const { advanced: next } = await normalizeSimpleAudio(new Blob(["fixture"]), settings, -14);
     expect(next.input).toBeCloseTo(24);
     expect(inputs).toEqual([0, 6, 24]);
     expect(settings).toEqual(before);

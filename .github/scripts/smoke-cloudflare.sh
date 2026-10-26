@@ -38,6 +38,10 @@ check_origin() {
   [ "$(header cross-origin-embedder-policy "$work/html.h")" = "require-corp" ] || fail "$origin/ is missing COEP require-corp."
   [ "$(header cache-control "$work/html.h")" = "no-store, no-transform" ] || fail "$origin/ Cache-Control allows edge transforms."
   [ "$(header x-frame-options "$work/html.h")" = "DENY" ] || fail "$origin/ is missing X-Frame-Options DENY."
+  [ "$(header strict-transport-security "$work/html.h")" = "max-age=63072000; includeSubDomains" ] \
+    || fail "$origin/ is missing Strict-Transport-Security max-age=63072000; includeSubDomains."
+  [ "$(header permissions-policy "$work/html.h")" = "camera=(), microphone=(), geolocation=(), payment=(), usb=()" ] \
+    || fail "$origin/ Permissions-Policy does not deny camera, microphone, geolocation, payment and usb."
 
   curl -fsS --max-time 30 -D "$work/wasm.h" -o /dev/null "$origin/wasm/aurialis-dsp.wasm" \
     || fail "$origin/wasm/aurialis-dsp.wasm did not load."

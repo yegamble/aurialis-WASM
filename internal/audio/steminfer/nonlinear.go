@@ -7,7 +7,7 @@ import (
 	"errors"
 )
 
-const attentionTile = 32
+const attentionTile = 128
 const nonlinearTile = 65536
 
 func attentionSoftmax(ctx context.Context, values []float32, rows, width int) error {

@@ -1,11 +1,12 @@
 package steminfer
 
-// cspell:words steminfer
+// cspell:words steminfer GOMAXPROCS
 
 import (
 	"context"
 	"errors"
 	"math"
+	"runtime"
 	"testing"
 )
 
@@ -237,6 +238,41 @@ func TestPrivateResourcePlanSeparatesStaticAndRetainedBudgets(t *testing.T) {
 	if resources, err := estimatePipeline(44100, maximumSourceFrames, 6, maximumWindowSamples, maximumWorkers); err != nil || resources.requiredJobBytes > maximumPrivateJobBytes {
 		t.Fatal("longest source exceeds the job ceiling", err)
 	}
+}
+func TestPlanDropsLanesBeforeRefusingLongSources(t *testing.T) {
+	for _, rate := range []int{44100, 48000, 96000, 192000} {
+		for stems := 2; stems <= 6; stems++ {
+			resources, err := planPipeline(rate, maximumSourceFrames, stems, maximumWindowSamples, maximumWorkers)
+			if err != nil || resources.workers < 1 || resources.requiredJobBytes > maximumPrivateJobBytes {
+				t.Fatal("longest source refused on a large host", rate, stems, err)
+			}
+			// The plan keeps as many lanes as fit, not merely some count that does.
+			if resources.workers < maximumWorkers {
+				if _, err := estimatePipeline(rate, maximumSourceFrames, stems, maximumWindowSamples, resources.workers+1); !errors.Is(err, errJobMemoryCeiling) {
+					t.Fatal("plan dropped a lane that fits", rate, stems, resources.workers, err)
+				}
+			}
+		}
+	}
+	// Short sources keep every lane; invalid requests are not retried into success.
+	if resources, err := planPipeline(192000, 192000*10, 6, maximumWindowSamples, maximumWorkers); err != nil || resources.workers != maximumWorkers {
+		t.Fatal("short source lost lanes", resources.workers, err)
+	}
+	if _, err := planPipeline(44100, maximumSourceFrames+1, 6, maximumWindowSamples, maximumWorkers); err == nil || errors.Is(err, errJobMemoryCeiling) {
+		t.Fatal("invalid request was admitted or misreported", err)
+	}
+	// JobBytes, which jobs reserve, admits it on a sixteen-core host too;
+	// runTrainedSeparation sizes its runner from the same plan.
+	previous := runtime.GOMAXPROCS(maximumWorkers)
+	defer runtime.GOMAXPROCS(previous)
+	resources, err := planPipeline(192000, maximumSourceFrames, 6, maximumWindowSamples, defaultWorkers())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes, err := JobBytes(192000, maximumSourceFrames, 6); err != nil || bytes != resources.requiredJobBytes {
+		t.Fatal("JobBytes refused or disagreed with the plan", bytes, err)
+	}
+	t.Logf("longest 6-stem 192 kHz source runs on %d of %d lanes, reserving %d bytes", resources.workers, maximumWorkers, resources.requiredJobBytes)
 }
 
 func TestPrivateResourceArraysMatchEstimate(t *testing.T) {

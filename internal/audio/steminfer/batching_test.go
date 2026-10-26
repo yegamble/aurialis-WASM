@@ -1,6 +1,6 @@
 package steminfer
 
-// cspell:words steminfer ulps
+// cspell:words steminfer ulps sgemm
 
 import (
 	"context"

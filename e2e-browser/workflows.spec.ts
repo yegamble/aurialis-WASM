@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fixture, decode } from "../e2e/audio-fixture";
+import { denseFixture } from "../e2e/workflow-fixture";
 import { engineParams, exportParams, exportScript } from "../src/lib/engine-params";
 import type { AdvancedParams, ExportDelivery, MeasuredAudioMetrics, Track } from "../src/lib/types";
 import type { ReleaseReport } from "../src/lib/release-review";
@@ -171,6 +172,34 @@ test("Release retains native-equivalent final 16/24/32-bit WAVs and exact encode
     const native = await nativeRender(info, source, advanced, bitDepth);
     await reviewEncoded(page, info, native.audio, String(bitDepth));
   }
+  await assertPrivate(info, requests);
+});
+
+test("Set target loudness on a dense program converges in the browser worker and exports at target", async ({ page, context }, info) => {
+  const requests = observeNetwork(context);
+  const id = await upload(page, denseFixture(8), "private-dense-source.wav");
+  await page.getByRole("tab", { name: "simple", exact: true }).click();
+  await page.getByRole("button", { name: "Pop", exact: true }).click();
+  await expect.poll(async () => (await settings(page, id)).limiter).toMatchObject({ enabled: true, targetLufs: -14, ceiling: -1 });
+  const before = (await settings(page, id)).input;
+  await page.getByRole("button", { name: "Set target loudness", exact: true }).click();
+  await expect(page.getByText(/^Preview ready\. Export measures −14\.\d{2} LUFS, −1\.\d{2} dBTP\./u)).toBeVisible({ timeout: 60_000 });
+  await expect.poll(async () => (await settings(page, id)).input).not.toBe(before);
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("group", { name: "Bit depth", exact: true }).getByRole("button", { name: "24-bit PCM", exact: true }).click();
+  const downloading = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Render & download WAV", exact: true }).click();
+  const path = await (await downloading).path();
+  if (!path) throw new Error("Missing browser-local dense export");
+  const directory = info.outputPath("native-dense-export-meter");
+  await mkdir(directory, { recursive: true }); await writeFile(directory + "/source.wav", await readFile(path));
+  await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", params: '{"bypass":true}', format: "json" }));
+  execFileSync("go", ["test", "./internal/browserjobs", "-run", "^TestWriteBrowserOracle$", "-count=1"], { env: { ...process.env, AURIALIS_BROWSER_ORACLE_DIR: directory }, stdio: "pipe" });
+  const { afterMetrics } = JSON.parse(await readFile(directory + "/native.json", "utf8")) as { afterMetrics: MeasuredAudioMetrics };
+  await info.attach("dense-browser-export", { body: JSON.stringify({ input: (await settings(page, id)).input, afterMetrics }, null, 2), contentType: "application/json" });
+  expect(Math.abs(afterMetrics.integratedLufs + 14)).toBeLessThanOrEqual(0.2);
+  expect(afterMetrics.truePeakDbtp).toBeLessThanOrEqual(-1);
   await assertPrivate(info, requests);
 });
 

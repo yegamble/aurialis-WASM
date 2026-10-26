@@ -245,7 +245,8 @@ func TestSlowUploadPastReadDeadlineReturns408(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conn, err := net.Dial("tcp", ts.Listener.Addr().String())
+	var dialer net.Dialer
+	conn, err := dialer.DialContext(t.Context(), "tcp", ts.Listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}

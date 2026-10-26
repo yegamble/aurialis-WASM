@@ -82,7 +82,8 @@ func TestWriteOfflineJobParityFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, encoded, 0o600); err != nil {
+	// #nosec G703 -- Test-only artifact path supplied by the local parity harness, never an upload or HTTP request.
+	if err := os.WriteFile(path, encoded, 0600); err != nil {
 		t.Fatal(err)
 	}
 }

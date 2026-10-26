@@ -1,4 +1,5 @@
 import { MAX_JOB_INPUT_BYTES, MAX_SOURCE_FRAMES } from "./audio-limits";
+import { EXPORT_SAMPLE_RATES } from "./types";
 const OFFLINE_ABI = "1.0";
 const MIB = 1024 * 1024;
 const MAX_METADATA_BYTES = 2 * MIB + 128 * 1024;
@@ -10,6 +11,8 @@ interface JobRequest {
   script?: string;
   profile?: string;
   bitDepth?: number;
+  sampleRate?: number;
+  dither?: string;
   format?: string;
   deviceRate?: number;
   options?: string;
@@ -61,42 +64,60 @@ export function reserveBrowserAudioMemory(initialBytes = 0): Readonly<{ update: 
   return Object.freeze({ update, dispose });
 }
 
-async function decodedBytes(blob: Blob): Promise<number> {
-  if (blob.size === 0) return 0;
+type WavShape = { bytes: number; rate: number | undefined };
+/** Decoded capacity and `fmt ` rate from the RIFF chunk list, so JUNK, bext or LIST chunks may precede `fmt `. */
+async function wavShape(blob: Blob): Promise<WavShape> {
+  if (blob.size === 0) return { bytes: 0, rate: undefined };
   const fallback = Math.min(MAX_SOURCE_FRAMES * 8, blob.size * 8);
   const data = new DataView(await blob.slice(0, 65_536).arrayBuffer());
   const id = (offset: number) => String.fromCharCode(...Array.from({ length: 4 }, (_, i) => data.getUint8(offset + i)));
   // Capacity only. Go CDR remains the authoritative format/container validator.
-  if (data.byteLength < 12 || id(0) !== "RIFF" || id(8) !== "WAVE") return fallback;
+  if (data.byteLength < 12 || id(0) !== "RIFF" || id(8) !== "WAVE") return { bytes: fallback, rate: undefined };
   let align = 0;
+  let rate: number | undefined;
   for (let offset = 12; offset + 8 <= data.byteLength;) {
     const size = data.getUint32(offset + 4, true);
     if (id(offset) === "data") {
       const frames = align > 0 ? Math.floor(size / align) : MAX_SOURCE_FRAMES;
       if (frames < 1 || frames > MAX_SOURCE_FRAMES) throw new Error("This WAV exceeds the local frame limit. " + LOCAL_FALLBACK);
-      return frames * 8;
+      return { bytes: frames * 8, rate };
     }
-    if (offset + 8 + size > data.byteLength) return fallback;
-    if (id(offset) === "fmt " && size >= 16) align = data.getUint16(offset + 20, true);
+    if (offset + 8 + size > data.byteLength) break;
+    if (id(offset) === "fmt " && size >= 16) {
+      const declared = data.getUint32(offset + 12, true);
+      rate = declared >= 8000 && declared <= 192000 ? declared : undefined;
+      align = data.getUint16(offset + 20, true);
+    }
     offset += 8 + size + size % 2;
   }
-  return fallback;
+  return { bytes: fallback, rate };
 }
+
+// Measured under WASM on 8,388,608 frames at 48 kHz: 7.5 s unconverted,
+// 26.5 s to 88.2 kHz and 28.1 s to 96 kHz, about 1 + 1.4 × the rate ratio.
+// 1.5 keeps headroom; downsampling still filters every input frame.
+const CONVERSION_COST_PER_RATIO = 1.5;
 
 async function preflight(request: JobRequest, source: Blob, reference: Blob, signal: AbortSignal): Promise<number> {
   signal.throwIfAborted();
   const input = source.size + reference.size;
   if (input > MAX_JOB_INPUT_BYTES) throw new Error("The combined audio exceeds the 257 MiB local job limit. " + LOCAL_FALLBACK);
-  const decoded = await decodedBytes(source) + await decodedBytes(reference);
+  const shape = await wavShape(source);
+  const decoded = shape.bytes + (await wavShape(reference)).bytes;
   signal.throwIfAborted();
   // Measured Go worker linear memory peaks near 2.2x the decoded PCM (input
   // copy, reconstructed and rendered channels, encoded WAV). Add the
   // transferred input buffer and the returned audio, with headroom.
-  const estimate = 64 * MIB + input * 2 + decoded * (request.operation === "render" ? 4 : 3);
+  let estimate = 64 * MIB + input * 2 + decoded * (request.operation === "render" ? 4 : 3);
+  // A converted export also holds resampled channels, their measurement and
+  // the larger encoded WAV. An unreadable source rate assumes 8 kHz (worst case).
+  const ratio = request.sampleRate !== undefined && request.sampleRate !== shape.rate ? request.sampleRate / (shape.rate ?? 8000) : 0;
+  estimate += decoded * 3 * ratio;
   if (estimate + reservedResidentBytes > memoryBudget()) throw new Error("This job exceeds the browser's conservative audio memory budget. " + LOCAL_FALLBACK);
   activeJobBytes = estimate;
-  // 130 s covers 16,777,216 frames; longer sources get proportionally longer.
-  return 130_000 * Math.max(1, decoded / (16_777_216 * 8));
+  // 130 s covers 16,777,216 frames; longer sources and conversions get proportionally longer.
+  const conversion = ratio > 0 ? 1 + CONVERSION_COST_PER_RATIO * Math.max(1, ratio) : 1;
+  return 130_000 * Math.max(1, decoded / (16_777_216 * 8)) * conversion;
 }
 
 let queue: Promise<void> = Promise.resolve();
@@ -190,7 +211,7 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
   let request: JobRequest;
   let allowed: string[];
   switch (path) {
-    case "/api/master/render": request = { operation: "render" }; allowed = ["file", "params", "script", "profile", "bitDepth", "format"]; break;
+    case "/api/master/render": request = { operation: "render" }; allowed = ["file", "params", "script", "profile", "bitDepth", "sampleRate", "dither", "format"]; break;
     case "/api/analyze/features": request = { operation: "features" }; allowed = ["file"]; break;
     case "/api/analyze/deep": request = { operation: "deep" }; allowed = ["file", "profile", "scriptVersion"]; break;
     case "/api/analyze/reference": request = { operation: "reference" }; allowed = ["source", "reference", "params", "options"]; break;
@@ -198,7 +219,7 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
   }
   for (const key of fields.keys()) if (!allowed.includes(key)) throw new Error("Unsupported local audio field.");
   const text = (key: string) => { const value = fields.get(key); if (value !== undefined && typeof value !== "string") throw new Error("Invalid local audio field."); return value; };
-  const params = text("params"), script = text("script"), profile = text("profile"), format = text("format"), options = text("options"), scriptVersion = text("scriptVersion"), bitDepth = text("bitDepth");
+  const params = text("params"), script = text("script"), profile = text("profile"), format = text("format"), options = text("options"), scriptVersion = text("scriptVersion"), bitDepth = text("bitDepth"), sampleRate = text("sampleRate"), dither = text("dither");
   if (params !== undefined) request.params = params;
   if (script !== undefined) request.script = script;
   if (profile !== undefined) request.profile = profile;
@@ -209,9 +230,27 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
     if (!["16", "24", "32"].includes(bitDepth)) throw new Error("Invalid local audio bit depth.");
     request.bitDepth = Number(bitDepth);
   }
+  if (sampleRate !== undefined) {
+    const rate = EXPORT_SAMPLE_RATES.find((item) => String(item) === sampleRate);
+    if (rate === undefined) throw new Error("Invalid local audio export rate.");
+    request.sampleRate = rate;
+  }
+  if (dither !== undefined) {
+    if (dither !== "tpdf" && dither !== "none") throw new Error("Invalid local audio dither.");
+    request.dither = dither;
+  }
   const source = fields.get(request.operation === "reference" ? "source" : "file"), reference = fields.get("reference");
   if (!(source instanceof Blob) || (reference !== undefined && !(reference instanceof Blob))) throw new Error("Missing local audio source.");
   return { request, source, reference: reference ?? new Blob() };
+}
+
+/** The render's afterMetrics true peak, which the native server sends as X-Aurialis-After-Peak-dBTP. */
+function deliveredPeak(json: string): number | undefined {
+  let body: unknown;
+  try { body = JSON.parse(json); } catch { return undefined; }
+  if (typeof body !== "object" || body === null || !("afterMetrics" in body) || typeof body.afterMetrics !== "object" || body.afterMetrics === null || !("truePeakDbtp" in body.afterMetrics)) return undefined;
+  const peak = body.afterMetrics.truePeakDbtp;
+  return typeof peak === "number" && Number.isFinite(peak) ? peak : undefined;
 }
 
 /** Same contract as the device-local HTTP transport, implemented without network audio on websites. */
@@ -236,6 +275,10 @@ export async function deviceAudioRequest(path: string, init: RequestInit, onProg
   } else throw new Error("Invalid local audio request body.");
   const result = await execute(request, source, reference, init.signal ?? undefined, onProgress);
   const headers = new Headers({ "Content-Type": result.audio.byteLength ? "audio/wav" : "application/json", "Cache-Control": "no-store" });
-  if (result.audio.byteLength) headers.set("X-Aurialis-Source-Metrics", result.json);
+  if (result.audio.byteLength) {
+    headers.set("X-Aurialis-Source-Metrics", result.json);
+    const peak = deliveredPeak(result.json);
+    if (peak !== undefined) headers.set("X-Aurialis-After-Peak-dBTP", peak.toFixed(2));
+  }
   return new Response(result.audio.byteLength ? new Blob([result.audio], { type: "audio/wav" }) : result.json, { status: 200, headers });
 }

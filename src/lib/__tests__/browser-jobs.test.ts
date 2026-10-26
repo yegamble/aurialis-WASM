@@ -21,6 +21,18 @@ function source() {
   text(0, "RIFF"); view.setUint32(4, 44, true); text(8, "WAVE"); text(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 3, true); view.setUint16(22, 2, true); view.setUint32(24, 8000, true); view.setUint32(28, 64000, true); view.setUint16(32, 8, true); view.setUint16(34, 32, true); text(36, "data"); view.setUint32(40, 8, true);
   return new Blob([bytes], { type: "audio/wav" });
 }
+/** A header-only WAV whose `fmt ` follows JUNK and an odd-sized, padded bext chunk. */
+function paddedSource(rate: number, frames: number) {
+  const bytes = new ArrayBuffer(12 + 8 + 28 + 8 + 9 + 1 + 8 + 16 + 8), view = new DataView(bytes);
+  const text = (offset: number, value: string) => { for (let index = 0; index < value.length; index++) view.setUint8(offset + index, value.charCodeAt(index)); };
+  text(0, "RIFF"); view.setUint32(4, bytes.byteLength - 8 + frames * 8, true); text(8, "WAVE");
+  text(12, "JUNK"); view.setUint32(16, 28, true);
+  text(48, "bext"); view.setUint32(52, 9, true);
+  text(66, "fmt "); view.setUint32(70, 16, true); view.setUint16(74, 3, true); view.setUint16(76, 2, true); view.setUint32(78, rate, true); view.setUint32(82, rate * 8, true); view.setUint16(86, 8, true); view.setUint16(88, 32, true);
+  text(90, "data"); view.setUint32(94, frames * 8, true);
+  return new Blob([bytes], { type: "audio/wav" });
+}
+function render(file: Blob, sampleRate?: string) { const form = new FormData(); form.append("file", file, "source.wav"); form.append("bitDepth", "16"); if (sampleRate) form.append("sampleRate", sampleRate); return form; }
 function body() { const form = new FormData(); form.append("file", source(), "source.wav"); return form; }
 
 const originalArrayBuffer = Object.getOwnPropertyDescriptor(Blob.prototype, "arrayBuffer");
@@ -49,6 +61,61 @@ describe("device-local browser audio transport", () => {
     expect(await (await pending).json()).toEqual({ kind: "analyze_features", status: "done" });
     expect(worker.terminated).toBe(true);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("forwards validated export rate and dither fields to the render worker", async () => {
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    const form = body(); form.append("bitDepth", "16"); form.append("sampleRate", "44100"); form.append("dither", "none");
+    const pending = deviceAudioRequest("/api/master/render", { method: "POST", body: form });
+    await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
+    expect(JSON.parse(TestWorker.all[0]?.message?.metadata ?? "{}")).toEqual({ operation: "render", bitDepth: 16, sampleRate: 44100, dither: "none" });
+    TestWorker.all[0]?.reply(); await pending;
+    for (const [field, value] of [["sampleRate", "22050"], ["sampleRate", "48k"], ["dither", "shaped"]] as const) {
+      const invalid = body(); invalid.append(field, value);
+      await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: invalid })).rejects.toThrow(field === "dither" ? "dither" : "export rate");
+    }
+    expect(TestWorker.all).toHaveLength(1);
+  });
+  it("reads the fmt rate after JUNK and bext chunks when budgeting a converted export", async () => {
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    // 4,194,304 frames: 48 → 96 kHz fits the 512 MiB budget; the 8 kHz
+    // unreadable-rate assumption would not, so this proves the rate was read.
+    const pending = deviceAudioRequest("/api/master/render", { method: "POST", body: render(paddedSource(48000, 4_194_304), "96000") });
+    await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
+    TestWorker.all[0]?.reply(); await pending;
+    await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: render(paddedSource(5000, 4_194_304), "96000") })).rejects.toThrow("memory budget");
+    expect(TestWorker.all).toHaveLength(1);
+  });
+
+  it("extends the worker deadline by the conversion cost only when the rate changes", async () => {
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    const timer = vi.spyOn(globalThis, "setTimeout");
+    const deadline = async (sampleRate?: string) => {
+      timer.mockClear();
+      const index = TestWorker.all.length;
+      const pending = deviceAudioRequest("/api/master/render", { method: "POST", body: render(paddedSource(48000, 4_194_304), sampleRate) });
+      await waitFor(() => { expect(TestWorker.all.at(index)?.message).toBeDefined(); });
+      const delays = timer.mock.calls.map(([, delay]) => delay ?? 0).filter((delay) => delay >= 100_000);
+      TestWorker.all.at(index)?.reply(); await pending;
+      return delays;
+    };
+    expect(await deadline()).toEqual([130_000]);
+    expect(await deadline("48000")).toEqual([130_000]);
+    expect(await deadline("44100")).toEqual([325_000]);
+    expect(await deadline("96000")).toEqual([520_000]);
+    timer.mockRestore();
+  });
+
+  it("mirrors the native delivered true-peak header from the render metrics", async () => {
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    const pending = deviceAudioRequest("/api/master/render", { method: "POST", body: render(source(), "44100") });
+    await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
+    const worker = TestWorker.all[0];
+    const json = JSON.stringify({ status: "ok", sampleRate: 44100, afterMetrics: { truePeakDbtp: -1.004 } });
+    worker?.onmessage?.({ data: { abi: "1.0", kind: "result", id: worker.message?.id, json, audio: new ArrayBuffer(52) } } as MessageEvent<unknown>);
+    const response = await pending;
+    expect(response.headers.get("X-Aurialis-After-Peak-dBTP")).toBe("-1.00");
+    expect(response.headers.get("X-Aurialis-Source-Metrics")).toBe(json);
   });
 
   it("terminates an active canceled worker before the queued job creates another", async () => {

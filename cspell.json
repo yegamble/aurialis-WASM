@@ -402,6 +402,9 @@
     "ckpt",
     "mmap",
     "Slakh",
+    "stopband",
+    "undithered",
+    "resampler",
     "Abramowitz",
     "Stegun",
     "erff"

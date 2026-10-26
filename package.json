@@ -68,6 +68,12 @@
       "lodash@<4.18.0": "^4.18.1",
       "node-forge@<1.4.0": "^1.4.0",
       "underscore@<1.13.8": "^1.13.8"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-qxc2-j82w-r537",
+        "GHSA-86w9-cpqp-85rv"
+      ]
     }
   }
 }

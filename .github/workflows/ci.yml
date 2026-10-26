@@ -156,8 +156,11 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Audit shipped dependencies for high and critical advisories
-        run: pnpm audit --prod --audit-level high
+      # Covers dev tools too: wrangler deploys with the Cloudflare token, and
+      # vitest and newman run in CI. Accepted advisories are listed under
+      # pnpm.auditConfig.ignoreGhsas in package.json (rationale: docs/development.md).
+      - name: Audit all dependencies for high and critical advisories
+        run: pnpm audit --audit-level high
       - name: Typecheck
         run: pnpm exec tsc --noEmit
       - name: Lint

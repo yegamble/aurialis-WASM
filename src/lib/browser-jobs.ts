@@ -3,7 +3,7 @@ import { EXPORT_SAMPLE_RATES } from "./types";
 const OFFLINE_ABI = "1.0";
 const MIB = 1024 * 1024;
 const MAX_METADATA_BYTES = 2 * MIB + 128 * 1024;
-const LOCAL_FALLBACK = "Use the local Aurialis app on this device for this file. Your audio will not be uploaded.";
+const LOCAL_FALLBACK = "For this file, use the native Aurialis build (built from source) on this device. Your audio will not be uploaded.";
 
 interface JobRequest {
   operation: "render" | "features" | "deep" | "reference" | "compile";

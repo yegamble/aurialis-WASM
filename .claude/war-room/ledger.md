@@ -11,6 +11,10 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Export sample-rate conversion and dither — 2026-10-26
+
+`open — awaiting merge`. Audit finding 13 (P2): exports can convert to 44.1/48/88.2/96 kHz with a 120 dB windowed-sinc converter after mastering, and 16/24-bit dither can be TPDF or off. Tiers: `unit`, `api-curl` (httptest), `playwright`. Noise-shaped dither and FLAC/MP3 export are not offered.
+
 ## Smart Split with a trained model — 2026-10-25
 
 `verified (PR #24, unit · api-curl · playwright-a11y-responsive)`; merged 2026-10-26. The `stem-model-v1` release asset is still to be published. Trained BS-RoFormer separation (Mega53 five-head subset, MIT) runs Smart Split in the desktop app, replacing the heuristic splitter; first-use model download is checksum-pinned. Tier: `unit`, `api-curl`. Open: plain-Go speed for non-Mac platforms, browser inference, quality beyond the single measured track.

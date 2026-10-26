@@ -13,11 +13,11 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ## Smart Split with a trained model — 2026-10-25
 
-`open — awaiting merge`. Trained BS-RoFormer separation (Mega53 five-head subset, MIT) runs Smart Split in the desktop app, replacing the heuristic splitter; first-use model download is checksum-pinned. Tier: `unit`, `api-curl`. Open: plain-Go speed for non-Mac platforms, browser inference, quality beyond the single measured track.
+`verified (PR #24, unit · api-curl · playwright-a11y-responsive)`; merged 2026-10-26. The `stem-model-v1` release asset is still to be published. Trained BS-RoFormer separation (Mega53 five-head subset, MIT) runs Smart Split in the desktop app, replacing the heuristic splitter; first-use model download is checksum-pinned. Tier: `unit`, `api-curl`. Open: plain-Go speed for non-Mac platforms, browser inference, quality beyond the single measured track.
 
 ## Distinct compressor types — 2026-10-25
 
-`open — awaiting merge`. MUB-2B and the topology part of MUB-4B, delivered in algorithm 1 in place (saved sessions change sound) instead of the earlier v2-only ruling, matching the saturation-fix precedent. Each type has its own detector, curve and release; Advanced exposes the choice. Tier: `unit` and `wasm-bridge`. Behavioral models only; no hardware certification.
+`verified (PR #24, unit · wasm-bridge)`; merged 2026-10-26. MUB-2B and the topology part of MUB-4B, delivered in algorithm 1 in place (saved sessions change sound) instead of the earlier v2-only ruling, matching the saturation-fix precedent. Each type has its own detector, curve and release; Advanced exposes the choice. Tier: `unit` and `wasm-bridge`. Behavioral models only; no hardware certification.
 
 ## Bit-exact integer WAV and dither grid — 2026-10-25
 

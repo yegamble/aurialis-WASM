@@ -7,7 +7,7 @@ import { prepareSimpleChange, simpleGenreNames, simpleToneNames, type SimplePatc
 import { verifyElevatedChange } from "@/lib/simple-verification";
 import { useStore } from "@/lib/store";
 import type { Track } from "@/lib/types";
-import { Button, ControlGroup, SliderField } from "./Primitives";
+import { Button, ChoiceGroup, ControlGroup, SliderField } from "./Primitives";
 import { Icon } from "./Icon";
 
 export function SimpleControls({
@@ -76,53 +76,24 @@ export function SimpleControls({
       {hasAppliedDeep(track) && <p className="disclosure">Detach Deep automation before choosing a Simple direction.</p>}
       <fieldset className="m-0 min-w-0 border-0 p-0" disabled={hasAppliedDeep(track)}>
       <legend className="sr-only">Simple mastering direction</legend>
-      <ControlGroup label="Genre">
-        <div className="choice-grid">
-          {simpleGenreNames.map(
-            (item) => (
-              <button
-                type="button"
-                className={activeDirection && track.genre === item ? "choice is-active" : "choice"}
-                aria-pressed={activeDirection && track.genre === item}
-                key={item}
-                onClick={() => {
-                  void update({ genre: item });
-                }}
-              >
-                {item}
-              </button>
-            ),
-          )}
-        </div>
-      </ControlGroup>
-      <ControlGroup label="Tone intention">
-        <div className="choice-grid">
-          {simpleToneNames.map(
-            (item) => (
-              <button
-                type="button"
-                className={activeDirection && track.tone === item ? "choice is-active" : "choice"}
-                aria-pressed={activeDirection && track.tone === item}
-                key={item}
-                onClick={() => {
-                  void update({ tone: item });
-                }}
-              >
-                {item}
-              </button>
-            ),
-          )}
-        </div>
-      </ControlGroup>
-      <ControlGroup label="Mastering style">
-        <div className="choice-grid">
-          {(["precise", "organic", "elevated"] as const).map((item) => <button type="button" key={item}
-            className={activeDirection && style === item ? "choice is-active min-h-[44px]" : "choice min-h-[44px]"}
-            aria-pressed={activeDirection && style === item} onClick={() => { void update({ style: item }); }}>
-            {item === "precise" ? "Precise" : item === "organic" ? "Organic" : "Elevated"}
-          </button>)}
-        </div>
-      </ControlGroup>
+      <ChoiceGroup
+        label="Genre"
+        value={activeDirection ? track.genre : undefined}
+        options={simpleGenreNames.map((item) => ({ value: item, label: item }))}
+        onChange={(genre) => { void update({ genre }); }}
+      />
+      <ChoiceGroup
+        label="Tone intention"
+        value={activeDirection ? track.tone : undefined}
+        options={simpleToneNames.map((item) => ({ value: item, label: item }))}
+        onChange={(tone) => { void update({ tone }); }}
+      />
+      <ChoiceGroup
+        label="Mastering style"
+        value={activeDirection ? style : undefined}
+        options={([["precise", "Precise"], ["organic", "Organic"], ["elevated", "Elevated"]] as const).map(([value, label]) => ({ value, label }))}
+        onChange={(next) => { void update({ style: next }); }}
+      />
       <p className="disclosure">Precise keeps a restrained curve. Organic eases compression and color. Elevated adds compression after a rendered peak and loudness check; it adds no automatic gain.</p>
       <ControlGroup label="Optional modifiers">
         <div className="choice-grid">

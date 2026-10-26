@@ -6,7 +6,7 @@ import { useStore } from "@/lib/store";
 import type { CompressorTopology, MultibandBandParams, Track } from "@/lib/types";
 import { DSPModule } from "./DSPModule";
 import { Icon } from "./Icon";
-import { Button, ControlGroup, SliderField } from "./Primitives";
+import { Button, ChoiceGroup, SliderField } from "./Primitives";
 import { monoBassMinus3dBHz } from "@/lib/control-conventions";
 
 function ModuleToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
@@ -42,11 +42,7 @@ export function ExtendedCompressorControls({ track }: { track: Track }) {
   const value = track.advanced.compressor;
   const defaults = createDefaultAdvancedParams().compressor;
   return <>
-    <ControlGroup label="Compressor type">
-      <div className="choice-grid" role="group" aria-label="Compressor type">
-        {topologyChoices.map(({ id, label }) => <button type="button" key={id} className={value.topology === id ? "choice is-active" : "choice"} aria-pressed={value.topology === id} onClick={() => { dispatch({ type: "UPDATE_COMPRESSOR", trackId: track.id, patch: { topology: id } }); }}>{label}</button>)}
-      </div>
-    </ControlGroup>
+    <ChoiceGroup label="Compressor type" value={value.topology} options={topologyChoices.map(({ id, label }) => ({ value: id, label }))} onChange={(topology) => { dispatch({ type: "UPDATE_COMPRESSOR", trackId: track.id, patch: { topology } }); }} />
     <p className="text-xs text-[var(--ink-soft)]">{topologyChoices.find((choice) => choice.id === value.topology)?.detail}</p>
     <SliderField label="Knee" value={value.knee} defaultValue={defaults.knee} min={0} max={24} step={0.5} unit="dB" onChange={(knee) => { dispatch({ type: "UPDATE_COMPRESSOR", trackId: track.id, patch: { knee } }); }} />
     <SliderField label="Makeup gain" value={value.makeup} defaultValue={defaults.makeup} min={-24} max={36} step={0.5} unit="dB" onChange={(makeup) => { dispatch({ type: "UPDATE_COMPRESSOR", trackId: track.id, patch: { makeup } }); }} />

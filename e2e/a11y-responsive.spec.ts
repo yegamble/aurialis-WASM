@@ -141,6 +141,44 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
     }
   })
 
+  test("separated stems keep a usable player per stem from 320px to 1440px, axe clean", async ({ page }) => {
+    test.setTimeout(90_000)
+    const id = await uploadProject(page)
+    // The test server runs without the model, so the Smart Split API is mocked; the layout is real.
+    const stems = [
+      { id: "vocals", name: "Vocals", color: "#b4543c" }, { id: "drums", name: "Drums", color: "#596c52" },
+      { id: "bass", name: "Bass", color: "#8a6529" }, { id: "other", name: "Other", color: "#78638b" },
+    ]
+    await page.route("**/api/stems/model", (route) => route.fulfill({ json: { available: true, ready: true, downloading: false, downloadedBytes: 1, totalBytes: 1 } }))
+    await page.route("**/api/separate", (route) => route.fulfill({ status: 202, json: { jobId: "job-layout", status: "done", progress: 100, stage: "Complete", stems } }))
+    await page.route("**/api/jobs/job-layout/stems/*", (route) => route.fulfill({ contentType: "audio/wav", body: fixture(440, 0.5) }))
+    await page.route("**/api/jobs/job-layout", (route) => route.fulfill({ json: {} }))
+    await page.goto(`/split/${id}`)
+    await page.getByRole("button", { name: /^Split .+ into 4 stems$/u }).click()
+    const list = page.getByRole("list", { name: "Separated stems", exact: true })
+    await expect(list.getByRole("listitem")).toHaveCount(4)
+    for (const vp of VIEWPORTS) {
+      await page.setViewportSize({ width: vp.width, height: vp.height })
+      for (const stem of stems) {
+        const player = page.getByLabel(`Play ${stem.name}`, { exact: true })
+        await expect(player).toBeVisible()
+        const box = await player.boundingBox()
+        expect(box?.width, `${stem.name} player width at ${vp.width}px`).toBeGreaterThanOrEqual(240)
+        expect((box?.x ?? 0) + (box?.width ?? 0), `${stem.name} player clipped at ${vp.width}px`).toBeLessThanOrEqual(vp.width)
+        const download = page.getByRole("button", { name: `Download ${stem.name}`, exact: true })
+        const target = await download.boundingBox()
+        expect(target?.width).toBeGreaterThanOrEqual(44)
+        expect(target?.height).toBeGreaterThanOrEqual(44)
+      }
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+      expect(overflow, `Split page overflowed at ${vp.width}px`).toBeLessThanOrEqual(0)
+      const results = await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+        .analyze()
+      expect(results.violations, `WCAG 2.2 AA with stems at ${vp.width}px: ${JSON.stringify(results.violations)}`).toEqual([])
+    }
+  })
+
   for (const vp of VIEWPORTS) {
     test(`passes axe WCAG 2.2 AA at ${vp.width}px`, async ({ page }) => {
       const id = await uploadProject(page)

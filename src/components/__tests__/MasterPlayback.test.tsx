@@ -1,6 +1,6 @@
 import { Blob as NodeBlob } from "node:buffer";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { previewWAV, type StereoPCM } from "@/lib/browser-engine";
 import * as engine from "@/lib/browser-engine";
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP } from "@/lib/audio-dsp";
@@ -382,6 +382,35 @@ describe("master live playback lifecycle", () => {
     expect(current.state.repeat).toBe(false);
     expect(mocks.getAudio).toHaveBeenLastCalledWith("test-2");
     expect(screen.getByRole("button", { name: "Skip forward 10 seconds" })).toBeTruthy();
+  }, 20000);
+
+  it("offers the source rate once, sends no sampleRate for it, and reports the delivered true peak", async () => {
+    mount();
+    await ready();
+    const render = vi.spyOn(engine, "renderDelivery").mockResolvedValueOnce({ blob: previewWAV(pcm), truePeakDbtp: null }).mockResolvedValueOnce({ blob: previewWAV(pcm), truePeakDbtp: -1.04 });
+    // jsdom has no object URLs; restoreAllMocks does not reach defineProperty.
+    const originals = (["createObjectURL", "revokeObjectURL"] as const).map((key) => [key, Object.getOwnPropertyDescriptor(URL, key)] as const);
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: () => "blob:export" });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: () => undefined });
+    onTestFinished(() => { for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(URL, key, descriptor); else Reflect.deleteProperty(URL, key); } });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    const rates = within(screen.getByRole("group", { name: "Sample rate" })).getAllByRole("button");
+    expect(rates.map((button) => button.textContent)).toEqual(["44.1 kHz", "48 kHz (source)", "88.2 kHz", "96 kHz"]);
+    expect(rates.map((button) => button.getAttribute("aria-pressed"))).toEqual(["false", "true", "false", "false"]);
+    expect(screen.getByRole("group", { name: "Bit depth" })).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Dither" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));
+    await waitFor(() => { expect(render).toHaveBeenCalledOnce(); });
+    expect(render.mock.calls[0]?.[3]).toEqual({});
+    await within(screen.getByRole("dialog")).findByText(/Exported 24-bit PCM WAV with TPDF dither at the source rate using the same Go DSP parameters\.$/);
+    fireEvent.click(screen.getByRole("button", { name: "44.1 kHz" }));
+    fireEvent.click(screen.getByRole("button", { name: "Off" }));
+    await waitFor(() => { expect(screen.getByRole<HTMLButtonElement>("button", { name: "Render & download WAV" }).disabled).toBe(false); });
+    fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));
+    await waitFor(() => { expect(render).toHaveBeenCalledTimes(2); });
+    expect(render.mock.calls[1]?.[3]).toEqual({ sampleRate: 44100, dither: "none" });
+    await within(screen.getByRole("dialog")).findByText(/without dither at 44\.1 kHz \(converted from 48 kHz\) using the same Go DSP parameters\. Delivered true peak -1\.04 dBTP at 44\.1 kHz\.$/);
   }, 20000);
 
   it("does not create an engine when an old source load resolves after navigation", async () => {

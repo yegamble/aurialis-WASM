@@ -118,11 +118,14 @@ export function ControlGroup({
   label,
   value,
   htmlFor,
+  labelId,
   children,
 }: {
   label: string;
   value?: string;
   htmlFor?: string;
+  /** Lets a non-input control name itself with aria-labelledby. */
+  labelId?: string;
   children: ReactNode;
 }) {
   return (
@@ -131,12 +134,64 @@ export function ControlGroup({
         {htmlFor !== undefined ? (
           <label htmlFor={htmlFor}>{label}</label>
         ) : (
-          <span>{label}</span>
+          <span id={labelId}>{label}</span>
         )}
         {value !== undefined ? <strong className="font-semibold text-clay-dark tabular-nums">{value}</strong> : null}
       </div>
       {children}
     </div>
+  );
+}
+
+type Choice<T> = {
+  value: T;
+  label: ReactNode;
+  disabled?: boolean;
+  /** Id of visible text explaining this choice, such as why it is unavailable. */
+  describedBy?: string;
+  /** Spans the full row, for a choice that sits apart from an even set. */
+  wide?: boolean;
+};
+
+/** One labeled single-select group of pressed-state buttons. */
+export function ChoiceGroup<T extends string | number | boolean>({
+  label,
+  value,
+  options,
+  onChange,
+  className = "",
+}: {
+  label: string;
+  value: T | undefined;
+  options: readonly Choice<T>[];
+  onChange: (next: T) => void;
+  /** Extra grid classes, such as a column count for this option set. */
+  className?: string;
+}) {
+  const labelId = useId();
+  return (
+    <ControlGroup label={label} labelId={labelId}>
+      <div className={`choice-grid ${className}`.trim()} role="group" aria-labelledby={labelId}>
+        {options.map((option) => {
+          const active = option.value === value;
+          return (
+            <button
+              type="button"
+              key={String(option.value)}
+              className={`choice${active ? " is-active" : ""}${option.wide ? " col-span-full" : ""}`}
+              aria-pressed={active}
+              disabled={option.disabled}
+              aria-describedby={option.describedBy}
+              onClick={() => {
+                onChange(option.value);
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+    </ControlGroup>
   );
 }
 

@@ -8,6 +8,7 @@ import {
   normalizeSimpleAudio,
   processPreview,
   previewWAV,
+  renderDelivery,
   serverRender,
   serverRenderScript,
   readCanonicalWAV,
@@ -31,6 +32,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useId,
   useRef,
   useState,
   type DragEvent,
@@ -54,13 +56,15 @@ import type {
   SaturationCharacter,
   Track,
 } from "@/lib/types";
-import { EXPORT_SAMPLE_RATES } from "@/lib/types";
+import { exportRateChoices, formatRate, unavailableRateNote } from "@/lib/export-rates";
+import { MAX_SOURCE_FRAMES } from "@/lib/audio-limits";
 import { Icon, type IconName } from "./shared/Icon";
 import {
   Artwork,
   BottomSheet,
   Button,
   buttonClassName,
+  ChoiceGroup,
   ControlGroup,
   Modal,
   PageTitle,
@@ -610,6 +614,7 @@ function MasterView({ trackId }: { trackId: string }) {
   const [bitDepth, setBitDepth] = useState<ExportBitDepth>(24);
   const [exportRate, setExportRate] = useState<ExportSampleRate | "source">("source");
   const [dither, setDither] = useState(true);
+  const rateNoteId = useId();
   const [message, setMessage] = useState("");
   const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
   const renderAbort = useRef<AbortController | null>(null);
@@ -624,6 +629,9 @@ function MasterView({ trackId }: { trackId: string }) {
   );
   const settingsKey = useMemo(() => track ? appliedRevisionKey(track) ?? masteringSettingsKey(track.advanced) : "", [track]);
   const fresh = renderedKey === settingsKey && preview !== null;
+  const rateChoices = track ? exportRateChoices(track.sampleRate, source?.left.length ?? track.sourceIdentity?.frames ?? Math.round(track.duration * track.sampleRate)) : [];
+  // A choice that is unavailable for this track falls back to the source rate.
+  const deliveryRate = rateChoices.some((choice) => choice.value === exportRate && choice.unavailable === undefined) ? exportRate : "source";
   useEffect(() => {
     if (renderAbort.current && !renderAbort.current.signal.aborted && renderSettings.current !== settingsKey) {
       renderAbort.current.abort();
@@ -847,14 +855,18 @@ function MasterView({ trackId }: { trackId: string }) {
     renderSettings.current = settingsKey;
     setMessage("Rendering WAV from the uploaded source…");
     try {
-      const outputRate = exportRate === "source" ? track.sampleRate : exportRate;
+      const outputRate = deliveryRate === "source" ? track.sampleRate : deliveryRate;
       const delivery: ExportDelivery = {
-        ...(outputRate !== track.sampleRate && exportRate !== "source" ? { sampleRate: exportRate } : {}),
+        ...(deliveryRate !== "source" ? { sampleRate: deliveryRate } : {}),
         ...(bitDepth !== 32 && !dither ? { dither: "none" as const } : {}),
       };
-      const blob = track.deepMastering?.applied
-        ? await serverRenderScript(sourceBlob, exportScript(track.deepMastering.applied), bitDepth, controller.signal, delivery)
-        : await serverRender(sourceBlob, exportParams(track.advanced), bitDepth, controller.signal, delivery);
+      const { blob, truePeakDbtp } = await renderDelivery(
+        sourceBlob,
+        track.deepMastering?.applied ? { script: exportScript(track.deepMastering.applied) } : { params: exportParams(track.advanced) },
+        bitDepth,
+        delivery,
+        controller.signal,
+      );
       if (controller.signal.aborted || renderAbort.current !== controller) return;
       const url = URL.createObjectURL(blob),
         anchor = document.createElement("a");
@@ -865,7 +877,7 @@ function MasterView({ trackId }: { trackId: string }) {
         URL.revokeObjectURL(url);
       }, 1000);
       setMessage(
-        `Exported ${bitDepth === 32 ? "32-bit float" : `${String(bitDepth)}-bit PCM`} WAV${bitDepth === 32 ? "" : dither ? " with TPDF dither" : " without dither"} at ${outputRate === track.sampleRate ? "the source rate" : `${String(outputRate / 1000)} kHz (converted from ${String(track.sampleRate / 1000)} kHz)`} ${track.deepMastering?.applied ? "from applied revision " + String(track.deepMastering.applied.revision) : "using the same Go DSP parameters"}.`,
+        `Exported ${bitDepth === 32 ? "32-bit float" : `${String(bitDepth)}-bit PCM`} WAV${bitDepth === 32 ? "" : dither ? " with TPDF dither" : " without dither"} at ${outputRate === track.sampleRate ? "the source rate" : `${String(outputRate / 1000)} kHz (converted from ${String(track.sampleRate / 1000)} kHz)`} ${track.deepMastering?.applied ? "from applied revision " + String(track.deepMastering.applied.revision) : "using the same Go DSP parameters"}.${truePeakDbtp === null ? "" : ` Delivered true peak ${truePeakDbtp.toFixed(2)} dBTP at ${formatRate(outputRate)}.`}`,
       );
     } catch (error) {
       if (!controller.signal.aborted) setMessage(
@@ -1133,68 +1145,53 @@ function MasterView({ trackId }: { trackId: string }) {
           </>
         }
       >
-        <ControlGroup label="Bit depth">
-          <div className="choice-grid">
-            {([16, 24, 32] as const).map((depth) => (
-              <button
-                type="button"
-                className={bitDepth === depth ? "choice is-active" : "choice"}
-                aria-pressed={bitDepth === depth}
-                key={depth}
-                onClick={() => {
-                  setBitDepth(depth);
-                }}
-              >
-                {depth === 32 ? "32-bit Float" : `${String(depth)}-bit PCM`}
-              </button>
-            ))}
-          </div>
-        </ControlGroup>
-        <ControlGroup label="Sample rate">
-          <div className="choice-grid">
-            {(["source", ...EXPORT_SAMPLE_RATES] as const).map((rate) => (
-              <button
-                type="button"
-                className={exportRate === rate ? "choice is-active" : "choice"}
-                aria-pressed={exportRate === rate}
-                key={rate}
-                onClick={() => {
-                  setExportRate(rate);
-                }}
-              >
-                {rate === "source" ? `Source (${String(track.sampleRate / 1000)} kHz)` : `${String(rate / 1000)} kHz`}
-              </button>
-            ))}
-          </div>
-        </ControlGroup>
+        <ChoiceGroup
+          label="Bit depth"
+          value={bitDepth}
+          options={([16, 24, 32] as const).map((depth) => ({ value: depth, label: depth === 32 ? "32-bit Float" : `${String(depth)}-bit PCM` }))}
+          onChange={setBitDepth}
+        />
+        <ChoiceGroup
+          label="Sample rate"
+          className="choice-grid--pairs"
+          value={deliveryRate}
+          options={rateChoices.map((choice) => ({
+            value: choice.value,
+            label: choice.value === "source" ? `${formatRate(choice.hz)} (source)` : formatRate(choice.hz),
+            // An unlisted source rate sits on its own row above the even set.
+            wide: choice.value === "source" && rateChoices.length % 2 === 1,
+            disabled: choice.unavailable !== undefined,
+            ...(choice.unavailable ? { describedBy: rateNoteId } : {}),
+          }))}
+          onChange={setExportRate}
+        />
+        {unavailableRateNote(rateChoices, track.sampleRate) && (
+          <p id={rateNoteId} className="disclosure">
+            {unavailableRateNote(rateChoices, track.sampleRate)}
+          </p>
+        )}
         {bitDepth !== 32 && (
-          <ControlGroup label="Dither">
-            <div className="choice-grid">
-              {([true, false] as const).map((on) => (
-                <button
-                  type="button"
-                  className={dither === on ? "choice is-active" : "choice"}
-                  aria-pressed={dither === on}
-                  key={String(on)}
-                  onClick={() => {
-                    setDither(on);
-                  }}
-                >
-                  {on ? "TPDF" : "Off"}
-                </button>
-              ))}
-            </div>
-          </ControlGroup>
+          <ChoiceGroup
+            label="Dither"
+            className="choice-grid--pairs"
+            value={dither}
+            options={[{ value: true, label: "TPDF" }, { value: false, label: "Off" }]}
+            onChange={setDither}
+          />
         )}
         <p className="disclosure">
-          Source sample rate: {track.sampleRate / 1000} kHz. Original duration
-          and stereo frames are preserved; a converted rate keeps the duration
-          with a 120 dB windowed-sinc filter flat to 90% of the lower Nyquist
-          frequency, then reapplies the limiter ceiling and dither at the new
-          rate. 16-bit and 24-bit PCM clip samples outside ±1. Choose 32-bit
-          Float to preserve headroom, or enable the limiter before exporting
-          integer PCM. Turn dither off only for material that is already
-          dithered.
+          Source sample rate: {formatRate(track.sampleRate)}. The source rate
+          keeps every frame. A converted rate keeps the duration, so the frame
+          count changes: a 120 dB windowed-sinc filter, flat to 90% of the
+          lower Nyquist frequency, resamples the master, which re-limits to
+          the true-peak ceiling at the new rate when the limiter is on, then
+          applies dither at the new rate. A converted export may not exceed{" "}
+          {MAX_SOURCE_FRAMES.toLocaleString("en-US")} frames, about{" "}
+          {formatTime(MAX_SOURCE_FRAMES / 96000)} at 96 kHz or{" "}
+          {formatTime(MAX_SOURCE_FRAMES / 44100)} at 44.1 kHz. 16-bit and 24-bit PCM clip
+          samples outside ±1. Choose 32-bit Float to preserve headroom, or
+          enable the limiter before exporting integer PCM. Turn dither off
+          only for material that is already dithered.
         </p>
         <p className="disclosure" role="status">
           {message}
@@ -1474,35 +1471,18 @@ function AdvancedControls({
       />
       </fieldset>
       {adv.saturationModule.character === "Clean" && <p className="text-xs text-[var(--ink-soft)]">Clean leaves the signal unchanged. Your drive setting is retained for the other characters.</p>}
-      <ControlGroup label="Saturation character">
-        <div
-          className="choice-grid"
-          role="group"
-          aria-label="Saturation character"
-        >
-          {(["Clean", "Tube", "Tape", "Transformer", ...(["Warm", "Thick", "Crisp"].includes(adv.saturationModule.character) ? [adv.saturationModule.character] : [])] as SaturationCharacter[]).map((char) => (
-            <button
-              type="button"
-              key={char}
-              className={
-                adv.saturationModule.character === char
-                  ? "choice is-active"
-                  : "choice"
-              }
-              aria-pressed={adv.saturationModule.character === char}
-              onClick={() => {
-                dispatch({
-                  type: "UPDATE_SATURATION",
-                  trackId: track.id,
-                  patch: { character: char },
-                });
-              }}
-            >
-              {char}
-            </button>
-          ))}
-        </div>
-      </ControlGroup>
+      <ChoiceGroup
+        label="Saturation character"
+        value={adv.saturationModule.character}
+        options={(["Clean", "Tube", "Tape", "Transformer", ...(["Warm", "Thick", "Crisp"].includes(adv.saturationModule.character) ? [adv.saturationModule.character] : [])] as SaturationCharacter[]).map((char) => ({ value: char, label: char }))}
+        onChange={(character) => {
+          dispatch({
+            type: "UPDATE_SATURATION",
+            trackId: track.id,
+            patch: { character },
+          });
+        }}
+      />
 
       </DSPModule>
       <FrequencyDynamicsControls track={track} />

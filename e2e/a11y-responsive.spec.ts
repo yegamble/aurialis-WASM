@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright"
 import { expect, test } from "@playwright/test"
+import { fixture } from "./audio-fixture"
 import { uploadProject } from "./workflow-fixture"
 
 const VIEWPORTS = [
@@ -93,6 +94,50 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
           `Route ${route} overflowed horizontally at ${vp.width}px`,
         ).toBe(false)
       }
+    }
+  })
+
+  test("Export dialog names its choice groups and reflows without overflow or wrapped choices", async ({ page }) => {
+    // A 32 kHz source is not a delivery rate, so the dialog shows all five rate choices.
+    const wav = fixture(1000, 1)
+    wav.writeUInt32LE(32000, 24)
+    wav.writeUInt32LE(32000 * 4, 28)
+    await page.goto("/")
+    await page.getByLabel("Upload audio file").setInputFiles({ name: "qa-export-32k.wav", mimeType: "audio/wav", buffer: wav })
+    await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 })
+    for (const vp of VIEWPORTS) {
+      await page.setViewportSize({ width: vp.width, height: vp.height })
+      await page.getByRole("button", { name: "Export", exact: true }).click()
+      const dialog = page.getByRole("dialog")
+      await dialog.getByRole("group", { name: "Bit depth", exact: true }).getByRole("button", { name: "16-bit PCM", exact: true }).click()
+      const rates = dialog.getByRole("group", { name: "Sample rate", exact: true })
+      await expect(rates.getByRole("button")).toHaveText(["32 kHz (source)", "44.1 kHz", "48 kHz", "88.2 kHz", "96 kHz"])
+      await expect(rates.getByRole("button", { name: "32 kHz (source)", exact: true })).toHaveAttribute("aria-pressed", "true")
+      await expect(dialog.getByRole("group", { name: "Dither", exact: true }).getByRole("button")).toHaveText(["TPDF", "Off"])
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+      expect(overflow, `Export dialog overflowed at ${vp.width}px`).toBeLessThanOrEqual(0)
+      const choices = await dialog.locator(".choice").evaluateAll((elements) => elements.map((element) => {
+        const box = element.getBoundingClientRect(), range = document.createRange()
+        range.selectNodeContents(element)
+        return { label: element.textContent ?? "", width: box.width, height: box.height, right: box.right,
+          lines: new Set(Array.from(range.getClientRects()).map((rect) => Math.round(rect.top))).size }
+      }))
+      expect(choices).toHaveLength(10)
+      for (const choice of choices) {
+        expect(choice.lines, `${choice.label} wrapped at ${vp.width}px`).toBe(1)
+        expect(choice.width, `${choice.label} width at ${vp.width}px`).toBeGreaterThanOrEqual(44)
+        expect(choice.height, `${choice.label} height at ${vp.width}px`).toBeGreaterThanOrEqual(44)
+        expect(choice.right, `${choice.label} clipped at ${vp.width}px`).toBeLessThanOrEqual(vp.width)
+      }
+      if (vp.width === 320 || vp.width === 1440) {
+        const results = await new AxeBuilder({ page })
+          .include('[role="dialog"]')
+          .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+          .analyze()
+        expect(results.violations, `WCAG 2.2 AA in the Export dialog at ${vp.width}px: ${JSON.stringify(results.violations)}`).toEqual([])
+      }
+      await page.keyboard.press("Escape")
+      await expect(dialog).toBeHidden()
     }
   })
 

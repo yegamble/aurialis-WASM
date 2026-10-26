@@ -164,30 +164,48 @@ function appendDelivery(data: FormData, delivery: ExportDelivery | undefined): v
   if (delivery?.sampleRate !== undefined) data.append("sampleRate", String(delivery.sampleRate));
   if (delivery?.dither !== undefined) data.append("dither", delivery.dither);
 }
+type DeliveredWAV = {
+  blob: Blob;
+  /** Go's X-Aurialis-After-Peak-dBTP: measured on the delivered audio, after any conversion. */
+  truePeakDbtp: number | null;
+};
+async function renderWAV(data: FormData, failure: string, signal?: AbortSignal): Promise<DeliveredWAV> {
+  const response = await audioRequest(data, signal);
+  if (!response.ok) throw await audioError(response, failure);
+  const blob = await readAudioResponse(() => response.blob(), signal);
+  const header = response.headers.get("X-Aurialis-After-Peak-dBTP");
+  const peak = header === null || header.trim() === "" ? Number.NaN : Number(header);
+  return { blob, truePeakDbtp: Number.isFinite(peak) ? peak : null };
+}
+function renderForm(file: Blob, field: "params" | "script", value: object, bitDepth: 16 | 24 | 32, delivery?: ExportDelivery): FormData {
+  const data = new FormData();
+  data.append("file", file, "source.wav");
+  data.append(field, JSON.stringify(value));
+  data.append("bitDepth", String(bitDepth));
+  appendDelivery(data, delivery);
+  return data;
+}
+const RENDER_FAILURE = "Audio processing failed. Please try again.";
+const SCRIPT_FAILURE = "The applied script could not be rendered. Restore its matching source and retry.";
 export async function serverRender(
   file: Blob,
   params: object,
   bitDepth: 16 | 24 | 32,
   signal?: AbortSignal,
-  delivery?: ExportDelivery,
 ): Promise<Blob> {
   signal?.throwIfAborted();
-  const data = new FormData();
-  data.append("file", file, "source.wav");
-  data.append("params", JSON.stringify(params));
-  data.append("bitDepth", String(bitDepth));
-  appendDelivery(data, delivery);
-  const response = await audioRequest(data, signal);
-  if (!response.ok)
-    throw await audioError(response, "Audio processing failed. Please try again.");
-  return readAudioResponse(() => response.blob(), signal);
+  return (await renderWAV(renderForm(file, "params", params, bitDepth), RENDER_FAILURE, signal)).blob;
 }
-export async function serverRenderScript(file: Blob, script: ScriptV2, bitDepth: 16 | 24 | 32, signal?: AbortSignal, delivery?: ExportDelivery): Promise<Blob> {
+export async function serverRenderScript(file: Blob, script: ScriptV2, bitDepth: 16 | 24 | 32, signal?: AbortSignal): Promise<Blob> {
   signal?.throwIfAborted();
-  const data = new FormData(); data.append("file", file, "source.wav"); data.append("script", JSON.stringify(script)); data.append("bitDepth", String(bitDepth)); appendDelivery(data, delivery);
-  const response = await audioRequest(data, signal);
-  if (!response.ok) throw await audioError(response, "The applied script could not be rendered. Restore its matching source and retry.");
-  return readAudioResponse(() => response.blob(), signal);
+  return (await renderWAV(renderForm(file, "script", script, bitDepth), SCRIPT_FAILURE, signal)).blob;
+}
+/** A delivery export: the WAV plus its delivered true peak when the engine reports one. */
+export async function renderDelivery(file: Blob, render: { params: object } | { script: ScriptV2 }, bitDepth: 16 | 24 | 32, delivery: ExportDelivery, signal?: AbortSignal): Promise<DeliveredWAV> {
+  signal?.throwIfAborted();
+  return "script" in render
+    ? renderWAV(renderForm(file, "script", render.script, bitDepth, delivery), SCRIPT_FAILURE, signal)
+    : renderWAV(renderForm(file, "params", render.params, bitDepth, delivery), RENDER_FAILURE, signal);
 }
 export async function readCanonicalWAV(blob: Blob): Promise<StereoPCM> {
   const data = new DataView(await blob.arrayBuffer());

@@ -87,6 +87,7 @@ func TestStoreDownloadsOnceAndReplacesCorruptCache(t *testing.T) {
 		mu.Lock()
 		requests++
 		mu.Unlock()
+		// #nosec G703 -- serves the explicit opt-in trusted development model path.
 		http.ServeFile(w, r, source)
 	}))
 	defer server.Close()

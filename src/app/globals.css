@@ -382,6 +382,18 @@ input[type="range"] {
   font-weight: 500;
 }
 
+/* Even option sets, such as delivery rates, read as clean pairs at every width. */
+.choice-grid--pairs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.choice:disabled {
+  cursor: not-allowed;
+  border-style: dashed;
+  color: var(--ink-soft);
+  background: transparent;
+}
+
 .choice.is-active {
   background: var(--ink);
   color: var(--paper);

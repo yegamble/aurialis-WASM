@@ -143,7 +143,7 @@ export function ControlGroup({
   );
 }
 
-export type Choice<T> = {
+type Choice<T> = {
   value: T;
   label: ReactNode;
   disabled?: boolean;

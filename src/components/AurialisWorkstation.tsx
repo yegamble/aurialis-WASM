@@ -31,6 +31,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useId,
   useRef,
   useState,
   type DragEvent,
@@ -54,7 +55,8 @@ import type {
   SaturationCharacter,
   Track,
 } from "@/lib/types";
-import { EXPORT_SAMPLE_RATES } from "@/lib/types";
+import { exportRateChoices, formatRate, unavailableRateNote } from "@/lib/export-rates";
+import { MAX_SOURCE_FRAMES } from "@/lib/audio-limits";
 import { Icon, type IconName } from "./shared/Icon";
 import {
   Artwork,
@@ -611,6 +613,7 @@ function MasterView({ trackId }: { trackId: string }) {
   const [bitDepth, setBitDepth] = useState<ExportBitDepth>(24);
   const [exportRate, setExportRate] = useState<ExportSampleRate | "source">("source");
   const [dither, setDither] = useState(true);
+  const rateNoteId = useId();
   const [message, setMessage] = useState("");
   const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
   const renderAbort = useRef<AbortController | null>(null);
@@ -625,6 +628,9 @@ function MasterView({ trackId }: { trackId: string }) {
   );
   const settingsKey = useMemo(() => track ? appliedRevisionKey(track) ?? masteringSettingsKey(track.advanced) : "", [track]);
   const fresh = renderedKey === settingsKey && preview !== null;
+  const rateChoices = track ? exportRateChoices(track.sampleRate, source?.left.length ?? track.sourceIdentity?.frames ?? Math.round(track.duration * track.sampleRate)) : [];
+  // A choice that is unavailable for this track falls back to the source rate.
+  const deliveryRate = rateChoices.some((choice) => choice.value === exportRate && choice.unavailable === undefined) ? exportRate : "source";
   useEffect(() => {
     if (renderAbort.current && !renderAbort.current.signal.aborted && renderSettings.current !== settingsKey) {
       renderAbort.current.abort();
@@ -848,9 +854,9 @@ function MasterView({ trackId }: { trackId: string }) {
     renderSettings.current = settingsKey;
     setMessage("Rendering WAV from the uploaded source…");
     try {
-      const outputRate = exportRate === "source" ? track.sampleRate : exportRate;
+      const outputRate = deliveryRate === "source" ? track.sampleRate : deliveryRate;
       const delivery: ExportDelivery = {
-        ...(outputRate !== track.sampleRate && exportRate !== "source" ? { sampleRate: exportRate } : {}),
+        ...(deliveryRate !== "source" ? { sampleRate: deliveryRate } : {}),
         ...(bitDepth !== 32 && !dither ? { dither: "none" as const } : {}),
       };
       const blob = track.deepMastering?.applied
@@ -1142,10 +1148,23 @@ function MasterView({ trackId }: { trackId: string }) {
         />
         <ChoiceGroup
           label="Sample rate"
-          value={exportRate}
-          options={(["source", ...EXPORT_SAMPLE_RATES] as const).map((rate) => ({ value: rate, label: rate === "source" ? `Source (${String(track.sampleRate / 1000)} kHz)` : `${String(rate / 1000)} kHz` }))}
+          className="choice-grid--pairs"
+          value={deliveryRate}
+          options={rateChoices.map((choice) => ({
+            value: choice.value,
+            label: choice.value === "source" ? `${formatRate(choice.hz)} (source)` : formatRate(choice.hz),
+            // An unlisted source rate sits on its own row above the even set.
+            wide: choice.value === "source" && rateChoices.length % 2 === 1,
+            disabled: choice.unavailable !== undefined,
+            ...(choice.unavailable ? { describedBy: rateNoteId } : {}),
+          }))}
           onChange={setExportRate}
         />
+        {unavailableRateNote(rateChoices, track.sampleRate) && (
+          <p id={rateNoteId} className="disclosure">
+            {unavailableRateNote(rateChoices, track.sampleRate)}
+          </p>
+        )}
         {bitDepth !== 32 && (
           <ChoiceGroup
             label="Dither"
@@ -1155,14 +1174,18 @@ function MasterView({ trackId }: { trackId: string }) {
           />
         )}
         <p className="disclosure">
-          Source sample rate: {track.sampleRate / 1000} kHz. Original duration
-          and stereo frames are preserved; a converted rate keeps the duration
-          with a 120 dB windowed-sinc filter flat to 90% of the lower Nyquist
-          frequency, then reapplies the limiter ceiling and dither at the new
-          rate. 16-bit and 24-bit PCM clip samples outside ±1. Choose 32-bit
-          Float to preserve headroom, or enable the limiter before exporting
-          integer PCM. Turn dither off only for material that is already
-          dithered.
+          Source sample rate: {formatRate(track.sampleRate)}. The source rate
+          keeps every frame. A converted rate keeps the duration, so the frame
+          count changes: a 120 dB windowed-sinc filter, flat to 90% of the
+          lower Nyquist frequency, resamples the master, which re-limits to
+          the true-peak ceiling at the new rate when the limiter is on, then
+          applies dither at the new rate. A converted export may not exceed{" "}
+          {MAX_SOURCE_FRAMES.toLocaleString("en-US")} frames, about{" "}
+          {formatTime(MAX_SOURCE_FRAMES / 96000)} at 96 kHz or{" "}
+          {formatTime(MAX_SOURCE_FRAMES / 44100)} at 44.1 kHz. 16-bit and 24-bit PCM clip
+          samples outside ±1. Choose 32-bit Float to preserve headroom, or
+          enable the limiter before exporting integer PCM. Turn dither off
+          only for material that is already dithered.
         </p>
         <p className="disclosure" role="status">
           {message}

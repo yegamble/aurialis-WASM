@@ -417,7 +417,7 @@ export function trackMetrics(metrics: MeasuredAudioMetrics) {
 }
 
 /** Normalized settings and the export-parameter measurement that accepted them. */
-export type NormalizedLoudness = { advanced: AdvancedParams; measurement: AudioMeasurement };
+type NormalizedLoudness = { advanced: AdvancedParams; measurement: AudioMeasurement };
 
 function signedDb(value: number): string {
   const fixed = value.toFixed(2);

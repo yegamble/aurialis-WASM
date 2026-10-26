@@ -404,6 +404,9 @@
     "Slakh",
     "stopband",
     "undithered",
-    "resampler"
+    "resampler",
+    "Abramowitz",
+    "Stegun",
+    "erff"
   ]
 }

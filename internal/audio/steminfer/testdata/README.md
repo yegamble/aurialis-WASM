@@ -16,6 +16,13 @@ Set `AURIALIS_STEM_MODEL` to the five-head `safetensors` file to run the model-b
 - `TestStoreDownloadsOnceAndReplacesCorruptCache`: first-use download through a local server.
 - `TestOriginalPyTorchIntermediateAndPCMParity` and `TestOriginalNeuralPortFromExactFeatures`: also set `AURIALIS_STEM_ORACLE` to an `oracle.py` output directory.
 - `TestMeasureFixedTwentySecondTrainedPipeline`: also set `AURIALIS_STEM_MEASURE_PIPELINE=1` to time one full window.
+- `TestFullWindowMatchesPyTorchOriginal`: also set `AURIALIS_STEM_FULL_ORACLE` to a `fullwindow_oracle.py` output directory. Every head must stay within `1e-4` and above 80 dB SNR. Generate the directory with the full window, which is not the script's default:
+
+  ```sh
+  python3 fullwindow_oracle.py --checkpoint mvsep_mega_model_bs_roformer_53_stems_v1.ckpt --out /tmp/full-oracle --samples 882000 --threads 4
+  ```
+
+  Add `--broadband` for a noise fixture or `--source-wav` for a canonical 44.1 kHz stereo float32 WAV of at most 882,000 frames. The output is `oracle.json` plus about 70 MB of `oracle.bin`.
 
 ## Recorded results — 2026-10-23 and 2026-10-25
 

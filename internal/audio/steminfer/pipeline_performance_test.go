@@ -17,7 +17,7 @@ func TestMeasureFixedTwentySecondTrainedPipeline(t *testing.T) {
 		t.Skip("set explicit private full-context measurement opt-in")
 	}
 	const rate, frames, stems = 48000, 480000, 6
-	resources, err := estimatePipeline(rate, frames, stems, maximumWindowSamples, defaultWorkers())
+	resources, err := planPipeline(rate, frames, stems, maximumWindowSamples, defaultWorkers())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -17,6 +17,7 @@ type networkWorkspace struct {
 	// Each lane runs one band or frame transformer at a time. Lane 0 also
 	// holds the band-split and mask-head scratch, which run serially.
 	lanes           []*transformerLane
+	laneRows        int // rows each lane holds: max(frames, bands)
 	frames, samples int
 }
 
@@ -37,7 +38,7 @@ func newTransformerLane(sequence int) *transformerLane {
 		key:         make([]float32, sequence*attentionHeadDimension),
 		value:       make([]float32, sequence*attentionHeadDimension),
 		scores:      make([]float32, attentionTile*sequence),
-		frequencies: make([]float32, len(bandBins)*modelDimension),
+		frequencies: make([]float32, sequence*modelDimension),
 	}
 }
 
@@ -54,6 +55,7 @@ func newNetworkWorkspace(samples, workers int) *networkWorkspace {
 		spectra:  make([]complex64, frames*spectrumBins*2),
 		spectrum: newSpectrumWorkspace(frames),
 		lanes:    make([]*transformerLane, max(1, workers)),
+		laneRows: sequence,
 	}
 	for i := range work.lanes {
 		work.lanes[i] = newTransformerLane(sequence)
@@ -131,29 +133,35 @@ func (work *networkWorkspace) loadBlock(archive *weightArchive, layer, axis int)
 	}
 	return result, nil
 }
-func (lane *transformerLane) transformer(ctx context.Context, rotations, input []float32, sequence int, weights blockWeights) error {
-	norm := lane.normalized[:sequence*256]
-	qkv := lane.qkv[:sequence*1536]
-	gates := lane.gates[:sequence*8]
-	inner := lane.inner[:sequence*512]
-	projected := lane.projected[:sequence*256]
-	normalizeRows(norm, input, weights.gamma, sequence, 256)
-	if err := multiply(ctx, qkv, norm, weights.qkv, sequence, 1536, 256, true); err != nil {
+
+// transformer runs one block over groups independent sequences stored back
+// to back in input. Projections and the feed-forward run over all rows at
+// once; attention and rotary positions stay within each sequence.
+func (lane *transformerLane) transformer(ctx context.Context, rotations, input []float32, sequence, groups int, weights blockWeights) error {
+	total := sequence * groups
+	norm := lane.normalized[:total*256]
+	qkv := lane.qkv[:total*1536]
+	gates := lane.gates[:total*8]
+	inner := lane.inner[:total*512]
+	projected := lane.projected[:total*256]
+	normalizeRows(norm, input, weights.gamma, total, 256)
+	if err := multiply(ctx, qkv, norm, weights.qkv, total, 1536, 256, true); err != nil {
 		return err
 	}
-	if err := multiply(ctx, gates, norm, weights.gates, sequence, 8, 256, true); err != nil {
+	if err := multiply(ctx, gates, norm, weights.gates, total, 8, 256, true); err != nil {
 		return err
 	}
-	addBias(gates, weights.gatesBias, sequence, 8)
+	addBias(gates, weights.gatesBias, total, 8)
 	for head := range 8 {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		query, key, value := lane.query[:sequence*64], lane.key[:sequence*64], lane.value[:sequence*64]
-		for row := range sequence {
+		query, key, value := lane.query[:total*64], lane.key[:total*64], lane.value[:total*64]
+		for row := range total {
+			position := row % sequence
 			for pair := range 32 {
-				s := rotations[row*64+pair*2]
-				c := rotations[row*64+pair*2+1]
+				s := rotations[position*64+pair*2]
+				c := rotations[position*64+pair*2+1]
 				for source, destination := range [2][]float32{query, key} {
 					offset := row*1536 + source*512 + head*64 + pair*2
 					a, b := qkv[offset], qkv[offset+1]
@@ -163,47 +171,51 @@ func (lane *transformerLane) transformer(ctx context.Context, rotations, input [
 			}
 			copy(value[row*64:(row+1)*64], qkv[row*1536+1024+head*64:row*1536+1024+(head+1)*64])
 		}
-		for first := 0; first < sequence; first += attentionTile {
-			rows := min(attentionTile, sequence-first)
-			scores := lane.scores[:rows*sequence]
-			if err := multiply(ctx, scores, query[first*64:(first+rows)*64], key, rows, sequence, 64, true); err != nil {
-				return err
-			}
-			if err := attentionSoftmax(ctx, scores, rows, sequence); err != nil {
-				return err
-			}
-			output := lane.normalized[:rows*64]
-			if err := multiply(ctx, output, scores, value, rows, 64, sequence, false); err != nil {
-				return err
-			}
-			for row := range rows {
-				gate := sigmoid(gates[(first+row)*8+head])
-				for column := range 64 {
-					inner[(first+row)*512+head*64+column] = output[row*64+column] * gate
+		for group := range groups {
+			base := group * sequence
+			groupKey, groupValue := key[base*64:(base+sequence)*64], value[base*64:(base+sequence)*64]
+			for first := 0; first < sequence; first += attentionTile {
+				rows := min(attentionTile, sequence-first)
+				scores := lane.scores[:rows*sequence]
+				if err := multiply(ctx, scores, query[(base+first)*64:(base+first+rows)*64], groupKey, rows, sequence, 64, true); err != nil {
+					return err
+				}
+				if err := attentionSoftmax(ctx, scores, rows, sequence); err != nil {
+					return err
+				}
+				output := lane.normalized[:rows*64]
+				if err := multiply(ctx, output, scores, groupValue, rows, 64, sequence, false); err != nil {
+					return err
+				}
+				for row := range rows {
+					gate := sigmoid(gates[(base+first+row)*8+head])
+					for column := range 64 {
+						inner[(base+first+row)*512+head*64+column] = output[row*64+column] * gate
+					}
 				}
 			}
 		}
 	}
-	if err := multiply(ctx, projected, inner, weights.out, sequence, 256, 512, true); err != nil {
+	if err := multiply(ctx, projected, inner, weights.out, total, 256, 512, true); err != nil {
 		return err
 	}
-	for i := range input {
+	for i := range input[:total*256] {
 		input[i] += projected[i]
 	}
-	normalizeRows(norm, input, weights.ffGamma, sequence, 256)
-	hidden := lane.qkv[:sequence*1024]
-	if err := multiply(ctx, hidden, norm, weights.ffOne, sequence, 1024, 256, true); err != nil {
+	normalizeRows(norm, input, weights.ffGamma, total, 256)
+	hidden := lane.qkv[:total*1024]
+	if err := multiply(ctx, hidden, norm, weights.ffOne, total, 1024, 256, true); err != nil {
 		return err
 	}
-	addBias(hidden, weights.ffOneBias, sequence, 1024)
+	addBias(hidden, weights.ffOneBias, total, 1024)
 	if err := applyGELU(ctx, hidden); err != nil {
 		return err
 	}
-	if err := multiply(ctx, projected, hidden, weights.ffTwo, sequence, 256, 1024, true); err != nil {
+	if err := multiply(ctx, projected, hidden, weights.ffTwo, total, 256, 1024, true); err != nil {
 		return err
 	}
-	addBias(projected, weights.ffTwoBias, sequence, 256)
-	for i := range input {
+	addBias(projected, weights.ffTwoBias, total, 256)
+	for i := range input[:total*256] {
 		input[i] += projected[i]
 	}
 	return nil
@@ -251,21 +263,10 @@ func (work *networkWorkspace) layer(ctx context.Context, archive *weightArchive,
 		}
 		if axis == 0 {
 			err = work.parallel(ctx, len(bandBins), func(lane *transformerLane, band int) error {
-				return lane.transformer(ctx, work.rotations, work.hidden[band*work.frames*256:(band+1)*work.frames*256], work.frames, weights)
+				return lane.transformer(ctx, work.rotations, work.hidden[band*work.frames*256:(band+1)*work.frames*256], work.frames, 1, weights)
 			})
 		} else {
-			err = work.parallel(ctx, work.frames, func(lane *transformerLane, frame int) error {
-				for band := range bandBins {
-					copy(lane.frequencies[band*256:(band+1)*256], work.hidden[(band*work.frames+frame)*256:(band*work.frames+frame+1)*256])
-				}
-				if err := lane.transformer(ctx, work.rotations, lane.frequencies, len(bandBins), weights); err != nil {
-					return err
-				}
-				for band := range bandBins {
-					copy(work.hidden[(band*work.frames+frame)*256:(band*work.frames+frame+1)*256], lane.frequencies[band*256:(band+1)*256])
-				}
-				return nil
-			})
+			err = work.frequencyAxis(ctx, weights)
 		}
 		if err != nil {
 			return err
@@ -282,6 +283,35 @@ func (work *networkWorkspace) layer(ctx context.Context, archive *weightArchive,
 		}
 	}
 	return nil
+}
+
+// frequencyAxis runs one frequency-axis block over every frame. Sequences
+// are short (62 bands), so each task packs as many frames as a lane holds
+// into one batch.
+func (work *networkWorkspace) frequencyAxis(ctx context.Context, weights blockWeights) error {
+	bands := len(bandBins)
+	perBatch := max(1, work.laneRows/bands)
+	batches := (work.frames + perBatch - 1) / perBatch
+	return work.parallel(ctx, batches, func(lane *transformerLane, batch int) error {
+		first := batch * perBatch
+		count := min(perBatch, work.frames-first)
+		for local := range count {
+			frame := first + local
+			for band := range bands {
+				copy(lane.frequencies[(local*bands+band)*256:(local*bands+band+1)*256], work.hidden[(band*work.frames+frame)*256:(band*work.frames+frame+1)*256])
+			}
+		}
+		if err := lane.transformer(ctx, work.rotations, lane.frequencies, bands, count, weights); err != nil {
+			return err
+		}
+		for local := range count {
+			frame := first + local
+			for band := range bands {
+				copy(work.hidden[(band*work.frames+frame)*256:(band*work.frames+frame+1)*256], lane.frequencies[(local*bands+band)*256:(local*bands+band+1)*256])
+			}
+		}
+		return nil
+	})
 }
 
 // parallel runs task for every index in [0, count) across the workspace lanes.

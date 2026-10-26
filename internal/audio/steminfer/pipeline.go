@@ -13,12 +13,12 @@ type pipelineProgress struct{ window, windows, completed, total int }
 type windowPredictor func(context.Context, []float32, []float32, []int, func(int, []float32, []float32) error, inferenceHooks) error
 
 // runTrainedSeparation backs Model.Separate. The caller must own immutable
-// canonical source PCM and reserve estimatePipeline's requiredJobBytes before
+// canonical source PCM and reserve planPipeline's requiredJobBytes before
 // entering, plus separately reserve the shared immutable model. Partial sink
 // writes are unpublished job state and must be discarded after any error.
 // No job timeout is configured here; the owner supplies a cancellable context.
 func runTrainedSeparation(ctx context.Context, archive *weightArchive, rate, stems int, left, right []float32, admittedBytes int64, sink stemSink, progress func(pipelineProgress)) error {
-	resources, err := estimatePipeline(rate, len(left), stems, maximumWindowSamples, defaultWorkers())
+	resources, err := planPipeline(rate, len(left), stems, maximumWindowSamples, defaultWorkers())
 	if err != nil {
 		return err
 	}

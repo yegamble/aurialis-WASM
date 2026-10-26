@@ -21,7 +21,7 @@ func StemNames(stems int) ([]string, error) {
 // the caller's retained stem PCM but excluding the shared model. It fails for
 // requests beyond the per-job ceiling.
 func JobBytes(rate, frames, stems int) (int64, error) {
-	resources, err := estimatePipeline(rate, frames, stems, maximumWindowSamples, defaultWorkers())
+	resources, err := planPipeline(rate, frames, stems, maximumWindowSamples, defaultWorkers())
 	if err != nil {
 		return 0, err
 	}

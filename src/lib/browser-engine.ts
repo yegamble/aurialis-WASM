@@ -1,4 +1,4 @@
-import { engineParams } from "./engine-params";
+import { engineParams, exportParams } from "./engine-params";
 export { engineParams } from "./engine-params";
 import { deviceAudioRequest, usesBrowserAudio } from "./browser-jobs";
 import type { ScriptV2 } from "./deep-mastering";
@@ -416,15 +416,32 @@ export function trackMetrics(metrics: MeasuredAudioMetrics) {
   };
 }
 
+/** Normalized settings and the export-parameter measurement that accepted them. */
+type NormalizedLoudness = { advanced: AdvancedParams; measurement: AudioMeasurement };
+
+function signedDb(value: number): string {
+  const fixed = value.toFixed(2);
+  return fixed === "-0.00" ? "0.00" : fixed.replace("-", "−");
+}
+
+/** Report the accepted export level. Preview and live meters run algorithm 1,
+ * whose sample-peak limiter can read higher than the true-peak export. */
+export function exportLevelSummary(metrics: MeasuredAudioMetrics): string {
+  return `Export measures ${signedDb(metrics.integratedLufs)} LUFS, ${signedDb(metrics.truePeakDbtp)} dBTP. Live meters and the offline preview use the preview limiter and can read higher.`;
+}
+
 // Explicit Simple-mode automatic gain. Advanced rendering never calls this.
-// Fail rather than claiming a target when nonlinear processing or available
-// sample-peak limiting cannot meet both loudness and the measured peak ceiling.
+// Every candidate is measured with the export parameters (algorithm 2, the
+// lookahead true-peak limiter) so the search converges on the delivered WAV,
+// not on the live sample-peak limiter whose inter-sample peaks overshoot.
+// Fail rather than claiming a target when nonlinear processing or limiting
+// cannot meet both loudness and the measured peak ceiling.
 export async function normalizeSimpleAudio(
   file: Blob,
   settings: AdvancedParams,
   targetLufs: number,
   signal?: AbortSignal,
-): Promise<AdvancedParams> {
+): Promise<NormalizedLoudness> {
   if (!Number.isFinite(targetLufs) || targetLufs < -36 || targetLufs > -5)
     throw new Error("Choose a loudness target between −36 and −5 LUFS.");
   let candidate = structuredClone(settings);
@@ -433,15 +450,17 @@ export async function normalizeSimpleAudio(
   let upper = 36;
   for (let attempt = 0; attempt < 8; attempt++) {
     signal?.throwIfAborted();
-    const { afterMetrics } = await measureAudio(file, engineParams(candidate), signal);
+    const measurement = await measureAudio(file, exportParams(candidate), signal);
+    const { afterMetrics } = measurement;
     signal?.throwIfAborted();
     const difference = targetLufs - afterMetrics.integratedLufs;
     if (afterMetrics.integratedLufs <= -69.9)
       throw new Error("The source is too quiet to normalize reliably.");
     if (Math.abs(difference) <= 0.2) {
-      if (afterMetrics.truePeakDbtp > candidate.limiter.ceiling + 0.2)
+      // Strict: the export true-peak limiter holds its ceiling with headroom.
+      if (afterMetrics.truePeakDbtp > candidate.limiter.ceiling)
         throw new Error("This loudness target exceeds the measured peak ceiling. Choose a quieter target.");
-      return candidate;
+      return { advanced: candidate, measurement };
     }
     // Input gain precedes compression and saturation, so one dB of input does
     // not necessarily produce one LU of output. Estimate that response from

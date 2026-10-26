@@ -3,6 +3,32 @@
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
+
+## Set target loudness on dense mixes — 2026-10-26
+
+V1-01 (P0), finding GV-1 from the v1 ruling. Set target loudness, album normalization and the Elevated check measured candidates with the live algorithm 1. Its sample-peak limiter overshoots in true peak on any program that needs limiting, so dense mixes were rejected ("exceeds the measured peak ceiling") even at −14 LUFS. The browser-test fixture was a pure tone, so it never caught this. Measurement now uses the export parameters (algorithm 2, true peak on). The peak gate is strict: a measured export true peak (and, for Elevated, sample peak) above the ceiling is rejected, with no tolerance. The earlier 0.05 dB slack (`EXPORT_PEAK_TOLERANCE_DB`) is removed; the export limiter already keeps 0.2 dB of internal headroom.
+
+Evidence (local, 2026-10-26). On a deterministic dense drum-and-bass fixture (source −15.97 LUFS, −0.78 dBTP), each export downloaded through the UI and measured by the native meter:
+
+| Target | Before | After (native) | After (browser worker) |
+|---|---|---|---|
+| Streaming −14/−1 | rejected at −0.27 dBTP | input +1.95 dB; −14.18 LUFS, −1.10 dBTP | −14.03 LUFS, −1.21 dBTP |
+| Loud preset −9/−0.2 | rejected at +2.31 dBTP | input +8.87 dB; −9.01 LUFS, −0.30 dBTP | not run |
+| Custom −9/−1 (seeded custom target) | not covered | input +9.38 dB; −9.05 LUFS, −1.10 dBTP | −9.08 LUFS, −1.12 dBTP |
+| Elevated, +2 dB input | rejected | accepted, −14.5 LUFS, −1.21 dBTP | not run |
+| Album, 3 dense tracks (sources −15.96, −18.66, −22.66 LUFS), Pop, −14/−1 | not covered | −14.04, −14.06, −14.08 LUFS; each −1.21 dBTP | same values |
+
+After Set target loudness, the status line now reports the export measurement ("Preview ready. Export measures −9.01 LUFS, −0.30 dBTP. Live meters and the offline preview use the preview limiter and can read higher."). The offline-preview note carries the same caveat. Album rendering reuses the normalization measurement instead of rendering each track a second time.
+
+Tests:
+- Vitest: 534/534 with `--maxWorkers=4`. The default run timed out one unrelated MasterPlayback mount test at load average ~90; that file passed 17/17 alone. Unit tests pin the strict gate: a peak exactly at the ceiling passes, 0.001 dB over fails.
+- Playwright `mastering-targets` + `workflow-regressions` (native build): 12/12, including Streaming, Loud, Custom −9/−1 and the dense album. The dense Set-target cases also check that the status-line LUFS/dBTP match the downloaded WAV.
+- Browser worker `e2e-browser/workflows.spec.ts`: 8/8, including dense Streaming, Custom −9/−1 and the dense 3-track album.
+- The Go mirror of the browser search (`internal/browserjobs/normalize_test.go`) is removed: it hand-copied `normalizeSimpleAudio` and the dense fixture, so either copy could drift. `e2e/workflow-fixture.ts` `denseFixture` is the only copy.
+- Run the native Playwright specs after `bash scripts/build.sh`. The browser suite's global setup rebuilds the embedded assets for browser execution, and a native run on those assets silently uses the browser worker.
+
+Offline preview and live playback still use algorithm 1 (tracked as V1-10). Status: **open — awaiting merge**.
+
 ## Deploy and supply-chain security — 2026-10-26
 
 Round E (Devil's Advocate) fixes, 2026-10-26: CI now runs the full `pnpm audit --audit-level high` instead of `--prod`, so wrangler (which runs with the deploy token), vitest and newman are covered. `pnpm.auditConfig.ignoreGhsas` lists the two documented newman advisories. The result is "9 moderate | 2 high (2 ignored)" with exit 0, and removing one ignore fails the gate. The static browser suite asserts the exact HSTS and Permissions-Policy values on the real Worker under `wrangler dev` before merge (14/14). Dependabot alerts and automated security fixes were enabled in repository settings.

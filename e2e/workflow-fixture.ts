@@ -2,12 +2,12 @@ import { Buffer } from "node:buffer";
 import { expect, type Page } from "@playwright/test";
 import { fixture } from "./audio-fixture";
 
-/** Deterministic 48 kHz 16-bit stereo drum-and-bass loop at a -1.3 dBFS sample
- * peak (≈ -16 LUFS, ≈ -0.8 dBTP): pitched kick and click, noise snare, stereo
+/** Deterministic 48 kHz 16-bit stereo drum-and-bass loop, by default at a
+ * -1.3 dBFS sample peak (≈ -16 LUFS, ≈ -0.8 dBTP): pitched kick and click, noise snare, stereo
  * noise hats and harmonic bass. Its full-band transients overshoot a sample-peak
  * limiter between samples, which a pure tone never does. Mirrors denseProgram in
  * internal/browserjobs/normalize_test.go; never uses application DSP. */
-export function denseFixture(seconds = 8): Buffer {
+export function denseFixture(seconds = 8, peakDbfs = -1.3): Buffer {
   const rate = 48000;
   const frames = rate * seconds;
   const left = new Float64Array(frames), right = new Float64Array(frames);
@@ -38,7 +38,7 @@ export function denseFixture(seconds = 8): Buffer {
     left[i] = l; right[i] = r;
     peak = Math.max(peak, Math.abs(l), Math.abs(r));
   }
-  const scale = Math.pow(10, -1.3 / 20) / peak;
+  const scale = Math.pow(10, peakDbfs / 20) / peak;
   const wav = Buffer.alloc(44 + frames * 4);
   wav.write("RIFF"); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8);
   wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(2, 22);
@@ -52,10 +52,10 @@ export function denseFixture(seconds = 8): Buffer {
   return wav;
 }
 
-/** Upload a generated source: a 1 kHz tone (default) or the dense program. */
-export async function uploadProject(page: Page, name = "qa-workflow.wav", seconds = 1, source: "tone" | "dense" = "tone"): Promise<string> {
+/** Upload a generated source: a 1 kHz tone (default), the dense program, or given WAV bytes. */
+export async function uploadProject(page: Page, name = "qa-workflow.wav", seconds = 1, source: "tone" | "dense" | Buffer = "tone"): Promise<string> {
   await page.goto("/");
-  const buffer = source === "dense" ? denseFixture(seconds) : fixture(1000, seconds);
+  const buffer = source === "dense" ? denseFixture(seconds) : source === "tone" ? fixture(1000, seconds) : source;
   await page.getByLabel("Upload audio file").setInputFiles({ name, mimeType: "audio/wav", buffer });
   await expect(page).toHaveURL(/\/master\/track-/, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });

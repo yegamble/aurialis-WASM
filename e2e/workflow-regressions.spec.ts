@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { decode } from "./audio-fixture";
-import { uploadProject } from "./workflow-fixture";
+import { denseFixture, uploadProject } from "./workflow-fixture";
 import type { AdvancedParams } from "../src/lib/types";
 
 async function previewPCM(page: Page) {
@@ -155,6 +155,50 @@ test("album processing produces real full-length WAVs and release checks measure
   await expect(page.getByText(`Sample peak ${measurement.afterMetrics.samplePeakDbfs.toFixed(2)} dBFS.`, { exact: false })).toBeVisible();
   await expect(page.getByText("Unmeasured", { exact: false })).toHaveCount(0);
   expect((await request.get("/health")).ok()).toBe(true);
+});
+
+type MeasuredLevel = { integratedLufs: number; truePeakDbtp: number };
+async function measureWAV(request: APIRequestContext, buffer: Buffer): Promise<MeasuredLevel> {
+  const response = await request.post("/api/master/render", { multipart: { file: { name: "measure.wav", mimeType: "audio/wav", buffer }, params: JSON.stringify({ bypass: true }), format: "json" } });
+  expect(response.status()).toBe(200);
+  return (await response.json() as { beforeMetrics: MeasuredLevel }).beforeMetrics;
+}
+
+// Album normalization targets −14 LUFS with each track's own settings. Dense
+// programs at different levels need limiting; every master must still land on
+// target with its true peak at the ceiling (measured with the 4x meter).
+test("a dense 3-track album renders every master at −14 LUFS within the true-peak ceiling", async ({ page, request }, info) => {
+  test.setTimeout(240_000);
+  const tracks = [{ title: "qa dense album 1", peak: -1.3 }, { title: "qa dense album 2", peak: -4 }, { title: "qa dense album 3", peak: -8 }];
+  const sources: MeasuredLevel[] = [];
+  for (const track of tracks) {
+    const wav = denseFixture(6, track.peak);
+    sources.push(await measureWAV(request, wav));
+    await uploadProject(page, `${track.title.replaceAll(" ", "-")}.wav`, 6, wav);
+    // A Simple direction enables the limiter at the Streaming −1 dBTP ceiling.
+    await page.getByRole("tab", { name: "simple", exact: true }).click();
+    await page.getByRole("button", { name: "Pop", exact: true }).click();
+  }
+  await page.goto("/albums");
+  await page.getByRole("button", { name: "New album", exact: true }).click();
+  await page.getByRole("link", { name: /Untitled sequence 1/ }).click();
+  for (const track of tracks) await page.getByRole("button", { name: track.title, exact: true }).click();
+  await page.getByRole("button", { name: "Render album masters", exact: true }).click();
+  const levels: MeasuredLevel[] = [];
+  for (const track of tracks) {
+    const button = page.getByRole("button", { name: `Download ${track.title}`, exact: true });
+    await expect(button).toBeVisible({ timeout: 180_000 });
+    const waiting = page.waitForEvent("download");
+    await button.click();
+    const wav = await readFile(await (await waiting).path());
+    expect(decode(wav).bits).toBe(24);
+    levels.push(await measureWAV(request, wav));
+  }
+  await info.attach("dense-album-levels", { body: JSON.stringify({ sources, levels }, null, 2), contentType: "application/json" });
+  for (const level of levels) {
+    expect(Math.abs(level.integratedLufs + 14)).toBeLessThanOrEqual(0.2);
+    expect(level.truePeakDbtp).toBeLessThanOrEqual(-1);
+  }
 });
 
 test("each visible audio slider changes its own settings without mutating another module", async ({ page }) => {

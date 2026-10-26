@@ -123,6 +123,10 @@ for (const { name, targetLufs, ceiling } of [{ name: "Streaming", targetLufs: -1
     await expect(apply).toBeEnabled();
     await expect(page.getByText(/exceeds the measured peak ceiling|could not be reached/u)).toHaveCount(0);
     await expect.poll(async () => (await savedTrack(page, id)).advanced.input).not.toBe(before.input);
+    // The status reports the export measurement, not the algorithm 1 preview.
+    const summary = page.getByText(/^Preview ready\. Export measures (−?\d+\.\d{2}) LUFS, (−?\d+\.\d{2}) dBTP\. Live meters and the offline preview use the preview limiter and can read higher\.$/u);
+    await expect(summary).toBeVisible();
+    const [, statusLufs, statusPeak] = /Export measures (−?\d+\.\d{2}) LUFS, (−?\d+\.\d{2}) dBTP/u.exec(await summary.innerText()) ?? [];
 
     await page.getByRole("button", { name: "Export", exact: true }).click();
     const dialog = page.getByRole("dialog");
@@ -136,6 +140,8 @@ for (const { name, targetLufs, ceiling } of [{ name: "Streaming", targetLufs: -1
     await info.attach(`dense-${name}-levels`, { body: JSON.stringify({ source, input: (await savedTrack(page, id)).advanced.input, exported }, null, 2), contentType: "application/json" });
     expect(Math.abs(exported.integratedLufs - targetLufs)).toBeLessThanOrEqual(0.2);
     expect(exported.truePeakDbtp).toBeLessThanOrEqual(ceiling);
+    expect(Number(statusLufs?.replace("−", "-"))).toBeCloseTo(exported.integratedLufs, 1);
+    expect(Number(statusPeak?.replace("−", "-"))).toBeCloseTo(exported.truePeakDbtp, 1);
   });
 }
 

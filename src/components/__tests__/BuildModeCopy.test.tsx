@@ -47,7 +47,7 @@ describe.each([
       expect(text).toContain("isn't available in the browser");
     } else {
       expect(text).toContain("by the Aurialis server you started");
-      expect(text).toContain("about 15 minutes for a four-minute song");
+      expect(text).toContain("no idle full-song timing has been recorded");
       expect(text).toContain("90-minute job limit");
     }
   });
@@ -55,5 +55,5 @@ describe.each([
 
 it("keeps the two availability statements distinct and honest about speed", () => {
   expect(stemSplitAvailability(true)).toBe("Smart Split runs only in the native Aurialis build (built from source); it isn't available in the browser.");
-  expect(stemSplitAvailability(false)).toMatch(/about 32 seconds.*at least 18 times slower/su);
+  expect(stemSplitAvailability(false)).toMatch(/took about 32 seconds.*did not finish one 20-second window in 30 minutes/su);
 });

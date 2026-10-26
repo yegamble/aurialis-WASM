@@ -1,0 +1,72 @@
+package mastering
+
+import (
+	"context"
+	"errors"
+
+	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
+)
+
+// ExportOptions selects delivery conversion after mastering. SampleRate 0 keeps
+// the source rate; NoDither leaves 16/24-bit output undithered.
+type ExportOptions struct {
+	SampleRate int
+	NoDither   bool
+}
+
+// ParseExportOptions validates the optional sampleRate and dither form values.
+func ParseExportOptions(sampleRate int, dither string) (ExportOptions, error) {
+	if sampleRate != 0 && !dsp.IsExportSampleRate(sampleRate) {
+		return ExportOptions{}, errors.New("sampleRate must be 44100, 48000, 88200 or 96000")
+	}
+	switch dither {
+	case "", "tpdf":
+		return ExportOptions{SampleRate: sampleRate}, nil
+	case "none":
+		return ExportOptions{SampleRate: sampleRate, NoDither: true}, nil
+	default:
+		return ExportOptions{}, errors.New("dither must be tpdf or none")
+	}
+}
+
+// Converts reports whether the export changes the source sample rate.
+func (o ExportOptions) Converts(sourceRate int) bool {
+	return o.SampleRate != 0 && o.SampleRate != sourceRate
+}
+
+// RenderDitherBits is the engine dither for a render. A converted export
+// renders undithered and dithers once, after conversion.
+func (o ExportOptions) RenderDitherBits(sourceRate, bitDepth int) int {
+	if o.NoDither || o.Converts(sourceRate) || (bitDepth != 16 && bitDepth != 24) {
+		return 0
+	}
+	return bitDepth
+}
+
+// ConvertExportContext resamples rendered audio to the requested rate, then
+// reapplies the limiter's sample ceiling and the requested dither at that rate,
+// and measures the delivered audio. It returns the inputs unchanged when no
+// conversion is requested.
+func ConvertExportContext(ctx context.Context, left, right []float32, sourceRate, bitDepth int, params dsp.Params, rendered dsp.Metrics, o ExportOptions) ([]float32, []float32, dsp.Metrics, int, error) {
+	if !o.Converts(sourceRate) {
+		return left, right, rendered, sourceRate, nil
+	}
+	outL, outR, err := dsp.ResampleContext(ctx, left, right, sourceRate, o.SampleRate)
+	if err != nil {
+		return nil, nil, dsp.Metrics{}, 0, err
+	}
+	final := params
+	final.DitherBits = 0
+	if !o.NoDither && (bitDepth == 16 || bitDepth == 24) {
+		final.DitherBits = bitDepth
+	}
+	if err := dsp.FinishResampled(outL, outR, float64(o.SampleRate), final); err != nil {
+		return nil, nil, dsp.Metrics{}, 0, err
+	}
+	metrics, err := dsp.MeasureStereoContext(ctx, outL, outR, float64(o.SampleRate))
+	if err != nil {
+		return nil, nil, dsp.Metrics{}, 0, err
+	}
+	metrics.GainReductionDB = rendered.GainReductionDB
+	return outL, outR, metrics, o.SampleRate, nil
+}

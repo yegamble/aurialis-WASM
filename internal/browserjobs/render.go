@@ -49,9 +49,11 @@ func render(ctx context.Context, request Request, buf *audio.Buffer) (*Result, e
 	if request.Format != "" && request.Format != "json" {
 		return nil, errors.New("unsupported local render format")
 	}
-	if bits == 16 || bits == 24 {
-		params.DitherBits = bits
+	export, err := mastering.ParseExportOptions(request.SampleRate, request.Dither)
+	if err != nil {
+		return nil, err
 	}
+	params.DitherBits = export.RenderDitherBits(buf.SampleRate, bits)
 	if script != nil {
 		script.ChainParams = params
 	}
@@ -70,11 +72,15 @@ func render(ctx context.Context, request Request, buf *audio.Buffer) (*Result, e
 			return nil, err
 		}
 	}
-	fields := map[string]any{"status": "ok", "sampleRate": buf.SampleRate, "frames": buf.Frames, "duration": buf.Duration, "bitDepth": bits, "params": params, "beforeMetrics": before, "afterMetrics": after}
+	left, right, after, rate, err := mastering.ConvertExportContext(ctx, left, right, buf.SampleRate, bits, params, after, export)
+	if err != nil {
+		return nil, err
+	}
+	fields := map[string]any{"status": "ok", "sampleRate": rate, "frames": len(left), "duration": float64(len(left)) / float64(rate), "bitDepth": bits, "params": params, "beforeMetrics": before, "afterMetrics": after}
 	if request.Format == "json" {
 		return metadata(fields)
 	}
-	if params.Bypass && bits == 32 {
+	if params.Bypass && bits == 32 && rate == buf.SampleRate {
 		identity, identityErr := mastering.SourceIdentityContext(ctx, buf)
 		if identityErr != nil {
 			return nil, identityErr
@@ -88,7 +94,7 @@ func render(ctx context.Context, request Request, buf *audio.Buffer) (*Result, e
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	result.Audio, err = audio.EncodeWAV(left, right, buf.SampleRate, bits)
+	result.Audio, err = audio.EncodeWAV(left, right, rate, bits)
 	if err != nil {
 		return nil, err
 	}

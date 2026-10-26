@@ -33,6 +33,8 @@ type Request struct {
 	Script        string `json:"script,omitempty"`
 	Profile       string `json:"profile,omitempty"`
 	BitDepth      int    `json:"bitDepth,omitempty"`
+	SampleRate    int    `json:"sampleRate,omitempty"`
+	Dither        string `json:"dither,omitempty"`
 	Format        string `json:"format,omitempty"`
 	DeviceRate    int    `json:"deviceRate,omitempty"`
 	Options       string `json:"options,omitempty"`
@@ -83,7 +85,7 @@ func DecodeRequest(raw []byte) (Request, error) {
 	var allowed string
 	switch request.Operation {
 	case "render":
-		allowed = " operation params script profile bitDepth format "
+		allowed = " operation params script profile bitDepth sampleRate dither format "
 	case "features":
 		allowed = " operation "
 	case "deep":

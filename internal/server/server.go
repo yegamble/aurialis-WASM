@@ -342,7 +342,7 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request) (*a
 				writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Audio file exceeds the decoded-frame storage limit")
 				return nil, false
 			}
-		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "format" || name == "script" || name == "scriptVersion") && disposition["filename"] == "" && values[name] == nil:
+		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "sampleRate" || name == "dither" || name == "format" || name == "script" || name == "scriptVersion") && disposition["filename"] == "" && values[name] == nil:
 			var value []byte
 			fieldLimit := 64 * 1024
 			if name == "script" {
@@ -574,9 +574,21 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		}
 		bitDepth = parsed
 	}
-	if bitDepth == 16 || bitDepth == 24 {
-		params.DitherBits = bitDepth
+	exportRate := 0
+	if rawRate := strings.TrimSpace(r.FormValue("sampleRate")); rawRate != "" {
+		parsed, err := strconv.Atoi(rawRate)
+		if err != nil {
+			writeErrorJSON(w, http.StatusBadRequest, "invalid_sample_rate", "sampleRate must be 44100, 48000, 88200 or 96000")
+			return
+		}
+		exportRate = parsed
 	}
+	export, exportErr := mastering.ParseExportOptions(exportRate, strings.TrimSpace(r.FormValue("dither")))
+	if exportErr != nil {
+		writeErrorJSON(w, http.StatusBadRequest, "invalid_export_options", exportErr.Error())
+		return
+	}
+	params.DitherBits = export.RenderDitherBits(buf.SampleRate, bitDepth)
 	if script != nil {
 		script.ChainParams = params
 	}
@@ -610,13 +622,18 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio rendering canceled or timed out")
 		return
 	}
+	outL, outR, afterMetrics, outRate, convertErr := mastering.ConvertExportContext(r.Context(), outL, outR, buf.SampleRate, bitDepth, params, afterMetrics, export)
+	if convertErr != nil {
+		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Sample-rate conversion canceled or timed out")
+		return
+	}
 
 	if r.FormValue("format") == "json" || strings.Contains(r.Header.Get("Accept"), "application/json") {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":        "ok",
-			"sampleRate":    buf.SampleRate,
-			"frames":        buf.Frames,
-			"duration":      buf.Duration,
+			"sampleRate":    outRate,
+			"frames":        len(outL),
+			"duration":      float64(len(outL)) / float64(outRate),
 			"bitDepth":      bitDepth,
 			"params":        params,
 			"beforeMetrics": beforeMetrics,
@@ -626,7 +643,7 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var sourceMetricsJSON []byte
-	if params.Bypass && bitDepth == 32 {
+	if params.Bypass && bitDepth == 32 && outRate == buf.SampleRate {
 		identity, identityErr := mastering.SourceIdentityContext(r.Context(), buf)
 		if identityErr != nil {
 			writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio source identity canceled or timed out")
@@ -643,7 +660,7 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	wavBytes, err := audio.EncodeWAV(outL, outR, buf.SampleRate, bitDepth)
+	wavBytes, err := audio.EncodeWAV(outL, outR, outRate, bitDepth)
 	if err != nil {
 		writeErrorJSON(w, http.StatusInternalServerError, "encode_error", err.Error())
 		return

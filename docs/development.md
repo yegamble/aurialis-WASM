@@ -1,5 +1,5 @@
 # Build and develop Aurialis
-<!-- cspell:words buildmode trimpath -->
+<!-- cspell:words buildmode trimpath cpqp -->
 
 [Documentation](README.md) · [First-master guide](getting-started.md) · [Architecture](architecture.md) · [API](api.md)
 
@@ -126,9 +126,9 @@ Record which checks actually ran, their exit status, the source revision and the
 
 | Required check | Work it requires |
 | --- | --- |
-| War Room, Stack & Workflow Hygiene | Repository rules, agent synchronization, artifact boundary and QA cleanup tests, workflow lint |
+| War Room, Stack & Workflow Hygiene | Repository rules, agent synchronization, artifact boundary and QA cleanup tests, SHA-pinned actions with no `@latest`, workflow lint |
 | Go 1.26 & WASM Quality Gate | Separate static/security and race/meter VMs, plus actual compiled WASM/automation parity; every result must succeed |
-| Next.js 16, TypeScript & Bundle Gate | All frontend checks and units, one native-target Next/dual-WASM/production build, binary smoke and a separate QA executable |
+| Next.js 16, TypeScript & Bundle Gate | Full dependency audit, all frontend checks and units, one native-target Next/dual-WASM/production build, binary smoke and a separate QA executable |
 | Backend API & Postman/Newman Gate | Fresh complete API/security probes against the verified production executable |
 | Playwright Responsive (320px-1440px) & WCAG 2.2 AA Gate | All individual native tests distributed across three Chromium VMs, plus a separate static browser/local-audio run; one worker each, zero retries |
 | CI Passed | All five checks above must succeed; failed, cancelled or skipped dependencies fail this gate |
@@ -152,6 +152,17 @@ python3 scripts/test-e2e-build.py
 ```
 
 [The task record](tasks.md#ci-build-reuse-and-isolated-checks) distinguishes local build-consumer proof from the required final-head Linux run. Fresh checks remain mandatory before merge; build reuse does not certify product completeness or audio deadlines.
+
+### Supply-chain and out-of-band checks
+
+- **Pinned actions.** Every third-party `uses:` in `.github/workflows/` and `.github/actions/` names a full 40-character commit SHA followed by a `# vX.Y.Z` comment; `docker://` images need an `@sha256:` digest. The hygiene job runs [`check-workflow-pins.py`](../.github/scripts/check-workflow-pins.py), which also rejects `@latest` anywhere in those files. Run it locally with `python3 .github/scripts/check-workflow-pins.py`.
+- **Pinned tools.** CI runs govulncheck `v1.9.0` and identypo at commit `dcb8a7984045` (no tagged releases; its two dependencies, misspell and camelcase, still resolve to their latest versions at run time). actionlint 1.7.12 is downloaded as a release tarball and checked against a pinned SHA-256 before it runs.
+- **Dependency audit.** The frontend job runs `pnpm audit --audit-level high` after install. It audits the whole lockfile, development tools included: Wrangler runs with the Cloudflare deploy token, and Vitest and Newman run in CI. Any high or critical advisory fails the job unless its GHSA ID is listed in `pnpm.auditConfig.ignoreGhsas` in `package.json`. Range-scoped `pnpm.overrides` in `package.json` lift vulnerable transitive versions to same-major fixes: `handlebars`, `lodash`, `node-forge` and `underscore` under Newman, and `flatted` under the linters' `flat-cache`. Two high advisories are ignored, both reached only through Newman (`postman-runtime` and `postman-collection`), which runs our own checked-in collection against a local test binary:
+  - `GHSA-qxc2-j82w-r537`, `@faker-js/faker` 5.5.3: code execution through `helpers.fake` with attacker-controlled templates. The only fix is faker 10.5.0, five majors past what Postman pins, and forcing it would likely break Postman's dynamic variables. Our collection is trusted input. Remove the ignore when Newman ships a fixed faker.
+  - `GHSA-86w9-cpqp-85rv`, `node-forge` 1.4.0: RSA PKCS#1 v1.5 signature verification accepts extra nested DigestAlgorithm elements. No fixed release exists (all versions up to 1.4.0 are affected). The Newman suite does no certificate or signature verification against untrusted parties. Remove the ignore when a fixed `node-forge` is published.
+- **Dependabot.** Dependabot security updates are enabled in repository settings; version updates follow the weekly schedule in [`.github/dependabot.yml`](../.github/dependabot.yml) for Go modules, pnpm and GitHub Actions. Minor and patch version updates arrive as one grouped pull request per ecosystem; major updates open separately.
+- **Smart Split model asset.** [`model-asset.yml`](../.github/workflows/model-asset.yml) runs daily, on manual dispatch and on pull requests that change the steminfer model pins or the check itself. [`check-model-asset.sh`](../.github/scripts/check-model-asset.sh) reads the URL, byte size and SHA-256 from the Go source, requires an HTTP 200 HEAD with the pinned `Content-Length`, and compares GitHub's recorded asset digest with the pinned SHA-256 without downloading the model.
+- **macOS Accelerate kernels.** [`steminfer-macos.yml`](../.github/workflows/steminfer-macos.yml) runs `go test -race` on `./internal/audio/steminfer/...` on `macos-latest` with cgo, after confirming that `matrix_accelerate.go` and `nonlinear_accelerate.go` are compiled. It runs on every push to `main`, on dispatch, and on pull requests that touch steminfer, `go.mod`/`go.sum` or the Go setup action. Because pull requests can skip it, it must not be made a required check.
 
 ## Contribute with the specialist agents
 

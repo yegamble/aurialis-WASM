@@ -1,0 +1,56 @@
+name: Smart Split macOS Accelerate
+
+# The Linux CI jobs compile only the portable steminfer kernels. macOS builds
+# use the cgo Accelerate kernels (matrix_accelerate.go, nonlinear_accelerate.go),
+# which nothing else exercises. This runs the model-free steminfer tests there.
+#
+# Kept out of ci.yml on purpose: pull requests run it only when steminfer or
+# the Go toolchain changes, so it must not be made a required status check
+# (a skipped required check would block unrelated PRs). Every push to main
+# runs it, so a regression still surfaces right after merge.
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    paths:
+      - internal/audio/steminfer/**
+      - go.mod
+      - go.sum
+      - .github/actions/setup-go/**
+      - .github/workflows/steminfer-macos.yml
+  workflow_dispatch:
+
+concurrency:
+  group: steminfer-macos-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  steminfer-macos:
+    name: steminfer race tests (macOS, cgo Accelerate)
+    runs-on: macos-latest
+    timeout-minutes: 20
+    env:
+      CGO_ENABLED: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/setup-go
+        with:
+          role: steminfer-macos
+      - name: Require the Accelerate kernels in this build
+        run: |
+          files="$(go list -f '{{join .CgoFiles " "}}' ./internal/audio/steminfer)"
+          echo "$files"
+          for f in matrix_accelerate.go nonlinear_accelerate.go; do
+            case " $files " in
+              *" $f "*) ;;
+              *) echo "::error::$f is not compiled; cgo or the darwin build is off."; exit 1 ;;
+            esac
+          done
+      - name: Run model-free steminfer tests with the race detector
+        run: go test -race -count=1 -timeout 15m ./internal/audio/steminfer/...

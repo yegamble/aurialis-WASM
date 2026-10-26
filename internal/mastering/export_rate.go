@@ -48,8 +48,9 @@ func (o ExportOptions) RenderDitherBits(sourceRate, bitDepth int) int {
 }
 
 // ConvertExportContext resamples rendered audio to the requested rate, then
-// reapplies the limiter's sample ceiling and the requested dither at that rate,
-// and measures the delivered audio. It returns the inputs unchanged when no
+// finishes it there (true-peak limiting when the limiter is enabled, then the
+// requested dither) and measures the delivered audio. Gain reduction adds the
+// delivery limiter to the render's. It returns the inputs unchanged when no
 // conversion is requested.
 func ConvertExportContext(ctx context.Context, left, right []float32, sourceRate, bitDepth int, params dsp.Params, rendered dsp.Metrics, o ExportOptions) ([]float32, []float32, dsp.Metrics, int, error) {
 	if !o.Converts(sourceRate) {
@@ -67,13 +68,14 @@ func ConvertExportContext(ctx context.Context, left, right []float32, sourceRate
 	if !o.NoDither && (bitDepth == 16 || bitDepth == 24) {
 		final.DitherBits = bitDepth
 	}
-	if err := dsp.FinishResampled(outL, outR, float64(o.SampleRate), final); err != nil {
+	deliveryReductionDB, err := dsp.FinishResampled(ctx, outL, outR, float64(o.SampleRate), final)
+	if err != nil {
 		return nil, nil, dsp.Metrics{}, 0, err
 	}
 	metrics, err := dsp.MeasureStereoContext(ctx, outL, outR, float64(o.SampleRate))
 	if err != nil {
 		return nil, nil, dsp.Metrics{}, 0, err
 	}
-	metrics.GainReductionDB = rendered.GainReductionDB
+	metrics.GainReductionDB = rendered.GainReductionDB + deliveryReductionDB
 	return outL, outR, metrics, o.SampleRate, nil
 }

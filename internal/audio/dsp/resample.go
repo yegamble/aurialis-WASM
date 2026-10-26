@@ -143,41 +143,59 @@ func ResampleContext(ctx context.Context, left, right []float32, from, to int) (
 	return outL, outR, nil
 }
 
-// FinishResampled applies the export stages that must follow sample-rate
-// conversion: the limiter's linked sample ceiling (when enabled) and TPDF
-// dither for 16/24-bit output, keeping dithered samples on their grid.
-func FinishResampled(left, right []float32, sampleRate float64, params Params) error {
+// deliveryParams keeps only the limiter and dither of params: every other
+// stage already ran at the source rate. An enabled limiter becomes the
+// algorithm v2 true-peak lookahead limiter, which bounds reconstructed peaks
+// (and therefore sample peaks) at the delivery rate with a ramped gain.
+func deliveryParams(params Params) Params {
+	p := DefaultParams()
+	p.AlgorithmVersion = TruePeakAlgorithmVersion
+	p.EQEnabled = false
+	p.Compressor.Enabled = false
+	p.Saturation.Enabled = false
+	p.Stereo.Enabled = false
+	p.Limiter = params.Limiter
+	p.Limiter.Enabled = params.Limiter.Enabled && !params.Bypass && !params.ABOriginal
+	p.Limiter.TruePeak = true
+	p.DitherBits = params.DitherBits
+	return p
+}
+
+// FinishResampled applies, in place, the export stages that must follow
+// sample-rate conversion. When the limiter is enabled it runs the algorithm v2
+// true-peak lookahead limiter at the delivery rate, latency-compensated, so
+// peaks the conversion reconstructs stay at or below the ceiling without
+// clipping. TPDF dither for 16/24-bit output comes last, once. A disabled
+// limiter leaves levels untouched, as in an unconverted export. It returns the
+// limiter's final gain reduction in dB.
+func FinishResampled(ctx context.Context, left, right []float32, sampleRate float64, params Params) (float64, error) {
+	if len(left) != len(right) {
+		return 0, errors.New("finishing requires equal channel lengths")
+	}
 	if err := ValidateParams(params); err != nil {
-		return err
+		return 0, err
+	}
+	final := deliveryParams(params)
+	if !final.Limiter.Enabled && ditherScale(final.DitherBits) == 0 {
+		return 0, nil
 	}
 	e := NewEngine(sampleRate)
-	e.SetParams(params)
-	limit := params.Limiter.Enabled && !params.Bypass
-	scale := ditherScale(params.DitherBits)
-	for i := range min(len(left), len(right)) {
-		l, r := float64(left[i]), float64(right[i])
-		if limit {
-			ceiling := e.stages.limiterSampleCeiling
-			if peak := math.Max(math.Abs(l), math.Abs(r)); peak > ceiling {
-				l *= ceiling / peak
-				r *= ceiling / peak
-			}
-		}
-		if scale > 0 {
-			l = e.applyTPDFDither(l, params.DitherBits)
-			r = e.applyTPDFDither(r, params.DitherBits)
-			if limit {
-				// The largest grid value under the ceiling replaces a dithered over.
-				top := math.Floor(e.stages.limiterSampleCeiling*scale) / scale
-				if math.Abs(l) > top {
-					l = math.Copysign(top, l)
-				}
-				if math.Abs(r) > top {
-					r = math.Copysign(top, r)
-				}
-			}
-		}
-		left[i], right[i] = finiteFloat32(l), finiteFloat32(r)
+	e.SetParams(final)
+	if err := renderBlocks(ctx, e, left, right, left, right); err != nil {
+		return 0, err
 	}
-	return nil
+	// The engine reads each input frame before writing that output frame, so
+	// in-place output is the input delayed by the lookahead; drain the tail and
+	// shift it back into alignment.
+	latency := e.LatencyFrames()
+	tailL, tailR := make([]float32, latency), make([]float32, latency)
+	e.Drain(tailL, tailR)
+	for i := range left {
+		if j := i + latency; j < len(left) {
+			left[i], right[i] = left[j], right[j]
+		} else {
+			left[i], right[i] = tailL[j-len(left)], tailR[j-len(left)]
+		}
+	}
+	return e.LastGainReductionDB(), ctx.Err()
 }

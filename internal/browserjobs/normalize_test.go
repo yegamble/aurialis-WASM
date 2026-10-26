@@ -13,7 +13,7 @@ import (
 
 // denseProgram mirrors denseFixture in e2e/workflow-fixture.ts: a deterministic
 // 120 BPM drum-and-bass loop (pitched kick + click, noise snare, stereo noise
-// hats, harmonic bass) scaled to a -1 dBFS sample peak. Unlike a pure tone it
+// hats, harmonic bass) scaled to a -1.3 dBFS sample peak. Unlike a pure tone it
 // has full-band transients whose inter-sample peaks overshoot a sample-peak
 // limiter, which is what made Set target loudness reject ordinary mixes.
 func denseProgram(seconds int) (left, right []float32) {
@@ -89,9 +89,9 @@ func measure(t *testing.T, wav []byte, params dsp.Params) dsp.Metrics {
 var errPeakCeiling = errors.New("loudness target exceeds the measured peak ceiling")
 
 // normalizeLikeBrowser mirrors normalizeSimpleAudio in src/lib/browser-engine.ts:
-// the same tolerance, attempt bound, secant/bracket search and peak gate,
-// with params as the browser sends them for measurement.
-func normalizeLikeBrowser(t *testing.T, wav []byte, params dsp.Params, target, peakTolerance float64) (dsp.Params, dsp.Metrics, error) {
+// the same tolerance, attempt bound, secant/bracket search and peak gate
+// (ceiling + EXPORT_PEAK_TOLERANCE_DB), with the export params it measures.
+func normalizeLikeBrowser(t *testing.T, wav []byte, params dsp.Params, target float64) (dsp.Params, dsp.Metrics, error) {
 	t.Helper()
 	lower, upper := -36.0, 36.0
 	var previous *[2]float64
@@ -99,7 +99,7 @@ func normalizeLikeBrowser(t *testing.T, wav []byte, params dsp.Params, target, p
 		after := measure(t, wav, params)
 		difference := target - after.IntegratedLUFS
 		if math.Abs(difference) <= 0.2 {
-			if after.TruePeakDBTP > params.Limiter.CeilingDBTP+peakTolerance {
+			if after.TruePeakDBTP > params.Limiter.CeilingDBTP+0.05 {
 				return params, after, errPeakCeiling
 			}
 			return params, after, nil
@@ -131,9 +131,9 @@ func normalizeLikeBrowser(t *testing.T, wav []byte, params dsp.Params, target, p
 	return params, dsp.Metrics{}, errors.New("loudness target could not be reached")
 }
 
-// simplePopClean mirrors mapSimpleToDSP("Pop", "Clean", 50, target) as
-// engineParams sends it; exportParams then selects algorithm 2.
-func simplePopClean(target, ceiling float64, export bool) dsp.Params {
+// simplePopClean mirrors exportParams(mapSimpleToDSP("Pop", "Clean", 50, target)):
+// algorithm 2 with the true-peak limiter.
+func simplePopClean(target, ceiling float64) dsp.Params {
 	params := dsp.DefaultParams()
 	gains := [dsp.NumEQBands]float64{0.1, -0.15, 0, 0.1, 0.25}
 	for band := range params.Bands {
@@ -143,11 +143,8 @@ func simplePopClean(target, ceiling float64, export bool) dsp.Params {
 	params.Compressor = dsp.CompressorParams{Enabled: true, ThresholdDB: -11, Ratio: 1.25, AttackMS: 30, ReleaseMS: 200, KneeDB: 6, AutoRelease: true, SidechainHPFHz: 90, Topology: dsp.CompOptical}
 	params.Saturation.Enabled = false
 	params.Stereo.WidthPct = 102
-	params.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: ceiling, TargetLUFS: target, ReleaseMS: 85}
-	if export {
-		params.Limiter.TruePeak = true
-		params.AlgorithmVersion = dsp.TruePeakAlgorithmVersion
-	}
+	params.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: ceiling, TargetLUFS: target, ReleaseMS: 85, TruePeak: true}
+	params.AlgorithmVersion = dsp.TruePeakAlgorithmVersion
 	return params
 }
 
@@ -165,10 +162,7 @@ func TestNormalizeDenseProgramReachesTarget(t *testing.T) {
 		target, ceiling float64
 	}{{"Streaming", -14, -1}, {"Loud", -9, -0.2}} {
 		t.Run(c.name, func(t *testing.T) {
-			legacy, legacyMetrics, legacyErr := normalizeLikeBrowser(t, wav, simplePopClean(c.target, c.ceiling, false), c.target, 0.2)
-			t.Logf("algorithm 1 search: input %+.2f dB, %.2f LUFS, %.2f dBTP, err=%v", legacy.InputGainDB, legacyMetrics.IntegratedLUFS, legacyMetrics.TruePeakDBTP, legacyErr)
-
-			params, measured, err := normalizeLikeBrowser(t, wav, simplePopClean(c.target, c.ceiling, true), c.target, 0.05)
+			params, measured, err := normalizeLikeBrowser(t, wav, simplePopClean(c.target, c.ceiling), c.target)
 			if err != nil {
 				t.Fatalf("export-parameter search failed: %v (input %+.2f dB, %.2f LUFS, %.2f dBTP)", err, params.InputGainDB, measured.IntegratedLUFS, measured.TruePeakDBTP)
 			}

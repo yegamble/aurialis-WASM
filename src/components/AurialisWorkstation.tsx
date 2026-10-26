@@ -43,7 +43,7 @@ import {
   mapProfileToDSP,
 } from "@/lib/audio-dsp";
 import { saveAudio, getAudio, discardStagedAudio, deleteAudio, newAudioAssetId, loadAlbumMasters, saveAlbumMasters, deleteAlbumMasters, ensureStorageFor, type SavedAlbumMasters } from "@/lib/db";
-import { albumEntryNames, createStoredZip } from "@/lib/zip";
+import { albumEntryNames, createStoredZip, safeFileBaseName } from "@/lib/zip";
 import { profiles, useStore } from "@/lib/store";
 import type {
   Album,
@@ -1861,12 +1861,12 @@ function AlbumView({ albumId }: { albumId: string }) {
           if (blobs.some((blob) => blob === undefined)) throw new Error("A saved album master is missing. Render the album again.");
           const names = albumEntryNames(artifacts.map((file) => file.title));
           const zip = await createStoredZip(blobs.map((blob, index) => ({ name: names.at(index) ?? `${String(index + 1)}.wav`, blob: blob ?? new Blob() })));
-          downloadLocalBlob(zip, `${album.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-album-masters.zip`, { charge: !artifacts.every((file) => file.durable) });
+          downloadLocalBlob(zip, `${safeFileBaseName(album.title, "Aurialis album")} - album masters.zip`, { charge: !artifacts.every((file) => file.durable) });
         }); }}>Download all as ZIP</Button>
         {artifacts.map((file) => <Button key={file.id} variant="secondary" icon={<Icon name="arrow-down-to-line" />} onClick={() => { download(async () => {
           const blob = await file.blob();
           if (!blob) throw new Error("This saved album master is missing. Render the album again.");
-          downloadLocalBlob(blob, `${file.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-album-master.wav`, { charge: !file.durable });
+          downloadLocalBlob(blob, `${safeFileBaseName(file.title, "Track")} - master.wav`, { charge: !file.durable });
         }); }}>Download {file.title}</Button>)}
       </section>}
       <div className="flex flex-wrap gap-2">

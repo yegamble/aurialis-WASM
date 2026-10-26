@@ -148,7 +148,7 @@ test("album WAVs and release measurements run on the device without an audio ser
   await page.getByRole("button", { name: "Download all as ZIP", exact: true }).click();
   const zipped = await zipping, zipPath = await zipped.path();
   if (!zipPath) throw new Error("Missing local album ZIP");
-  expect(zipped.suggestedFilename()).toBe("Untitled-sequence-1-album-masters.zip");
+  expect(zipped.suggestedFilename()).toBe("Untitled sequence 1 - album masters.zip");
   const archive = await readFile(zipPath), name = "01 private album source.wav";
   expect(archive.readUInt32LE(0)).toBe(0x04034b50);
   expect(archive.subarray(30, 30 + Buffer.byteLength(name)).toString("utf8")).toBe(name);

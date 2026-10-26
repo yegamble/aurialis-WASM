@@ -115,7 +115,7 @@ func (r *resampler) process(ctx context.Context, in []float32, out []float32) er
 			}
 			if i < len(in) {
 				// The conversion prevents fused multiply-adds, keeping native
-				// and WebAssembly exports bit-identical.
+				// and WebAssembly exports bit-identical (wasm/dsp/verify-offline.mjs).
 				sum += float64(c * float64(in[i]))
 			}
 		}

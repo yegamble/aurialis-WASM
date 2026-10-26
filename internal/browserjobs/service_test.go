@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strconv"
 	"testing"
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio"
@@ -65,18 +66,9 @@ func TestClosedLocalRequestAndHostileCDR(t *testing.T) {
 	}
 }
 
-func TestLocalRenderMatchesNativeHTTPAndSourceIdentity(t *testing.T) {
-	wav := source(t)
-	params := dsp.DefaultParams()
-	params.InputGainDB = -3
-	params.Compressor.Enabled = false
-	params.Saturation.Enabled = false
-	params.Bands[2].GainDB = 1.25
-	encoded, err := json.Marshal(params)
-	if err != nil {
-		t.Fatal(err)
-	}
-	local := run(t, browserjobs.Request{Operation: "render", Params: string(encoded), BitDepth: 24}, wav, nil)
+// nativeRender posts wav and form fields to the native HTTP render endpoint.
+func nativeRender(t *testing.T, wav []byte, fields [][2]string) []byte {
+	t.Helper()
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
 	file, err := form.CreateFormFile("file", "source.wav")
@@ -86,8 +78,8 @@ func TestLocalRenderMatchesNativeHTTPAndSourceIdentity(t *testing.T) {
 	if _, err := file.Write(wav); err != nil {
 		t.Fatal(err)
 	}
-	for _, field := range []struct{ key, value string }{{"params", string(encoded)}, {"bitDepth", "24"}} {
-		if err := form.WriteField(field.key, field.value); err != nil {
+	for _, field := range fields {
+		if err := form.WriteField(field[0], field[1]); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -101,8 +93,26 @@ func TestLocalRenderMatchesNativeHTTPAndSourceIdentity(t *testing.T) {
 	request.Header.Set("Content-Type", form.FormDataContentType())
 	recorder := httptest.NewRecorder()
 	native.Handler().ServeHTTP(recorder, request)
-	if recorder.Code != http.StatusOK || !bytes.Equal(local.Audio, recorder.Body.Bytes()) {
-		t.Fatalf("local/native rendered WAV differs: native status%d", recorder.Code)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("native render status %d", recorder.Code)
+	}
+	return recorder.Body.Bytes()
+}
+
+func TestLocalRenderMatchesNativeHTTPAndSourceIdentity(t *testing.T) {
+	wav := source(t)
+	params := dsp.DefaultParams()
+	params.InputGainDB = -3
+	params.Compressor.Enabled = false
+	params.Saturation.Enabled = false
+	params.Bands[2].GainDB = 1.25
+	encoded, err := json.Marshal(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	local := run(t, browserjobs.Request{Operation: "render", Params: string(encoded), BitDepth: 24}, wav, nil)
+	if !bytes.Equal(local.Audio, nativeRender(t, wav, [][2]string{{"params", string(encoded)}, {"bitDepth", "24"}})) {
+		t.Fatal("local/native rendered WAV differs")
 	}
 	canonical := run(t, browserjobs.Request{Operation: "render", Params: `{"bypass":true}`, BitDepth: 32}, wav, nil)
 	if !bytes.Equal(canonical.Audio, wav) {
@@ -122,6 +132,51 @@ func TestLocalRenderMatchesNativeHTTPAndSourceIdentity(t *testing.T) {
 	}
 }
 
+// Converted exports must also match byte for byte: the delivery limiter and
+// TPDF dither are deterministic (fixed-seed generator per render), so both
+// dither none and TPDF are compared.
+func TestLocalConvertedRenderMatchesNativeHTTP(t *testing.T) {
+	const rate = 48000
+	left, right := make([]float32, rate/2), make([]float32, rate/2)
+	for i := range left {
+		at := float64(i) / rate
+		left[i] = float32(0.6*math.Sin(2*math.Pi*997*at) + 0.3*math.Sin(2*math.Pi*15000*at))
+		right[i] = float32(0.6*math.Sin(2*math.Pi*1499*at) - 0.3*math.Sin(2*math.Pi*19000*at))
+	}
+	wav, err := audio.EncodeWAV(left, right, rate, 24)
+	if err != nil {
+		t.Fatal(err)
+	}
+	params := dsp.DefaultParams()
+	params.InputGainDB = 8
+	params.Limiter.Enabled = true
+	encoded, err := json.Marshal(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		sampleRate, bitDepth int
+		dither               string
+	}{{44100, 24, "none"}, {96000, 24, ""}, {44100, 16, "tpdf"}} {
+		local := run(t, browserjobs.Request{Operation: "render", Params: string(encoded), BitDepth: c.bitDepth, SampleRate: c.sampleRate, Dither: c.dither}, wav, nil)
+		fields := [][2]string{{"params", string(encoded)}, {"bitDepth", strconv.Itoa(c.bitDepth)}, {"sampleRate", strconv.Itoa(c.sampleRate)}}
+		if c.dither != "" {
+			fields = append(fields, [2]string{"dither", c.dither})
+		}
+		native := nativeRender(t, wav, fields)
+		if !bytes.Equal(local.Audio, native) {
+			t.Fatalf("%+v: local/native converted WAV differs", c)
+		}
+		decoded, err := audio.DecodeAndDisarm("render.wav", native)
+		if err != nil || decoded.SampleRate != c.sampleRate {
+			t.Fatalf("%+v: decoded %v at %d Hz", c, err, decoded.SampleRate)
+		}
+		// Repeating the render reproduces the same TPDF sequence.
+		if again := run(t, browserjobs.Request{Operation: "render", Params: string(encoded), BitDepth: c.bitDepth, SampleRate: c.sampleRate, Dither: c.dither}, wav, nil); !bytes.Equal(again.Audio, local.Audio) {
+			t.Fatalf("%+v: repeated local render differs", c)
+		}
+	}
+}
 func TestLocalAnalysisReferenceAndCompilerReuseNativeContracts(t *testing.T) {
 	wav := source(t)
 	features := run(t, browserjobs.Request{Operation: "features"}, wav, nil)

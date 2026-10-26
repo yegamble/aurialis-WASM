@@ -99,6 +99,9 @@ func TestHealthAndSecurityHeadersAndCSRFGuards(t *testing.T) {
 	if got := res.Header.Get("X-Frame-Options"); got != "DENY" {
 		t.Errorf("X-Frame-Options = %q, want DENY", got)
 	}
+	if got, want := res.Header.Get("Permissions-Policy"), "camera=(), microphone=(), geolocation=(), payment=(), usb=()"; got != want {
+		t.Errorf("Permissions-Policy = %q, want %q", got, want)
+	}
 
 	// 2. DNS Rebinding Host check -> 403
 	evilHostReq := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/health", nil)

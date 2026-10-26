@@ -53,12 +53,27 @@
     "fake-indexeddb": "^6.0.0",
     "jsdom": "^26.0.0",
     "knip": "^5.43.0",
-    "newman": "^6.2.1",
+    "newman": "^6.2.3",
     "postcss": "^8.5.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.8.2",
     "typescript-eslint": "^8.24.0",
-    "vitest": "^3.0.5",
-    "wrangler": "4.152.0"
+    "vitest": "^4.1.12",
+    "wrangler": "4.153.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "flatted@<3.4.2": "^3.4.4",
+      "handlebars@<4.7.10": "^4.7.10",
+      "lodash@<4.18.0": "^4.18.1",
+      "node-forge@<1.4.0": "^1.4.0",
+      "underscore@<1.13.8": "^1.13.8"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-qxc2-j82w-r537",
+        "GHSA-86w9-cpqp-85rv"
+      ]
+    }
   }
 }

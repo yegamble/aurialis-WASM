@@ -14,6 +14,9 @@ test("imports, measures and exports native-equivalent PCM with zero audio networ
   const response = await page.goto("/");
   expect(response?.headers()["cross-origin-opener-policy"]).toBe("same-origin");
   expect(response?.headers()["cross-origin-embedder-policy"]).toBe("require-corp");
+  // The Worker always sends Strict-Transport-Security; browsers ignore it over local http.
+  expect(response?.headers()["strict-transport-security"]).toBe("max-age=63072000; includeSubDomains");
+  expect(response?.headers()["permissions-policy"]).toBe("camera=(), microphone=(), geolocation=(), payment=(), usb=()");
   expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
   const source = fixture(997, 1);
   await page.getByLabel("Import audio file").setInputFiles({ name: "browser-private.wav", mimeType: "audio/wav", buffer: source });

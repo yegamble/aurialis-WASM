@@ -24,7 +24,7 @@ const (
 	maxExportBudget = 10 * time.Minute
 
 	// Uploads and downloads get 10 s plus 8 MiB/s of body, at most 60 s, so a
-	// slow small body is cut off quickly (slowloris) while a 257 MiB loopback
+	// slow small body is cut off quickly while a 257 MiB loopback
 	// upload or a converted WAV download has room.
 	transferFloor          = 10 * time.Second
 	transferBytesPerSecond = 8 << 20

@@ -11,7 +11,7 @@ This browser execution path merged in [PR #16](https://github.com/yegamble/auria
 | Validate and reconstruct a WAV | Shared Go CDR in a dedicated Web Worker | Same Go CDR through the executable's loopback API |
 | Analyze, match a reference or render/export | Shared Go mastering code compiled to WebAssembly | Same Go mastering code compiled for the device |
 | Play the current settings | Shared Go/WASI DSP in AudioWorklet | Same browser AudioWorklet path |
-| Store projects and source audio | This browser's localStorage and IndexedDB | This browser's storage at the local app's address |
+| Store projects and source audio | This browser's localStorage and IndexedDB | This browser's storage at the native build's loopback address |
 | Trained instrument separation (Smart Split) | Unavailable; the page states this and never fabricates stems | Trained BS-RoFormer model, downloaded once from the published `stem-model-v1` release and verified by SHA-256 |
 
 **Smart Split status:** Smart Split runs only in the native Aurialis build, which you build from source; the browser build cannot separate stems. On an idle Apple-silicon Mac (8-core M2) one 20-second window took about 32 seconds; at that rate a four-minute song would take roughly 15 minutes, but no idle full-song timing has been recorded, and a busy machine took up to about three minutes per window. On Linux and Windows, plain Go did not finish one 20-second window in 30 minutes, so songs will generally not finish within the 90-minute job limit.

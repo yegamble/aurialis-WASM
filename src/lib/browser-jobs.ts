@@ -63,39 +63,41 @@ export function reserveBrowserAudioMemory(initialBytes = 0): Readonly<{ update: 
   return Object.freeze({ update, dispose });
 }
 
-async function sourceRate(blob: Blob): Promise<number | undefined> {
-  const data = new DataView(await blob.slice(0, 28).arrayBuffer());
-  if (data.byteLength < 28 || String.fromCharCode(...Array.from({ length: 4 }, (_, i) => data.getUint8(i))) !== "RIFF") return undefined;
-  const rate = data.getUint32(24, true);
-  return rate >= 8000 && rate <= 192000 ? rate : undefined;
-}
-async function decodedBytes(blob: Blob): Promise<number> {
-  if (blob.size === 0) return 0;
+type WavShape = { bytes: number; rate: number | undefined };
+/** Decoded capacity and `fmt ` rate from the RIFF chunk list, so JUNK, bext or LIST chunks may precede `fmt `. */
+async function wavShape(blob: Blob): Promise<WavShape> {
+  if (blob.size === 0) return { bytes: 0, rate: undefined };
   const fallback = Math.min(MAX_SOURCE_FRAMES * 8, blob.size * 8);
   const data = new DataView(await blob.slice(0, 65_536).arrayBuffer());
   const id = (offset: number) => String.fromCharCode(...Array.from({ length: 4 }, (_, i) => data.getUint8(offset + i)));
   // Capacity only. Go CDR remains the authoritative format/container validator.
-  if (data.byteLength < 12 || id(0) !== "RIFF" || id(8) !== "WAVE") return fallback;
+  if (data.byteLength < 12 || id(0) !== "RIFF" || id(8) !== "WAVE") return { bytes: fallback, rate: undefined };
   let align = 0;
+  let rate: number | undefined;
   for (let offset = 12; offset + 8 <= data.byteLength;) {
     const size = data.getUint32(offset + 4, true);
     if (id(offset) === "data") {
       const frames = align > 0 ? Math.floor(size / align) : MAX_SOURCE_FRAMES;
       if (frames < 1 || frames > MAX_SOURCE_FRAMES) throw new Error("This WAV exceeds the local frame limit. " + LOCAL_FALLBACK);
-      return frames * 8;
+      return { bytes: frames * 8, rate };
     }
-    if (offset + 8 + size > data.byteLength) return fallback;
-    if (id(offset) === "fmt " && size >= 16) align = data.getUint16(offset + 20, true);
+    if (offset + 8 + size > data.byteLength) break;
+    if (id(offset) === "fmt " && size >= 16) {
+      const declared = data.getUint32(offset + 12, true);
+      rate = declared >= 8000 && declared <= 192000 ? declared : undefined;
+      align = data.getUint16(offset + 20, true);
+    }
     offset += 8 + size + size % 2;
   }
-  return fallback;
+  return { bytes: fallback, rate };
 }
 
 async function preflight(request: JobRequest, source: Blob, reference: Blob, signal: AbortSignal): Promise<number> {
   signal.throwIfAborted();
   const input = source.size + reference.size;
   if (input > MAX_JOB_INPUT_BYTES) throw new Error("The combined audio exceeds the 257 MiB local job limit. " + LOCAL_FALLBACK);
-  const decoded = await decodedBytes(source) + await decodedBytes(reference);
+  const shape = await wavShape(source);
+  const decoded = shape.bytes + (await wavShape(reference)).bytes;
   signal.throwIfAborted();
   // Measured Go worker linear memory peaks near 2.2x the decoded PCM (input
   // copy, reconstructed and rendered channels, encoded WAV). Add the
@@ -103,7 +105,8 @@ async function preflight(request: JobRequest, source: Blob, reference: Blob, sig
   let estimate = 64 * MIB + input * 2 + decoded * (request.operation === "render" ? 4 : 3);
   // A converted export also holds resampled channels, their measurement and
   // the larger encoded WAV. An unreadable source rate assumes 8 kHz (worst case).
-  if (request.sampleRate !== undefined) estimate += decoded * 3 * request.sampleRate / (await sourceRate(source) ?? 8000);
+  const ratio = request.sampleRate !== undefined && request.sampleRate !== shape.rate ? request.sampleRate / (shape.rate ?? 8000) : 0;
+  estimate += decoded * 3 * ratio;
   if (estimate + reservedResidentBytes > memoryBudget()) throw new Error("This job exceeds the browser's conservative audio memory budget. " + LOCAL_FALLBACK);
   activeJobBytes = estimate;
   // 130 s covers 16,777,216 frames; longer sources get proportionally longer.

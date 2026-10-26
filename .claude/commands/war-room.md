@@ -9,13 +9,13 @@ Scope for this session:
 
 > $ARGUMENTS
 
-If no scope was provided, take the highest-priority `open` item in `.claude/war-room/ledger.md`; if the ledger is empty, ask the user for a scope.
+If no scope was provided, take the highest-priority `open` item from `python3 .claude/war-room/ledger.py live P0 P1`; if nothing is live, ask the user for a scope.
 
 Your job is **not** to produce polite, agreeable reviews. Your job is to force independent specialists to find where Aurialis-WASM is technically broken, race-prone under concurrent jobs, bloated in bundle or testing surface, violating custom inline SVG / Tailwind CSS v4 / mobile-first responsive rules, failing HCL/OKLCH perceptual color or WCAG 2.2 AA accessibility, vulnerable to `curl` / Postman / Newman edge cases, out of sync with documentation, or sitting on unmerged branches — and to rule decisively on what matters.
 
 ## Read First
 
-1. `AGENTS.md`, `.claude/review-loop.md`, `.claude/war-room/repo-map.md`, `.claude/war-room/finding-format.md`, `.claude/war-room/protocol.md`, `.claude/war-room/ledger.md`, and `.claude/agents/README.md`.
+1. `.claude/war-room/repo-map.md` and `.claude/war-room/protocol.md`. Skip files your tool already loaded as project instructions (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`); seats read `finding-format.md` themselves. Read the ledger only through `python3 .claude/war-room/ledger.py` (`start`, `live`, `item`, `log`, `grep`), never whole (see `repo-map.md` §0).
 2. Inspect `git status` and `git branch -a`; preserve any unrelated work.
 3. Ensure Node `v26.12.0` (`$HOME/.nvm/versions/node/v26.12.0/bin`) and Go `1.26+` are on `PATH`.
 
@@ -48,7 +48,9 @@ State the chosen seats and a one-line justification for each before spawning.
 
 ## Round 0 — Shared Evidence Pack
 
-Build one shared Evidence Pack per `.claude/war-room/protocol.md` (relevant files, routes, tests, CI status, docs claims, and open ledger rows) so all seats inspect the same ground truth without redundant repo-wide greps.
+Build one shared Evidence Pack per `.claude/war-room/protocol.md` (relevant files, routes, tests, CI status, docs claims, and open ledger rows) so all seats inspect the same ground truth without redundant repo-wide greps. The pack cites `path:line` ranges and quotes only the lines that matter. Docs claims come from `grep -n`, ledger rows from `ledger.py item`; it never pastes whole files.
+
+**Delta sweep.** When the area was swept before and only a later fix wave touched it, scope the pack to `git diff <sweep sha>..HEAD` for that area plus the direct callers of what changed. Find the sha with `ledger.py grep 'swept <area> @'`; with no such entry, run a full sweep.
 
 ## Round A — Independent Blind Review
 
@@ -57,16 +59,18 @@ Spawn the chosen seats **concurrently in a single turn**:
 - **Gemini Argon (Antigravity)**: Register seats via `define_subagent` (`EnableWriteTools: false`) and launch concurrently via `invoke_subagent`.
 - **OpenAI Codex**: Spawn the matching seats from `.codex/agents/<seat>.toml`.
 
-Each seat outputs findings in `.claude/war-room/finding-format.md`, grouped as `BLOCKERS` / `REQUIRED` / `SHOULD` / `EXPERIMENT` / `NOT WORTH DOING`, plus a 5-line Position Summary.
+Each seat outputs findings in `.claude/war-room/finding-format.md`, grouped as `BLOCKERS` / `REQUIRED` / `SHOULD` / `EXPERIMENT` / `NOT WORTH DOING`, plus a 5-line Position Summary. Tell each seat the pack is its starting point: do not re-read files the pack already excerpts, and say which reads went beyond it and why. Do not cap a seat's investigation.
 
-## Round B & C — Cross-Examination, QA Break-Probes, and Rebuttal
+While seats run, the Chair does not read the scope wholesale. When they return, read the `file:line` ranges behind each `BLOCKER` or `REQUIRED` item and each contradiction between seats.
 
-Skip Rounds B/C only if Round A produced zero disputed `BLOCKER` or `REQUIRED` items. Otherwise, send each seat the others' Round A findings (continuing existing agent sessions via `SendMessage` / `send_message`):
+## Round B+C — Cross-Examination, QA Break-Probes, and Rebuttal (one turn)
+
+Skip it if Round A produced zero disputed `BLOCKER` or `REQUIRED` items. Otherwise write a dispute brief: each disputed `BLOCKER`/`REQUIRED` finding in full, plus a one-line index of every other seat's `BLOCKER`/`REQUIRED` titles. Leave out `SHOULD`, `EXPERIMENT` and `NOT WORTH DOING`. Send it to the seats party to a dispute, plus `aurialis-qa` and `aurialis-devils-advocate` when they are seated (continuing existing agent sessions via `SendMessage` / `send_message`). Each answers once; run a second exchange only when an answer raises a new disputed `BLOCKER`:
 - Require `aurialis-qa` and `aurialis-devils-advocate` to team up: Devil's Advocate challenges completion claims and potential bloat; QA runs live `curl`, Newman, Go race, or Playwright probes to try to break the code.
-- Every seat must return `1. CHALLENGE`, `2. OVER-ENGINEERED / BLOAT`, `3. MISSED`, and `4. DEFENCE`, followed by Round C `RETRACTED` / `REVISED` / `HELD` lines.
+- Every seat in the exchange returns `1. CHALLENGE`, `2. OVER-ENGINEERED / BLOAT`, `3. MISSED`, and `4. DEFENCE`, followed in the same answer by `RETRACTED` / `REVISED` / `HELD` lines.
 
 ## Round D — Chair's Ruling & Ledger Update
 
-Adjudicate every disputed item using the `DECISION` block in `.claude/war-room/protocol.md`, preserving dissenting views. Update `.claude/war-room/ledger.md` with prioritized items (`P0`–`P3` / `DECLINED`), acceptance criteria, test plans, and documentation impact.
+Adjudicate every disputed item using the `DECISION` block in `.claude/war-room/protocol.md`, preserving dissenting views. Update `.claude/war-room/ledger.md` with prioritized items (`P0`–`P3` / `DECLINED`), acceptance criteria, test plans, and documentation impact. For each `P0`/`P1` row, name the files and functions the fix will touch (paths and symbols, not line numbers). Keep the ID in the first column and the status in the last, so `ledger.py live` finds the row; every open finding gets its own row or is named in its parent row's status, never only in prose. Record `swept <area> @<HEAD sha>` in the iteration log so the next delta sweep starts there. Edit at anchors found with `ledger.py grep`. Report the ruled backlog to the owner in at most 25 lines.
 
 **Standing Rule**: `/war-room` is review and ruling only — **no application source code is modified during `/war-room`**. To implement and loop until verified and merged, run `/war-room-loop`.

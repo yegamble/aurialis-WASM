@@ -273,43 +273,28 @@ test("a rejected source rate falls back to the device rate with a visible resamp
   await page.getByRole("button", { name: "Pause", exact: true }).click();
 });
 
-// Real overload (V1-10 Round E 2), with no test hook in the worklet: forcing the
-// context to 192 kHz makes the unmodified heaviest chain cost about four times
-// its 48 kHz load (0.4–0.5 here), so the render thread cannot keep up and the
-// deadline watch must stop playback with a message naming the cause, not a
-// buffer fault. DevTools Emulation.setCPUThrottlingRate cannot do this: at 20x
-// the worklet's kernel load stayed 0.47 with no clock lag, because it throttles
-// the renderer's main thread, not the AudioWorklet thread.
 const OVERLOAD = "Playback can't keep up on this device with the current processing. Turn off some processing modules, or close other busy apps or tabs, then press Play.";
-test("an overloaded render thread stops playback with the can't-keep-up message", async ({ page }) => {
-  test.setTimeout(180_000);
-  await page.addInitScript(() => {
-    const NativeContext = AudioContext;
-    window.AudioContext = class extends NativeContext { constructor(options?: AudioContextOptions) { super({ ...options, sampleRate: 192000 }); } };
-  });
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await uploadProject(page, "live-overload.wav", LOOP_SECONDS, "dense");
-  await heaviestChain(page);
-  await page.getByRole("button", { name: "Repeat track", exact: true }).click();
-  await page.getByRole("button", { name: "Play", exact: true }).click();
-  const transport = page.locator(".transport");
-  await expect(page.getByText(OVERLOAD, { exact: true })).toBeVisible({ timeout: 60_000 });
-  await expect(transport).toHaveAttribute("data-playing", "false");
-  await expect(page.getByText(/buffer fault/u)).toHaveCount(0);
-});
 
 // Load outside the kernel (V1-10 Round 4): a test-only "burner" AudioWorkletNode
-// in the same context busy-waits a fixed share of every 128-frame quantum on the
-// same render thread, while the app's worklet and kernel are untouched. The
-// burner calibrates its spin against Date.now over 100 ms.
+// in the same context busy-waits on the same render thread, while the app's
+// worklet and kernel are untouched. A share spins a calibrated fraction of every
+// 128-frame quantum (calibrated twice against Date.now, the second after JIT
+// warm-up); a negative share instead spins until Date.now has moved that many
+// milliseconds, which overloads any CPU. (A forced 192 kHz context was dropped:
+// whether it overloads depends on the runner, and CI's did not.)
 const BURNER = `class QaBurner extends AudioWorkletProcessor {
   constructor(options) {
     super(); this.share = options.processorOptions.share;
-    let iterations = 0, sink = 0; const start = Date.now();
-    while (Date.now() - start < 100) { for (let i = 0; i < 1000; i++) sink += Math.sqrt(i + sink % 7); iterations += 1000; }
-    this.perMs = iterations / (Date.now() - start); this.sink = sink;
+    let sink = 0;
+    for (let pass = 0; pass < 2; pass++) {
+      let iterations = 0; const start = Date.now();
+      while (Date.now() - start < 100) { for (let i = 0; i < 1000; i++) sink += Math.sqrt(i + sink % 7); iterations += 1000; }
+      this.perMs = iterations / (Date.now() - start);
+    }
+    this.sink = sink;
   }
   process() {
+    if (this.share < 0) { const start = Date.now(); while (Date.now() - start < -this.share) {} return true; }
     const count = this.share * 1000 * 128 / sampleRate * this.perMs;
     let sink = this.sink; for (let i = 0; i < count; i++) sink += Math.sqrt(i + sink % 7);
     this.sink = sink; return true;
@@ -349,9 +334,9 @@ async function playHeaviest(page: Page, name: string): Promise<void> {
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
 }
 
-test("load outside the kernel past real time (a burner at +0.6 of each quantum) fires the can't-keep-up message at 48 kHz", async ({ page }) => {
+test("load outside the kernel past real time (a burner spinning 2–3 ms of each 2.67 ms quantum) fires the can't-keep-up message at 48 kHz", async ({ page }) => {
   test.setTimeout(150_000);
-  await burn(page, 0.6);
+  await burn(page, -3);
   await playHeaviest(page, "live-burner-hot.wav");
   await expect(page.getByText(OVERLOAD, { exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");

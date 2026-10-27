@@ -1,11 +1,12 @@
 /* Test-owned Playwright download paths never come from audio filenames. */
 /* eslint-disable security/detect-non-literal-fs-filename */
+import { Buffer } from "node:buffer";
 import { readFile, writeFile } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import type { Track } from "../src/lib/types";
 import { decode } from "./audio-fixture";
-import { kWeightedLevel, meanOutputLevel, observeOutput } from "./live-output";
-import { uploadProject } from "./workflow-fixture";
+import { kWeightedLevel, meanOutputEnergy, observeOutputEnergy, outputEnergyRate } from "./live-output";
+import { denseFixture, uploadProject } from "./workflow-fixture";
 
 // V1-10: live playback renders the export algorithm, so what is heard is what is exported.
 const RATE = 48000, LOOP_SECONDS = 8, CEILING_DBTP = -1;
@@ -105,42 +106,113 @@ async function exportFloat(page: Page): Promise<{ wav: Buffer; status: string }>
   return { wav: await readFile(path), status };
 }
 
-test("live playback at the speakers matches the exported WAV in loudness and true peak", async ({ page }, info) => {
-  test.setTimeout(150_000);
-  await pinDeviceRate(page); await observeOutput(page);
+/** The dense loop twice in one 16-bit WAV. Its second copy follows the loop's
+ * own end, as every pass of a repeating live loop does, so the export's second
+ * half and a whole live loop share the compressor and limiter state; one cold
+ * pass against a warm loop differed by up to 0.13 LU. */
+function twoLoops(sourceRate: number): Buffer {
+  const once = denseFixture(LOOP_SECONDS, -1.3, sourceRate), data = once.subarray(44);
+  const wav = Buffer.concat([once.subarray(0, 44), data, data]);
+  wav.writeUInt32LE(wav.length - 8, 4); wav.writeUInt32LE(2 * data.length, 40);
+  return wav;
+}
+
+// Only so the test-only audio-thread taps (output energy, kernel timing) can load
+// from blob URLs; the app's own CSP is unchanged.
+test.use({ bypassCSP: true });
+
+/** One whole loop of K-weighted speaker output and the live TP meter against
+ * the exported 32-bit float WAV of the heaviest chain, both past a full loop of warm-up. */
+async function liveAgainstExport(page: Page, info: TestInfo, sourceRate: number) {
+  await observeOutputEnergy(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await uploadProject(page, "live-export.wav", LOOP_SECONDS, "dense");
+  await uploadProject(page, `live-export-${String(sourceRate)}.wav`, 2 * LOOP_SECONDS, twoLoops(sourceRate));
   await heaviestChain(page);
 
   const exported = await exportFloat(page);
   const pcm = decode(exported.wav);
-  expect(pcm.rate).toBe(RATE);
-  const exportLevel = kWeightedLevel(pcm.left, pcm.right, RATE);
+  expect(pcm.rate).toBe(sourceRate);
+  expect(pcm.left.length).toBe(2 * LOOP_SECONDS * sourceRate);
+  const exportLevel = kWeightedLevel(pcm.left, pcm.right, sourceRate, LOOP_SECONDS * sourceRate);
   const deliveredPeak = Number(/Delivered true peak (-?\d+\.\d+) dBTP/u.exec(exported.status)?.[1]);
-  expect(deliveredPeak).toBeLessThanOrEqual(CEILING_DBTP);
+  expect(Number.isFinite(deliveredPeak), exported.status).toBe(true);
 
   await page.getByRole("button", { name: "Repeat track", exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
-  // One whole loop of K-weighted speaker output, after the chain has settled.
-  await page.waitForTimeout(1000);
-  const liveLevel = await meanOutputLevel(page, LOOP_SECONDS * RATE, "k");
+  // One whole loop of K-weighted speaker output, once the first copy has warmed the chain.
+  await page.waitForTimeout(LOOP_SECONDS * 1000);
+  const contextRate = await outputEnergyRate(page);
+  const liveLevel = await meanOutputEnergy(page, LOOP_SECONDS * contextRate);
+  console.log("DELTAS", JSON.stringify(await page.evaluate(() => (window as unknown as { qaDeltas?: number[] }).qaDeltas?.slice(0, 60))));
   const meter = page.locator(".metric-strip > div").filter({ hasText: "True peak" }).locator("strong");
   const liveTruePeak = Number((await meter.innerText()).replace("−", "-"));
+  const resampledNote = await page.getByText(/so live A is resampled before processing/u).count();
   await page.getByRole("button", { name: "Pause", exact: true }).click();
 
-  const evidence = { rate: RATE, loopSeconds: LOOP_SECONDS, liveLevelDb: liveLevel, exportLevelDb: exportLevel, deltaLu: liveLevel - exportLevel,
-    liveTruePeakMeterDbtp: liveTruePeak, exportDeliveredTruePeakDbtp: deliveredPeak, ceilingDbtp: CEILING_DBTP };
+  const evidence = { sourceRate, contextRate, loopSeconds: LOOP_SECONDS, liveLevelDb: liveLevel, exportLevelDb: exportLevel, deltaLu: liveLevel - exportLevel,
+    liveTruePeakMeterDbtp: liveTruePeak, exportDeliveredTruePeakDbtp: deliveredPeak, ceilingDbtp: CEILING_DBTP, resampledNote };
   await writeFile(info.outputPath("live-export-evidence.json"), JSON.stringify(evidence, null, 2));
   await info.attach("live-export-evidence", { body: JSON.stringify(evidence), contentType: "application/json" });
+  // What you hear as A is what you export: same loudness, and the live meter
+  // reads no hotter than the delivered file.
   expect(Math.abs(evidence.deltaLu), JSON.stringify(evidence)).toBeLessThanOrEqual(0.1);
-  expect(liveTruePeak, JSON.stringify(evidence)).toBeLessThanOrEqual(CEILING_DBTP + 0.1);
-  expect(Math.abs(liveTruePeak - deliveredPeak), JSON.stringify(evidence)).toBeLessThanOrEqual(0.15);
+  expect(liveTruePeak, JSON.stringify(evidence)).toBeLessThanOrEqual(deliveredPeak + 0.1);
+  return evidence;
+}
+
+test("live playback at the speakers matches the exported WAV in loudness and true peak", async ({ page }, info) => {
+  test.setTimeout(150_000);
+  await pinDeviceRate(page);
+  const evidence = await liveAgainstExport(page, info, RATE);
+  // Ceiling compliance of the export itself is V1-13's gate; at 48 kHz this
+  // dense loop meets it, so the live meter must too.
+  expect(evidence.exportDeliveredTruePeakDbtp, JSON.stringify(evidence)).toBeLessThanOrEqual(CEILING_DBTP);
+  expect(evidence.liveTruePeakMeterDbtp, JSON.stringify(evidence)).toBeLessThanOrEqual(CEILING_DBTP + 0.1);
+  expect(Math.abs(evidence.liveTruePeakMeterDbtp - evidence.exportDeliveredTruePeakDbtp), JSON.stringify(evidence)).toBeLessThanOrEqual(0.15);
+});
+
+// Round E: nothing pins the context. The stub stands in for a device at another
+// rate by changing only the browser's default; the app must ask for the source
+// rate so the engine processes the samples the export processes.
+for (const [sourceRate, deviceRate] of [[48000, 44100], [44100, 48000]] as const) {
+  test(`a ${String(sourceRate / 1000)} kHz source on a ${String(deviceRate / 1000)} kHz device plays A at the source rate and matches the export`, async ({ page }, info) => {
+    test.setTimeout(150_000);
+    await page.addInitScript((rate) => {
+      const NativeContext = AudioContext;
+      window.AudioContext = class extends NativeContext { constructor(options?: AudioContextOptions) { super({ sampleRate: rate, ...options }); } };
+    }, deviceRate);
+    const evidence = await liveAgainstExport(page, info, sourceRate);
+    expect(evidence.contextRate, JSON.stringify(evidence)).toBe(sourceRate);
+    expect(evidence.resampledNote, JSON.stringify(evidence)).toBe(0);
+  });
+}
+
+// A browser that cannot open the source rate: playback still works at the
+// device rate, and the page says plainly that live A is resampled. Measured on
+// this fallback, 48 kHz on 44.1 kHz drifts −0.13 LU and its live meter reads
+// −0.8 against the export's −1.24 dBTP, which is why the claim is conditioned.
+test("a rejected source rate falls back to the device rate with a visible resampling note", async ({ page }) => {
+  await page.addInitScript(() => {
+    const NativeContext = AudioContext;
+    window.AudioContext = class extends NativeContext {
+      constructor(options?: AudioContextOptions) {
+        if (options?.sampleRate !== undefined) throw new DOMException("The sample rate is not supported.", "NotSupportedError");
+        super({ ...options, sampleRate: 44100 });
+      }
+    };
+  });
+  await observeOutputEnergy(page);
+  await uploadProject(page, "live-fallback.wav");
+  await expect(page.getByText(/so live A is resampled/u)).toHaveCount(0);
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
+  expect(await outputEnergyRate(page)).toBe(44100);
+  await expect(page.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export.", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
 });
 
 test.describe("sustained live playback", () => {
-// Only so the timing tap can load from a blob URL; the app's own CSP is unchanged.
-test.use({ bypassCSP: true });
 test(`the export algorithm keeps up live for ${String(SOAK_SECONDS)} s with every module on`, async ({ page }, info) => {
   test.setTimeout(SOAK_SECONDS * 1000 + 120_000);
   await pinDeviceRate(page); await timeWorklet(page);

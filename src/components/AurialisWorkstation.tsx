@@ -1010,7 +1010,7 @@ function MasterView({ trackId }: { trackId: string }) {
             <div>
               <span>Sample peak</span>
               <strong>{levels?.peak ?? "—"}</strong>
-              <small>dBFS</small>
+              <small>dBFS · preview</small>
             </div>
             <div>
               <span>RMS level</span>
@@ -1522,7 +1522,7 @@ function AdvancedControls({
         min={-3.0}
         max={MAX_LIMITER_CEILING_DB}
         step={0.1}
-        unit="dBFS"
+        unit="dBTP"
         onChange={(ceiling) => {
           dispatch({
             type: "UPDATE_LIMITER",

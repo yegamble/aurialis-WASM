@@ -242,7 +242,7 @@ describe("master live playback lifecycle", () => {
     mount(); await ready();
     expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Output target" }).value).toBe("custom");
     expect(screen.getByRole("option", { name: "Custom (−12 LUFS)" })).toBeTruthy();
-    expect(screen.getByText(/Current target: −12 LUFS · ceiling −1.5 dBFS/)).toBeTruthy();
+    expect(screen.getByText(/Current target: −12 LUFS · ceiling −1.5 dBTP/)).toBeTruthy();
     const normalize = vi.spyOn(engine, "normalizeSimpleAudio").mockResolvedValue({ advanced: custom, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } });
     vi.spyOn(engine, "processPreview").mockResolvedValue(pcm);
     fireEvent.click(screen.getByRole("button", { name: "Set target loudness" }));
@@ -253,7 +253,7 @@ describe("master live playback lifecycle", () => {
     const track = testStore.tracks[0]; if (!track) throw new Error("Missing track");
     localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: [{ ...track, mode: "simple", target: "Loud", advanced: { ...track.advanced, limiter: { ...track.advanced.limiter, enabled: true, targetLufs: -9, ceiling: -0.2 } } }] }));
     mount(); await ready();
-    expect(screen.getByText("This project's saved limiter ceiling of −0.2 dBFS was lowered to −1 dBFS, the highest ceiling Aurialis offers. Set target loudness or export again to re-measure.")).toBeTruthy();
+    expect(screen.getByText("This project's saved limiter ceiling of −0.2 dBTP was lowered to −1 dBTP, the highest ceiling Aurialis offers. Set target loudness or export again to re-measure.")).toBeTruthy();
     expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Output target" }).value).toBe("Loud");
     await waitFor(() => { expect(savedTrack().advanced.limiter.ceiling).toBe(-1); });
     fireEvent.click(screen.getByRole("button", { name: "Dismiss ceiling note" }));

@@ -451,7 +451,7 @@ function migrateLimiterCeiling(track: Track): Track {
     .filter((value): value is number => value !== undefined && value > MAX_LIMITER_CEILING_DB);
   if (saved.length === 0) return track;
   const lower = (advanced: AdvancedParams): AdvancedParams => ({ ...advanced, limiter: { ...advanced.limiter, ceiling: Math.min(MAX_LIMITER_CEILING_DB, advanced.limiter.ceiling) } });
-  const migrated: Track = { ...track, advanced: lower(track.advanced), limiterNotice: `This project's saved limiter ceiling of ${dbLabel(Math.max(...saved))} dBFS was lowered to ${dbLabel(MAX_LIMITER_CEILING_DB)} dBFS, the highest ceiling Aurialis offers. Set target loudness or export again to re-measure.` };
+  const migrated: Track = { ...track, advanced: lower(track.advanced), limiterNotice: `This project's saved limiter ceiling of ${dbLabel(Math.max(...saved))} dBTP was lowered to ${dbLabel(MAX_LIMITER_CEILING_DB)} dBTP, the highest ceiling Aurialis offers. Set target loudness or export again to re-measure.` };
   if (deep) {
     migrated.deepMastering = { ...deep };
     if (deep.applied) migrated.deepMastering.applied = { ...deep.applied, chainParams: { ...deep.applied.chainParams, limiter: { ...deep.applied.chainParams.limiter, ceilingDbtp: Math.min(MAX_LIMITER_CEILING_DB, deep.applied.chainParams.limiter.ceilingDbtp) } } };

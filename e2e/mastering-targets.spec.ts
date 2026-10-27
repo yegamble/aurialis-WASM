@@ -55,22 +55,22 @@ test("canonical loudness targets survive reset and custom project normalization"
   const reset = (await savedTrack(page, id)).advanced;
   await page.getByRole("tab", { name: "simple", exact: true }).click();
   await expect(page.getByRole("combobox", { name: "Output target", exact: true })).toHaveValue("Streaming");
-  await expect(page.getByText("Current target: −14 LUFS · ceiling −1 dBFS. Set target loudness measures these current settings.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Current target: −14 LUFS · ceiling −1 dBTP. Set target loudness measures these current settings.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Rock", exact: true }).click();
   expect((await savedTrack(page, id)).advanced.limiter).toMatchObject({ targetLufs: -14, ceiling: -1 });
 
   // There is no arbitrary LUFS input. Seed a persisted custom/profile project
-  // saved before V1-09 with a −0.7 dBFS ceiling: loading lowers it to −1 with
+  // saved before V1-09 with a −0.7 dBTP ceiling: loading lowers it to −1 with
   // a visible note, then the real UI and native normalization run unmocked.
   const saved = { ...reset, limiter: { ...reset.limiter, targetLufs: -12, ceiling: -0.7 } };
   const custom = { ...saved, limiter: { ...saved.limiter, ceiling: -1 } };
   await seedCustomTarget(page, id, saved);
   await expect(page.getByRole("button", { name: "Set target loudness", exact: true })).toBeEnabled({ timeout: 30_000 });
-  await expect(page.getByText("This project's saved limiter ceiling of −0.7 dBFS was lowered to −1 dBFS, the highest ceiling Aurialis offers. Set target loudness or export again to re-measure.", { exact: true })).toBeVisible();
+  await expect(page.getByText("This project's saved limiter ceiling of −0.7 dBTP was lowered to −1 dBTP, the highest ceiling Aurialis offers. Set target loudness or export again to re-measure.", { exact: true })).toBeVisible();
   await expect.poll(async () => (await savedTrack(page, id)).advanced.limiter.ceiling).toBe(-1);
   await expect(page.getByRole("combobox", { name: "Output target", exact: true })).toHaveValue("custom");
   await expect(page.getByRole("option", { name: "Custom (−12 LUFS)", exact: true })).toBeAttached();
-  await expect(page.getByText("Current target: −12 LUFS · ceiling −1 dBFS. Set target loudness measures these current settings.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Current target: −12 LUFS · ceiling −1 dBTP. Set target loudness measures these current settings.", { exact: true })).toBeVisible();
   await page.evaluate(() => { (window as TargetWindow).qaTargetParameters = []; });
   const measurements: { integratedLufs: number; truePeakDbtp: number }[] = [];
   const responses: Promise<void>[] = [];
@@ -138,7 +138,7 @@ for (const { name, targetLufs, ceiling } of denseTargets) {
       const loud = (await savedTrack(page, id)).advanced;
       await seedCustomTarget(page, id, { ...loud, limiter: { ...loud.limiter, ceiling } });
       await expect(target).toHaveValue("custom", { timeout: 30_000 });
-      await expect(page.getByText("Current target: −9 LUFS · ceiling −1.5 dBFS. Set target loudness measures these current settings.", { exact: true })).toBeVisible();
+      await expect(page.getByText("Current target: −9 LUFS · ceiling −1.5 dBTP. Set target loudness measures these current settings.", { exact: true })).toBeVisible();
     }
     await expect.poll(async () => (await savedTrack(page, id)).advanced.limiter).toMatchObject({ enabled: true, targetLufs, ceiling });
     const before = (await savedTrack(page, id)).advanced;

@@ -58,7 +58,7 @@ describe("V1-09 honest starting points", () => {
     expect(migrated?.advanced.limiter).toEqual({ ...loud.limiter, ceiling: -1 });
     expect(migrated?.deepMastering?.applied?.chainParams.limiter.ceilingDbtp).toBe(-1);
     expect(migrated?.deepMastering?.before?.advanced.limiter.ceiling).toBe(-1);
-    expect(migrated?.limiterNotice).toBe("This project's saved limiter ceiling of −0.2 dBFS was lowered to −1 dBFS, the highest ceiling Aurialis offers. Set target loudness or export again to re-measure.");
+    expect(migrated?.limiterNotice).toBe("This project's saved limiter ceiling of −0.2 dBTP was lowered to −1 dBTP, the highest ceiling Aurialis offers. Set target loudness or export again to re-measure.");
     expect(restored?.tracks[1]?.advanced.limiter.ceiling).toBe(-1.5);
     expect(restored?.tracks[1]?.limiterNotice).toBeUndefined();
     // A migrated project saves at −1 and does not repeat the migration.

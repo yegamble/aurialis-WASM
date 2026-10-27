@@ -33,6 +33,22 @@ New genre presets use modest tonal shifts, compression ratios, saturation and wi
 - Actual browser controls change exported PCM and live output, without mode-switch or playback regressions.
 - Responsive, keyboard and accessibility gates, documentation sync, and adversarial review before merge.
 
+## Deep proposal baselines
+
+Deep's measured proposal starts from one of five baselines (`internal/mastering/starting_points.go`) on the same conservative scale as the Simple presets. None adds compressor makeup or input gain; every limiter ceiling is −1 dBTP. Compression is the generic Optical type with a 6 dB knee and automatic release. The loudness target is metadata used only by Set target loudness. The measured spectral fit may then move each EQ band by up to ±3 dB from these values.
+
+| Profile | EQ | Threshold dB | Ratio | Attack / release ms | Detector HPF Hz | Saturation | Width % | Mono bass | Target LUFS |
+| --- | --- | ---: | ---: | --- | ---: | --- | ---: | --- | ---: |
+| Warm Analog | 0.5 / 0.4 / 0 / −0.5 / 0.2 | −16 | 1.7 | 30 / 250 | 90 | Tube 8% | 100 | Off | −14 |
+| Punchy Commercial | 0.4 / −0.5 / 0 / 0.5 / 0.5 | −16 | 2 | 30 / 150 | 90 | Transformer 4% | 104 | 110 Hz | −9 |
+| Dynamic & Open | 0.2 / −0.3 / 0 / 0.2 / 0.6 | −14 | 1.4 | 40 / 300 | 60 | Clean (off) | 104 | Off | −16 |
+| Vocal Forward | 0 / −0.6 / 0.3 / 0.6 / 0.3 | −17 | 1.7 | 30 / 200 | 100 | Tube 3% | 100 | 110 Hz | −14 |
+| Bass Heavy | 0.8 / −0.4 / 0 / 0.2 / 0.2 | −16 | 1.8 | 30 / 200 | 120 | Tape 4% | 102 | 110 Hz | −14 |
+
+Generated section moves are capped (MUB-5) at +0.8 dB EQ, +8 width points and +0.5 dB saturation drive above the baseline; cuts are not capped. Each proposal is rendered through the export limiter to predict its loudness, true peak and crest. A finding explains a loudness change above 1 LU or a crest cut above 4 dB.
+
+The removed static profile cards (Modern Pop Polish, Hip-Hop Low-End, Indie Warmth, Metal Wall, Pop Punk Air) applied EQ moves that contradicted their own genres and ceilings up to −0.3 dBTP. Simple and Deep cover those starting points.
+
 ## Simple preset reference
 
 The following values describe **100% intensity** before adding the tone intention. EQ columns are Sub 60 Hz / Low 250 Hz / Mid 1 kHz / Presence 4 kHz / Air 12 kHz, in dB. The Low band is a broad bell (Q 0.7); Sub and Air are shelves.

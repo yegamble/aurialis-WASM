@@ -3,6 +3,32 @@
 
 The blanket “all slices verified” claim at `ade7736` is withdrawn. The earlier corrective subset on `codex/war-room-product-audit` was locally verified; **open — awaiting merge**: direct Go WASI playback, shared canonical settings, import/recovery, transport and responsive repairs passed their bounded checks, including 39/39 local browser cases, recorded five-minute actual-song Brave playback and six-job remote CI at `e91d2f0`. The owner merged corrective PR #2 on 2026-10-22 at 00:31:56 UTC, merge commit `30f576f9d2b7008240f57d62f691e2536c172be5`. The owner merged expanded-controls PR #3 at `97964fc` and the later validation/recovery corrections in PR #4 at `ef18a7f`; those merges do not establish acceptance of subsequent changes. Broader AI, trained-stem, automation and hardware-certification requirements remain open. [The baseline audit](reviews/2026-10-21-war-room-audit.md) and [the ledger](../.claude/war-room/ledger.md) retain every failed checkpoint; those historical failures do not describe the corrected current architecture.
 
+## Honest starting points (V1-09) — 2026-10-26
+
+V1-09 (P1), findings GV-5/7/8 and DA-9, ruling MUB-5. Starting points no longer overstate loudness or ceiling headroom.
+
+- **Ceilings.** Every target, Simple preset and Deep or legacy profile ceiling is at most −1 dBTP. Loud is −9 LUFS at −1 (was −0.2). Advanced ceiling edits clamp to −1 and the slider stops there.
+- **Migration.** A saved project whose ceiling is above −1 (current settings, Deep applied script or before snapshot) is lowered to −1 on load, all together so they still match. A dismissible status note names the old value. Set target loudness or export again to re-measure.
+- **Legacy profile cards removed.** Ruling GV-8 vs DA-9: the five static cards (Modern Pop Polish … Pop Punk Air) applied EQ that contradicted their genres and ceilings up to −0.3 dBTP. Deep now has one profile control, the Deep engineer profile select. Saved tracks keep the unused legacy `profile` id.
+- **Deep baselines.** `ProposalBaseline` replaces `ProfilePreset` for ScriptV2: no makeup or input gain, −1 dBTP, EQ within ±1 dB, ratio ≤ 2, drive ≤ 8%, width ≤ 104% ([recipes](mastering-controls-research.md#deep-proposal-baselines)). Generated section moves are capped at +0.8 dB EQ, +8 width points and +0.5 dB drive (MUB-5).
+- **Prediction and findings.** Analysis renders the finished proposal through the export algorithm and returns `prediction.afterMetrics` beside the script. A finding explains a loudness rise above 1 LU or crest cut above 4 dB (warning) or a drop above 1 LU (info); legacy version 1 scripts get the same findings. The panel lists every static field Apply changes, plus predicted LUFS, true peak and crest for the measured draft revision. Edited drafts say the prediction no longer applies.
+
+Evidence (local, 2026-10-26). `unit` audio verification (`TestDeepProfilesPredictExportLevelsAndExplainLargeChanges`): on a synthetic dynamic mix and a soft-clipped dense mix (6 s, 48 kHz), each prediction equals the algorithm 2 render, true peak stays at or below −1 dBTP, and findings appear exactly when the thresholds are crossed. No profile raised loudness or cut crest on either fixture; the dense drops come from compression without makeup and carry the info finding.
+
+| Profile | Dynamic Δ LUFS / Δ crest / TP | Dense Δ LUFS / Δ crest / TP |
+|---|---|---|
+| Warm Analog | −0.11 LU / +0.06 dB / −10.31 dBTP | −3.73 LU / +2.49 dB / −1.96 dBTP |
+| Punchy Commercial | −0.59 / +0.27 / −10.50 | −4.66 / +3.24 / −2.06 |
+| Dynamic & Open | −0.37 / −0.02 / −10.51 | −2.39 / +1.69 / −1.29 |
+| Vocal Forward | −0.77 / +0.30 / −10.71 | −4.44 / +2.97 / −2.16 |
+| Bass Heavy | −0.39 / +0.20 / −10.30 | −3.84 / +2.41 / −1.99 |
+
+`playwright-a11y-responsive` (native build): Deep shows one profile control; Punchy Commercial on the 8 s dense fixture listed 36 changed fields matching `proposalChanges`, and showed −17.0 LUFS, −2.22 dBTP, crest 14.6 dB. The exported 24-bit WAV measured −17.02 LUFS, −2.22 dBTP, 14.56 dB, within 1e-6 of the stored prediction. Axe and overflow pass at 320 and 1440 px. The dense Loud case is now −9/−1 and Custom is −9/−1.5 (native and browser worker). A saved −0.7 custom ceiling loads at −1 with its note, then normalizes to −12 LUFS.
+
+Tests: Go `starting_points_test.go` (baselines, caps, findings, export prediction, legacy findings) and the jobs prediction snapshot. Vitest: `starting-points.test.ts` (all targets and presets ≤ −1, clamp, migration including Deep snapshots, prediction persistence, changed-field labels), DeepProposalPanel prediction/stale/findings, MasterPlayback one-profile-control and migration note. Playwright: `deep-workstation`, `mastering-targets`, `control-isolation`, `cancellation` 18/18; browser worker `workflows` dense targets and Deep 3/3.
+
+Open: the legacy version 1 Deep job and `profile` renders keep their louder recipes (makeup up to 7.5 dB), now with a −1 dBTP ceiling and findings. Status: **implemented — open, awaiting merge** (`fix/v1-09-starting-points`).
+
 ## Export deadline budget (V1-07) — 2026-10-26
 
 QA-2 found that long converted native exports hit the fixed 60-second POST deadline and returned 408. `/api/master/render` and `/master/render` now replace that deadline, after validation, with a work budget (60 s + 2 µs per source frame + 8 µs per converted frame, at most 10 minutes) and extend the connection write deadline to match; uploads keep the 60 s base deadline plus a length-sized body read deadline (10 s + 8 MiB/s, at most 60 s). An exhausted budget returns 408 `export_timeout` naming the next step. See [limits](api.md).

@@ -33,6 +33,8 @@ Tests: Go `starting_points_test.go` (baselines, signatures, audible release, cap
 
 Open: the legacy version 1 Deep job and `profile` renders keep their louder recipes (makeup up to 7.5 dB) with a −1 dBTP ceiling and findings; they are documented as deprecated. `profile` renders now use algorithm 2 and the true-peak limiter (an inter-sample fixture went from +0.26 to ≤ −1 dBTP). Explicit algorithm 1 `params` and scripts keep the documented sample-peak limiter with no true-peak guarantee (QA's dense script read −0.98 dBTP); forcing algorithm 2 there would break the documented algorithm 1 contract, so UI exports and the docs use algorithm 2. Loud's −2 dBTP default is deferred to release-check work. Status: **implemented — open, awaiting merge** (`fix/v1-09-starting-points`).
 
+Status: **verified and merged** in two parts. PR #49 (`6d64c18`) merged at `18a28de` before the final Round E fixes; PR #50 (`57db287`) carries them (limiter-bounded Level match, dither golden, effective-chain album keys, draft ceiling note, true-peak `profile=` renders, named JSON type errors). Round E: QA verified the base, the Devil's Advocate verified the final code including the dither path, and the Grammy veteran resolved R1.
+
 ## Album levels without project changes (V1-03) — 2026-10-26
 
 Album rendering used to normalize every track to −14 LUFS and write the normalized settings and measurements into each project. Albums now own their level choice (`Album.level`, saved with album metadata) and only read projects. **Keep each master's level** (the default, and what legacy albums hydrate to) renders each WAV exactly as that track's single export, including an applied Deep script. **Normalize to a target** offers −23, −18, −16, −14, −12 and −9 LUFS plus a per-track album offset of ±6 LU in 0.5 LU steps; each track is searched with the export parameters on a copy of its settings (`normalizeSimpleAudio`), and a track with an applied Deep script blocks normalize mode with a reason instead of rendering a different level. Each rendered WAV is measured, and the album shows a loudness and true-peak chart with a table only from those measurements. The table names the requested level in normalize mode. The project-measurement chart and the placeholder consistency score were removed. Saved masters are keyed by the used level, so changing the mode, target or an offset makes them stale. Logic lives in `src/lib/album-levels.ts`; the chart is `src/components/shared/AlbumLevelChart.tsx`.
@@ -43,7 +45,7 @@ Round E (Devil's Advocate, 2026-10-26): a blocked normalize level reused the kep
 
 Round E (QA, 2026-10-26): VERIFIED with no BLOCKER or REQUIRED findings. An independent probe measured keep-mode WAVs equal to each single export (Δ 0.000 LU), normalize −14 with offsets +1/−1/0 within 0.17 LU at −1.21 dBTP, unchanged projects after both renders, offset pruning after a Library delete, safe legacy loading, and no overflow, sub-44 px target or axe violation at 320–1440 px. Follow-up fixes: a digitally silent master reads "Silent" and no longer sets the chart scale, and a failed render names its track ("“Title” could not be rendered: …").
 
-Status: **implemented — open, awaiting merge** (`fix/v1-03-album-levels`).
+Status: **verified and merged** (PR #48, `c1ce3bf`).
 
 ## Per-track tools and the Tools track chooser (V1-05) — 2026-10-26
 
@@ -53,7 +55,7 @@ Evidence (local, 2026-10-26, frontend): `unit` Vitest `TrackTools.test.tsx` (Mas
 
 Round E (QA + Devil's Advocate, 2026-10-26): VERIFIED with no BLOCKER or REQUIRED findings. Long, right-to-left and emoji titles do not overflow at 320–1024 px; tool links are ≥ 44 px; the Split link sends A's audio; the browser build renders no `/split` link. Follow-up fixes: the Tools chooser remembers the chosen track in `sessionStorage` for the tab (falling back to the newest import when the track was deleted or storage is blocked), and README names the Master tool links.
 
-**Status:** implemented — open, awaiting merge (`fix/v1-05-track-tools`).
+**Status:** verified and merged (PR #47, `d4fdb7c`).
 
 ## Export deadline budget (V1-07) — 2026-10-26
 

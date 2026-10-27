@@ -2,11 +2,11 @@ import { Blob as NativeBlob } from "node:buffer";
 import { webcrypto } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { waitFor } from "@testing-library/react";
-import { previewWAV } from "../browser-engine";
+import { canonicalWAV } from "./fixtures";
 import { verifyCanonicalSource } from "../project-import";
 
 const identity = { pcmHash: "b091c728c915b19f387a55e0ae9c3b6f69bdda55c17c02775aa414e8dd4208cd", sampleRate: 48000, frames: 1 };
-function source(right = 1.25) { return previewWAV({ sampleRate: 48000, left: Float32Array.of(-0), right: Float32Array.of(right) }); }
+function source(right = 1.25) { return canonicalWAV({ sampleRate: 48000, left: Float32Array.of(-0), right: Float32Array.of(right) }); }
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 describe("canonical source verification receipts", () => {
   it("matches the independent LE layout digest with exact headroom and negative-zero bits", async () => {

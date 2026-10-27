@@ -1,13 +1,13 @@
 import { Blob as NodeBlob } from "node:buffer";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
-import { previewWAV, type StereoPCM } from "@/lib/browser-engine";
+import type { StereoPCM } from "@/lib/browser-engine";
 import * as engine from "@/lib/browser-engine";
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP } from "@/lib/audio-dsp";
 import type { AdvancedParams } from "@/lib/types";
 import type { LiveMeter, LivePlaybackController, LivePlaybackState, LiveSpectrum } from "@/lib/live-playback";
 import { StoreProvider } from "@/lib/store";
-import { testStore } from "@/lib/__tests__/fixtures";
+import { canonicalWAV, testStore } from "@/lib/__tests__/fixtures";
 import { AurialisWorkstation } from "../AurialisWorkstation";
 
 // cspell:words seekto previoustrack nexttrack
@@ -43,7 +43,7 @@ beforeEach(() => {
   instances.length = 0;
   window.history.replaceState(null, "", "/master/demo-1");
   mocks.push.mockReset().mockImplementation((href: string) => { window.history.replaceState(null, "", href); });
-  mocks.getAudio.mockReset().mockResolvedValue(previewWAV(pcm));
+  mocks.getAudio.mockReset().mockResolvedValue(canonicalWAV(pcm));
   mocks.createLivePlayback.mockReset().mockImplementation((_source: StereoPCM, _settings: AdvancedParams, callbacks: Callbacks) => {
     const instance: Instance = { controller: {} as LivePlaybackController, callbacks,
       state: { position: 0, duration: 0.1, playing: false, ready: false, loading: false, original: false, volume: 0.8, repeat: false, underruns: 0, parameterVersion: 1, appliedVersion: 1, error: null } };
@@ -169,15 +169,11 @@ describe("master live playback lifecycle", () => {
     const mapped = mapSimpleToDSP("Pop", "Warm", 50, "Streaming");
     expect(savedTrack().advanced).toEqual(mapped);
     expect(instance.controller.setParams).toHaveBeenLastCalledWith(mapped);
-    const offline = vi.spyOn(engine, "processPreview").mockResolvedValue(pcm);
-    fireEvent.click(screen.getByRole("button", { name: "Render offline preview" }));
-    await screen.findByRole("button", { name: "Download offline preview" });
     const calls = vi.mocked(instance.controller.setParams).mock.calls.length;
     fireEvent.click(screen.getByRole("tab", { name: "advanced" }));
     fireEvent.click(screen.getByRole("tab", { name: "simple" }));
     expect(savedTrack().advanced).toEqual(mapped);
     expect(instance.controller.setParams).toHaveBeenCalledTimes(calls);
-    expect(screen.getByRole("button", { name: "Download offline preview" })).toBeTruthy();
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Export" }).disabled).toBe(false);
     fireEvent.click(screen.getByRole("tab", { name: "advanced" }));
     fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "6" } });
@@ -190,7 +186,6 @@ describe("master live playback lifecycle", () => {
     fireEvent.click(screen.getByRole("tab", { name: "advanced" }));
     expect(savedTrack().advanced).toEqual(custom);
     expect(instance.controller.setParams).toHaveBeenCalledTimes(customCalls);
-    expect(offline).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("tab", { name: "simple" }));
     fireEvent.click(screen.getByRole("button", { name: "Open" }));
     // Retain explicit input gain so a headroom correction survives a new direction.
@@ -207,7 +202,6 @@ describe("master live playback lifecycle", () => {
     const expected = savedTrack().advanced;
     let resolveMeasured: ((result: Awaited<ReturnType<typeof engine.normalizeSimpleAudio>>) => void) | undefined;
     const normalize = vi.spyOn(engine, "normalizeSimpleAudio").mockReturnValue(new Promise((resolve) => { resolveMeasured = resolve; }));
-    const offline = vi.spyOn(engine, "processPreview").mockResolvedValue(pcm);
     fireEvent.click(screen.getByRole("tab", { name: "simple" }));
     fireEvent.click(screen.getByRole("button", { name: "Set target loudness" }));
     expect(normalize).toHaveBeenCalledWith(expect.any(Blob), expected, expected.limiter.targetLufs, expect.any(AbortSignal));
@@ -216,11 +210,12 @@ describe("master live playback lifecycle", () => {
     expect(instance.controller.setParams).toHaveBeenCalledTimes(calls);
     await act(async () => { resolveMeasured?.({ advanced: { ...expected, input: 4, stereo: { ...expected.stereo, width: 199 } }, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } }); await Promise.resolve(); });
     const prepared = { ...expected, input: 4 };
-    // The export, not the algorithm 1 preview, is what was measured; say so.
-    expect(await screen.findByText("Preview ready. Export measures −9.01 LUFS, −0.30 dBTP. Live playback uses the same limiter; the offline preview uses the preview limiter and can read higher.")).toBeTruthy();
+    // The export is what was measured; live playback is the preview, so no second WAV is rendered.
+    expect(await screen.findByText("Target set. Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain.")).toBeTruthy();
     expect(savedTrack().advanced).toEqual(prepared);
+    expect(savedTrack().status).toBe("mastered");
     expect(instance.controller.setParams).toHaveBeenLastCalledWith(prepared);
-    expect(offline).toHaveBeenCalledWith(pcm, prepared, expect.any(AbortSignal));
+    expect(audioRequests()).toEqual([]);
     fireEvent.click(screen.getByRole("tab", { name: "simple" }));
     expect(screen.getByText("Custom settings")).toBeTruthy();
     fireEvent.change(screen.getByRole("combobox", { name: "Output target" }), { target: { value: "Loud" } });
@@ -248,7 +243,6 @@ describe("master live playback lifecycle", () => {
     expect(screen.getByRole("option", { name: "Custom (−12 LUFS)" })).toBeTruthy();
     expect(screen.getByText(/Current target: −12 LUFS · ceiling −1.5 dBTP/)).toBeTruthy();
     const normalize = vi.spyOn(engine, "normalizeSimpleAudio").mockResolvedValue({ advanced: custom, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } });
-    vi.spyOn(engine, "processPreview").mockResolvedValue(pcm);
     fireEvent.click(screen.getByRole("button", { name: "Set target loudness" }));
     await waitFor(() => { expect(normalize).toHaveBeenCalledWith(expect.any(Blob), custom, -12, expect.any(AbortSignal)); });
   }, 30000);
@@ -299,7 +293,8 @@ describe("master live playback lifecycle", () => {
     mount();
     await screen.findByRole("button", { name: "Retry source" });
     expect(mocks.createLivePlayback).not.toHaveBeenCalled();
-    for (const name of ["A Processed", "B Original", "Play", "Render offline preview"]) expect(screen.getByRole<HTMLButtonElement>("button", { name }).disabled).toBe(true);
+    expect(screen.queryByRole("button", { name: /offline preview/u })).toBeNull();
+    for (const name of ["A Processed", "B Original", "Play"]) expect(screen.getByRole<HTMLButtonElement>("button", { name }).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Retry source" }));
     await ready();
     expect(mocks.createLivePlayback).toHaveBeenCalledOnce();
@@ -315,7 +310,7 @@ describe("master live playback lifecycle", () => {
       eqBands: defaults.eqBands.map((band) => band.id === "air" ? { ...band, freqHz: 1000, gainDb: 6, q: 2, enabled: false } : band),
     };
     localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1).map((track) => ({ ...track, sampleRate: 8000, advanced })) }));
-    mocks.getAudio.mockResolvedValue(previewWAV({ ...pcm, sampleRate: 8000 }));
+    mocks.getAudio.mockResolvedValue(canonicalWAV({ ...pcm, sampleRate: 8000 }));
     mount();
     await ready();
     const instance = latest();
@@ -415,7 +410,7 @@ describe("master live playback lifecycle", () => {
   it("offers the source rate once, sends no sampleRate for it, and reports the delivered true peak", async () => {
     mount();
     await ready();
-    const render = vi.spyOn(engine, "renderDelivery").mockResolvedValueOnce({ blob: previewWAV(pcm), truePeakDbtp: null }).mockResolvedValueOnce({ blob: previewWAV(pcm), truePeakDbtp: -1.04 });
+    const render = vi.spyOn(engine, "renderDelivery").mockResolvedValueOnce({ blob: canonicalWAV(pcm), truePeakDbtp: null }).mockResolvedValueOnce({ blob: canonicalWAV(pcm), truePeakDbtp: -1.04 });
     // jsdom has no object URLs; restoreAllMocks does not reach defineProperty.
     // Export revokes its URL 1 s after the click, so keep the stub until that
     // timer has fired; otherwise it throws into a later test on a slow runner.
@@ -437,6 +432,8 @@ describe("master live playback lifecycle", () => {
     await waitFor(() => { expect(render).toHaveBeenCalledOnce(); });
     expect(render.mock.calls[0]?.[3]).toEqual({});
     await within(screen.getByRole("dialog")).findByText(/Exported 24-bit PCM WAV with TPDF dither at the source rate using the same Go DSP parameters\.$/);
+    // Live playback is the preview; a finished export is what marks the project mastered.
+    expect(savedTrack().status).toBe("mastered");
     fireEvent.click(screen.getByRole("button", { name: "44.1 kHz" }));
     fireEvent.click(screen.getByRole("button", { name: "Off" }));
     await waitFor(() => { expect(screen.getByRole<HTMLButtonElement>("button", { name: "Render & download WAV" }).disabled).toBe(false); });
@@ -453,7 +450,7 @@ describe("master live playback lifecycle", () => {
       const input = "params" in render ? (render.params as { inputGainDb: number }).inputGainDb : 0;
       return Promise.resolve({ sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: { ...exportMetrics, integratedLufs: -14 }, afterMetrics: { ...exportMetrics, integratedLufs: -14 + input } });
     });
-    const delivery = vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: previewWAV(pcm), truePeakDbtp: -1 });
+    const delivery = vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: canonicalWAV(pcm), truePeakDbtp: -1 });
     const originals = (["createObjectURL", "revokeObjectURL"] as const).map((key) => [key, Object.getOwnPropertyDescriptor(URL, key)] as const);
     Object.defineProperty(URL, "createObjectURL", { configurable: true, value: () => "blob:export" });
     Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: () => undefined });
@@ -519,7 +516,7 @@ describe("master live playback lifecycle", () => {
     const view = mount();
     await waitFor(() => { expect(mocks.getAudio).toHaveBeenCalledOnce(); });
     view.unmount();
-    await act(async () => { resolveSource?.(previewWAV(pcm)); await Promise.resolve(); });
+    await act(async () => { resolveSource?.(canonicalWAV(pcm)); await Promise.resolve(); });
     expect(mocks.createLivePlayback).not.toHaveBeenCalled();
   }, 20000);
 });

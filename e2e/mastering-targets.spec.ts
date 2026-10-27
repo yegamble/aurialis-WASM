@@ -84,7 +84,7 @@ test("canonical loudness targets survive reset and custom project normalization"
     }
   });
   await page.getByRole("button", { name: "Set target loudness", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Download offline preview", exact: true })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/^Target set\. Export measures /u)).toBeVisible({ timeout: 30_000 });
   await Promise.all(responses);
   const params = await page.evaluate(() => (window as TargetWindow).qaTargetParameters);
   expect(params?.length).toBeGreaterThan(1);
@@ -149,8 +149,8 @@ for (const { name, targetLufs, ceiling } of denseTargets) {
     await expect(apply).toBeEnabled();
     await expect(page.getByText(/exceeds the measured peak ceiling|could not be reached/u)).toHaveCount(0);
     await expect.poll(async () => (await savedTrack(page, id)).advanced.input).not.toBe(before.input);
-    // The status reports the export measurement, not the algorithm 1 preview.
-    const summary = page.getByText(/^Preview ready\. Export measures (−?\d+\.\d{2}) LUFS, (−?\d+\.\d{2}) dBTP\. Live playback uses the same limiter; the offline preview uses the preview limiter and can read higher\.$/u);
+    // The status reports the export measurement; live playback runs that same chain.
+    const summary = page.getByText(/^Target set\. Export measures (−?\d+\.\d{2}) LUFS, (−?\d+\.\d{2}) dBTP\. Live playback runs the same chain/u);
     await expect(summary).toBeVisible();
     const [, statusLufs, statusPeak] = /Export measures (−?\d+\.\d{2}) LUFS, (−?\d+\.\d{2}) dBTP/u.exec(await summary.innerText()) ?? [];
 

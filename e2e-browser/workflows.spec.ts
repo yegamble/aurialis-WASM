@@ -264,7 +264,7 @@ for (const { name, targetLufs, ceiling } of [{ name: "Streaming", targetLufs: -1
     const apply = page.getByRole("button", { name: "Set target loudness", exact: true });
     await expect(apply).toBeEnabled({ timeout: 30_000 });
     await apply.click();
-    await expect(page.getByText(/^Preview ready\. Export measures −\d+\.\d{2} LUFS, −\d+\.\d{2} dBTP\./u)).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByText(/^Target set\. Export measures −\d+\.\d{2} LUFS, −\d+\.\d{2} dBTP\./u)).toBeVisible({ timeout: 120_000 });
     await expect.poll(async () => (await settings(page, id)).input).not.toBe(before);
     await page.getByRole("button", { name: "Export", exact: true }).click();
     const dialog = page.getByRole("dialog");

@@ -7,7 +7,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fixture, decode } from "../e2e/audio-fixture";
 import { denseFixture } from "../e2e/workflow-fixture";
-import { exportParams, exportScript, liveParams, liveScript } from "../src/lib/engine-params";
+import { exportParams, exportScript } from "../src/lib/engine-params";
 import type { AdvancedParams, ExportDelivery, MeasuredAudioMetrics, Track } from "../src/lib/types";
 import type { ReleaseReport } from "../src/lib/release-review";
 import type { ScriptV2 } from "../src/lib/deep-mastering";
@@ -35,13 +35,12 @@ async function settings(page: Page, id: string) {
     return track.advanced;
   }, id);
 }
-// Exports render with algorithm 2; live playback (live = true) stays on algorithm 1.
-async function nativeRender(info: TestInfo, source: Buffer, advanced: AdvancedParams, bitDepth: number, script?: ScriptV2, live = false, delivery: ExportDelivery = {}) {
-  const directory = info.outputPath(`native-oracle-${String(bitDepth)}${live ? "-live" : ""}${delivery.sampleRate ? `-${String(delivery.sampleRate)}` : ""}${delivery.dither ? `-${delivery.dither}` : ""}`);
+// Exports and live playback both render algorithm 2 (V1-10), so one oracle serves both.
+async function nativeRender(info: TestInfo, source: Buffer, advanced: AdvancedParams, bitDepth: number, script?: ScriptV2, delivery: ExportDelivery = {}) {
+  const directory = info.outputPath(`native-oracle-${String(bitDepth)}${delivery.sampleRate ? `-${String(delivery.sampleRate)}` : ""}${delivery.dither ? `-${delivery.dither}` : ""}`);
   await mkdir(directory, { recursive: true });
   await writeFile(directory + "/source.wav", source);
-  // Live playback renders the export chain (V1-10); live oracles use the live helpers.
-  const rendered = script ? { script: JSON.stringify(live ? liveScript(script) : exportScript(script)) } : { params: JSON.stringify(live ? liveParams(advanced) : exportParams(advanced)) };
+  const rendered = script ? { script: JSON.stringify(exportScript(script)) } : { params: JSON.stringify(exportParams(advanced)) };
   await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", ...rendered, bitDepth, ...delivery }));
   execFileSync("go", ["test", "./internal/browserjobs", "-run", "^TestWriteBrowserOracle$", "-count=1"], { env: { ...process.env, AURIALIS_BROWSER_ORACLE_DIR: directory }, stdio: "pipe" });
   return { audio: await readFile(directory + "/native.wav"), metadata: JSON.parse(await readFile(directory + "/native.json", "utf8")) as { sampleRate: number; frames: number; afterMetrics: { integratedLufs: number; samplePeakDbfs: number; truePeakDbtp: number } } };
@@ -184,7 +183,7 @@ test("Release checks a 48 kHz source at CD format against the native 44.1 kHz/16
   await page.goto(`/release-check/${id}`);
   await page.getByRole("group", { name: "Delivery profile", exact: true }).getByRole("button", { name: "CD", exact: true }).click();
   await page.getByRole("button", { name: "Use CD format: 44.1 kHz, 16-bit", exact: true }).click();
-  const native = await nativeRender(info, source, advanced, 16, undefined, false, { sampleRate: 44100 });
+  const native = await nativeRender(info, source, advanced, 16, undefined, { sampleRate: 44100 });
   expect([native.metadata.sampleRate, native.metadata.frames]).toEqual([44100, 44100]);
   const report = await reviewEncoded(page, info, native.audio, "cd-44100-16");
   expect([native.audio.readUInt32LE(24), native.audio.readUInt16LE(34)]).toEqual([44100, 16]);
@@ -201,7 +200,7 @@ test("a mixed 48 kHz / 44.1 kHz browser-local album renders every master at 44.1
   const singles: Buffer[] = [];
   for (const track of tracks) {
     const id = await upload(page, track.source, `${track.title.replaceAll(" ", "-")}.wav`);
-    singles.push((await nativeRender(info, track.source, await settings(page, id), 16, undefined, false, { sampleRate: 44100 })).audio);
+    singles.push((await nativeRender(info, track.source, await settings(page, id), 16, undefined, { sampleRate: 44100 })).audio);
   }
   await page.goto("/albums");
   await page.getByRole("button", { name: "New album", exact: true }).click();
@@ -378,7 +377,7 @@ test("a 44.1 kHz undithered export from a 48 kHz source matches the native conve
   if (!path) throw new Error("Missing browser-local converted export");
   expect(await downloaded.failure()).toBeNull();
   expect(downloaded.suggestedFilename()).toMatch(/-44\.1k-16bit\.wav$/u);
-  const native = await nativeRender(info, source, advanced, 16, undefined, false, { sampleRate: 44100, dither: "none" });
+  const native = await nativeRender(info, source, advanced, 16, undefined, { sampleRate: 44100, dither: "none" });
   expect(native.metadata.sampleRate).toBe(44100);
   expect(native.metadata.frames).toBe(88200);
   const exported = await readFile(path);
@@ -430,7 +429,8 @@ test("Deep analysis compilation live apply and source-bound export keep every au
   if (!capture) throw new Error("Missing actual local Deep playback PCM");
   expect(capture.missing).toBe(0);
   expect(capture.compiledMoves).toBe(applied.moves.length);
-  const pcm = decode((await nativeRender(info, source, accepted.advanced, 32, applied, true)).audio);
+  const native = await nativeRender(info, source, accepted.advanced, 32, applied);
+  const pcm = decode(native.audio);
   // The raw processed ring trails the latency-compensated render by the lookahead.
   const latency = exportLatencyFrames(48000);
   let maximumLiveError = 0;
@@ -446,7 +446,6 @@ test("Deep analysis compilation live apply and source-bound export keep every au
   const downloaded = await downloading, path = await downloaded.path();
   if (!path) throw new Error("Missing browser-local Deep script export");
   expect(await downloaded.failure()).toBeNull();
-  const native = await nativeRender(info, source, accepted.advanced, 32, applied);
   expect(await readFile(path)).toEqual(native.audio);
   const evidence = info.outputPath("actual-local-Deep-evidence.json");
   await writeFile(evidence, JSON.stringify({ source: applied.source, revision: applied.revision, compiledMoves: capture.compiledMoves, capturedFrames: 16384, maximumLiveError, exactNativeWavBytes: native.audio.length }, null, 2));

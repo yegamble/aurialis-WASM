@@ -1,6 +1,6 @@
 import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import type { StereoPCM } from "./browser-engine";
-import { liveParams } from "./engine-params";
+import { exportParams } from "./engine-params";
 import { usesBrowserAudio } from "./browser-jobs";
 import { prepareLiveAutomation, verifiedSourceVector } from "./live-automation";
 import { sameSource } from "./library";
@@ -130,7 +130,7 @@ export function createLivePlayback(
   let publicationToken = 0;
   let activePublication: AbortController | undefined;
   const publications = new Map<number, { resolve: (revision: number) => void; reject: (error: Error) => void; canCommit: () => boolean; commitSent: boolean }>();
-  let currentParams = liveParams(settings);
+  let currentParams = exportParams(settings);
   let serializedSettings = JSON.stringify(currentParams);
   let state: LivePlaybackState = {
     position: 0, duration: source.left.length / source.sampleRate,
@@ -527,14 +527,14 @@ export function createLivePlayback(
     async detachScript(next, signal, canCommit = () => true) {
       activePublication?.abort();
       if (!canCommit()) throw new DOMException("The source or settings changed.", "AbortError");
-      if (!installedScript) { desiredScript = undefined; currentParams = liveParams(next); serializedSettings = JSON.stringify(currentParams); controls?.publish(currentParams, ++state.parameterVersion); return; }
+      if (!installedScript) { desiredScript = undefined; currentParams = exportParams(next); serializedSettings = JSON.stringify(currentParams); controls?.publish(currentParams, ++state.parameterVersion); return; }
       await ensureInitialized(); signal.throwIfAborted();
       const context = audio; if (!context) throw new Error("The audio graph is unavailable.");
       await context.resume();
       try {
         signal.throwIfAborted();
         if (!canCommit()) throw new DOMException("The source or settings changed before detach.", "AbortError");
-        const params = liveParams(next), version = state.parameterVersion + 1;
+        const params = exportParams(next), version = state.parameterVersion + 1;
         controls?.publish(params, version);
         await requestPublication({ type: "detach", controls: packLiveControls(params, 2), version }, signal, canCommit);
         signal.throwIfAborted();
@@ -592,7 +592,7 @@ export function createLivePlayback(
     setParams(next) {
       if (disposed) return;
       if (installedScript) throw new Error("Attached automation requires a complete baseline and schedule transaction.");
-      const params = liveParams(next);
+      const params = exportParams(next);
       const serialized = JSON.stringify(params);
       if (serialized === serializedSettings) return;
       const version = state.parameterVersion + 1;

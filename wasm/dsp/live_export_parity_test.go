@@ -77,7 +77,7 @@ func livePlayback(t *testing.T, rate float64, left, right []float32, params dsp.
 				blocks.channels[0][frame], blocks.channels[1][frame] = left[start+frame], right[start+frame]
 			}
 		}
-		if start <= frames && frames < start+liveBlockFrames && blocks.endInput(uint32(frames-start)) != 1 {
+		if start <= frames && frames < start+liveBlockFrames && blocks.endInput(liveFrameCount(frames-start)) != 1 {
 			t.Fatal("source end rejected")
 		}
 		if blocks.process() != liveBlockFrames {

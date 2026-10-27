@@ -160,14 +160,22 @@ func CapSectionMove(base dsp.Params, move automation.Move) automation.Move {
 	return capped
 }
 
-// predictExportContext renders a copy of the proposal through the export
-// algorithm and measures it. The proposal itself is unchanged.
-func predictExportContext(ctx context.Context, buf *audio.Buffer, script *ScriptV2) (ProposalPrediction, error) {
+// exportScriptV2 returns a copy of script that renders with the export
+// algorithm: algorithm 2 and its lookahead true-peak limiter, no dither.
+// The browser's exportScript (src/lib/engine-params.ts) must match it; the
+// shared golden testdata/export-transform.golden.json checks both.
+func exportScriptV2(script *ScriptV2) *ScriptV2 {
 	exported := script.Clone()
 	exported.ChainParams.AlgorithmVersion = dsp.TruePeakAlgorithmVersion
 	exported.ChainParams.Limiter.TruePeak = true
 	exported.ChainParams.DitherBits = 0
-	_, _, metrics, stats, err := renderScriptV2Context(ctx, buf, exported)
+	return exported
+}
+
+// predictExportContext renders a copy of the proposal through the export
+// algorithm and measures it. The proposal itself is unchanged.
+func predictExportContext(ctx context.Context, buf *audio.Buffer, script *ScriptV2) (ProposalPrediction, error) {
+	_, _, metrics, stats, err := renderScriptV2Context(ctx, buf, exportScriptV2(script))
 	if err != nil {
 		return ProposalPrediction{}, err
 	}

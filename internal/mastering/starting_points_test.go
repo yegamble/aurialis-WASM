@@ -300,10 +300,7 @@ func verifyProfilePrediction(t *testing.T, name string, buf *audio.Buffer, profi
 	if script.ChainParams.Compressor.MakeupDB != match.GainDB || script.ChainParams.InputGainDB != 0 || script.ChainParams.Limiter.CeilingDBTP > MaxStartingCeilingDBTP {
 		t.Fatalf("level changes other than the listed Level match %+v: makeup %.2f input %.2f", match, script.ChainParams.Compressor.MakeupDB, script.ChainParams.InputGainDB)
 	}
-	exported := script.Clone()
-	exported.ChainParams.AlgorithmVersion = dsp.TruePeakAlgorithmVersion
-	exported.ChainParams.Limiter.TruePeak = true
-	_, _, measured, err := RenderScriptV2Context(ctx, buf, exported)
+	_, _, measured, err := RenderScriptV2Context(ctx, buf, exportScriptV2(script))
 	if err != nil {
 		t.Fatal(err)
 	}

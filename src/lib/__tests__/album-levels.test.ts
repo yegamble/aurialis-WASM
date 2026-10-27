@@ -81,6 +81,15 @@ describe("album level plan", () => {
     expect(albumMastersKey([first, second], normalize([{ trackId: second.id, offsetDb: 1 }]))).not.toBe(normalized);
     expect(albumMastersKey([second, first], DEFAULT_ALBUM_LEVEL)).not.toBe(keep);
   });
+
+  it("never lets a blocked normalize plan reuse the masters kept at each level", () => {
+    const keep = albumMastersKey([first], DEFAULT_ALBUM_LEVEL);
+    const blocked = albumMastersKey([first], { mode: "normalize", targetLufs: -9, offsets: [{ trackId: first.id, offsetDb: 5 }] });
+    expect(blocked).not.toBe(keep);
+    expect(albumMastersKey([first, deep], normalize())).not.toBe(albumMastersKey([first, deep], DEFAULT_ALBUM_LEVEL));
+    // Each blocked normalize choice is its own key, never another level's.
+    expect(albumMastersKey([first], { mode: "normalize", targetLufs: -9, offsets: [{ trackId: first.id, offsetDb: 6 }] })).not.toBe(blocked);
+  });
 });
 
 describe("album track render", () => {

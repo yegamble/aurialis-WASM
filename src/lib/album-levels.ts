@@ -73,13 +73,18 @@ export function planAlbumLevels(level: AlbumLevel, tracks: readonly Pick<Track, 
   return { ok: true, tracks: plans };
 }
 
-/** Identifies rendered masters: the sequence, each project's settings and the used level. */
+/** Identifies rendered masters: the sequence, each project's settings and the used level.
+ * A normalize choice always names its target and offsets, blocked or not, so it can
+ * never match masters kept at each level. */
 export function albumMastersKey(tracks: readonly Track[], level: AlbumLevel): string {
   const plan = planAlbumLevels(level, tracks);
-  return JSON.stringify(tracks.map((track, index) => {
+  const sequence = tracks.map((track, index) => {
     const step = plan.ok ? plan.tracks.at(index) : undefined;
     return [track.id, track.sourceRevision, appliedRevisionKey(track) ?? engineParams(track.advanced), step?.mode === "normalize" ? step.requestedLufs : "keep"];
-  }));
+  });
+  if (level.mode === "keep") return JSON.stringify(sequence);
+  const offsets = tracks.map((track) => albumOffset(level, track.id));
+  return JSON.stringify({ mode: "normalize", targetLufs: level.targetLufs, offsets, blocked: !plan.ok, sequence });
 }
 
 export type AlbumRenderEngine = {

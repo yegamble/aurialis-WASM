@@ -137,6 +137,18 @@ it("explains that saved masters are stale once the sequence changes", async () =
   expect(screen.queryByRole("region", { name: "Rendered album downloads" })).toBeNull();
 });
 
+it("never offers masters kept at each level while a blocked normalize level is chosen", async () => {
+  seed({ mode: "normalize", targetLufs: -9, offsets: [{ trackId: tracks[0]?.id, offsetDb: 5 }] });
+  const key = albumMastersKey(tracks, DEFAULT_ALBUM_LEVEL);
+  mocks.loadAlbumMasters.mockResolvedValue({ key, createdAt: "2026-10-26T00:00:00Z", files: tracks.map((track, index) => ({ trackId: track.id, title: track.title, audioId: "master-" + String(index), bytes: 10 })) });
+  mount();
+  expect(await screen.findByText(/Saved masters no longer match/u)).toBeDefined();
+  expect(screen.getAllByText("Normalizes to −9 LUFS").length).toBeGreaterThan(0);
+  expect(screen.queryByText("Masters ready to download")).toBeNull();
+  expect(screen.queryByRole("region", { name: "Rendered album downloads" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Render album masters" }).hasAttribute("disabled")).toBe(true);
+});
+
 it("keeps each master's single-export level by default and never writes into the projects", async () => {
   mount();
   expect((await screen.findAllByText("Keeps each master’s level")).length).toBeGreaterThan(0);

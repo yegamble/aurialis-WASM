@@ -2,6 +2,7 @@ import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import type { StereoPCM } from "./browser-engine";
 import { exportParams } from "./engine-params";
 import { usesBrowserAudio } from "./browser-jobs";
+import { liveContextRate } from "./live-rate";
 import { prepareLiveAutomation, verifiedSourceVector } from "./live-automation";
 import { sameSource } from "./library";
 import type { ScriptV2 } from "./deep-mastering";
@@ -24,27 +25,19 @@ export type LivePlaybackState = {
   parameterVersion: number;
   appliedVersion: number;
   error: string | null;
-  /** Rate the live engine runs at once its context exists. It equals the
-   * source rate unless the browser cannot open that rate (or the source is
-   * above LIVE_MAX_SAMPLE_RATE); then A is resampled before processing. */
+  /** Rate the live engine runs at once its context exists: liveContextRate
+   * of the source, or the device rate if the browser refuses that. */
   liveSampleRate?: number;
 };
 
-/** Highest source rate the live engine runs natively. 96 kHz with every module
- * on measured 2.7–2.9× headroom (docs/tasks.md V1-10); higher rates would leave
- * too little, so they play at the device rate instead. */
-const LIVE_MAX_SAMPLE_RATE = 96000;
-
-/** Open the context at the source rate so live DSP processes the samples the
- * export processes. A browser that rejects the rate gets its device rate. */
+/** Open the context at liveContextRate so live DSP processes the samples the
+ * export processes (or an integer-ratio rate above 48 kHz). A browser that
+ * rejects the rate gets its device rate. */
 function openLiveContext(sourceRate: number): AudioContext {
-  if (sourceRate <= LIVE_MAX_SAMPLE_RATE) {
-    // Browsers reject unsupported rates differently (NotSupportedError, SyntaxError);
-    // any real fault recurs below and propagates.
-    try { return new AudioContext({ latencyHint: "interactive", sampleRate: sourceRate }); }
-    catch { /* Fall back to the device rate. */ }
-  }
-  return new AudioContext({ latencyHint: "interactive" });
+  // Browsers reject unsupported rates differently (NotSupportedError, SyntaxError);
+  // any real fault recurs below and propagates.
+  try { return new AudioContext({ latencyHint: "interactive", sampleRate: liveContextRate(sourceRate) }); }
+  catch { return new AudioContext({ latencyHint: "interactive" }); }
 }
 
 /** One static, attenuate-only A/B monitor gain pair in dB (V1-11). Never part of export. */

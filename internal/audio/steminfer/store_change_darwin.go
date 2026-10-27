@@ -1,5 +1,7 @@
 package steminfer
 
+// cspell:words Ctimespec
+
 import (
 	"io/fs"
 	"strconv"

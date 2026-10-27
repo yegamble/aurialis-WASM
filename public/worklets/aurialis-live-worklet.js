@@ -4,6 +4,7 @@ import { createAurialisWasiHost } from "./aurialis-wasi-host.js";
 const QUANTUM = 128;
 const SLOTS = 256;
 const FRAMES = QUANTUM * SLOTS;
+const TAIL_FRAMES = 512; // the engine's drained-tail buffer (aurialis_live_tail_buffer)
 const WRITE = 0, READ = 1, GENERATION = 2, APPLIED = 4, ERROR = 5, UNDERRUNS = 6;
 const LEGACY_CONTROL_COUNT = 81;
 // Go-owned loudness snapshot: momentary, short-term, integrated (LUFS), range
@@ -62,6 +63,13 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.targetMatchProcessed = 1;
     this.targetMatchOriginal = 1;
     this.endTime = Infinity;
+    // V1-13: the lookahead tail the engine drained at the source's end, in
+    // processed-stream frames, played in place of the engine's frames while
+    // the pass stays finite (see markInputEnd).
+    this.tail = [new Float32Array(TAIL_FRAMES), new Float32Array(TAIL_FRAMES)];
+    this.tailStart = 0;
+    this.tailLength = 0;
+    this.tailPending = -1;
     this.ready = false;
     this.controlVersion = 0;
     this.failed = false;
@@ -153,6 +161,8 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         || typeof exports.aurialis_set_controls !== "function"
         || typeof exports.aurialis_control_count !== "function" || typeof exports.aurialis_algorithm_supported !== "function"
         || typeof exports.aurialis_latency_frames !== "function" || typeof exports.aurialis_live_end_input !== "function"
+        || typeof exports.aurialis_live_resume_input !== "function" || typeof exports.aurialis_live_tail_buffer !== "function"
+        || typeof exports.aurialis_live_tail_frames !== "function"
         || typeof exports.aurialis_meter_buffer !== "function" || typeof exports.aurialis_meter_snapshot !== "function")
         throw new Error("The live audio engine is missing its fixed-buffer interface.");
       host.attach(exports.memory);
@@ -328,21 +338,41 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
   resetKernel() {
     if (this.kernel.aurialis_live_reset() !== 1) throw new Error("The live audio engine could not reset.");
     this.inputEnd = undefined;
+    this.tailLength = 0; this.tailPending = -1;
     this.refreshBuffers();
   }
   // V1-13: an export drains the limiter's lookahead against silence after the
   // source's last frame (the Go Drain also clears the Nyquist guard). Mark that
-  // input frame in the quantum that carries it, so a file that ends loud
-  // renders the same final frames live. Input runs the alignment delay ahead of
-  // the audible deadline. A later deadline (Repeat turned back on) revives the
-  // drained engine with a reset.
-  markInputEnd() {
+  // input frame in the quantum that carries it; the engine then drains the
+  // tail an export would, without stopping, and the tail plays in place of the
+  // engine's frames while the pass stays finite, so a file that ends loud
+  // renders the same final frames live. Input runs the alignment delay ahead
+  // of the audible deadline. A later deadline (Repeat turned back on) drops
+  // the tail and resumes: the engine kept processing, so the loop continues
+  // without a gap or a reset.
+  markInputEnd(sequence) {
     const end = this.endTime === Infinity ? Infinity : Math.round(this.endTime * sampleRate) - this.delay * QUANTUM;
-    if (this.inputEnd !== undefined && end > this.inputEnd) this.resetKernel();
+    if (this.inputEnd !== undefined && end > this.inputEnd) {
+      if (this.kernel.aurialis_live_resume_input() !== 1) throw new Error("The live audio engine could not resume the source.");
+      this.inputEnd = undefined; this.tailLength = 0; this.tailPending = -1;
+    }
     const offset = end - Math.round(currentTime * sampleRate);
     if (this.inputEnd !== undefined || offset >= QUANTUM) return;
-    if (this.kernel.aurialis_live_end_input(Math.max(0, offset)) !== 1) throw new Error("The live audio engine rejected the source end.");
+    const at = Math.max(0, offset);
+    if (this.kernel.aurialis_live_end_input(at) !== 1) throw new Error("The live audio engine rejected the source end.");
     this.inputEnd = end;
+    this.tailPending = (sequence - 1) * QUANTUM + at;
+  }
+  copyTail() {
+    if (this.tailPending < 0) return;
+    const frames = this.kernel.aurialis_live_tail_frames();
+    if (!Number.isInteger(frames) || frames < 0 || frames > TAIL_FRAMES) throw new Error("The live audio engine returned an invalid tail.");
+    for (let channel = 0; channel < 2; channel++) {
+      const raw = this.kernel.aurialis_live_tail_buffer(channel);
+      if (!Number.isInteger(raw) || raw === 0) throw new Error("The live audio engine returned an invalid buffer address.");
+      this.tail[channel].set(new Float32Array(this.kernel.memory.buffer, raw >>> 0, frames));
+    }
+    this.tailStart = this.tailPending; this.tailLength = frames; this.tailPending = -1;
   }
   tryReady() {
     if (this.ready || !this.applyControls()) return;
@@ -394,7 +424,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       Atomics.store(this.tags, slot, sequence);
       Atomics.store(this.tags, SLOTS + slot, this.generation);
       Atomics.store(this.header, WRITE, sequence);
-      this.markInputEnd();
+      this.markInputEnd(sequence);
       const kernelStart = wallNow();
       if (this.kernel.aurialis_live_process() !== QUANTUM)
         throw new Error("The live audio engine rejected an audio block.");
@@ -405,6 +435,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       if (this.generation !== Atomics.load(this.header, GENERATION)) {
         outL.fill(0); outR.fill(0); return true;
       }
+      this.copyTail();
       for (let i = 0; i < QUANTUM; i++) {
         this.samples[2 * FRAMES + offset + i] = this.outLeft[i];
         this.samples[3 * FRAMES + offset + i] = this.outRight[i];
@@ -453,9 +484,10 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       this.matchOriginal += Math.max(-volumeStep, Math.min(volumeStep, this.targetMatchOriginal - this.matchOriginal));
       const dryL = expected > 0 ? this.samples[outputOffset + i] : 0;
       const dryR = expected > 0 ? this.samples[FRAMES + outputOffset + i] : 0;
-      const wetIndex = (wetStart + i) % FRAMES;
-      const wetL = available ? this.samples[2 * FRAMES + wetIndex] : 0;
-      const wetR = available ? this.samples[3 * FRAMES + wetIndex] : 0;
+      const wetIndex = (wetStart + i) % FRAMES, tailIndex = wetStart + i - this.tailStart;
+      const inTail = tailIndex >= 0 && tailIndex < this.tailLength;
+      const wetL = available ? (inTail ? this.tail[0][tailIndex] : this.samples[2 * FRAMES + wetIndex]) : 0;
+      const wetR = available ? (inTail ? this.tail[1][tailIndex] : this.samples[3 * FRAMES + wetIndex]) : 0;
       const audible = blockFrame + i < endFrame;
       const wet = 1 - this.mix, dry = this.mix;
       // Meters read the selected A or B at monitor volume, before the static

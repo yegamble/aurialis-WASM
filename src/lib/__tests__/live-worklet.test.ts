@@ -65,6 +65,9 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
     // One delay block lets A be read at most 128 frames ahead of B.
     aurialis_latency_frames: vi.fn(() => capability === "latency" ? 129 : latency),
     aurialis_live_end_input: vi.fn((offset: number) => Number(offset >= 0 && offset <= 128)),
+    aurialis_live_resume_input: vi.fn(() => 1),
+    aurialis_live_tail_buffer: vi.fn((channel: number) => [8192, 10240].at(channel) ?? 0),
+    aurialis_live_tail_frames: vi.fn(() => 0),
     aurialis_control_buffer_v2: vi.fn(() => 2560),
     aurialis_set_controls_v2: vi.fn((count: number) => count === 82 ? applyGo() : 0),
     aurialis_meter_buffer: vi.fn(() => 3328),
@@ -138,23 +141,29 @@ describe("direct Go worklet lifecycle", () => {
     const stopped = f.render()[0]; expect(stopped?.slice(0, 19).every(value => value === .5)).toBe(true); expect(stopped?.slice(19).every(value => value === 0)).toBe(true);
   });
 
-  it("marks the source's last input frame once, a delay ahead of the audible deadline, and revives on a later deadline (V1-13)", () => {
-    const f = workletFixture(false, 2, null, true);
+  it("marks the source's last input frame once, plays the drained tail while finite, and resumes without a reset (V1-13)", () => {
+    // A 64-frame lookahead, like the export limiter's.
+    const f = workletFixture(false, 2, null, true, 64);
     const endInput = vi.fn((offset: number) => Number(offset >= 0 && offset <= 128));
-    Object.assign(f.kernel, { aurialis_live_end_input: endInput });
+    // The drained tail: 64 frames of 0.75 where the engine plays 0.25/0.5.
+    new Float32Array(f.memory.buffer, 8192, 512).fill(0.75); new Float32Array(f.memory.buffer, 10240, 512).fill(0.75);
+    Object.assign(f.kernel, { aurialis_live_end_input: endInput, aurialis_live_tail_frames: vi.fn(() => 64) });
     f.message({ type: "arm", generation: 1, sourceFrame: 0, looping: false });
     // Audible until 3 × 128 + 37; with one delay block the input ends at 2 × 128 + 37.
     f.epochTime[0] = 0; f.epochTime[1] = 3 * 128 + 37; f.epochHeader[1] = 1; f.epochHeader[0] = 2;
     f.render(); f.render();
     expect(endInput).not.toHaveBeenCalled();
-    f.render();
+    // The tail replaces processed frames 293–356 (source frames 229–292), read
+    // 64 frames ahead in the same quantum from output index 101.
+    const heard = f.render()[0];
     expect(endInput).toHaveBeenCalledExactlyOnceWith(37);
-    f.render();
-    expect(endInput).toHaveBeenCalledOnce();
+    expect(Array.from(heard?.subarray(99, 102) ?? [])).toEqual([0.5, 0.5, 0.75]);
     const resets = f.kernel.aurialis_live_reset.mock.calls.length;
     f.epochTime[1] = Infinity; f.epochHeader[0] = 4;
-    f.render();
-    expect(f.kernel.aurialis_live_reset).toHaveBeenCalledTimes(resets + 1);
+    const resumed = f.render()[0];
+    expect(f.kernel.aurialis_live_resume_input).toHaveBeenCalledOnce();
+    expect(f.kernel.aurialis_live_reset).toHaveBeenCalledTimes(resets);
+    expect(resumed?.every(value => value === 0.5)).toBe(true);
     expect(endInput).toHaveBeenCalledOnce();
     expect(f.processor.failed).toBe(false);
   });

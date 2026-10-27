@@ -64,6 +64,9 @@ function graphHarness(autoReady = true, autoArm = true, autoAutomation = false, 
     createAnalyser = () => ({ ...endpoint(), fftSize: 4096, smoothingTimeConstant: 0, minDecibels: -120, maxDecibels: 0 });
     createBuffer = () => ({ copyToChannel: vi.fn() });
     createBufferSource = vi.fn(() => ({ ...endpoint(), buffer: null, loop: false, onended: null, start: vi.fn(), stop: vi.fn() }));
+    listeners = new Map<string, () => void>();
+    addEventListener = vi.fn((type: string, listener: () => void) => { this.listeners.set(type, listener); });
+    removeEventListener = vi.fn((type: string) => { this.listeners.delete(type); });
     constructor(readonly options: AudioContextOptions = {}) {
       if (options.sampleRate !== undefined && rates === "reject") throw new DOMException("The sample rate is not supported.", "NotSupportedError");
       if (options.sampleRate !== undefined && rates === "honor") this.sampleRate = options.sampleRate;
@@ -485,6 +488,22 @@ describe("per-track live audio lifecycle", () => {
     expect(contexts[0]?.options.sampleRate).toBe(liveRate);
     expect(controller.getState().liveSampleRate).toBe(liveRate);
     controller.dispose();
+  });
+  it("rewatches the worklet's deadline watch on a context state change or an audio device change", async () => {
+    const devices = new EventTarget();
+    vi.stubGlobal("navigator", { mediaDevices: devices });
+    const { contexts, nodes } = graphHarness();
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams());
+    await controller.play();
+    const context = contexts[0], node = nodes[0]; if (!context || !node) throw new Error("Missing graph");
+    context.listeners.get("statechange")?.();
+    devices.dispatchEvent(new Event("devicechange"));
+    expect(node.port.postMessage.mock.calls.filter(([message]) => message.type === "rewatch")).toHaveLength(2);
+    controller.dispose();
+    expect(context.removeEventListener).toHaveBeenCalledWith("statechange", expect.any(Function));
+    node.port.postMessage.mockClear();
+    devices.dispatchEvent(new Event("devicechange"));
+    expect(node.port.postMessage).not.toHaveBeenCalled();
   });
   it("rejects unsupported source layouts and leaves settings immutable", () => {
     const settings = createDefaultAdvancedParams();

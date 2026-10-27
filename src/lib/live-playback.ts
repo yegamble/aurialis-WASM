@@ -167,6 +167,7 @@ export function createLivePlayback(
   let splitter: ChannelSplitterNode | undefined;
   let merger: ChannelMergerNode | undefined;
   let initialization: Promise<void> | undefined;
+  let unwatchDevice: (() => void) | undefined;
   let rejectInitialization: ((reason: Error) => void) | undefined;
   let bootTimeout: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
@@ -253,6 +254,7 @@ export function createLivePlayback(
     buffer = undefined; splitter = undefined; merger = undefined;
     leftAnalyser = undefined; rightAnalyser = undefined;
     initialization = undefined;
+    unwatchDevice?.(); unwatchDevice = undefined;
   }
   function fail(error: unknown): void {
     if (disposed) return;
@@ -400,6 +402,13 @@ export function createLivePlayback(
     // user's activation for AudioContext creation/resume in Brave and Safari.
     const context = openLiveContext(source.sampleRate);
     audio = context;
+    // A device switch or a context interruption stalls callbacks that are not
+    // this graph's load: restart the worklet's deadline watch with a warm-up.
+    const rewatch = () => { if (audio === context) worklet?.port.postMessage({ type: "rewatch" }); };
+    const devices = (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+    context.addEventListener("statechange", rewatch);
+    devices?.addEventListener("devicechange", rewatch);
+    unwatchDevice = () => { context.removeEventListener("statechange", rewatch); devices?.removeEventListener("devicechange", rewatch); };
     state = { ...state, liveSampleRate: context.sampleRate };
     const resumed = context.resume();
     const sharedHeader = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 8);

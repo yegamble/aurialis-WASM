@@ -73,7 +73,7 @@ function TrackReleaseReview({ track }: { track: Track }) {
   const measured = artifact?.report.bindingHash === key ? artifact : null;
   const saved = track.releaseReview?.bindingHash === key ? track.releaseReview : null;
   const report = measured?.report ?? saved;
-  const checks = report ? releaseChecks(platform, report.metrics, report.output) : [];
+  const checks = report ? releaseChecks(platform, report.metrics, report.output, report.source.sampleRate) : [];
   const assessed = checks.filter((item) => item.status !== "info"), passed = assessed.filter((item) => item.status === "pass").length;
   const profile = releaseProfiles.find((item) => item.name === platform);
 

@@ -85,6 +85,17 @@ test.describe("Smart Split (native, mocked model)", () => {
     await expect(page.getByRole("status").filter({ hasText: "plain Go" })).toHaveText("Smart Split is off in this build: it runs the model in plain Go, which did not finish one 20-second window in 30 minutes. Splitting needs the macOS build, which uses Apple Accelerate.")
     await expect(page.getByRole("button", { name: "Split Night Drive into 4 stems", exact: true })).toBeDisabled()
     await expect(page.getByText(/Estimated split time/u)).toHaveCount(0)
+
+    // Master and Tools state the same reason instead of inviting a split.
+    const plainGo = "Smart Split is off in this build: it runs the model in plain Go, which did not finish one 20-second window in 30 minutes. Splitting needs the macOS build, which uses Apple Accelerate."
+    await page.goto(`/master/${id}`)
+    const nav = page.getByRole("navigation", { name: "Tools for Night Drive", exact: true })
+    await expect(nav).toContainText(plainGo)
+    await expect(nav.getByRole("link", { name: "Smart split", exact: true })).toHaveCount(0)
+    await page.goto("/tools")
+    const grid = page.getByRole("list", { name: "Tools for Night Drive", exact: true })
+    await expect(grid).toContainText(plainGo)
+    await expect(grid.getByRole("link", { name: /Smart stem splitter/u })).toHaveCount(0)
     expect(separations).toBe(0)
   })
 })

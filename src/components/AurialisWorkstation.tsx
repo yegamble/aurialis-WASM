@@ -93,6 +93,7 @@ import { DeepTimeline } from "./shared/DeepTimeline";
 import { StemSplitPanel } from "./shared/StemSplitPanel";
 import { processingCopy, useBrowserBuild } from "@/lib/build-mode";
 import { STEM_SPLIT_PITCH, stemSplitAvailability } from "@/lib/stem-split-copy";
+import { useSplitUnavailable } from "@/lib/use-split-offer";
 import { timeConstantMs } from "@/lib/control-conventions";
 
 
@@ -589,6 +590,7 @@ function masteringSettingsKey(settings: AdvancedParams) {
 function MasterView({ trackId }: { trackId: string }) {
   const { state, dispatch } = useStore();
   const browser = useBrowserBuild();
+  const splitUnavailable = useSplitUnavailable(browser);
   const track = state.tracks.find((item) => item.id === trackId);
   // Match the unfiltered Library order; editing a project does not reorder this queue.
   const queueIndex = state.tracks.findIndex((item) => item.id === trackId);
@@ -968,8 +970,8 @@ function MasterView({ trackId }: { trackId: string }) {
         <nav className="col-span-full flex basis-full flex-wrap items-center gap-2" aria-label={`Tools for ${track.title || "Untitled track"}`}>
           <Link className={buttonClassName("secondary")} href={trackToolHref("release-check", track.id)}><Icon name="check" />Release check</Link>
           <Link className={buttonClassName("secondary")} href={trackToolHref("reference", track.id)}><Icon name="refresh-cw" />Reference match</Link>
-          {browser
-            ? <p className="disclosure basis-full">{stemSplitAvailability(true)}</p>
+          {splitUnavailable !== null
+            ? <p className="disclosure basis-full">{splitUnavailable}</p>
             : <Link className={buttonClassName("secondary")} href={trackToolHref("split", track.id)}><Icon name="scissors" />Smart split</Link>}
         </nav>
       </header>
@@ -2006,6 +2008,7 @@ function rememberToolsTrack(id: string) {
 function ToolsView() {
   const { state } = useStore();
   const browser = useBrowserBuild();
+  const splitUnavailable = useSplitUnavailable(browser);
   const chooserId = useId();
   const [chosenId, setChosenId] = useState("");
   // Read after mount so the static prerender and the first client render agree.
@@ -2046,9 +2049,9 @@ function ToolsView() {
           icon="scissors"
           eyebrow="Separation"
           title="Smart stem splitter"
-          copy={`${STEM_SPLIT_PITCH} ${stemSplitAvailability(browser)}`}
-          // The browser build cannot split, so the card states that instead of linking.
-          href={browser ? undefined : href("split")}
+          copy={`${STEM_SPLIT_PITCH} ${splitUnavailable ?? stemSplitAvailability(false)}`}
+          // A build or server that cannot split states why instead of linking.
+          href={splitUnavailable === null ? href("split") : undefined}
         />
         <ToolCard
           icon="refresh-cw"

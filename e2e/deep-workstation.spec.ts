@@ -71,7 +71,10 @@ test("Deep offers one profile control and lists every changed field with predict
   const lufs = decimal(/Predicted loudness(−?\d+\.\d) LUFS/u.exec(levels)?.[1]), peak = decimal(/Predicted true peak(−?\d+\.\d{2}) dBTP/u.exec(levels)?.[1]), crest = decimal(/Predicted crest(\d+\.\d) dB/u.exec(levels)?.[1]);
   expect([lufs, peak, crest].every(Number.isFinite)).toBe(true);
   const drop = proposal.beforeMetrics.integratedLufs - lufs;
-  if (drop > 1) { expect(match.ceilingLimited).toBe(true); await expect(page.getByText(/^Proposal lowers loudness by \d+\.\d LU$/u)).toBeVisible(); }
+  // Round E: the Level match holds loudness within 1 LU unless that needs more than 2 dB of limiting.
+  const limiting = proposed.deepMastering?.prediction?.limiterPeakGainReductionDb ?? Infinity;
+  if (match.gainDb > 0) expect(limiting).toBeLessThanOrEqual(2); expect(peak).toBeLessThanOrEqual(-1);
+  if (drop > 1) { expect(match.limiterCapped).toBe(true); await expect(page.getByText(/^Proposal lowers loudness by \d+\.\d LU$/u)).toBeVisible(); }
   if (-drop > 1) await expect(page.getByText(/^Proposal raises loudness by \d+\.\d LU$/u)).toBeVisible();
   if (proposal.beforeMetrics.dynamicRangeDb - crest > 4) await expect(page.getByText(/^Proposal reduces crest factor by/u)).toBeVisible();
   for (const width of [320, 1440]) {

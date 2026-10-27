@@ -40,8 +40,8 @@ interface CompiledScript {
   sourceVerified: false;
 }
 export type DeepSettingsSnapshot = { advanced: AdvancedParams; profile: ProfileId; genre: string; tone: string; intensity: number; target: string; simpleCustom: boolean; shortcutUndo: ShortcutUndo };
-/** The one explicit gain (compressor makeup) that holds the source loudness, limited by the ceiling's headroom. */
-export interface LevelMatch { gainDb: number; neededDb: number; ceilingLimited: boolean }
+/** The one explicit gain (compressor makeup) that holds the source loudness, limited to 2 dB of export limiter reduction. */
+export interface LevelMatch { gainDb: number; neededDb: number; limiterCapped: boolean }
 /** Levels measured by rendering a draft revision through the export algorithm. Predictions saved before the Level match have only `afterMetrics`. */
 export interface DeepPrediction { revision: number; afterMetrics: MeasuredAudioMetrics; levelMatch?: LevelMatch; compressorAverageGainReductionDb?: number; limiterPeakGainReductionDb?: number }
 export interface MeasuredProposal { proposal: ScriptV2; prediction: Omit<DeepPrediction, "revision"> }
@@ -129,8 +129,8 @@ export function readScriptV2(value: unknown, expectedSource?: SourceIdentity): S
 
 const predictionFields = ["afterMetrics", "levelMatch", "compressorAverageGainReductionDb", "limiterPeakGainReductionDb"] as const;
 function measuredPrediction(record: Record<string, unknown>): Omit<DeepPrediction, "revision"> {
-  const match = object(record.levelMatch, ["gainDb", "neededDb", "ceilingLimited"]);
-  return { afterMetrics: typedShape(metricsTemplate, record.afterMetrics), levelMatch: { gainDb: number(match.gainDb, -36, 36), neededDb: number(match.neededDb), ceilingLimited: bool(match.ceilingLimited) }, compressorAverageGainReductionDb: number(record.compressorAverageGainReductionDb, 0), limiterPeakGainReductionDb: number(record.limiterPeakGainReductionDb, 0) };
+  const match = object(record.levelMatch, ["gainDb", "neededDb", "limiterCapped"]);
+  return { afterMetrics: typedShape(metricsTemplate, record.afterMetrics), levelMatch: { gainDb: number(match.gainDb, -36, 36), neededDb: number(match.neededDb), limiterCapped: bool(match.limiterCapped) }, compressorAverageGainReductionDb: number(record.compressorAverageGainReductionDb, 0), limiterPeakGainReductionDb: number(record.limiterPeakGainReductionDb, 0) };
 }
 function predictedMetrics(value: unknown): Omit<DeepPrediction, "revision"> {
   return measuredPrediction(object(value, predictionFields));
@@ -179,6 +179,20 @@ export async function compileScript(script: ScriptV2, deviceRate: number, signal
   return compiledScript(body, script, deviceRate);
 }
 
+function savedCeiling(script: unknown): number | undefined {
+  const chain = typeof script === "object" && script !== null ? (script as { chainParams?: unknown }).chainParams : undefined;
+  const limiter = typeof chain === "object" && chain !== null ? (chain as { limiter?: unknown }).limiter : undefined;
+  const ceiling = typeof limiter === "object" && limiter !== null ? (limiter as { ceilingDbtp?: unknown }).ceilingDbtp : undefined;
+  return typeof ceiling === "number" && ceiling > MAX_LIMITER_CEILING_DB ? ceiling : undefined;
+}
+
+/** Saved draft or applied ceilings above −1 dBTP, which reading lowers (V1-09), so hydration can say so. */
+export function loweredDeepCeilings(value: unknown): number[] {
+  if (typeof value !== "object" || value === null) return [];
+  const { proposal, applied } = value as { proposal?: unknown; applied?: unknown };
+  return [savedCeiling(proposal), savedCeiling(applied)].filter((ceiling) => ceiling !== undefined);
+}
+
 /** Hydration never applies a saved script; the live controller validates it before publication. */
 export function readDeepMasteringState(value: unknown, identity: SourceIdentity | undefined, sourceRevision: number): DeepMasteringState {
   if (!identity) throw failure();
@@ -191,6 +205,11 @@ export function readDeepMasteringState(value: unknown, identity: SourceIdentity 
     state.prediction = Object.keys(record).length === 2
       ? { revision, afterMetrics: typedShape(metricsTemplate, object(data.prediction, ["revision", "afterMetrics"]).afterMetrics) }
       : { revision, ...measuredPrediction(object(data.prediction, ["revision", ...predictionFields])) };
+  }
+  // A lowered draft ceiling is a new draft revision, so its old prediction reads as stale.
+  if (savedCeiling(data.proposal) !== undefined) {
+    if (proposal.revision < Number.MAX_SAFE_INTEGER) state.proposal = { ...proposal, revision: proposal.revision + 1 };
+    else delete state.prediction;
   }
   if (data.applied !== undefined) state.applied = readScriptV2(data.applied, identity);
   if (data.before !== undefined) {
@@ -231,8 +250,10 @@ export function advancedMatchesScript(advanced: AdvancedParams, script: ScriptV2
   return sameJSON(engineParams(advanced), engineParams(advancedFromScript(script)));
 }
 
-/** Immutable accepted revisions make cache identity independent of schedule size. */
+/** Immutable accepted revisions make cache identity independent of schedule size.
+ * The effective chain is included because loading can lower an applied ceiling
+ * (V1-09 migration) without changing the revision. */
 export function appliedRevisionKey(track: Track): string | null {
   const script = track.deepMastering?.applied;
-  return script ? ["script", track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0, script.source.pcmHash, script.revision].join(":") : null;
+  return script ? ["script", track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0, script.source.pcmHash, script.revision, JSON.stringify(script.chainParams)].join(":") : null;
 }

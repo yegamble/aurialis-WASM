@@ -5,13 +5,16 @@ import { exportScript } from "../engine-params";
 
 // S5 cross-layer parity: Go writes this golden (go test ./internal/mastering -run
 // TestExportTransform -update) from the transform its Deep prediction renders.
-const golden = JSON.parse(readFileSync("internal/mastering/testdata/export-transform.golden.json", "utf8")) as { input: unknown; export: unknown };
+const golden = JSON.parse(readFileSync("internal/mastering/testdata/export-transform.golden.json", "utf8")) as { name: string; input: unknown; export: unknown }[];
 
 describe("export transform parity with the Go prediction", () => {
-  it("maps the golden proposal to exactly the script Go predicts", () => {
-    const input = readScriptV2(golden.input);
-    expect(input).toEqual(golden.input);
-    expect(exportScript(input)).toEqual(golden.export);
+  it("covers a plain proposal and one with input dither", () => {
+    expect(golden.map((item) => item.name)).toEqual(["proposal", "input dither"]);
+  });
+  it.each(golden)("maps the golden $name case to exactly the script Go predicts", ({ input: raw, export: expected }) => {
+    const input = readScriptV2(raw);
+    expect(input).toEqual(raw);
+    expect(exportScript(input)).toEqual(expected);
     expect(input.chainParams.limiter.truePeak).toBe(false);
   });
 });

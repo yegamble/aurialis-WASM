@@ -66,11 +66,30 @@ describe("V1-09 honest starting points", () => {
     expect(again?.tracks[0]?.limiterNotice).toBe("");
   });
 
+  it("notes a lowered draft ceiling and marks its prediction stale", () => {
+    const original = source();
+    const hot = engineParams(createDefaultAdvancedParams()); hot.limiter = { ...hot.limiter, enabled: true, truePeak: false, ceilingDbtp: -0.2 };
+    const quiet = { ...original.advanced, limiter: { ...original.advanced.limiter, ceiling: -1.5 } };
+    const saved = { ...testStore, tracks: [{ ...original, advanced: quiet, sourceIdentity: identity, sourceRevision: 0, deepMastering: { sourceRevision: 0, proposal: script(hot), targets, prediction: { revision: 1, afterMetrics: metrics } } }] };
+    const restored = normalizeHydratedState(JSON.parse(JSON.stringify(saved)));
+    const deep = restored?.tracks[0]?.deepMastering;
+    expect(deep?.proposal.chainParams.limiter.ceilingDbtp).toBe(-1);
+    expect(deep?.proposal.revision).toBe(2); expect(deep?.prediction?.revision).toBe(1);
+    expect(restored?.tracks[0]?.advanced.limiter.ceiling).toBe(-1.5);
+    expect(restored?.tracks[0]?.limiterNotice).toBe("This project's saved limiter ceiling of −0.2 dBTP was lowered to −1 dBTP, the highest ceiling Aurialis offers. Set target loudness or export again to re-measure.");
+    // The lowered draft saves at −1 and is not migrated again.
+    const again = normalizeHydratedState(JSON.parse(JSON.stringify({ ...restored, tracks: restored?.tracks.map((track) => ({ ...track, limiterNotice: "" })) })));
+    expect(again?.tracks[0]?.deepMastering?.proposal.revision).toBe(2); expect(again?.tracks[0]?.limiterNotice).toBe("");
+    // A draft at its revision limit drops the prediction instead.
+    const capped = readDeepMasteringState({ sourceRevision: 0, proposal: { ...script(hot), revision: Number.MAX_SAFE_INTEGER }, targets, prediction: { revision: Number.MAX_SAFE_INTEGER, afterMetrics: metrics } }, identity, 0);
+    expect(capped.prediction).toBeUndefined(); expect(capped.proposal.revision).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
   it("persists the export prediction beside its draft revision", () => {
     const deep = { sourceRevision: 0, proposal: script(), targets, prediction: { revision: 1, afterMetrics: metrics } };
     expect(readDeepMasteringState(deep, identity, 0)).toEqual(deep);
     // Predictions measured since the Level match carry it and both gain reductions.
-    const matched = { ...deep, prediction: { ...deep.prediction, levelMatch: { gainDb: 1.4, neededDb: 1.42, ceilingLimited: false }, compressorAverageGainReductionDb: 1.5, limiterPeakGainReductionDb: 0.3 } };
+    const matched = { ...deep, prediction: { ...deep.prediction, levelMatch: { gainDb: 1.4, neededDb: 1.42, limiterCapped: false }, compressorAverageGainReductionDb: 1.5, limiterPeakGainReductionDb: 0.3 } };
     expect(readDeepMasteringState(matched, identity, 0)).toEqual(matched);
     expect(() => readDeepMasteringState({ ...matched, prediction: { ...matched.prediction, levelMatch: { gainDb: 1.4 } } }, identity, 0)).toThrow("script");
     expect(() => readDeepMasteringState({ ...matched, prediction: { ...matched.prediction, limiterPeakGainReductionDb: undefined } }, identity, 0)).toThrow("script");

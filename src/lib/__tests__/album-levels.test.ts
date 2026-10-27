@@ -82,6 +82,12 @@ describe("album level plan", () => {
     expect(albumMastersKey([second, first], DEFAULT_ALBUM_LEVEL)).not.toBe(keep);
   });
 
+  it("invalidates a Deep master when loading lowers its applied ceiling at the same revision", () => {
+    const applied = (ceilingDbtp: number): Track => ({ ...deep, deepMastering: { sourceRevision: 0, applied: { ...script, chainParams: { limiter: { enabled: true, ceilingDbtp } } } } as NonNullable<Track["deepMastering"]> });
+    expect(albumMastersKey([first, applied(-1)], DEFAULT_ALBUM_LEVEL)).not.toBe(albumMastersKey([first, applied(-0.2)], DEFAULT_ALBUM_LEVEL));
+    expect(albumMastersKey([first, applied(-1)], DEFAULT_ALBUM_LEVEL)).toBe(albumMastersKey([first, applied(-1)], DEFAULT_ALBUM_LEVEL));
+  });
+
   it("never lets a blocked normalize plan reuse the masters kept at each level", () => {
     const keep = albumMastersKey([first], DEFAULT_ALBUM_LEVEL);
     const blocked = albumMastersKey([first], { mode: "normalize", targetLufs: -9, offsets: [{ trackId: first.id, offsetDb: 5 }] });

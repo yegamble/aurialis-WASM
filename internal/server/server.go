@@ -566,6 +566,9 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		params = mastering.ProfilePreset(prof)
+		// Deprecated route without an algorithm choice: render through the
+		// true-peak export limiter so delivery holds the -1 dBTP ceiling (V1-09).
+		params.AlgorithmVersion, params.Limiter.TruePeak = dsp.TruePeakAlgorithmVersion, true
 	}
 	if rawParams := strings.TrimSpace(r.FormValue("params")); rawParams != "" {
 		parsed, err := dsp.DecodeParamsJSON([]byte(rawParams), params)

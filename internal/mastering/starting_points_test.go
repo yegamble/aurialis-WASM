@@ -165,7 +165,7 @@ func TestSectionMoveCapsFollowMUB5(t *testing.T) {
 
 func TestPredictionFindingsExplainLoudnessAndCrestChanges(t *testing.T) {
 	before := dsp.Metrics{IntegratedLUFS: -16, DynamicRangeDB: 14}
-	limited := &ProposalPrediction{LevelMatch: LevelMatch{GainDB: 0.4, NeededDB: 2.9, CeilingLimited: true}}
+	limited := &ProposalPrediction{LevelMatch: LevelMatch{GainDB: 0.4, NeededDB: 2.9, LimiterCapped: true}}
 	for _, tc := range []struct {
 		name       string
 		after      dsp.Metrics
@@ -176,7 +176,7 @@ func TestPredictionFindingsExplainLoudnessAndCrestChanges(t *testing.T) {
 		{"louder", dsp.Metrics{IntegratedLUFS: -14.5, DynamicRangeDB: 13}, nil, []string{"predicted-loudness-increase"}},
 		{"crest", dsp.Metrics{IntegratedLUFS: -17, DynamicRangeDB: 9.5}, nil, []string{"predicted-crest-reduction"}},
 		{"quieter", dsp.Metrics{IntegratedLUFS: -18.5, DynamicRangeDB: 15}, nil, []string{"predicted-loudness-decrease"}},
-		{"ceiling", dsp.Metrics{IntegratedLUFS: -18.5, DynamicRangeDB: 15}, limited, []string{"predicted-loudness-decrease"}},
+		{"limiter cap", dsp.Metrics{IntegratedLUFS: -18.5, DynamicRangeDB: 15}, limited, []string{"predicted-loudness-decrease"}},
 		{"both", dsp.Metrics{IntegratedLUFS: -12, DynamicRangeDB: 8}, nil, []string{"predicted-loudness-increase", "predicted-crest-reduction"}},
 		{"limiting", dsp.Metrics{IntegratedLUFS: -16, DynamicRangeDB: 13}, &ProposalPrediction{LimiterPeakGainReductionDB: 4.6}, []string{"predicted-heavy-limiting"}},
 		{"light limiting", dsp.Metrics{IntegratedLUFS: -16, DynamicRangeDB: 13}, &ProposalPrediction{LimiterPeakGainReductionDB: 3.9}, nil},
@@ -195,34 +195,74 @@ func TestPredictionFindingsExplainLoudnessAndCrestChanges(t *testing.T) {
 			}
 		}
 	}
-	// A ceiling-limited drop names the gain it needed and the gain the ceiling allowed.
-	if detail := predictionFindings(before, dsp.Metrics{IntegratedLUFS: -18.5, DynamicRangeDB: 15}, limited)[0].Detail; !strings.Contains(detail, "+2.9 dB") || !strings.Contains(detail, "+0.4 dB") || !strings.Contains(detail, "−1 dBTP ceiling") {
-		t.Fatal("ceiling-limited drop does not explain the ceiling:", detail)
+	// A drop the 2 dB limiting cap leaves says so and how much quieter it is.
+	if detail := predictionFindings(before, dsp.Metrics{IntegratedLUFS: -18.5, DynamicRangeDB: 15}, limited)[0].Detail; !strings.Contains(detail, "more than 2 dB of limiting") || !strings.Contains(detail, "2.5 LU quieter") || !strings.Contains(detail, "only if the extra limiting sounds clean") {
+		t.Fatal("limiter-capped drop does not explain the cap:", detail)
+	}
+	// A drop the +12 dB bound leaves names that bound instead.
+	if detail := predictionFindings(before, dsp.Metrics{IntegratedLUFS: -18.5, DynamicRangeDB: 15}, &ProposalPrediction{LevelMatch: LevelMatch{GainDB: MaxLevelMatchGainDB, NeededDB: 14.5}})[0].Detail; !strings.Contains(detail, "needs +14.5 dB") || !strings.Contains(detail, "stops at +12.0 dB") {
+		t.Fatal("gain-capped drop does not explain the +12 dB bound:", detail)
 	}
 	if findings := predictionFindings(dsp.Metrics{IntegratedLUFS: -120}, dsp.Metrics{IntegratedLUFS: -60, DynamicRangeDB: 0}, nil); len(findings) != 0 {
 		t.Fatal("silent source fabricated findings")
 	}
 }
 
-// R1: the Level match gain restores the measured shortfall unless the
-// prediction's true peak leaves less headroom below the ceiling.
-func TestLevelMatchHoldsLoudnessWithinCeilingHeadroom(t *testing.T) {
+// levelModel is a deterministic stand-in for the export render: loudness
+// follows the gain until peaks pass the ceiling headroom, after which the
+// limiter takes back part of each extra dB and its peak reduction grows 1:1.
+type levelModel struct {
+	afterLUFS, headroomDB, baseGRDB, slopeAboveCeiling float64
+	renders                                            []float64
+}
+
+func (m *levelModel) render(gainDB float64) (ProposalPrediction, error) {
+	m.renders = append(m.renders, gainDB)
+	over := math.Max(0, gainDB-m.headroomDB)
+	return ProposalPrediction{AfterMetrics: dsp.Metrics{IntegratedLUFS: m.afterLUFS + gainDB - (1-m.slopeAboveCeiling)*over, TruePeakDBTP: math.Min(-1, -1-m.headroomDB+gainDB)}, LimiterPeakGainReductionDB: m.baseGRDB + over}, nil
+}
+
+// R1 (Round E): the Level match holds the source loudness unless that needs
+// more than 2 dB of export limiting; it never exceeds +12 dB and re-renders
+// at most three times.
+func TestLevelMatchHoldsLoudnessWithinTwoDBOfLimiting(t *testing.T) {
 	for _, tc := range []struct {
-		name                string
-		beforeLUFS, afterLU float64
-		afterTP             float64
-		want                LevelMatch
+		name        string
+		model       levelModel
+		gain, delta float64 // expected gain and max |Δ LUFS|
+		capped      bool
 	}{
-		{"restores", -16, -18.04, -9, LevelMatch{GainDB: 2, NeededDB: 2.04}},
-		{"lowers", -16, -14.5, -3, LevelMatch{GainDB: -1.5, NeededDB: -1.5}},
-		{"tiny", -16, -16.04, -3, LevelMatch{GainDB: 0, NeededDB: 0.04}},
-		{"ceiling", -10, -13, -2.25, LevelMatch{GainDB: 1.1, NeededDB: 3, CeilingLimited: true}},
-		{"at ceiling", -8, -9.5, -1.05, LevelMatch{GainDB: 0, NeededDB: 1.5, CeilingLimited: true}},
-		{"capped", -20, -40, -30, LevelMatch{GainDB: MaxLevelMatchGainDB, NeededDB: 20, CeilingLimited: false}},
+		{"restores", levelModel{afterLUFS: -18.04, headroomDB: 9}, 2, 0.1, false},
+		{"lowers", levelModel{afterLUFS: -14.5, headroomDB: 3}, -1.5, 0.1, false},
+		{"tiny", levelModel{afterLUFS: -16.04, headroomDB: 3}, 0, 0.1, false},
+		{"into limiter", levelModel{afterLUFS: -17.6, headroomDB: 1, slopeAboveCeiling: 0.6}, 1.9, 0.1, false},
+		{"limiting cap", levelModel{afterLUFS: -19, headroomDB: 0.25, baseGRDB: 0.1, slopeAboveCeiling: 0.4}, 2.1, 2.3, true},
+		{"already limited", levelModel{afterLUFS: -18, headroomDB: -2.5, slopeAboveCeiling: 0.2}, 0, 4.01, true},
+		{"capped", levelModel{afterLUFS: -36, headroomDB: 30}, MaxLevelMatchGainDB, 8.01, false},
 	} {
-		got := levelMatchFor(dsp.Metrics{IntegratedLUFS: tc.beforeLUFS}, dsp.Metrics{IntegratedLUFS: tc.afterLU, TruePeakDBTP: tc.afterTP}, -1)
-		if math.Abs(got.GainDB-tc.want.GainDB) > 1e-9 || math.Abs(got.NeededDB-tc.want.NeededDB) > 1e-9 || got.CeilingLimited != tc.want.CeilingLimited {
-			t.Fatalf("%s: %+v, want %+v", tc.name, got, tc.want)
+		model := tc.model
+		initial, _ := model.render(0)
+		model.renders = nil
+		prediction, err := searchLevelMatch(-16, -1, initial, model.render)
+		if err != nil {
+			t.Fatal(err)
+		}
+		match := prediction.LevelMatch
+		if math.Abs(match.GainDB-tc.gain) > 0.11 || match.LimiterCapped != tc.capped || math.Abs(match.NeededDB-(-16-initial.AfterMetrics.IntegratedLUFS)) > 1e-9 {
+			t.Fatalf("%s: %+v after renders %v, want gain %.1f capped %t", tc.name, match, model.renders, tc.gain, tc.capped)
+		}
+		// The returned prediction is the render of the returned gain.
+		if want, _ := (&levelModel{afterLUFS: model.afterLUFS, headroomDB: model.headroomDB, baseGRDB: model.baseGRDB, slopeAboveCeiling: model.slopeAboveCeiling}).render(match.GainDB); want.AfterMetrics != prediction.AfterMetrics || want.LimiterPeakGainReductionDB != prediction.LimiterPeakGainReductionDB {
+			t.Fatalf("%s: prediction %+v is not the render of %+.1f dB", tc.name, prediction, match.GainDB)
+		}
+		if delta := prediction.AfterMetrics.IntegratedLUFS + 16; math.Abs(delta) > tc.delta {
+			t.Fatalf("%s: Δ LUFS %+.2f, want within %.1f", tc.name, delta, tc.delta)
+		}
+		if match.GainDB > 0 && prediction.LimiterPeakGainReductionDB > MaxLevelMatchLimiterReductionDB {
+			t.Fatalf("%s: Level match %+.1f dB drives %.2f dB of limiting", tc.name, match.GainDB, prediction.LimiterPeakGainReductionDB)
+		}
+		if len(model.renders) > maxLevelMatchPredictions {
+			t.Fatalf("%s: %d renders %v", tc.name, len(model.renders), model.renders)
 		}
 	}
 }
@@ -318,9 +358,16 @@ func verifyProfilePrediction(t *testing.T, name string, buf *audio.Buffer, profi
 	}
 	rise := prediction.AfterMetrics.IntegratedLUFS - script.BeforeMetrics.IntegratedLUFS
 	cut := script.BeforeMetrics.DynamicRangeDB - prediction.AfterMetrics.DynamicRangeDB
-	// Chair ruling: loudness holds within 1 LU, or a finding says the ceiling prevented it.
-	if math.Abs(rise) > MaxUnexplainedLoudnessRiseLU && !(rise < 0 && match.CeilingLimited && hasFinding(script.Findings, "predicted-loudness-decrease")) {
-		t.Fatalf("Δ LUFS %+.2f LU without a ceiling explanation; level match %+v", rise, match)
+	// Round E ruling: loudness holds within 1 LU and a positive Level match
+	// never drives the export limiter past 2 dB of peak reduction.
+	if math.Abs(rise) > MaxUnexplainedLoudnessRiseLU {
+		t.Fatalf("Δ LUFS %+.2f LU; level match %+v, limiter %.2f dB", rise, match, prediction.LimiterPeakGainReductionDB)
+	}
+	if match.GainDB > 0 && prediction.LimiterPeakGainReductionDB > MaxLevelMatchLimiterReductionDB {
+		t.Fatalf("Level match %+.1f dB drives %.2f dB of limiter reduction", match.GainDB, prediction.LimiterPeakGainReductionDB)
+	}
+	if name == "dynamic" && math.Abs(rise) > 0.05 {
+		t.Fatalf("dynamic source moved %+.2f LU", rise)
 	}
 	if (rise > MaxUnexplainedLoudnessRiseLU) != hasFinding(script.Findings, "predicted-loudness-increase") ||
 		(-rise > MaxUnexplainedLoudnessRiseLU) != hasFinding(script.Findings, "predicted-loudness-decrease") ||
@@ -338,7 +385,7 @@ func verifyProfilePrediction(t *testing.T, name string, buf *audio.Buffer, profi
 			t.Fatalf("move %s exceeds MUB-5 caps", move.ID)
 		}
 	}
-	t.Logf("| %s | %s | %+.2f LU | %+.2f dB | %.2f dBTP | %.2f dB (threshold %.1f) | %.2f dB | %+.1f dB%s |", name, profile, rise, -cut, prediction.AfterMetrics.TruePeakDBTP, prediction.CompressorAverageGainReductionDB, script.ChainParams.Compressor.ThresholdDB, prediction.LimiterPeakGainReductionDB, match.GainDB, map[bool]string{true: " (ceiling)"}[match.CeilingLimited])
+	t.Logf("| %s | %s | %+.2f LU | %+.2f dB | %.2f dBTP | %.2f dB (threshold %.1f) | %.2f dB | %+.1f dB%s |", name, profile, rise, -cut, prediction.AfterMetrics.TruePeakDBTP, prediction.CompressorAverageGainReductionDB, script.ChainParams.Compressor.ThresholdDB, prediction.LimiterPeakGainReductionDB, match.GainDB, map[bool]string{true: " (limiting cap)"}[match.LimiterCapped])
 }
 
 func sameMovePoints(a, b automation.Move) bool {
@@ -367,4 +414,31 @@ func TestLegacyScriptsExplainLargeLoudnessChanges(t *testing.T) {
 	if (rise > MaxUnexplainedLoudnessRiseLU) != hasFinding(script.Findings, "predicted-loudness-increase") {
 		t.Fatalf("legacy rise %.2f LU without matching finding %+v", rise, script.Findings)
 	}
+}
+
+// A clipped, square-like source cannot get louder without more limiting: the
+// Level match stops at 2 dB of limiter reduction and the drop finding says why.
+func TestLevelMatchReportsTheLimitingCap(t *testing.T) {
+	t.Parallel()
+	const rate, seconds = 48000, 2.0
+	frames := int(seconds * rate)
+	left, right := make([]float32, frames), make([]float32, frames)
+	for i := range frames {
+		phase := float64(i) / rate
+		value := .8 * math.Tanh(8*(math.Sin(2*math.Pi*110*phase)+.5*math.Sin(2*math.Pi*1760*phase)))
+		left[i], right[i] = float32(value), float32(value)
+	}
+	buf := &audio.Buffer{Left: left, Right: right, SampleRate: rate, Channels: 2, Frames: frames, Duration: seconds}
+	script, prediction, err := AnalyzeDeepV2Context(context.Background(), buf, ProfilePunchyCommercial, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	drop := script.BeforeMetrics.IntegratedLUFS - prediction.AfterMetrics.IntegratedLUFS
+	if !prediction.LevelMatch.LimiterCapped || drop <= MaxUnexplainedLoudnessRiseLU || !hasFinding(script.Findings, "predicted-loudness-decrease") {
+		t.Fatalf("drop %.2f LU, match %+v, findings %+v", drop, prediction.LevelMatch, script.Findings)
+	}
+	if prediction.LevelMatch.GainDB <= 0 || prediction.LimiterPeakGainReductionDB > MaxLevelMatchLimiterReductionDB || prediction.AfterMetrics.TruePeakDBTP > MaxStartingCeilingDBTP {
+		t.Fatalf("limiter %.2f dB, true peak %.2f dBTP", prediction.LimiterPeakGainReductionDB, prediction.AfterMetrics.TruePeakDBTP)
+	}
+	t.Logf("clipped square: %+.2f LU, %.2f dBTP, limiter %.2f dB, Level match %+.1f dB (needed %+.1f)", -drop, prediction.AfterMetrics.TruePeakDBTP, prediction.LimiterPeakGainReductionDB, prediction.LevelMatch.GainDB, prediction.LevelMatch.NeededDB)
 }

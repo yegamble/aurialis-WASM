@@ -36,3 +36,21 @@ func TestMasterRoutesRejectCeilingAboveMinusOne(t *testing.T) {
 		}
 	}
 }
+
+// QA (V1-09 Round E): a ceiling sent as a string names the field and type
+// instead of a generic JSON error.
+func TestMasterRenderNamesMistypedCeiling(t *testing.T) {
+	srv := server.New(server.Config{Workers: 1})
+	defer srv.Close()
+	const rate = 48000
+	l, r := make([]float32, rate/4), make([]float32, rate/4)
+	wav, err := audio.EncodeWAV(l, r, rate, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(recorder, newMultipartRequest(t, http.MethodPost, "/api/master/render", "source.wav", wav, map[string]string{"params": `{"limiter":{"ceilingDbtp":"-0.5"}}`}))
+	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "limiter.ceilingDbtp must be a number") || !strings.Contains(recorder.Body.String(), "invalid_params") {
+		t.Fatalf("%d %s", recorder.Code, recorder.Body.String())
+	}
+}

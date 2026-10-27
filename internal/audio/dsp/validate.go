@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"reflect"
 	"strings"
 )
 
@@ -158,6 +159,9 @@ func DecodeParamsJSON(data []byte, base Params) (Params, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&next); err != nil {
+		if typeErr, ok := errors.AsType[*json.UnmarshalTypeError](err); ok && isFieldPath(typeErr.Field) {
+			return base, &RangeError{Err: fmt.Errorf("%s must be %s", typeErr.Field, jsonTypeName(typeErr.Type))}
+		}
 		return base, err
 	}
 	var extra any
@@ -170,9 +174,49 @@ func DecodeParamsJSON(data []byte, base Params) (Params, error) {
 	return next, nil
 }
 
-// RangeError reports well-formed settings that ValidateParams rejects. Its
-// message names the field and its supported range and never echoes request
-// text, so HTTP handlers may return it to clients.
+// isFieldPath accepts dotted alphanumeric JSON names of at most 64 bytes, so a
+// type error's path is reported without echoing arbitrary request text.
+func isFieldPath(path string) bool {
+	if path == "" || len(path) > 64 {
+		return false
+	}
+	for _, name := range strings.Split(path, ".") {
+		if name == "" || name[0] < 'A' || (name[0] > 'Z' && name[0] < 'a') || name[0] > 'z' {
+			return false
+		}
+		for _, c := range []byte(name) {
+			if (c < '0' || c > '9') && (c < 'A' || c > 'Z') && (c < 'a' || c > 'z') {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func jsonTypeName(t reflect.Type) string {
+	if t == nil {
+		return "a different JSON type"
+	}
+	switch kind := t.Kind(); {
+	case kind == reflect.Bool:
+		return "a boolean"
+	case kind == reflect.String:
+		return "a string"
+	case kind == reflect.Slice || kind == reflect.Array:
+		return "an array"
+	case kind == reflect.Struct || kind == reflect.Map:
+		return "an object"
+	case kind >= reflect.Int && kind <= reflect.Float64 && kind != reflect.Uintptr:
+		return "a number"
+	default:
+		return "a different JSON type"
+	}
+}
+
+// RangeError reports well-formed settings that ValidateParams rejects, or a
+// known field sent with the wrong JSON type. Its message names the field and
+// its supported range or type and never echoes request text, so HTTP handlers
+// may return it to clients.
 type RangeError struct{ Err error }
 
 func (e *RangeError) Error() string { return e.Err.Error() }

@@ -27,7 +27,7 @@ function signed(value: number): string { return (value > 0 ? "+" : "") + db(valu
 /** The draft's export prediction, or why none applies to the current revision. */
 function levelMatchText(match: LevelMatch): string {
   const gain = "Level match " + signed(match.gainDb) + " dB (compressor makeup)";
-  return match.ceilingLimited ? gain + ". Holding the source loudness needs " + signed(match.neededDb) + " dB; the −1 dBTP ceiling leaves room for only " + signed(match.gainDb) + " dB." : gain + " holds the source loudness.";
+  return match.limiterCapped ? gain + ". Holding the source loudness needs " + signed(match.neededDb) + " dB, which would take more than 2 dB of export limiting." : gain + " holds the source loudness.";
 }
 function PredictedLevels({ deep, soloed }: { deep: DeepMasteringState; soloed: boolean }) {
   const { proposal, prediction } = deep; const source = proposal.beforeMetrics;

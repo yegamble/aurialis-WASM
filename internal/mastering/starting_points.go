@@ -29,9 +29,14 @@ const (
 	MaxUnexplainedLimiterReductionDB = 4.0
 	// MaxLevelMatchGainDB bounds the Level match gain a proposal may add.
 	MaxLevelMatchGainDB = 12.0
-	// levelMatchMarginDB keeps the Level match below the ceiling by more than
-	// the export limiter's own 0.2 dB detector margin.
-	levelMatchMarginDB = 0.1
+	// MaxLevelMatchLimiterReductionDB bounds the export limiter's predicted
+	// peak reduction a positive Level match may cause: half the heavy-limiting
+	// finding (V1-09 Round E ruling).
+	MaxLevelMatchLimiterReductionDB = MaxUnexplainedLimiterReductionDB / 2
+	// maxLevelMatchPredictions bounds the extra export renders the Level match search makes.
+	maxLevelMatchPredictions = 3
+	// levelMatchToleranceLU ends the search once the prediction is this close to the source.
+	levelMatchToleranceLU = 0.1
 )
 
 // LevelMatch is the one explicit gain a Deep proposal uses to hold the
@@ -41,8 +46,8 @@ type LevelMatch struct {
 	GainDB float64 `json:"gainDb"`
 	// NeededDB is the loudness shortfall measured without it (source minus proposal).
 	NeededDB float64 `json:"neededDb"`
-	// CeilingLimited reports that the ceiling's headroom, not the need, set GainDB.
-	CeilingLimited bool `json:"ceilingLimited"`
+	// LimiterCapped reports that the 2 dB limiter reduction cap, not the need, set GainDB.
+	LimiterCapped bool `json:"limiterCapped"`
 }
 
 // ProposalPrediction is the measurement of a proposal rendered exactly as an
@@ -182,17 +187,73 @@ func predictExportContext(ctx context.Context, buf *audio.Buffer, script *Script
 	return ProposalPrediction{AfterMetrics: metrics, CompressorAverageGainReductionDB: stats.CompressorAverageDB, LimiterPeakGainReductionDB: stats.LimiterPeakDB}, nil
 }
 
-// levelMatchFor returns the gain that restores the source's integrated
-// loudness, limited to the headroom between the predicted true peak and the
-// ceiling so holding loudness never relies on heavier limiting.
-func levelMatchFor(before, after dsp.Metrics, ceilingDBTP float64) LevelMatch {
-	match := LevelMatch{NeededDB: before.IntegratedLUFS - after.IntegratedLUFS}
-	gain := math.Round(match.NeededDB*10) / 10
-	if headroom := ceilingDBTP - levelMatchMarginDB - after.TruePeakDBTP; gain > headroom {
-		gain, match.CeilingLimited = math.Max(0, math.Floor(headroom*10)/10), true
+func roundLevelMatch(gainDB float64) float64 { return math.Round(gainDB*10) / 10 }
+
+// levelMatchBound estimates the largest gain that keeps the export limiter's
+// peak reduction within the cap. Peaks rise at most 1 dB per dB of gain, so
+// the limiter takes no more than the gain beyond the true-peak headroom.
+func levelMatchBound(gainDB, ceilingDBTP float64, prediction ProposalPrediction) float64 {
+	headroom := MaxLevelMatchLimiterReductionDB - prediction.LimiterPeakGainReductionDB
+	if prediction.LimiterPeakGainReductionDB < 0.01 {
+		headroom += math.Max(0, ceilingDBTP-prediction.AfterMetrics.TruePeakDBTP)
 	}
-	match.GainDB = math.Min(gain, MaxLevelMatchGainDB) + 0 // + 0 normalizes -0
-	return match
+	return gainDB + headroom
+}
+
+// searchLevelMatch finds the one gain that holds the source's integrated
+// loudness (beforeLUFS) without pushing the export limiter past 2 dB of peak
+// reduction, re-rendering at most three times. render must return the export
+// render of the proposal with that gain as makeup; the returned prediction is
+// the render of the returned gain (0 is initial).
+func searchLevelMatch(beforeLUFS, ceilingDBTP float64, initial ProposalPrediction, render func(gainDB float64) (ProposalPrediction, error)) (ProposalPrediction, error) {
+	type trial struct {
+		gain       float64
+		prediction ProposalPrediction
+	}
+	shortfall := func(t trial) float64 { return beforeLUFS - t.prediction.AfterMetrics.IntegratedLUFS }
+	best, last := trial{0, initial}, trial{0, initial}
+	tried := map[float64]bool{0: true}
+	rejected, bounded := math.Inf(1), false
+	next := shortfall(best)
+	for range maxLevelMatchPredictions {
+		gain := math.Min(next, MaxLevelMatchGainDB)
+		if bound := levelMatchBound(last.gain, ceilingDBTP, last.prediction); gain > 0 && gain > bound {
+			gain, bounded = math.Floor(bound*10+1e-6)/10, true
+		}
+		gain = math.Min(roundLevelMatch(gain), roundLevelMatch(rejected-0.1))
+		if tried[gain] || (gain > 0 && gain <= best.gain && best.gain > 0) || (gain <= 0 && next > 0) {
+			break
+		}
+		tried[gain] = true
+		prediction, err := render(gain)
+		if err != nil {
+			return ProposalPrediction{}, err
+		}
+		current := trial{gain, prediction}
+		if gain > 0 && prediction.LimiterPeakGainReductionDB > MaxLevelMatchLimiterReductionDB {
+			// Too much limiting: step back by the excess reduction.
+			rejected, bounded = gain, true
+			next = gain - (prediction.LimiterPeakGainReductionDB - MaxLevelMatchLimiterReductionDB)
+			last = current
+			continue
+		}
+		if math.Abs(shortfall(current)) < math.Abs(shortfall(best)) {
+			best = current
+		}
+		if math.Abs(shortfall(current)) <= levelMatchToleranceLU {
+			break
+		}
+		// Secant step: past the ceiling the limiter takes back part of each dB.
+		slope := 1.0
+		if gain != last.gain {
+			slope = math.Max(0.25, math.Min(1, (prediction.AfterMetrics.IntegratedLUFS-last.prediction.AfterMetrics.IntegratedLUFS)/(gain-last.gain)))
+		}
+		next, last = gain+shortfall(current)/slope, current
+	}
+	match := LevelMatch{GainDB: best.gain + 0, NeededDB: shortfall(trial{0, initial})} // + 0 normalizes -0
+	match.LimiterCapped = bounded && shortfall(best) > levelMatchToleranceLU && best.gain < MaxLevelMatchGainDB
+	best.prediction.LevelMatch = match
+	return best.prediction, nil
 }
 
 // predictionFindings explains measured changes large enough to bias a
@@ -210,9 +271,13 @@ func predictionFindings(before, after dsp.Metrics, prediction *ProposalPredictio
 	}
 	if drop := before.IntegratedLUFS - after.IntegratedLUFS; drop > MaxUnexplainedLoudnessRiseLU {
 		cause := "A quieter result can sound worse in comparison; compare at matched loudness or use Set target loudness."
-		if prediction != nil && prediction.LevelMatch.CeilingLimited {
-			cause = fmt.Sprintf("Holding the source loudness needs %s of Level match, but the %s dBTP ceiling leaves room for only %s without heavier limiting. Compare at matched loudness, or use Set target loudness and accept more limiting.", signedDB(prediction.LevelMatch.NeededDB), minusSign(MaxStartingCeilingDBTP), signedDB(prediction.LevelMatch.GainDB))
-		} else if prediction != nil {
+		switch {
+		case prediction == nil:
+		case prediction.LevelMatch.LimiterCapped:
+			cause = fmt.Sprintf("Holding the source loudness would need more than %.0f dB of limiting; the proposal is %.1f LU quieter with a %s Level match. Raise the level yourself only if the extra limiting sounds clean.", MaxLevelMatchLimiterReductionDB, drop, signedDB(prediction.LevelMatch.GainDB))
+		case prediction.LevelMatch.GainDB >= MaxLevelMatchGainDB:
+			cause = fmt.Sprintf("Holding the source loudness needs %s; the Level match stops at %s. Compare at matched loudness or use Set target loudness.", signedDB(prediction.LevelMatch.NeededDB), signedDB(MaxLevelMatchGainDB))
+		default:
 			cause = fmt.Sprintf("The %s Level match gain did not hold the source loudness. Compare at matched loudness or use Set target loudness.", signedDB(prediction.LevelMatch.GainDB))
 		}
 		findings = append(findings, Finding{ID: "predicted-loudness-decrease", Severity: "info", Lane: "Volume",
@@ -230,10 +295,6 @@ func predictionFindings(before, after dsp.Metrics, prediction *ProposalPredictio
 			Detail: fmt.Sprintf("Rendered through the export limiter, the largest limiter gain reduction is %.1f dB. Above %.0f dB, dense mixes can lose transient detail and sound flattened; lower the input or Level match, or accept a quieter master.", prediction.LimiterPeakGainReductionDB, MaxUnexplainedLimiterReductionDB)})
 	}
 	return findings
-}
-
-func minusSign(value float64) string {
-	return strings.Replace(strconv.FormatFloat(value, 'f', -1, 64), "-", "−", 1)
 }
 
 func signedDB(value float64) string {

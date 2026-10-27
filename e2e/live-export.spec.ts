@@ -29,8 +29,17 @@ type TimingWindow = Window & { qaTiming?: Timing };
 async function pinDeviceRate(page: Page): Promise<void> {
   await page.addInitScript((rate) => {
     const NativeContext = AudioContext;
-    window.AudioContext = class extends NativeContext { constructor(options?: AudioContextOptions) { super({ ...options, sampleRate: rate }); } };
+    window.AudioContext = class extends NativeContext { constructor(options?: AudioContextOptions) { super({ ...options, sampleRate: rate }); (window as StatsWindow).qaContext = this; } };
   }, RATE);
+}
+type StatsWindow = Window & { qaContext?: AudioContext };
+/** Chromium's device underrun counter for the live context, or null elsewhere. */
+function underrunEvents(page: Page): Promise<number | null> {
+  return page.evaluate(() => {
+    const stats: unknown = (window as StatsWindow).qaContext ? Reflect.get((window as StatsWindow).qaContext as object, "playbackStats") : undefined;
+    const events: unknown = typeof stats === "object" && stats !== null ? Reflect.get(stats, "underrunEvents") : undefined;
+    return typeof events === "number" ? events : null;
+  });
 }
 
 // Worklet-scope timing tap. Every 375 quanta it posts the kernel time, the
@@ -369,23 +378,29 @@ test(`the export algorithm keeps up live for ${String(SOAK_SECONDS)} s with ever
   await page.getByRole("button", { name: "Play", exact: true }).click();
   const transport = page.locator(".transport");
   await expect(transport).toHaveAttribute("data-playing", "true");
+  // Warm-up: Chromium records 12–19 underrun events while the stream starts.
+  await expect.poll(() => page.evaluate(() => (window as TimingWindow).qaTiming?.audioMs ?? 0), { intervals: [500], timeout: 60_000 }).toBeGreaterThanOrEqual(2000);
+  const warmUnderruns = await underrunEvents(page);
   await expect.poll(() => page.evaluate(() => (window as TimingWindow).qaTiming?.audioMs ?? 0), { intervals: [1000], timeout: SOAK_SECONDS * 1000 + 60_000 })
     .toBeGreaterThanOrEqual(SOAK_SECONDS * 1000);
   await expect(transport).toHaveAttribute("data-playing", "true");
   const timing = await page.evaluate(() => (window as TimingWindow).qaTiming);
+  const endUnderruns = await underrunEvents(page);
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   if (!timing) throw new Error("Missing worklet timing");
   const quantumMs = 1000 * 128 / timing.sampleRate;
   const evidence = { ...timing, meanKernelMs: timing.totalMs / timing.quanta, meanLoad: timing.totalMs / timing.quanta / quantumMs, quantumMs,
-    clockDriftMs: timing.wallMs - timing.audioMs, driftLimitMs: Math.min(DRIFT_MS_MAX, DRIFT_MS_PER_AUDIO_SECOND * timing.audioMs / 1000) };
+    clockDriftMs: timing.wallMs - timing.audioMs, driftLimitMs: Math.min(DRIFT_MS_MAX, DRIFT_MS_PER_AUDIO_SECOND * timing.audioMs / 1000),
+    deviceUnderrunsAfterWarmUp: warmUnderruns === null || endUnderruns === null ? null : endUnderruns - warmUnderruns };
   await writeFile(info.outputPath("live-soak-evidence.json"), JSON.stringify(evidence, null, 2));
   await info.attach("live-soak-evidence", { body: JSON.stringify(evidence), contentType: "application/json" });
   expect(timing.sampleRate).toBe(RATE);
-  // No kernel call certainly over its 2.67 ms deadline, and the audio clock kept
-  // pace with the wall clock (a render thread that falls behind makes it lag).
-  // ringUnderruns stays in the evidence but is not a CPU gauge: the kernel runs
-  // inside process(), so the ring cannot run dry from load (it is always 0 here).
-  expect(timing.slow, JSON.stringify(evidence)).toBe(0);
+  // No device underrun after warm-up (Chromium's playbackStats), and the audio
+  // clock kept pace with the wall clock (a render thread that falls behind makes
+  // it lag). `slow` (kernel calls over 2.67 ms by Date.now) is informational: the
+  // ~10.6 ms output buffer absorbs a 4–8 ms call. ringUnderruns is not a CPU
+  // gauge: the kernel runs inside process(), so the ring cannot run dry from load.
+  expect(evidence.deviceUnderrunsAfterWarmUp, JSON.stringify(evidence)).toBe(0);
   expect(Math.abs(evidence.clockDriftMs), JSON.stringify(evidence)).toBeLessThanOrEqual(evidence.driftLimitMs);
   // The budget gate is mean load ≤ 0.5 on a quiet machine (docs/tasks.md V1-10). Shared CI
   // and agent hosts swing 2x, so this only catches gross regressions.

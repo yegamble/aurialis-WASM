@@ -29,6 +29,16 @@ Tests: Go `starting_points_test.go` (baselines, caps, findings, export predictio
 
 Open: the legacy version 1 Deep job and `profile` renders keep their louder recipes (makeup up to 7.5 dB), now with a −1 dBTP ceiling and findings. Status: **implemented — open, awaiting merge** (`fix/v1-09-starting-points`).
 
+## Per-track tools and the Tools track chooser (V1-05) — 2026-10-26
+
+PE-3 found that tools opened for the newest import: after importing A then B, A's Master view had no way to open Release check, Reference match or Smart split for A, and **Tools** always linked to the newest track. The Master header now has a labeled `Tools for <track>` navigation whose links carry the open track's id. **Tools** has a native **Track** select (newest import first, so the default is unchanged) and every card links to the chosen track; with no tracks the cards are not links and the page offers **Import a track**. In the browser build, Smart split is not linked from Master or Tools; the shared availability sentence (`stemSplitAvailability`) stands in its place.
+
+Evidence (local, 2026-10-26, frontend): `unit` Vitest `TrackTools.test.tsx` (Master links carry A's id; browser build states availability without a Split link; chooser defaults to the newest import and points every card at the chosen track; empty library). `playwright-a11y-responsive` shared cases `e2e/track-tools-cases.ts`, native and browser: import A then B, open each tool for A from A's Master view with Tab and Enter and check the page names A; choose A in Tools and open Release check by keyboard; 44 px targets, no overflow and axe WCAG 2.2 AA clean at 320 and 1440 px. The same cases failed against the pre-change UI.
+
+Round E (QA + Devil's Advocate, 2026-10-26): VERIFIED with no BLOCKER or REQUIRED findings. Long, right-to-left and emoji titles do not overflow at 320–1024 px; tool links are ≥ 44 px; the Split link sends A's audio; the browser build renders no `/split` link. Follow-up fixes: the Tools chooser remembers the chosen track in `sessionStorage` for the tab (falling back to the newest import when the track was deleted or storage is blocked), and README names the Master tool links.
+
+**Status:** implemented — open, awaiting merge (`fix/v1-05-track-tools`).
+
 ## Export deadline budget (V1-07) — 2026-10-26
 
 QA-2 found that long converted native exports hit the fixed 60-second POST deadline and returned 408. `/api/master/render` and `/master/render` now replace that deadline, after validation, with a work budget (60 s + 2 µs per source frame + 8 µs per converted frame, at most 10 minutes) and extend the connection write deadline to match; uploads keep the 60 s base deadline plus a length-sized body read deadline (10 s + 8 MiB/s, at most 60 s). An exhausted budget returns 408 `export_timeout` naming the next step. See [limits](api.md).

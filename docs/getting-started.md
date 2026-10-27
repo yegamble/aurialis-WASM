@@ -29,11 +29,9 @@ Simple and Advanced share one set of processing settings. Switching tabs preserv
 
 ## 3. Set the level, if you need to
 
-Choose an **Output target**, then select **Set target loudness**. Aurialis measures the current chain and adjusts its input gain toward the requested average loudness. It then prepares an offline preview. If the target cannot be reached within the supported processing and peak limits, it reports an error.
+Choose an **Output target**, then select **Set target loudness**. Aurialis measures the current chain and adjusts its input gain toward the requested average loudness, then reports the level the export measures. Press **Play** to hear it: live playback already runs the export chain, so there is no separate preview to render. If the target cannot be reached within the supported processing and peak limits, it reports an error.
 
 Every target uses a −1 dBTP ceiling (Streaming −14, Loud −9, Dynamic and Podcast −16 LUFS), and −1 is the highest ceiling Advanced offers. A saved project with a higher ceiling is lowered to −1 when it loads, with a note you can dismiss; run Set target loudness or export again to re-measure. Selecting a target alone does not measure or normalize the whole track. If you change processing afterward, run **Set target loudness** again when you want a fresh measurement. Targets are working preferences, not a promise that a streaming service will accept or preserve that level.
-
-You can also select **Render offline preview** for a full-track render using the current settings. Once ready, **Download offline preview** saves that preview. The offline preview still uses the older sample-peak limiter, so its peaks can read higher than the export; live playback uses the export limiter. Live playback updates independently; a preview becomes out of date when the processing settings change.
 
 ## 4. Export a WAV
 
@@ -52,7 +50,7 @@ Select **Export**, choose a bit depth, a sample rate and, for 16/24-bit PCM, dit
 
 After export, the status line shows the delivered true peak at the delivery rate. It comes from a 4× meter that can read slightly high at 88.2/96 kHz, so it is a guide, not a certification. Integer exports clip samples outside ±1; enable the limiter or reduce gain before exporting a signal that exceeds that range.
 
-Export renders the current processing settings from the reconstructed source. With Deep attached, the acknowledged applied script is authoritative; draft edits and pending revisions are excluded. Listening to **B Original**, changing monitor volume, or leaving an older offline preview on screen does not change those export settings. The download is a separate file; keep it and your original source in your own backup.
+Export renders the current processing settings from the reconstructed source. With Deep attached, the acknowledged applied script is authoritative; draft edits and pending revisions are excluded. Listening to **B Original** or changing monitor volume does not change those export settings. The download is a separate file; keep it and your original source in your own backup.
 
 ## Go further when you are ready
 
@@ -193,7 +191,7 @@ For a bug report, include your browser and operating system, the action that fai
 | **EQ / equalizer** | Controls that raise or lower parts of the frequency range, such as bass or treble. |
 | **Compression** | Reduces level differences once the signal crosses a threshold. |
 | **Saturation** | Adds nonlinear coloration and harmonics. Aurialis's named characters are original algorithms, not verified hardware replicas. |
-| **Limiter / ceiling** | Restricts peaks toward a chosen maximum. Live playback and export use a lookahead limiter that holds the reconstructed (inter-sample) peak under the ceiling; its meter is a guide, not a certification. The offline preview still controls sample peaks only. |
+| **Limiter / ceiling** | Restricts peaks toward a chosen maximum. Live playback and export use a lookahead limiter that holds the reconstructed (inter-sample) peak under the ceiling; its meter is a guide, not a certification. |
 | **LUFS** | A measure of perceived loudness over time. A less negative reading generally means a louder signal. |
 | **dBFS** | Level relative to digital full scale. For integer PCM, 0 dBFS is the maximum sample level. |
 | **Sample rate** | Samples per second; 48 kHz means 48,000 samples per second per channel. |

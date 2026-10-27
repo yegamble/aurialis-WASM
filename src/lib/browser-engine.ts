@@ -371,9 +371,15 @@ export async function measureAudio(
   params: object = { bypass: true },
   signal?: AbortSignal,
 ): Promise<AudioMeasurement> {
+  return measureRender(file, { params }, signal);
+}
+
+/** Measure the source and one export render (static parameters or a script) without downloading audio. */
+export async function measureRender(file: Blob, render: { params: object } | { script: ScriptV2 }, signal?: AbortSignal): Promise<AudioMeasurement> {
   const form = new FormData();
   form.append("file", file, "source.wav");
-  form.append("params", JSON.stringify(params));
+  if ("script" in render) form.append("script", JSON.stringify(render.script));
+  else form.append("params", JSON.stringify(render.params));
   form.append("format", "json");
   const response = await audioRequest(form, signal, true);
   if (!response.ok) throw await audioError(response, "Audio measurement failed.");

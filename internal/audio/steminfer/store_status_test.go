@@ -189,6 +189,13 @@ func TestWindowsMatchesTheChunkAssembler(t *testing.T) {
 			t.Fatalf("%v s: Windows %d, assembler %d", seconds, Windows(seconds), want)
 		}
 	}
+	// The client's stemWindows test (src/lib/__tests__/stem-split-copy.test.ts)
+	// pins the same table, so the two counts cannot drift apart.
+	for seconds, want := range map[float64]int{1: 1, 10: 1, 19.5: 2, 20: 2, 21: 5, 60: 8, 225: 25, 240: 26, 348: 37} {
+		if got := Windows(seconds); got != want {
+			t.Fatalf("%v s: %d windows, client table says %d", seconds, got, want)
+		}
+	}
 	if Windows(0) != 0 || Windows(-1) != 0 {
 		t.Fatal("empty song needs windows")
 	}

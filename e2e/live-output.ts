@@ -91,27 +91,52 @@ export async function outputLevel(page: Page) {
   });
 }
 
+/** BS.1770 K-weighting biquads at a sample rate: pre-filter shelf, then RLB high-pass. */
+function kWeighting(fs: number): number[][] {
+  const shelfK = Math.tan(Math.PI * 1681.974450955533 / fs), shelfQ = 0.7071752369554196;
+  const vh = 10 ** (3.999843853973347 / 20), vb = vh ** 0.4996667741545416, s0 = 1 + shelfK / shelfQ + shelfK * shelfK;
+  const passK = Math.tan(Math.PI * 38.13547087602444 / fs), passQ = 0.5003270373238773, p0 = 1 + passK / passQ + passK * passK;
+  return [
+    [(vh + vb * shelfK / shelfQ + shelfK * shelfK) / s0, 2 * (shelfK * shelfK - vh) / s0, (vh - vb * shelfK / shelfQ + shelfK * shelfK) / s0, 2 * (shelfK * shelfK - 1) / s0, (1 - shelfK / shelfQ + shelfK * shelfK) / s0],
+    [1, -2, 1, 2 * (passK * passK - 1) / p0, (1 - passK / passQ + passK * passK) / p0],
+  ];
+}
+
+/** Mean K-weighted power per channel (dB) of stereo PCM, as meanOutputLevel measures the speakers. */
+export function kWeightedLevel(left: ArrayLike<number>, right: ArrayLike<number>, fs: number): number {
+  const coefficients = kWeighting(fs);
+  let squares = 0;
+  for (const channel of [left, right]) {
+    const state = [[0, 0, 0, 0], [0, 0, 0, 0]];
+    for (let index = 0; index < channel.length; index++) {
+      let value = channel[index] ?? 0;
+      for (let stage = 0; stage < 2; stage++) {
+        const [b0 = 0, b1 = 0, b2 = 0, a1 = 0, a2 = 0] = coefficients[stage] ?? [];
+        const [x1 = 0, x2 = 0, y1 = 0, y2 = 0] = state[stage] ?? [];
+        const y = b0 * value + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+        state[stage] = [value, x1, y, y1];
+        value = y;
+      }
+      squares += value * value;
+    }
+  }
+  return 10 * Math.log10(squares / (left.length + right.length));
+}
+
 /**
  * Average a whole source-period window, retaining no extra PCM buffers. With
  * `weighting: "k"` the speaker output is K-weighted (ungated BS.1770), so A
  * and B with different spectra compare in loudness rather than raw power.
  */
 export async function meanOutputLevel(page: Page, frames?: number, weighting: "flat" | "k" = "flat"): Promise<number> {
-  await page.evaluate(([count, kWeighted]) => {
+  const rate = await page.evaluate(() => (window as ProbeWindow).qaOutput?.sampleRate ?? 0);
+  if (!rate) throw new Error("Missing live output probe");
+  await page.evaluate(([count, coefficients]) => {
     const probe = (window as ProbeWindow).qaOutput;
     if (!probe) throw new Error("Missing live output probe");
-    const biquad = (fs: number) => {
-      const shelfK = Math.tan(Math.PI * 1681.974450955533 / fs), shelfQ = 0.7071752369554196;
-      const vh = 10 ** (3.999843853973347 / 20), vb = vh ** 0.4996667741545416, s0 = 1 + shelfK / shelfQ + shelfK * shelfK;
-      const passK = Math.tan(Math.PI * 38.13547087602444 / fs), passQ = 0.5003270373238773, p0 = 1 + passK / passQ + passK * passK;
-      return [
-        [(vh + vb * shelfK / shelfQ + shelfK * shelfK) / s0, 2 * (shelfK * shelfK - vh) / s0, (vh - vb * shelfK / shelfQ + shelfK * shelfK) / s0, 2 * (shelfK * shelfK - 1) / s0, (1 - shelfK / shelfQ + shelfK * shelfK) / s0],
-        [1, -2, 1, 2 * (passK * passK - 1) / p0, (1 - passK / passQ + passK * passK) / p0],
-      ];
-    };
     probe.energy = { remaining: count ?? probe.sampleRate, frames: 0, squares: 0,
-      ...(kWeighted ? { k: { coefficients: biquad(probe.sampleRate), state: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] } } : {}) };
-  }, [frames, weighting === "k"] as const);
+      ...(coefficients ? { k: { coefficients, state: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] } } : {}) };
+  }, [frames, weighting === "k" ? kWeighting(rate) : null] as const);
   await expect.poll(() => page.evaluate(() => (window as ProbeWindow).qaOutput?.energy?.remaining), { intervals: [50], timeout: 30_000 }).toBe(0);
   return page.evaluate(() => {
     const energy = (window as ProbeWindow).qaOutput?.energy;

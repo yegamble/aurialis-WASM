@@ -962,6 +962,7 @@ function MasterView({ trackId }: { trackId: string }) {
               <span>True peak</span>
               <strong>{loudness?.truePeak ?? "—"}</strong>
               <small>dBTP max · now {loudness?.recentPeak ?? "—"}</small>
+              <small>Live estimate; the export check is authoritative</small>
             </div>
             <div>
               <span>Gain reduction</span>
@@ -1445,7 +1446,7 @@ function AdvancedControls({
         </span>
         Enable limiter
       </label>
-      <p className="disclosure">While on, audio above 0.45 × the sample rate (19.85 kHz at 44.1 kHz) is filtered out so true peaks stay under the ceiling.</p>
+      <p className="disclosure">While on, audio above 0.45 × the sample rate (19.85 kHz at 44.1 kHz) is filtered out so true peaks stay under the ceiling. The filter shifts the top octave&apos;s phase (about 1 ms of delay near 19.8 kHz at 44.1 kHz), so the master won&apos;t null against the source.</p>
       <SliderField
         label="Limiter ceiling"
         value={adv.limiter.ceiling}

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { expect, test, type Page } from "@playwright/test";
-import { engineParams } from "../src/lib/browser-engine";
+import { liveParams, liveScript } from "../src/lib/engine-params";
 import type { ScriptV2 } from "../src/lib/deep-mastering";
 import type { Track } from "../src/lib/types";
 import { observeOutput, outputLevel } from "./live-output";
@@ -68,7 +68,7 @@ for (const [sourceRate, frames, deviceRate] of [[8001, 129, 44100], [48000, 4800
     const dryError = Math.max(...prefix.left.map((value, index) => Math.abs(value - (capture.deviceLeft[index] ?? 0))), ...prefix.right.map((value, index) => Math.abs(value - (capture.deviceRight[index] ?? 0))));
     expect(dryError, "delayed arm must retain the native source prefix").toBeLessThan(1e-6);
     const inputPath = info.outputPath("captured-input.json"), outputPath = info.outputPath("native-output.json");
-    await writeFile(inputPath, JSON.stringify({ sourceRate, frames, deviceRate, seek: 0, looping: true, capturedFrames, staticFrames: staticQuanta * 128, staticParams: engineParams(original.advanced), script: applied, deviceLeft: capture.deviceLeft.slice(0, capturedFrames), deviceRight: capture.deviceRight.slice(0, capturedFrames) }));
+    await writeFile(inputPath, JSON.stringify({ sourceRate, frames, deviceRate, seek: 0, looping: true, capturedFrames, staticFrames: staticQuanta * 128, staticParams: liveParams(original.advanced), script: liveScript(applied), deviceLeft: capture.deviceLeft.slice(0, capturedFrames), deviceRight: capture.deviceRight.slice(0, capturedFrames) }));
     const native = await execute("go", ["test", "./wasm/dsp", "-run", "^TestCapturedDeviceNativeOracle$", "-count=1"], { cwd: process.cwd(), env: { ...process.env, AURIALIS_CAPTURED_INPUT_FIXTURE: inputPath, AURIALIS_CAPTURED_OUTPUT_FIXTURE: outputPath }, timeout: 60000 });
     expect(native.stdout).toContain("ok");
     const expected = JSON.parse(await readFile(outputPath, "utf8")) as { outputLeft: number[]; outputRight: number[]; sourceVerified: boolean };
@@ -87,7 +87,7 @@ for (const [sourceRate, frames, deviceRate] of [[8001, 129, 44100], [48000, 4800
     const drySeek = await expectedDryPrefix(page, original, deviceRate, sought.seekFrame);
     const seekDryError = Math.max(...drySeek.left.map((value, index) => Math.abs(value - (sought.deviceLeft[index] ?? 0))), ...drySeek.right.map((value, index) => Math.abs(value - (sought.deviceRight[index] ?? 0)))); expect(seekDryError).toBeLessThan(1e-6);
     const seekInput = info.outputPath("seek-captured-input.json"), seekOutput = info.outputPath("seek-native-output.json");
-    await writeFile(seekInput, JSON.stringify({ sourceRate, frames, deviceRate, seek: sought.seekFrame, looping: true, capturedFrames: 32768, script: applied, deviceLeft: sought.deviceLeft.slice(0, 32768), deviceRight: sought.deviceRight.slice(0, 32768) }));
+    await writeFile(seekInput, JSON.stringify({ sourceRate, frames, deviceRate, seek: sought.seekFrame, looping: true, capturedFrames: 32768, script: liveScript(applied), deviceLeft: sought.deviceLeft.slice(0, 32768), deviceRight: sought.deviceRight.slice(0, 32768) }));
     await execute("go", ["test", "./wasm/dsp", "-run", "^TestCapturedDeviceNativeOracle$", "-count=1"], { cwd: process.cwd(), env: { ...process.env, AURIALIS_CAPTURED_INPUT_FIXTURE: seekInput, AURIALIS_CAPTURED_OUTPUT_FIXTURE: seekOutput }, timeout: 60000 });
     const seekReference = JSON.parse(await readFile(seekOutput, "utf8")) as { outputLeft: number[]; outputRight: number[] }; let seekError = 0;
     for (let index = 0; index < 32768; index++) seekError = Math.max(seekError, Math.abs((seekReference.outputLeft[index] ?? 0) - (sought.outputLeft[index] ?? 0)), Math.abs((seekReference.outputRight[index] ?? 0) - (sought.outputRight[index] ?? 0)));

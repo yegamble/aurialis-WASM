@@ -60,25 +60,30 @@ var truePeakFIR = func() [truePeakPhases][2 * truePeakHalfTaps]float64 {
 }()
 
 // truePeakDetector returns the linked stereo peak of the reconstructed signal.
+// Each sample is stored twice, one window apart, so the newest 2K samples are
+// always contiguous: the live worklet runs this FIR for every frame, and a
+// wrap test per tap cost about a fifth of the limiter in WASM. The products
+// are summed in the same order as a ring walk, so output is bit-identical.
 type truePeakDetector struct {
-	history [2][2 * truePeakHalfTaps]float64
+	history [2][4 * truePeakHalfTaps]float64
 	cursor  int
 }
 
 func (d *truePeakDetector) sample(left, right float64) float64 {
 	const taps = 2 * truePeakHalfTaps
 	d.history[0][d.cursor], d.history[1][d.cursor] = left, right
+	d.history[0][d.cursor+taps], d.history[1][d.cursor+taps] = left, right
+	// window[taps-1] is the newest sample and window[0] the oldest.
+	windowL := (*[taps]float64)(d.history[0][d.cursor+1 : d.cursor+1+taps])
+	windowR := (*[taps]float64)(d.history[1][d.cursor+1 : d.cursor+1+taps])
 	peak := 0.0
 	for phase := range truePeakFIR {
+		coefficients := &truePeakFIR[phase]
 		var l, r float64
-		index := d.cursor
-		for _, coefficient := range truePeakFIR[phase] {
-			l += coefficient * d.history[0][index]
-			r += coefficient * d.history[1][index]
-			if index == 0 {
-				index = taps
-			}
-			index--
+		for tap := 0; tap < taps; tap++ {
+			coefficient := coefficients[tap]
+			l += coefficient * windowL[taps-1-tap]
+			r += coefficient * windowR[taps-1-tap]
 		}
 		peak = math.Max(peak, math.Max(math.Abs(l), math.Abs(r)))
 	}

@@ -1040,7 +1040,7 @@ function MasterView({ trackId }: { trackId: string }) {
           />
           {liveNote && <p className="disclosure" role="status">{liveNote}</p>}
           {(liveRate.kind === "capped" || liveRate.kind === "resampled") && <AuditionExport key={track.id} track={track} sourceBlob={sourceBlob} delivery={delivery}
-            livePlaying={playback?.playing ?? false} onStart={() => { lastPlayed.current = "audition"; stopScrub(false); live.current?.pause(); }}
+            volume={playback?.volume ?? 1} livePlaying={(playback?.playing ?? false) || (playback?.loading ?? false)} onStart={() => { lastPlayed.current = "audition"; stopScrub(false); live.current?.pause(); }}
             onHeld={(held) => { auditionHeld.current = held; }} onHandle={(handle) => { audition.current = handle; }}
             onPlayingChange={() => { const controller = live.current; if (controller) playbackControls.current?.update(mediaState(controller), true); }} />}
           {track.mode === "deep" && track.deepMastering && <DeepTimeline script={track.deepMastering.proposal} selectedId={deepMoveId} onSelect={selectDeepMove} playheadRatio={playheadRatio} />}

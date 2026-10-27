@@ -330,6 +330,29 @@ describe("master live playback lifecycle", () => {
     expect(delivery).toHaveBeenCalledOnce();
   }, 30000);
 
+  it("treats live loading as playing: an audition finishing during a cold start waits, ready (Round 6 S-1)", async () => {
+    localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1).map((track) => ({ ...track, sampleRate: 96000 })) }));
+    mocks.getAudio.mockResolvedValue(canonicalWAV({ ...pcm, sampleRate: 96000 }));
+    const originals = (["createObjectURL", "revokeObjectURL"] as const).map((key) => [key, Object.getOwnPropertyDescriptor(URL, key)] as const);
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: () => "blob:held" });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: () => undefined });
+    onTestFinished(() => { for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(URL, key, descriptor); else Reflect.deleteProperty(URL, key); } });
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    let finish: (() => void) | undefined;
+    vi.spyOn(engine, "renderDelivery").mockImplementation(() => new Promise((resolve) => { finish = () => { resolve({ blob: canonicalWAV({ ...pcm, sampleRate: 96000 }), truePeakDbtp: null }); }; }));
+    mount(); await ready();
+    const instance = latest();
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    // A cold live Play: the controller is still loading, not yet playing.
+    act(() => { instance.state = { ...instance.state, loading: true, playing: false }; instance.callbacks.onState?.(instance.state); });
+    await act(async () => { finish?.(); await Promise.resolve(); await Promise.resolve(); });
+    expect(await screen.findByText(/^Ready: the exact export file/u)).toBeTruthy();
+    expect(instance.controller.pause).not.toHaveBeenCalled();
+    expect(play).not.toHaveBeenCalled();
+  }, 30000);
+
   it("lowers a saved ceiling above −1 dBTP with a visible, dismissible note", async () => {
     const track = testStore.tracks[0]; if (!track) throw new Error("Missing track");
     localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: [{ ...track, mode: "simple", target: "Loud", advanced: { ...track.advanced, limiter: { ...track.advanced.limiter, enabled: true, targetLufs: -9, ceiling: -0.2 } } }] }));

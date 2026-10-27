@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -26,6 +27,10 @@ const (
 	modelFile   = "mega53-five-heads-v1.safetensors"
 )
 
+// errNotRegularModel refuses a cache entry that is a symlink, device or
+// directory: the model cache only ever holds a plain file this server wrote.
+var errNotRegularModel = errors.New("stem model is not a regular file")
+
 // Model is a verified, immutable separator model. It is safe to share between
 // jobs; each Separate call owns its own working storage.
 type Model struct{ archive *weightArchive }
@@ -33,17 +38,12 @@ type Model struct{ archive *weightArchive }
 // LoadModel reads and verifies a model file. A wrong size, schema or checksum
 // is rejected before any tensor is used.
 func LoadModel(ctx context.Context, path string) (*Model, error) {
-	// #nosec G304 -- path is the server's own model cache, never request input.
-	file, err := os.Open(path)
+	file, info, err := openRegular(path)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = file.Close() }()
-	info, err := file.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() || info.Size() != modelBytes {
+	if info.Size() != modelBytes {
 		return nil, fmt.Errorf("stem model %s is not the expected %d-byte file", path, modelBytes)
 	}
 	archive, err := readArchive(ctx, file, modelBytes, expectedModelSchema(), modelSHA256)
@@ -51,6 +51,33 @@ func LoadModel(ctx context.Context, path string) (*Model, error) {
 		return nil, err
 	}
 	return &Model{archive: archive}, nil
+}
+
+// openRegular opens path only if it is a regular file, never following a
+// symlink: the entry is checked with Lstat, and the opened file must be that
+// same file, so a link swapped in between is refused too.
+func openRegular(path string) (*os.File, fs.FileInfo, error) {
+	entry, err := os.Lstat(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !entry.Mode().IsRegular() {
+		return nil, nil, fmt.Errorf("%w: %s", errNotRegularModel, path)
+	}
+	// #nosec G304 -- path is the server's own model cache, never request input.
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := file.Stat()
+	if err == nil && !os.SameFile(entry, info) {
+		err = fmt.Errorf("%w: %s changed while opening", errNotRegularModel, path)
+	}
+	if err != nil {
+		_ = file.Close()
+		return nil, nil, err
+	}
+	return file, info, nil
 }
 
 // Download fetches url into path through a temporary file in the same

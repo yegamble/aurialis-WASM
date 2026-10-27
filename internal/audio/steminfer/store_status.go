@@ -116,8 +116,7 @@ func (store *Store) diskState() ModelState {
 
 func (store *Store) hashMatches(digest string) bool {
 	store.verifications++
-	// #nosec G304 -- path is the server's own model cache, never request input.
-	file, err := os.Open(store.Path())
+	file, _, err := openRegular(store.Path())
 	if err != nil {
 		return false
 	}

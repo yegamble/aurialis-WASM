@@ -352,7 +352,7 @@ describe("device-local browser audio transport", () => {
         if (init?.method === "POST") return new Response(JSON.stringify({ jobId: "job-1", status: "queued", progress: 0, stage: "Queued" }));
         if (init?.method === "DELETE") return new Response("{}");
         duringPoll = await deviceAudioRequest("/api/master/render", { method: "POST", body: body() }, undefined, "background").then(() => undefined, (error: unknown) => error);
-        expect(String(input)).toContain("/api/jobs/job-1");
+        expect(typeof input === "string" ? input : "").toContain("/api/jobs/job-1");
         return new Response(JSON.stringify({ jobId: "job-1", status: "done" }));
       });
       await runAudioJob("/api/analyze/deep", new FormData(), new AbortController().signal, () => undefined, (job) => job.status);

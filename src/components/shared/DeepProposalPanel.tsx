@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { getAudio } from "@/lib/db";
-import { analyzeDeep, compileScript, deepProfiles, deepSourceMatches, readScriptV2, type AutomationMove, type DeepMasteringState, type DeepProfile, type ScriptV2 } from "@/lib/deep-mastering";
+import { analyzeDeep, compileScript, deepProfiles, deepSourceMatches, readScriptV2, type AutomationMove, type DeepMasteringState, type DeepProfile, type LevelMatch, type ScriptV2 } from "@/lib/deep-mastering";
 import { proposalChanges } from "@/lib/proposal-changes";
 import { audioKey } from "@/lib/library";
 import { useStore } from "@/lib/store";
@@ -25,19 +25,25 @@ function db(value: number, digits = 1): string {
 function signed(value: number): string { return (value > 0 ? "+" : "") + db(value); }
 
 /** The draft's export prediction, or why none applies to the current revision. */
-function PredictedLevels({ deep }: { deep: DeepMasteringState }) {
+function levelMatchText(match: LevelMatch): string {
+  const gain = "Level match " + signed(match.gainDb) + " dB (compressor makeup)";
+  return match.ceilingLimited ? gain + ". Holding the source loudness needs " + signed(match.neededDb) + " dB; the −1 dBTP ceiling leaves room for only " + signed(match.gainDb) + " dB." : gain + " holds the source loudness.";
+}
+function PredictedLevels({ deep, soloed }: { deep: DeepMasteringState; soloed: boolean }) {
   const { proposal, prediction } = deep; const source = proposal.beforeMetrics;
   if (!prediction) return <p className="disclosure">No export prediction is stored for this draft. Analyze again to measure it.</p>;
   if (prediction.revision !== proposal.revision) return <p className="disclosure">Predicted levels were measured for draft revision {prediction.revision}. This draft has changed since then; analyze again to re-measure, or apply and export to measure the result.</p>;
+  if (soloed) return <p className="disclosure">Predicted levels describe the whole draft. While a move is soloed, Apply mutes the other moves, so these levels no longer apply; clear solo to compare them.</p>;
   const after: MeasuredAudioMetrics = prediction.afterMetrics;
   const rows = [
-    { label: "Predicted loudness", value: db(after.integratedLufs) + " LUFS", detail: "source " + db(source.integratedLufs) + " LUFS, " + signed(after.integratedLufs - source.integratedLufs) + " LU" },
+    { label: "Predicted loudness", value: db(after.integratedLufs) + " LUFS", detail: "source " + db(source.integratedLufs) + " LUFS, " + signed(after.integratedLufs - source.integratedLufs) + " LU", note: prediction.levelMatch ? levelMatchText(prediction.levelMatch) : undefined },
     { label: "Predicted true peak", value: db(after.truePeakDbtp, 2) + " dBTP", detail: "source " + db(source.truePeakDbtp, 2) + " dBTP" },
     { label: "Predicted crest", value: db(after.dynamicRangeDb) + " dB", detail: "source " + db(source.dynamicRangeDb) + " dB, " + signed(after.dynamicRangeDb - source.dynamicRangeDb) + " dB" },
   ];
   return <section className="min-w-0 space-y-2" aria-label="Predicted export levels">
     <h3>Predicted export levels</h3>
-    <dl className="grid gap-2 text-xs sm:grid-cols-3">{rows.map((row) => <div className="min-w-0 rounded-xl border border-line bg-paper p-3" key={row.label}><dt>{row.label}</dt><dd className="tabular-nums"><strong className="text-sm">{row.value}</strong><br />{row.detail}</dd></div>)}</dl>
+    <dl className="grid gap-2 text-xs sm:grid-cols-3">{rows.map((row) => <div className="min-w-0 rounded-xl border border-line bg-paper p-3" role="group" aria-label={row.label} key={row.label}><dt>{row.label}</dt><dd className="tabular-nums"><strong className="text-sm">{row.value}</strong><br />{row.detail}{"note" in row && row.note && <><br /><strong>{row.note}</strong></>}</dd></div>)}</dl>
+    {prediction.compressorAverageGainReductionDb !== undefined && prediction.limiterPeakGainReductionDb !== undefined && <p className="disclosure tabular-nums">Compressor average reduction {db(prediction.compressorAverageGainReductionDb)} dB · export limiter peak reduction {db(prediction.limiterPeakGainReductionDb)} dB.</p>}
     <p className="disclosure">Measured by rendering this draft through the export true-peak limiter at the source rate, before rate conversion or dither. Crest is true peak to RMS. Live meters use the preview limiter and can read higher.</p>
   </section>;
 }
@@ -92,7 +98,7 @@ export const DeepProposalPanel = memo(function DeepProposalPanel({ track, source
       controller.signal.throwIfAborted(); if (operation.current !== controller) return;
       const current = latest.current.tracks.find((item) => item.id === expectedTrack.id);
       if (!current || !deepSourceMatches(current, proposal, sourceRevision) || audioKey(current) !== expectedKey || current.advanced !== expectedAdvanced || (current.deepMastering?.proposal.revision ?? null) !== expectedProposal) throw new Error("The source, settings or draft changed. Analyze again when ready.");
-      dispatch({ type: "SAVE_DEEP_PROPOSAL", id: expectedTrack.id, expectedSourceRevision: sourceRevision, expectedAudioKey: expectedKey, expectedProposalRevision: expectedProposal, expectedAdvanced, deep: { sourceRevision, proposal, targets: compiled.targets, prediction: { revision: proposal.revision, afterMetrics: measured.prediction.afterMetrics } } });
+      dispatch({ type: "SAVE_DEEP_PROPOSAL", id: expectedTrack.id, expectedSourceRevision: sourceRevision, expectedAudioKey: expectedKey, expectedProposalRevision: expectedProposal, expectedAdvanced, deep: { sourceRevision, proposal, targets: compiled.targets, prediction: { revision: proposal.revision, ...measured.prediction } } });
       setMessage("Measured proposal ready. Your applied processing has not changed."); setSoloId(""); onSelectMove("");
     } catch (cause) { if (operation.current === controller && !controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Deep analysis failed."); }
     finally { if (operation.current === controller) { setBusy(false); operation.current = null; } }
@@ -138,8 +144,8 @@ export const DeepProposalPanel = memo(function DeepProposalPanel({ track, source
     {deep && <>
       <p className="disclosure">{deep.proposal.summary}</p>
       <p className="disclosure">Draft revision {deep.proposal.revision} · {deep.proposal.moves.length} moves. {deep.applied ? "Applied revision " + String(deep.applied.revision) + " remains active until another complete revision is applied." : "Static processing remains active."}</p>
-      <dl className="grid grid-cols-2 gap-2 text-xs"><div><dt>Proposed input</dt><dd>{deep.proposal.chainParams.inputGainDb.toFixed(2)} dB</dd></div><div><dt>Proposed ceiling</dt><dd>{deep.proposal.chainParams.limiter.ceilingDbtp.toFixed(2)} dBFS</dd></div></dl>
-      <PredictedLevels deep={deep} />
+      <dl className="grid grid-cols-2 gap-2 text-xs"><div><dt>Proposed input</dt><dd>{deep.proposal.chainParams.inputGainDb.toFixed(2)} dB</dd></div><div><dt>Proposed ceiling</dt><dd>{db(deep.proposal.chainParams.limiter.ceilingDbtp, 2)} dBTP</dd></div></dl>
+      <PredictedLevels deep={deep} soloed={soloId !== ""} />
       <ProposalChanges current={track.advanced} proposal={deep.proposal} />
       <div className="flex flex-wrap gap-2"><Button disabled={busy || !sourceReady || !onApply} onClick={() => { void apply(); }}>{soloId ? "Apply solo proposal" : "Apply Deep proposal"}</Button><Button variant="secondary" onClick={() => { downloadScript(track, deep.proposal, "draft"); }}>Download draft Script JSON</Button>{deep.applied && <Button variant="secondary" onClick={() => { if (deep.applied) downloadScript(track, deep.applied, "applied"); }}>Download applied Script JSON</Button>}</div>
       {!onApply && <p className="disclosure">Automation application is awaiting live-engine integration and verification. Drafts can be reviewed, edited and downloaded.</p>}

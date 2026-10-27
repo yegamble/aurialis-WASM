@@ -69,6 +69,11 @@ describe("V1-09 honest starting points", () => {
   it("persists the export prediction beside its draft revision", () => {
     const deep = { sourceRevision: 0, proposal: script(), targets, prediction: { revision: 1, afterMetrics: metrics } };
     expect(readDeepMasteringState(deep, identity, 0)).toEqual(deep);
+    // Predictions measured since the Level match carry it and both gain reductions.
+    const matched = { ...deep, prediction: { ...deep.prediction, levelMatch: { gainDb: 1.4, neededDb: 1.42, ceilingLimited: false }, compressorAverageGainReductionDb: 1.5, limiterPeakGainReductionDb: 0.3 } };
+    expect(readDeepMasteringState(matched, identity, 0)).toEqual(matched);
+    expect(() => readDeepMasteringState({ ...matched, prediction: { ...matched.prediction, levelMatch: { gainDb: 1.4 } } }, identity, 0)).toThrow("script");
+    expect(() => readDeepMasteringState({ ...matched, prediction: { ...matched.prediction, limiterPeakGainReductionDb: undefined } }, identity, 0)).toThrow("script");
     expect(() => readDeepMasteringState({ ...deep, prediction: { revision: 1 } }, identity, 0)).toThrow("script");
     expect(() => readDeepMasteringState({ ...deep, prediction: { revision: 1, afterMetrics: { ...metrics, integratedLufs: "loud" } } }, identity, 0)).toThrow("script");
   });
@@ -85,13 +90,15 @@ describe("V1-09 honest starting points", () => {
       { field: "compressor.thresholdDb", label: "Compressor threshold", from: "0 dB", to: "−16 dB" },
       { field: "compressor.ratio", label: "Compressor ratio", from: "1:1", to: "1.7:1" },
       { field: "compressor.autoRelease", label: "Compressor auto release", from: "off", to: "on" },
-      { field: "saturation.character", label: "Saturation character", from: "Warm", to: "Tube" },
       { field: "stereo.monoBass", label: "Mono bass", from: "off", to: "on" },
       { field: "limiter.enabled", label: "Limiter", from: "off", to: "on" },
-      { field: "limiter.targetLufs", label: "Loudness target", from: "−14 LUFS", to: "−9 LUFS" },
-      { field: "multiband.bands.2.makeupDb", label: "Multiband high makeup", from: "0 dB", to: "1 dB" },
-    ]);
+    ]); // Character at zero drive and bands of the disabled multiband are inert, so not listed.
     expect(proposalChanges(next, script(engineParams(next)))).toEqual([]);
+    // The Level match is the compressor makeup; inert fields are not listed.
+    const matched = structuredClone(next); matched.compressor.makeup = 1.4; matched.compressor.release = 400; matched.deHarsh.frequencyHz = 6000; matched.saturationModule.character = "Tape";
+    expect(proposalChanges(next, script(engineParams(matched)))).toEqual([{ field: "compressor.makeupDb", label: "Level match (compressor makeup)", from: "0 dB", to: "1.4 dB" }]);
+    matched.compressor.autoRelease = false;
+    expect(proposalChanges(next, script(engineParams(matched))).map((change) => change.field)).toEqual(["compressor.releaseMs", "compressor.makeupDb", "compressor.autoRelease"]);
     // The export algorithm flag and true-peak selection are not static settings.
     expect(proposalChanges(current, script({ ...engineParams(current), algorithmVersion: 1 }))).toEqual([]);
   });

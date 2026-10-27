@@ -40,8 +40,10 @@ interface CompiledScript {
   sourceVerified: false;
 }
 export type DeepSettingsSnapshot = { advanced: AdvancedParams; profile: ProfileId; genre: string; tone: string; intensity: number; target: string; simpleCustom: boolean; shortcutUndo: ShortcutUndo };
-/** Levels measured by rendering a draft revision through the export algorithm. */
-export interface DeepPrediction { revision: number; afterMetrics: MeasuredAudioMetrics }
+/** The one explicit gain (compressor makeup) that holds the source loudness, limited by the ceiling's headroom. */
+export interface LevelMatch { gainDb: number; neededDb: number; ceilingLimited: boolean }
+/** Levels measured by rendering a draft revision through the export algorithm. Predictions saved before the Level match have only `afterMetrics`. */
+export interface DeepPrediction { revision: number; afterMetrics: MeasuredAudioMetrics; levelMatch?: LevelMatch; compressorAverageGainReductionDb?: number; limiterPeakGainReductionDb?: number }
 export interface MeasuredProposal { proposal: ScriptV2; prediction: Omit<DeepPrediction, "revision"> }
 export interface DeepMasteringState { sourceRevision: number; proposal: ScriptV2; targets: TargetMetadata[]; prediction?: DeepPrediction; applied?: ScriptV2; before?: DeepSettingsSnapshot }
 
@@ -125,14 +127,19 @@ export function readScriptV2(value: unknown, expectedSource?: SourceIdentity): S
   return { version: "2.0", source: identity, revision: number(data.revision, 1, Number.MAX_SAFE_INTEGER, true), profile: data.profile as DeepProfile, summary: text(data.summary, 4096), chainParams: params(data.chainParams), sections, moves, findings, beforeMetrics: typedShape(metricsTemplate, data.beforeMetrics) };
 }
 
-function predictedMetrics(value: unknown): MeasuredAudioMetrics {
-  return typedShape(metricsTemplate, object(value, ["afterMetrics"]).afterMetrics);
+const predictionFields = ["afterMetrics", "levelMatch", "compressorAverageGainReductionDb", "limiterPeakGainReductionDb"] as const;
+function measuredPrediction(record: Record<string, unknown>): Omit<DeepPrediction, "revision"> {
+  const match = object(record.levelMatch, ["gainDb", "neededDb", "ceilingLimited"]);
+  return { afterMetrics: typedShape(metricsTemplate, record.afterMetrics), levelMatch: { gainDb: number(match.gainDb, -36, 36), neededDb: number(match.neededDb), ceilingLimited: bool(match.ceilingLimited) }, compressorAverageGainReductionDb: number(record.compressorAverageGainReductionDb, 0), limiterPeakGainReductionDb: number(record.limiterPeakGainReductionDb, 0) };
+}
+function predictedMetrics(value: unknown): Omit<DeepPrediction, "revision"> {
+  return measuredPrediction(object(value, predictionFields));
 }
 
 /** Analyze a source; the prediction is Go's export-algorithm render of the returned proposal. */
 export function analyzeDeep(blob: Blob, profile: DeepProfile, identity: SourceIdentity, signal: AbortSignal, onProgress: (progress: number, stage: string) => void): Promise<MeasuredProposal> {
   const body = new FormData(); body.append("file", blob, "source.wav"); body.append("scriptVersion", "2.0"); body.append("profile", profile);
-  return runAudioJob("/api/analyze/deep", body, signal, onProgress, (job) => { if (job.kind !== "analyze_deep_v2") throw failure(); return { proposal: readScriptV2(job.scriptV2, identity), prediction: { afterMetrics: predictedMetrics(job.prediction) } }; });
+  return runAudioJob("/api/analyze/deep", body, signal, onProgress, (job) => { if (job.kind !== "analyze_deep_v2") throw failure(); return { proposal: readScriptV2(job.scriptV2, identity), prediction: predictedMetrics(job.prediction) }; });
 }
 
 function targetMetadata(value: unknown): TargetMetadata[] {
@@ -180,8 +187,10 @@ export function readDeepMasteringState(value: unknown, identity: SourceIdentity 
   const proposal = readScriptV2(data.proposal, identity); const targets = targetMetadata(data.targets);
   const state: DeepMasteringState = { sourceRevision, proposal, targets };
   if (data.prediction !== undefined) {
-    const prediction = object(data.prediction, ["revision", "afterMetrics"]);
-    state.prediction = { revision: number(prediction.revision, 1, Number.MAX_SAFE_INTEGER, true), afterMetrics: typedShape(metricsTemplate, prediction.afterMetrics) };
+    const record = object(data.prediction); const revision = number(record.revision, 1, Number.MAX_SAFE_INTEGER, true);
+    state.prediction = Object.keys(record).length === 2
+      ? { revision, afterMetrics: typedShape(metricsTemplate, object(data.prediction, ["revision", "afterMetrics"]).afterMetrics) }
+      : { revision, ...measuredPrediction(object(data.prediction, ["revision", ...predictionFields])) };
   }
   if (data.applied !== undefined) state.applied = readScriptV2(data.applied, identity);
   if (data.before !== undefined) {

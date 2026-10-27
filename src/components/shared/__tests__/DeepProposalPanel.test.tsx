@@ -16,7 +16,8 @@ const identity = { pcmHash: "a".repeat(64), sampleRate: 48000, frames: 48000 };
 const targets: TargetMetadata[] = automationTargets.map((name) => ({ name, minimum: -24, maximum: 24, cellTolerance: 0.1, sampleAccurate: name === "inputGainDb" || name === "stereo.widthPct" }));
 function proposal(): ScriptV2 { return { version: "2.0", source: identity, revision: 1, profile: "Warm Analog", summary: "Measured source with neutral sections", chainParams: engineParams(createDefaultAdvancedParams()), sections: [{ id: "section-1", name: "Section 1", roleHint: "unknown", startFrame: 0, endFrame: 48000, confidence: 0.8 }], moves: [{ id: "gain", sectionId: "section-1", target: "inputGainDb", operation: "add", points: [{ frame: 12000, value: -1 }, { frame: 36000, value: -1 }], muted: false, fadeFrames: 100, reason: "Measured headroom" }], findings: [], beforeMetrics: { integratedLufs: -18, shortTermLufs: -18, truePeakDbtp: -6, samplePeakDbfs: -6, dynamicRangeDb: 12, correlation: 1, lowBassCorrelation: 1, dcLeftDbfs: -100, dcRightDbfs: -100, clippingSamples: 0, gainReductionDb: 0 } }; }
 const predicted = { integratedLufs: -19.2, shortTermLufs: -19, truePeakDbtp: -6.5, samplePeakDbfs: -6.6, dynamicRangeDb: 11.6, correlation: 1, lowBassCorrelation: 1, dcLeftDbfs: -100, dcRightDbfs: -100, clippingSamples: 0, gainReductionDb: 0 };
-function measured(script: ScriptV2): MeasuredProposal { return { proposal: script, prediction: { afterMetrics: predicted } }; }
+const levelMatch = { gainDb: 1.2, neededDb: 1.24, ceilingLimited: false };
+function measured(script: ScriptV2, match = levelMatch): MeasuredProposal { return { proposal: script, prediction: { afterMetrics: predicted, levelMatch: match, compressorAverageGainReductionDb: 1.46, limiterPeakGainReductionDb: 0.3 } }; }
 function mount(withDraft = true, withApplied = false) {
   const original = testStore.tracks[0]; if (!original) throw new Error("Missing track");
   localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: [{ ...original, sourceIdentity: identity, sourceRevision: 0, ...(withDraft ? { deepMastering: { sourceRevision: 0, proposal: proposal(), targets, ...(withApplied ? { applied: proposal(), before: deepSettingsSnapshot(original) } : {}) } } : {}) }] }));
@@ -49,7 +50,7 @@ describe("Deep proposal review interactions", () => {
     expect(mocks.analyze).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole("button", { name: "Replace draft and analyze" }));
     await screen.findByText("Measured proposal ready. Your applied processing has not changed.");
     expect(mocks.analyze.mock.calls[0]?.[1]).toBe("Vocal Forward");
-    expect(saved().tracks[0]?.deepMastering?.proposal).toEqual({ ...fresh, revision: 2 }); expect(saved().tracks[0]?.deepMastering?.prediction).toEqual({ revision: 2, afterMetrics: predicted });
+    expect(saved().tracks[0]?.deepMastering?.proposal).toEqual({ ...fresh, revision: 2 }); expect(saved().tracks[0]?.deepMastering?.prediction).toEqual({ revision: 2, afterMetrics: predicted, levelMatch, compressorAverageGainReductionDb: 1.46, limiterPeakGainReductionDb: 0.3 });
     expect(saved().tracks[0]?.deepMastering?.applied).toEqual(before.tracks[0]?.deepMastering?.applied); expect(saved().tracks[0]?.advanced).toEqual(before.tracks[0]?.advanced);
   });
   it.each(["settings", "draft", "profile"] as const)("refuses replacement when %s changes while its confirmation is open", async (change) => {
@@ -113,6 +114,11 @@ describe("Deep proposal review interactions", () => {
     expect(levels.textContent).toContain("Predicted loudness−19.2 LUFS" + "source −18.0 LUFS, −1.2 LU");
     expect(levels.textContent).toContain("Predicted true peak−6.50 dBTP" + "source −6.00 dBTP");
     expect(levels.textContent).toContain("Predicted crest11.6 dB" + "source 12.0 dB, −0.4 dB");
+    // The one Level match gain sits under the loudness card, with the measured reductions.
+    const loudness = screen.getByRole("group", { name: "Predicted loudness" });
+    expect(loudness.textContent).toContain("Level match +1.2 dB (compressor makeup) holds the source loudness.");
+    expect(levels.textContent).toContain("Compressor average reduction 1.5 dB · export limiter peak reduction 0.3 dB.");
+    expect(screen.getByText("Proposed ceiling").nextElementSibling?.textContent).toBe("−1.00 dBTP");
     const list = screen.getByRole("list", { name: "Changed settings" });
     expect(list.textContent).toContain("Compressor ratio1:1 → 1.7:1"); expect(list.textContent).toContain("Limiter" + "off → on");
     expect(screen.getByText("2 settings change from your current settings, plus 1 automation move.")).toBeTruthy();
@@ -120,6 +126,16 @@ describe("Deep proposal review interactions", () => {
     fireEvent.change(await screen.findByRole("combobox", { name: "Automation move" }), { target: { value: "gain" } });
     const field = await screen.findByRole("spinbutton", { name: "Point 1 value" }); fireEvent.change(field, { target: { value: "-2" } }); fireEvent.blur(field);
     expect(await screen.findByText("Predicted levels were measured for draft revision 1. This draft has changed since then; analyze again to re-measure, or apply and export to measure the result.")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Predicted export levels" })).toBeNull();
+  });
+  it("names the ceiling when it limits the Level match, and marks the prediction stale while a move is soloed", async () => {
+    mocks.analyze.mockResolvedValueOnce(measured(proposal(), { gainDb: 0.4, neededDb: 2.9, ceilingLimited: true }));
+    mount(false); fireEvent.click(await screen.findByRole("button", { name: "Analyze Deep proposal" }));
+    await screen.findByText("Measured proposal ready. Your applied processing has not changed.");
+    expect(screen.getByRole("group", { name: "Predicted loudness" }).textContent).toContain("Level match +0.4 dB (compressor makeup). Holding the source loudness needs +2.9 dB; the −1 dBTP ceiling leaves room for only +0.4 dB.");
+    fireEvent.change(await screen.findByRole("combobox", { name: "Automation move" }), { target: { value: "gain" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Solo in proposal" }));
+    expect(await screen.findByText("Predicted levels describe the whole draft. While a move is soloed, Apply mutes the other moves, so these levels no longer apply; clear solo to compare them.")).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Predicted export levels" })).toBeNull();
   });
   it("states when a saved draft has no prediction or already matches the current settings", async () => {

@@ -7,13 +7,14 @@ type ProposalChange = { field: string; label: string; from: string; to: string }
 const eqBands = ["Sub", "Low", "Mid", "Presence", "Air"];
 const multibandBands = ["low", "mid", "high"];
 // Engine flags that are not static settings a proposal can change.
-const ignored = new Set(["algorithmVersion", "bypass", "abOriginal", "loudnessMatchAb", "ditherBits", "limiter.truePeak"]);
+// limiter.targetLufs is metadata that never changes the audio.
+const ignored = new Set(["algorithmVersion", "bypass", "abOriginal", "loudnessMatchAb", "ditherBits", "limiter.truePeak", "limiter.targetLufs"]);
 const fields: Record<string, [string, string]> = {
   inputGainDb: ["Input gain", "dB"], eqEnabled: ["EQ", ""],
   gainDb: ["gain", "dB"], freqHz: ["frequency", "Hz"], q: ["Q", ""], type: ["shape", ""], enabled: ["", ""],
   "compressor.enabled": ["Compressor", ""], "compressor.thresholdDb": ["Compressor threshold", "dB"], "compressor.ratio": ["Compressor ratio", ":1"],
   "compressor.attackMs": ["Compressor attack", "ms"], "compressor.releaseMs": ["Compressor release", "ms"], "compressor.kneeDb": ["Compressor knee", "dB"],
-  "compressor.makeupDb": ["Compressor makeup", "dB"], "compressor.sidechainHpfHz": ["Compressor detector high-pass", "Hz"],
+  "compressor.makeupDb": ["Level match (compressor makeup)", "dB"], "compressor.sidechainHpfHz": ["Compressor detector high-pass", "Hz"],
   "compressor.autoRelease": ["Compressor auto release", ""], "compressor.topology": ["Compressor type", ""],
   "saturation.enabled": ["Saturation", ""], "saturation.amount": ["Saturation drive", "%"], "saturation.character": ["Saturation character", ""],
   "stereo.enabled": ["Stereo", ""], "stereo.widthPct": ["Stereo width", "%"], "stereo.monoBass": ["Mono bass", ""], "stereo.crossoverHz": ["Mono-bass crossover", "Hz"],
@@ -54,6 +55,20 @@ function flatten(value: unknown, prefix: string, into: Map<string, unknown>): vo
   } else into.set(prefix, value);
 }
 
+type ChainParams = ScriptV2["chainParams"];
+/** Settings the proposal carries that cannot affect its audio, so listing them would mislead. */
+function inert(field: string, params: ChainParams): boolean {
+  const [stage] = field.split(".");
+  if (field === "compressor.releaseMs") return params.compressor.autoRelease;
+  if (field === "stereo.crossoverHz") return !params.stereo.monoBass;
+  if (field === "saturation.character") return !params.saturation.enabled || params.saturation.amount === 0;
+  if ((stage === "deHarsh" || stage === "multiband" || stage === "repair") && !field.endsWith(".enabled")) {
+    const owner = stage === "deHarsh" ? params.deHarsh : stage === "multiband" ? params.multiband : params.repair;
+    return !owner.enabled;
+  }
+  return false;
+}
+
 /** Every static setting Apply would change, from the current settings to the proposal baseline. */
 export function proposalChanges(current: AdvancedParams, proposal: Pick<ScriptV2, "chainParams">): ProposalChange[] {
   // The proposal baseline never selects the unavailable live true-peak limiter or repair.
@@ -64,7 +79,7 @@ export function proposalChanges(current: AdvancedParams, proposal: Pick<ScriptV2
   const changes: ProposalChange[] = [];
   for (const [field, next] of after) {
     const previous = before.get(field);
-    if (ignored.has(field) || previous === next) continue;
+    if (ignored.has(field) || previous === next || inert(field, proposal.chainParams)) continue;
     const [label, unit] = describe(field);
     changes.push({ field, label, from: format(previous, unit), to: format(next, unit) });
   }

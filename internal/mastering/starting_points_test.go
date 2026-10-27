@@ -201,7 +201,7 @@ func TestDeepProfilesPredictExportLevelsAndExplainLargeChanges(t *testing.T) {
 					t.Fatalf("%s/%s move %s exceeds MUB-5 caps", fixture.name, profile, move.ID)
 				}
 			}
-			t.Logf("%-7s %-17s ΔLUFS %+5.2f LU  Δcrest %+5.2f dB  TP %6.2f dBTP  findings %d", fixture.name, profile, rise, -cut, prediction.AfterMetrics.TruePeakDBTP, len(script.Findings))
+			t.Logf("%-7s %-17s Δ LUFS %+5.2f LU  Δ crest %+5.2f dB  TP %6.2f dBTP  findings %d", fixture.name, profile, rise, -cut, prediction.AfterMetrics.TruePeakDBTP, len(script.Findings))
 		}
 	}
 }

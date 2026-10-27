@@ -110,11 +110,11 @@ describe("Deep proposal review interactions", () => {
     mount(false); fireEvent.click(await screen.findByRole("button", { name: "Analyze Deep proposal" }));
     await screen.findByText("Measured proposal ready. Your applied processing has not changed.");
     const levels = screen.getByRole("region", { name: "Predicted export levels" });
-    expect(levels.textContent).toContain("Predicted loudness−19.2 LUFSsource −18.0 LUFS, −1.2 LU");
-    expect(levels.textContent).toContain("Predicted true peak−6.50 dBTPsource −6.00 dBTP");
-    expect(levels.textContent).toContain("Predicted crest11.6 dBsource 12.0 dB, −0.4 dB");
+    expect(levels.textContent).toContain("Predicted loudness−19.2 LUFS" + "source −18.0 LUFS, −1.2 LU");
+    expect(levels.textContent).toContain("Predicted true peak−6.50 dBTP" + "source −6.00 dBTP");
+    expect(levels.textContent).toContain("Predicted crest11.6 dB" + "source 12.0 dB, −0.4 dB");
     const list = screen.getByRole("list", { name: "Changed settings" });
-    expect(list.textContent).toContain("Compressor ratio1:1 → 1.7:1"); expect(list.textContent).toContain("Limiteroff → on");
+    expect(list.textContent).toContain("Compressor ratio1:1 → 1.7:1"); expect(list.textContent).toContain("Limiter" + "off → on");
     expect(screen.getByText("2 settings change from your current settings, plus 1 automation move.")).toBeTruthy();
     expect(screen.getByText("Proposal raises loudness by 1.4 LU")).toBeTruthy(); expect(screen.getByText("Review warning · Volume")).toBeTruthy();
     fireEvent.change(await screen.findByRole("combobox", { name: "Automation move" }), { target: { value: "gain" } });

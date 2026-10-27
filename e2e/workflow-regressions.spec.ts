@@ -164,29 +164,31 @@ async function measureWAV(request: APIRequestContext, buffer: Buffer): Promise<M
   return (await response.json() as { beforeMetrics: MeasuredLevel }).beforeMetrics;
 }
 
-// Album normalization targets −14 LUFS with each track's own settings. Dense
-// programs at different levels need limiting; every master must still land on
-// target with its true peak at the ceiling (measured with the 4x meter).
-test("a dense 3-track album renders every master at −14 LUFS within the true-peak ceiling", async ({ page, request }, info) => {
-  test.setTimeout(240_000);
-  const tracks = [{ title: "qa dense album 1", peak: -1.3 }, { title: "qa dense album 2", peak: -4 }, { title: "qa dense album 3", peak: -8 }];
-  const sources: MeasuredLevel[] = [];
-  for (const track of tracks) {
-    const wav = denseFixture(6, track.peak);
-    sources.push(await measureWAV(request, wav));
-    await uploadProject(page, `${track.title.replaceAll(" ", "-")}.wav`, 6, wav);
-    // A Simple direction enables the limiter at the Streaming −1 dBTP ceiling.
-    await page.getByRole("tab", { name: "simple", exact: true }).click();
-    await page.getByRole("button", { name: "Pop", exact: true }).click();
-  }
-  await page.goto("/albums");
-  await page.getByRole("button", { name: "New album", exact: true }).click();
-  await page.getByRole("link", { name: /Untitled sequence 1/ }).click();
-  for (const track of tracks) await page.getByRole("button", { name: track.title, exact: true }).click();
+async function exportWAV(page: Page): Promise<Buffer> {
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const waiting = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Render & download WAV", exact: true }).click();
+  const path = await (await waiting).path();
+  await page.keyboard.press("Escape");
+  return readFile(path);
+}
+async function savedProjects(page: Page, ids: string[]) {
+  return page.evaluate((ids) => {
+    const state = JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as { tracks: { id: string; advanced: AdvancedParams; measurementKind?: string; measurements?: unknown }[] };
+    return ids.map((id) => {
+      const track = state.tracks.find((item) => item.id === id);
+      if (!track) throw new Error("Missing album project");
+      return { advanced: track.advanced, measurementKind: track.measurementKind, measurements: track.measurements };
+    });
+  }, ids);
+}
+const signed = (value: number, digits: number) => `${value < 0 ? "−" : ""}${Math.abs(value).toFixed(digits)}`;
+async function renderAlbum(page: Page, request: APIRequestContext, titles: string[]): Promise<MeasuredLevel[]> {
   await page.getByRole("button", { name: "Render album masters", exact: true }).click();
   const levels: MeasuredLevel[] = [];
-  for (const track of tracks) {
-    const button = page.getByRole("button", { name: `Download ${track.title}`, exact: true });
+  for (const title of titles) {
+    const button = page.getByRole("button", { name: `Download ${title}`, exact: true });
     await expect(button).toBeVisible({ timeout: 180_000 });
     const waiting = page.waitForEvent("download");
     await button.click();
@@ -194,9 +196,48 @@ test("a dense 3-track album renders every master at −14 LUFS within the true-p
     expect(decode(wav).bits).toBe(24);
     levels.push(await measureWAV(request, wav));
   }
-  await info.attach("dense-album-levels", { body: JSON.stringify({ sources, levels }, null, 2), contentType: "application/json" });
-  for (const level of levels) {
-    expect(Math.abs(level.integratedLufs + 14)).toBeLessThanOrEqual(0.2);
+  // The chart reports what the app measured from the same rendered files.
+  const table = page.getByRole("table", { name: "Measured album masters" });
+  for (const level of levels) await expect(table).toContainText(`${signed(level.integratedLufs, 2)} LUFS`);
+  return levels;
+}
+
+// Albums never write into projects. Keep (the default) renders every master at
+// its own single-export level; normalize renders the displayed target plus each
+// track's album offset. Dense programs at different levels need limiting.
+test("a dense 3-track album keeps each export level, normalizes to target plus offset and never changes a project", async ({ page, request }, info) => {
+  test.setTimeout(420_000);
+  const tracks = [{ title: "qa dense album 1", peak: -1.3 }, { title: "qa dense album 2", peak: -4 }, { title: "qa dense album 3", peak: -8 }];
+  const ids: string[] = [], singles: MeasuredLevel[] = [];
+  for (const track of tracks) {
+    ids.push(await uploadProject(page, `${track.title.replaceAll(" ", "-")}.wav`, 6, denseFixture(6, track.peak)));
+    // A Simple direction enables the limiter at the Streaming −1 dBTP ceiling.
+    await page.getByRole("tab", { name: "simple", exact: true }).click();
+    await page.getByRole("button", { name: "Pop", exact: true }).click();
+    singles.push(await measureWAV(request, await exportWAV(page)));
+  }
+  const before = await savedProjects(page, ids);
+  await page.goto("/albums");
+  await page.getByRole("button", { name: "New album", exact: true }).click();
+  await page.getByRole("link", { name: /Untitled sequence 1/ }).click();
+  for (const track of tracks) await page.getByRole("button", { name: track.title, exact: true }).click();
+  await expect(page.locator(".album-meta")).toContainText("Keeps each master’s level");
+  const kept = await renderAlbum(page, request, tracks.map((track) => track.title));
+  expect(await savedProjects(page, ids)).toEqual(before);
+
+  await page.getByRole("button", { name: "Normalize to a target", exact: true }).click();
+  await page.getByRole("button", { name: "−16 LUFS", exact: true }).click();
+  await page.getByRole("slider", { name: "qa dense album 2 album offset", exact: true }).fill("-2");
+  await expect(page.locator(".album-meta")).toContainText("Normalizes to −16 LUFS");
+  await expect(page.getByText("Renders at −18 LUFS", { exact: true })).toBeVisible();
+  const requested = [-16, -18, -16];
+  const normalized = await renderAlbum(page, request, tracks.map((track) => track.title));
+  await expect(page.locator(".album-meta")).toContainText("Normalizes to −16 LUFS");
+  expect(await savedProjects(page, ids)).toEqual(before);
+  await info.attach("dense-album-levels", { body: JSON.stringify({ singles, kept, normalized, requested }, null, 2), contentType: "application/json" });
+  for (const [index, level] of kept.entries()) expect(Math.abs(level.integratedLufs - (singles.at(index)?.integratedLufs ?? Number.NaN))).toBeLessThanOrEqual(0.1);
+  for (const [index, level] of normalized.entries()) {
+    expect(Math.abs(level.integratedLufs - (requested.at(index) ?? Number.NaN))).toBeLessThanOrEqual(0.2);
     expect(level.truePeakDbtp).toBeLessThanOrEqual(-1);
   }
 });

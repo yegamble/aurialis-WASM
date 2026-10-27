@@ -229,37 +229,78 @@ for (const { name, targetLufs, ceiling } of [{ name: "Streaming", targetLufs: -1
   });
 }
 
-// Album normalization runs the same export-parameter search per track in the
-// worker. Dense programs at different levels all need limiting to reach −14.
-test("a dense 3-track album renders every browser-local master at −14 LUFS within the −1 dBTP ceiling", async ({ page, context }, info) => {
-  test.setTimeout(300_000);
+async function exportLocalWAV(page: Page): Promise<Buffer> {
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const downloading = page.waitForEvent("download");
+  await page.getByRole("dialog").getByRole("button", { name: "Render & download WAV", exact: true }).click();
+  const path = await (await downloading).path();
+  await page.keyboard.press("Escape");
+  return readFile(path);
+}
+async function albumProjects(page: Page, ids: string[]) {
+  return page.evaluate((ids) => {
+    const state = JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as { tracks: Pick<Track, "id" | "advanced" | "measurementKind" | "measurements">[] };
+    return ids.map((id) => {
+      const track = state.tracks.find((item) => item.id === id);
+      if (!track) throw new Error("Missing saved local album project");
+      return { advanced: track.advanced, measurementKind: track.measurementKind, measurements: track.measurements };
+    });
+  }, ids);
+}
+async function renderLocalAlbum(page: Page, info: TestInfo, titles: string[], label: string): Promise<MeasuredAudioMetrics[]> {
+  await page.getByRole("button", { name: "Render album masters", exact: true }).click();
+  const levels: MeasuredAudioMetrics[] = [];
+  for (const [index, title] of titles.entries()) {
+    const ready = page.getByRole("button", { name: `Download ${title}`, exact: true });
+    await expect(ready).toBeVisible({ timeout: 240_000 });
+    const downloading = page.waitForEvent("download");
+    await ready.click();
+    const wav = await readFile(await (await downloading).path());
+    expect(decode(wav).bits).toBe(24);
+    levels.push(await nativeLevel(info, wav, `${label}-${String(index + 1)}`));
+  }
+  // The chart reports what the worker measured from the same rendered files.
+  const table = page.getByRole("table", { name: "Measured album masters" });
+  for (const level of levels) await expect(table).toContainText(`${level.integratedLufs < 0 ? "−" : ""}${Math.abs(level.integratedLufs).toFixed(2)} LUFS`);
+  return levels;
+}
+
+// Albums never write into projects. Keep (the default) renders every
+// browser-local master at its own single-export level; normalize renders the
+// displayed target plus each track's album offset in the worker.
+test("a dense 3-track browser-local album keeps each export level, normalizes to target plus offset and never changes a project", async ({ page, context }, info) => {
+  test.setTimeout(480_000);
   const requests = observeNetwork(context);
   const tracks = [{ title: "private dense album 1", peak: -1.3 }, { title: "private dense album 2", peak: -4 }, { title: "private dense album 3", peak: -8 }];
-  for (const track of tracks) {
-    await upload(page, denseFixture(6, track.peak), `${track.title.replaceAll(" ", "-")}.wav`);
+  const ids: string[] = [], singles: MeasuredAudioMetrics[] = [];
+  for (const [index, track] of tracks.entries()) {
+    ids.push(await upload(page, denseFixture(6, track.peak), `${track.title.replaceAll(" ", "-")}.wav`));
     await page.getByRole("tab", { name: "simple", exact: true }).click();
     await page.getByRole("button", { name: "Pop", exact: true }).click();
+    singles.push(await nativeLevel(info, await exportLocalWAV(page), `album-single-${String(index + 1)}`));
   }
+  const before = await albumProjects(page, ids);
   await page.goto("/albums");
   await page.getByRole("button", { name: "New album", exact: true }).click();
   await page.getByRole("link", { name: /Untitled sequence 1/u }).click();
   for (const track of tracks) await page.getByRole("button", { name: track.title, exact: true }).click();
-  await page.getByRole("button", { name: "Render album masters", exact: true }).click();
-  const levels: MeasuredAudioMetrics[] = [];
-  for (const [index, track] of tracks.entries()) {
-    const ready = page.getByRole("button", { name: `Download ${track.title}`, exact: true });
-    await expect(ready).toBeVisible({ timeout: 240_000 });
-    const downloading = page.waitForEvent("download");
-    await ready.click();
-    const path = await (await downloading).path();
-    if (!path) throw new Error("Missing browser-local album master");
-    const wav = await readFile(path);
-    expect(decode(wav).bits).toBe(24);
-    levels.push(await nativeLevel(info, wav, `album-${String(index + 1)}`));
-  }
-  await info.attach("dense-browser-album-levels", { body: JSON.stringify(levels, null, 2), contentType: "application/json" });
-  for (const level of levels) {
-    expect(Math.abs(level.integratedLufs + 14)).toBeLessThanOrEqual(0.2);
+  await expect(page.locator(".album-meta")).toContainText("Keeps each master’s level");
+  const kept = await renderLocalAlbum(page, info, tracks.map((track) => track.title), "album-keep");
+  expect(await albumProjects(page, ids)).toEqual(before);
+
+  await page.getByRole("button", { name: "Normalize to a target", exact: true }).click();
+  await page.getByRole("button", { name: "−16 LUFS", exact: true }).click();
+  await page.getByRole("slider", { name: "private dense album 2 album offset", exact: true }).fill("-2");
+  await expect(page.locator(".album-meta")).toContainText("Normalizes to −16 LUFS");
+  await expect(page.getByText("Renders at −18 LUFS", { exact: true })).toBeVisible();
+  const requested = [-16, -18, -16];
+  const normalized = await renderLocalAlbum(page, info, tracks.map((track) => track.title), "album-normalize");
+  await expect(page.locator(".album-meta")).toContainText("Normalizes to −16 LUFS");
+  expect(await albumProjects(page, ids)).toEqual(before);
+  await info.attach("dense-browser-album-levels", { body: JSON.stringify({ singles, kept, normalized, requested }, null, 2), contentType: "application/json" });
+  for (const [index, level] of kept.entries()) expect(Math.abs(level.integratedLufs - (singles.at(index)?.integratedLufs ?? Number.NaN))).toBeLessThanOrEqual(0.1);
+  for (const [index, level] of normalized.entries()) {
+    expect(Math.abs(level.integratedLufs - (requested.at(index) ?? Number.NaN))).toBeLessThanOrEqual(0.2);
     expect(level.truePeakDbtp).toBeLessThanOrEqual(-1);
   }
   await assertPrivate(info, requests);

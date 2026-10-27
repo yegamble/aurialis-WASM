@@ -1090,3 +1090,57 @@ Round E evidence:
 - Soak (heaviest chain, 48 kHz): 30 s three times, 0 ring underruns, 0 slow calls, maybeSlow 15–23%, mean load 0.40–0.46, drift −4, −4 and +915 ms (the host stall above); 150 s 0 underruns, 0 slow, mean load 0.44, drift −2 ms.
 - `unit` (Vitest): the context opens at the source rate, falls back when the rate is rejected, stays at the device rate above 96 kHz, and the Master page shows the note and conditions the summary; Set target loudness renders no audio and marks the project mastered; no offline preview control remains; the stall message.
 - Gates (local, 2026-10-27, load average 15–165 from concurrent agents): no Go changed. `tsc` and the browser-test `tsc`, ESLint, knip and cspell (396 files) pass; Vitest `--maxWorkers=2` 695 passed; `bash scripts/build.sh` (both WASM builds) and `pnpm run test:wasm` pass. Native Playwright (`--workers=1`) `live-playback`, `live-export` (pinned, unpinned, fallback and the 30 s soak), `matched-ab`, `transport`, `a11y-responsive`, `mastering-targets`, `deep-workstation`, `workflow-regressions`, `cancellation`, `shared-settings`, `deep-live-oracle` and `finite-playback`: 62 of 64 passed at load average about 150; the two failures (`deep-live-oracle` 48000→192000, whose Apply landed after its 1.4 s capture, and a `deep-workstation` download that hit the 60 s timeout) both passed on a rerun at load average 25. `pnpm run build:browser`, then browser `matched-ab`, `workflows` and `local-audio`: 17 passed.
+
+## V1-13 Exports hold the true-peak ceiling — 2026-10-27
+
+Chair ruling 2026-10-27 from V1-10 Round E QA, which also folds in the V1-10 Round E 44.1 kHz over. Branch `fix/v1-13-true-peak-ceiling`.
+
+**Finding.** On a near-ideal reconstruction, exports went over the −1 dBTP ceiling, and the meters missed it. The dense mix with every module on reached −0.31 dBTP at 48 kHz (Crisp 60%) while the 4× meter read −1.14. The cause was content between 0.45 fs and Nyquist. The limiter's 48-tap detector under-reads it (10% at 0.47 fs, 60% at 0.49 fs), and the 49-tap BS.1770-4 Annex 2 meter is worse. The documented "32× reference −1.00" used a 128-tap kernel that attenuates near Nyquist too.
+
+**Fix.**
+- While limiting, the algorithm 2 stage band-limits its input with an 8th-order elliptic low-pass (`nyquistGuard`, `internal/audio/dsp/truepeak.go`). It is flat to 0.45 fs (0 to +0.01 dB, unity at DC) and at least 70 dB down from 0.464 fs, which gives a 19.8 kHz passband at 44.1 kHz and 21.6 kHz at 48 kHz. The detector, 0.2 dB headroom and latency are unchanged. `Drain` clears the guard because the rendered file is silent after its last frame.
+- The true-peak meter (export report, Release Check, live meter) is a 4× Kaiser sinc with 48 taps per phase, plus parabolic refinement between grid points.
+- A longer detector kernel was rejected: being accurate to 0.49 fs needs about a thousand taps, and a fixed margin would have to be several dB.
+
+**Reference.** `internal/audio/truepeakref` (test-only) reconstructs the whole zero-extended signal by spectral shift on a 32× grid. It reads sines to 0.498 fs within 0.006 dB and agrees with a direct ±1024-tap Kaiser sinc within 0.01 dB. On the V1-10 head it reproduces QA's numbers: 48 kHz Crisp −0.311 dBTP with the meter at −1.139.
+
+**Results** (`wasm/dsp/true_peak_ceiling_test.go`, 2 s fixtures). "Over" is reference minus ceiling; the meter error is the lower of the export and live meter minus the reference.
+
+| Fixture, rate | Worst over, before | Worst meter error, before | Worst over, after | Worst meter error, after |
+| --- | --- | --- | --- | --- |
+| Dense, 44.1 kHz | +0.09 dB | −0.26 dB | −0.19 dB | −0.008 dB |
+| Dense, 48 kHz | +0.69 dB | −0.83 dB | −0.18 dB | −0.008 dB |
+| Dense, 96 kHz | +0.40 dB | −0.62 dB | −0.18 dB | −0.002 dB |
+| Torture, 44.1 kHz | +1.21 dB | −1.46 dB | −0.22 dB | −0.002 dB |
+| Torture, 48 kHz | +1.45 dB | −1.69 dB | −0.21 dB | −0.005 dB |
+| Torture, 96 kHz | +1.23 dB | −1.48 dB | −0.22 dB | −0.001 dB |
+| Converted 44.1→48 kHz, 16-bit | −0.39 dB | −0.19 dB | −0.22 dB | +0.002 dB |
+
+- **Chains.** Every module on (60% Crisp, 60% Tube, or 0.6% Warm, whose noise hats keep their near-Nyquist energy), plus a bare limiter driven 12 dB into a 10 ms release. Ceilings were −1, −1.5 and −2 dBTP.
+- **Torture mix.** Gated tones from 20 kHz to 0.498 fs, noise in the top 2% of the band, a hard-clipped 3 kHz tone, and bass.
+- **4 s QA repro** (dense, every module on, 44.1/48/96 kHz, Crisp/Tube/Warm 60%). Before: −0.31 to −0.85 dBTP. After: −1.17 to −1.21 dBTP, with the meter within 0.009 dB.
+- **V1-10's 44.1 kHz over.** A 16-bit 16 s dense loop with every module on (Tube) measured −0.27 dBTP before and −1.19 after. In the browser (`e2e/live-export.spec.ts`), the 44.1 kHz source now delivers −1.21 dBTP (was −0.85) and live reads −1.2. That spec now asserts the ceiling for 44.1 and 48 kHz sources.
+
+**Shifts.** The guard removes content above 0.45 fs from limited exports.
+- Deep profile predictions (6 s): Δ LUFS moved by at most 0.02 LU, true peak by at most 0.05 dB and limiter reduction by at most 0.08 dB. No Level match changed ([research table](mastering-controls-research.md#deep-proposal-baselines) re-measured).
+- `TestLevelMatchReportsTheLimitingCap`: the clipped-square fixture now peaks at 0.75. At 0.8 the proposal alone needed 2.25 dB of reduction.
+- Below the ceiling, v2 now equals v1 through the guard (was bit-identical to v1).
+- Live == export bit-identity holds: `TestLivePlaybackRendersTheExport` still shows a residual of −∞.
+
+**CPU.** Measured on the M2 with other agents holding load average 10–200.
+- Native min-of-15 per stereo frame: the guard costs 12 ns, the new meter 167 ns (old meter 71 ns) and the detector 340 ns. The added 108 ns is about 0.005 load at 48 kHz natively.
+- V1-10 measured the detector at 0.04–0.06 load in V8, about 3× native. On that scale V1-13 adds about 0.016, which puts QA's 0.140–0.179 baseline near 0.16–0.20, under the 1/3 budget.
+- Interleaved V8 runs of `bench-live.mjs` (algorithm 2, heaviest chain) could not separate the change from host noise. At 48 kHz the base read 0.25–0.44 mean load and the new build 0.20–0.42 at the same time.
+
+**Evidence and gates** (local, 2026-10-27).
+- `unit`: `truepeakref_test.go`, `meter_truepeak_test.go`, `truepeak_test.go`, `resample_test.go`, `true_peak_ceiling_test.go`.
+- Under `-race`, the ceiling matrix runs at 48 kHz only. A new non-race CI step runs every rate.
+- FFmpeg meter comparison (`pnpm run test:meters`): 15 fixtures, peak error 0.0051 dB (was 0.0312).
+- `pnpm run test:wasm`: offline export parity, 7 renders byte-identical.
+- Playwright `mastering-targets`, `live-export` and `release-artifacts`: 16/16 passed (`--workers=1`).
+
+**Open.**
+- The meter bound covers what the export limiter emits. Unprocessed content up to 0.498 fs (an export with the limiter off, or the torture mix itself) still reads 0.17 dB low at 44.1/48 kHz and 0.62 dB low at 96 kHz.
+- A clean V8 CPU number on an idle host is still to be recorded.
+
+Status: **implemented — open, awaiting merge** (`fix/v1-13-true-peak-ceiling`).

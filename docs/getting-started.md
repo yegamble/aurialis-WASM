@@ -103,7 +103,7 @@ Deep currently uses algorithm 1, generic Optical compression and sample-peak lim
 
 ## Review the WAV you will hand off
 
-Open **Release check** from the tool links below your project's title on its Master view. In **Tools**, choose the project in **Track** first; it starts on your newest import.
+Open **Release check** from the tool links below your project's title on its Master view. In **Tools**, choose the project in **Track** first; it starts on your newest import and remembers your choice while the tab stays open.
 
 1. Choose **Spotify**, **Apple Music**, **YouTube**, **SoundCloud**, **CD** or **Podcast**, then choose 16-bit PCM, 24-bit PCM or 32-bit float. Profiles describe different delivery scopes; read the linked source and the explanation beside each check.
 2. Select **Run release check**. Aurialis verifies the stored source, renders one WAV, then measures that encoded file, including quantization and dither. With Deep attached, it uses the acknowledged applied script; draft edits are excluded. **Cancel release check** stops the review without accepting a late result.

@@ -9,6 +9,8 @@ PE-3 found that tools opened for the newest import: after importing A then B, A'
 
 Evidence (local, 2026-10-26, frontend): `unit` Vitest `TrackTools.test.tsx` (Master links carry A's id; browser build states availability without a Split link; chooser defaults to the newest import and points every card at the chosen track; empty library). `playwright-a11y-responsive` shared cases `e2e/track-tools-cases.ts`, native and browser: import A then B, open each tool for A from A's Master view with Tab and Enter and check the page names A; choose A in Tools and open Release check by keyboard; 44 px targets, no overflow and axe WCAG 2.2 AA clean at 320 and 1440 px. The same cases failed against the pre-change UI.
 
+Round E (QA + Devil's Advocate, 2026-10-26): VERIFIED with no BLOCKER or REQUIRED findings. Long, right-to-left and emoji titles do not overflow at 320–1024 px; tool links are ≥ 44 px; the Split link sends A's audio; the browser build renders no `/split` link. Follow-up fixes: the Tools chooser remembers the chosen track in `sessionStorage` for the tab (falling back to the newest import when the track was deleted or storage is blocked), and README names the Master tool links.
+
 **Status:** implemented — open, awaiting merge (`fix/v1-05-track-tools`).
 
 ## Export deadline budget (V1-07) — 2026-10-26

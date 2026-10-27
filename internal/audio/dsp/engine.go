@@ -120,31 +120,33 @@ type RepairParams struct {
 // Params holds the complete, orthogonal parameter state for the mastering chain.
 type Params struct {
 	// Omitted/zero retains the original algorithm. Version 2 is not implemented.
-	AlgorithmVersion uint32                 `json:"algorithmVersion,omitempty"`
-	Bypass           bool                   `json:"bypass"`
-	ABOriginal       bool                   `json:"abOriginal"`
-	LoudnessMatchAB  bool                   `json:"loudnessMatchAb"`
-	InputGainDB      float64                `json:"inputGainDb"`
-	EQEnabled        bool                   `json:"eqEnabled"`
-	Bands            [NumEQBands]BandParams `json:"bands"`
-	Compressor       CompressorParams       `json:"compressor"`
-	Saturation       SaturationParams       `json:"saturation"`
-	Stereo           StereoParams           `json:"stereo"`
-	Limiter          LimiterParams          `json:"limiter"`
-	Repair           RepairParams           `json:"repair"`
-	DeHarsh          DeHarshParams          `json:"deHarsh"`
-	Multiband        MultibandParams        `json:"multiband"`
-	DitherBits       int                    `json:"ditherBits"`
+	AlgorithmVersion uint32 `json:"algorithmVersion,omitempty"`
+	Bypass           bool   `json:"bypass"`
+	ABOriginal       bool   `json:"abOriginal"`
+	// RetiredLoudnessMatchAB is accepted only as false, so settings and scripts
+	// saved before V1-11 still decode. The engine has no level matching: the
+	// live transport applies one static, attenuate-only monitor gain instead.
+	RetiredLoudnessMatchAB bool                   `json:"loudnessMatchAb,omitempty"`
+	InputGainDB            float64                `json:"inputGainDb"`
+	EQEnabled              bool                   `json:"eqEnabled"`
+	Bands                  [NumEQBands]BandParams `json:"bands"`
+	Compressor             CompressorParams       `json:"compressor"`
+	Saturation             SaturationParams       `json:"saturation"`
+	Stereo                 StereoParams           `json:"stereo"`
+	Limiter                LimiterParams          `json:"limiter"`
+	Repair                 RepairParams           `json:"repair"`
+	DeHarsh                DeHarshParams          `json:"deHarsh"`
+	Multiband              MultibandParams        `json:"multiband"`
+	DitherBits             int                    `json:"ditherBits"`
 }
 
 // DefaultParams returns a neutral, bit-transparent default parameter set.
 func DefaultParams() Params {
 	return Params{
-		Bypass:          false,
-		ABOriginal:      false,
-		LoudnessMatchAB: false,
-		InputGainDB:     0.0,
-		EQEnabled:       true,
+		Bypass:      false,
+		ABOriginal:  false,
+		InputGainDB: 0.0,
+		EQEnabled:   true,
 		Bands: [NumEQBands]BandParams{
 			{FreqHz: 60.0, GainDB: 0.0, Q: 0.707, Type: FilterLowShelf, Enabled: true},
 			{FreqHz: 250.0, GainDB: 0.0, Q: 1.0, Type: FilterPeaking, Enabled: true},
@@ -265,11 +267,6 @@ type Engine struct {
 	lastLimGRDB float64
 	truePeak    truePeakLimiter
 
-	// Loudness-matched A/B tracking
-	inEnergySum  float64
-	outEnergySum float64
-	abGainLin    float64
-
 	// Deterministic xorshift64* state for TPDF dither
 	prngState uint64
 
@@ -286,7 +283,6 @@ func NewEngine(sampleRate float64) *Engine {
 		sampleRate: sampleRate,
 		params:     DefaultParams(),
 		limEnvLin:  1.0,
-		abGainLin:  1.0,
 		prngState:  0x9E3779B97F4A7C15,
 		truePeak:   newTruePeakLimiter(sampleRate),
 	}
@@ -394,9 +390,6 @@ func (e *Engine) Reset() {
 	e.limPrevR = [3]float64{}
 	e.lastLimGRDB = 0.0
 	e.truePeak.reset()
-	e.inEnergySum = 0.0
-	e.outEnergySum = 0.0
-	e.abGainLin = 1.0
 	e.prngState = 0x9E3779B97F4A7C15
 	e.grStats = grStatsState{}
 }
@@ -698,7 +691,7 @@ func (e *Engine) processBlock(inL, inR, outL, outR []float32, lanes *automationL
 		return
 	}
 
-	// Fast bit-identical bypass when Bypass is enabled or all stages are neutral (and not in loudness-matched A mode).
+	// Fast bit-identical bypass when Bypass is enabled or all stages are neutral (and not monitoring B Original).
 	laneActive := lanes != nil && (len(lanes.gain) > 0 || (e.params.Stereo.Enabled && len(lanes.width) > 0))
 	if e.params.Bypass || (!laneActive && e.isChainNeutral() && !e.params.ABOriginal) {
 		if e.params.AlgorithmVersion == TruePeakAlgorithmVersion {
@@ -821,34 +814,12 @@ func (e *Engine) processBlock(inL, inR, outL, outR []float32, lanes *automationL
 	}
 }
 
-// finishSample applies loudness-matched monitoring, dither, and the final
+// finishSample selects B Original, applies dither, and reapplies the final
 // linked sample ceiling after the limiter stage.
 func (e *Engine) finishSample(l, r, rawL, rawR float64, limActive bool) (float32, float32) {
-	// Track input/output energy for Loudness-Matched A/B monitoring
-	e.inEnergySum = 0.9995*e.inEnergySum + 0.0005*(rawL*rawL+rawR*rawR)
-	e.outEnergySum = 0.9995*e.outEnergySum + 0.0005*(l*l+r*r)
-	if e.inEnergySum > 1e-9 && e.outEnergySum > 1e-9 {
-		targetAB := math.Sqrt(e.outEnergySum / e.inEnergySum)
-		if targetAB > 4.0 {
-			targetAB = 4.0
-		} else if targetAB < 0.25 {
-			targetAB = 0.25
-		}
-		e.abGainLin = 0.995*e.abGainLin + 0.005*targetAB
-	}
-
 	if e.params.ABOriginal {
-		if e.params.LoudnessMatchAB {
-			l = rawL * e.abGainLin
-			r = rawR * e.abGainLin
-		} else {
-			l = rawL
-			r = rawR
-		}
-	} else if e.params.LoudnessMatchAB && e.abGainLin > 1e-6 {
-		// Normalize Mastered B back to original reference loudness when Level Match is active on B
-		l /= e.abGainLin
-		r /= e.abGainLin
+		l = rawL
+		r = rawR
 	}
 
 	// Stage 7: TPDF Dither for 16-bit or 24-bit Quantization
@@ -857,9 +828,9 @@ func (e *Engine) finishSample(l, r, rawL, rawR float64, limActive bool) (float32
 		r = e.applyTPDFDither(r, e.params.DitherBits)
 	}
 
-	// Monitor level matching and dither occur after the main limiter. Reapply
-	// a linked sample ceiling to mastered B so those stages cannot exceed it.
-	// Original A and explicit bypass retain the unprocessed source.
+	// Dither occurs after the main limiter. Reapply a linked sample ceiling to
+	// the mastered output so dither cannot exceed it.
+	// B Original and explicit bypass retain the unprocessed source.
 	if limActive && !e.params.ABOriginal {
 		ceiling := e.stages.limiterSampleCeiling
 		peak := math.Max(math.Abs(l), math.Abs(r))

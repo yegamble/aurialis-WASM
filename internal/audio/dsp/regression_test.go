@@ -264,12 +264,11 @@ func TestShelfQChangesOnlyTheRequestedBand(t *testing.T) {
 	}
 }
 
-func TestLimiterBoundsAfterLevelMatchingAndDither(t *testing.T) {
+func TestLimiterBoundsAfterDither(t *testing.T) {
 	left, right := generateToneStereo(48000, 1000, 1.2, 0.2, 0.2)
 	for _, bits := range []int{0, 16, 24} {
 		p := DefaultParams()
 		p.InputGainDB = -12
-		p.LoudnessMatchAB = true
 		p.Limiter.Enabled = true
 		p.Limiter.CeilingDBTP = -6
 		p.DitherBits = bits
@@ -277,7 +276,7 @@ func TestLimiterBoundsAfterLevelMatchingAndDither(t *testing.T) {
 		ceiling := math.Pow(10, -6.0/20)
 		for i := range outL {
 			if math.Abs(float64(outL[i])) > ceiling || math.Abs(float64(outR[i])) > ceiling {
-				t.Fatalf("levelmatch/dither exceeded ceiling bits=%d frame=%d", bits, i)
+				t.Fatalf("dither exceeded ceiling bits=%d frame=%d", bits, i)
 			}
 		}
 	}

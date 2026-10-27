@@ -33,6 +33,13 @@ describe("source-bound Deep DTO and jobs", () => {
     expect(band?.advanced.multiband.bands[1]).toEqual({ ...defaults.multiband.bands[1], thresholdDb: -30 });
     expect(initial.tracks[0]?.advanced).toBe(advanced);
   });
+  it("reads scripts saved before V1-11 by dropping the retired engine loudness match only when false", () => {
+    const authored = script();
+    expect(Object.hasOwn(authored.chainParams, "loudnessMatchAb")).toBe(false);
+    const legacy = { ...authored, chainParams: { ...authored.chainParams, loudnessMatchAb: false } };
+    expect(readScriptV2(legacy, identity)).toEqual(authored);
+    expect(() => readScriptV2({ ...authored, chainParams: { ...authored.chainParams, loudnessMatchAb: true } }, identity)).toThrow("script");
+  });
   it("retains the explicit baseline and authored additive moves without evaluating them", () => {
     const authored = script(); const decoded = readScriptV2(authored, identity);
     expect(decoded).toEqual(authored); expect(decoded.moves[0]?.operation).toBe("add"); expect(decoded.chainParams.inputGainDb).toBe(0);

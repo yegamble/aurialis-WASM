@@ -182,11 +182,11 @@ func TestStageLifecyclePreservesUnrelatedHistory(t *testing.T) {
 	if !reflect.DeepEqual(*e, unchanged) {
 		t.Fatal("no-op or invalid update changed history")
 	}
-	// Global bypass discards signal history without restarting monitor/PRNG or M/S smoothing.
+	// Global bypass discards signal history without restarting dither PRNG or M/S smoothing.
 	next.Bypass = true
 	e.SetParams(next)
-	if e.prngState != before.prngState || e.inEnergySum != before.inEnergySum || e.outEnergySum != before.outEnergySum || e.abGainLin != before.abGainLin || e.extended.currentMid != before.extended.currentMid || e.extended.currentSide != before.extended.currentSide {
-		t.Fatal("global bypass reset monitoring, dither or M/S smoothing")
+	if e.prngState != before.prngState || e.extended.currentMid != before.extended.currentMid || e.extended.currentSide != before.extended.currentSide {
+		t.Fatal("global bypass reset dither or M/S smoothing")
 	}
 	// Original monitoring still evaluates the wet chain; selecting it must not reset histories.
 	original := unchanged

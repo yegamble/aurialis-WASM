@@ -86,7 +86,9 @@ function typedShape<T>(template: T, value: unknown): T {
 }
 function params(value: unknown): ScriptParams {
   const record = object(value);
-  const { algorithmVersion, ...rest } = record;
+  // Scripts saved before V1-11 carry the retired engine loudness match as false.
+  const { algorithmVersion, loudnessMatchAb, ...rest } = record;
+  if (loudnessMatchAb !== undefined && loudnessMatchAb !== false) throw failure();
   const parsed = typedShape(engineParams(createDefaultAdvancedParams()), rest);
   for (const band of parsed.bands) if (!["high_pass", "low_shelf", "peaking", "high_shelf"].includes(band.type)) throw failure();
   if (!["optical", "vari_mu", "fet", "vca"].includes(parsed.compressor.topology) || !["Warm", "Thick", "Crisp", "Clean", "Tube", "Tape", "Transformer"].includes(parsed.saturation.character)) throw failure();

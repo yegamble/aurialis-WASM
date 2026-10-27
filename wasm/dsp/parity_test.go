@@ -45,7 +45,6 @@ func TestWriteNativeParityFixture(t *testing.T) {
 				p.Bypass = mode == "bypass"
 			}
 			if mode == "monitor" {
-				p.LoudnessMatchAB = true
 				p.InputGainDB = -12
 				p.Limiter.CeilingDBTP = -12
 				p.DitherBits = 16

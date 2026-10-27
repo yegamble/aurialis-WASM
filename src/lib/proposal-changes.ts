@@ -8,7 +8,7 @@ const eqBands = ["Sub", "Low", "Mid", "Presence", "Air"];
 const multibandBands = ["low", "mid", "high"];
 // Engine flags that are not static settings a proposal can change.
 // limiter.targetLufs is metadata that never changes the audio.
-const ignored = new Set(["algorithmVersion", "bypass", "abOriginal", "loudnessMatchAb", "ditherBits", "limiter.truePeak", "limiter.targetLufs"]);
+const ignored = new Set(["algorithmVersion", "bypass", "abOriginal", "ditherBits", "limiter.truePeak", "limiter.targetLufs"]);
 const fields: Record<string, [string, string]> = {
   inputGainDb: ["Input gain", "dB"], eqEnabled: ["EQ", ""],
   gainDb: ["gain", "dB"], freqHz: ["frequency", "Hz"], q: ["Q", ""], type: ["shape", ""], enabled: ["", ""],

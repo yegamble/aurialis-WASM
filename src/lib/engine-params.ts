@@ -8,7 +8,6 @@ export function engineParams(advanced: AdvancedParams) {
   return {
     bypass: false,
     abOriginal: false,
-    loudnessMatchAb: false,
     inputGainDb: advanced.input,
     eqEnabled: advanced.eqEnabled,
     bands: advanced.eqBands.map((band) => ({

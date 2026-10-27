@@ -55,7 +55,6 @@
         "algorithmVersion": 1,
         "bypass": false,
         "abOriginal": false,
-        "loudnessMatchAb": false,
         "inputGainDb": 0,
         "eqEnabled": true,
         "bands": [
@@ -237,7 +236,6 @@
         "algorithmVersion": 2,
         "bypass": false,
         "abOriginal": false,
-        "loudnessMatchAb": false,
         "inputGainDb": 0,
         "eqEnabled": true,
         "bands": [
@@ -422,7 +420,6 @@
         "algorithmVersion": 1,
         "bypass": false,
         "abOriginal": false,
-        "loudnessMatchAb": false,
         "inputGainDb": 0,
         "eqEnabled": true,
         "bands": [
@@ -604,7 +601,6 @@
         "algorithmVersion": 2,
         "bypass": false,
         "abOriginal": false,
-        "loudnessMatchAb": false,
         "inputGainDb": 0,
         "eqEnabled": true,
         "bands": [

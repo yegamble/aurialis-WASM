@@ -139,7 +139,7 @@ func TestTruePeakStreamingMatchesRenderWithDrain(t *testing.T) {
 		fixture := truePeakFixtures(rate)["noise"]
 		p := truePeakParams(-1)
 		p.Compressor.ThresholdDB, p.Compressor.Ratio = -12, 3
-		p.LoudnessMatchAB, p.DitherBits = true, 24
+		p.DitherBits = 24
 		wantL, wantR, _, err := RenderBufferContext(context.Background(), fixture[0], fixture[1], rate, p)
 		if err != nil {
 			t.Fatal(err)

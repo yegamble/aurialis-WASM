@@ -31,7 +31,7 @@ func TestLiveControlsRepresentEveryParameter(t *testing.T) {
 		t.Fatal("neutral controls do not represent canonical defaults")
 	}
 	controls = liveControlVector{
-		1, 1, 1, 3, 0,
+		1, 1, 0, 3, 0,
 		40, -2, .5, 0, 0,
 		300, 2, .8, 1, 1,
 		1500, -3, 2, 2, 0,
@@ -45,7 +45,7 @@ func TestLiveControlsRepresentEveryParameter(t *testing.T) {
 		24,
 	}
 	want := dsp.Params{
-		Bypass: true, ABOriginal: true, LoudnessMatchAB: true, InputGainDB: 3, EQEnabled: false,
+		Bypass: true, ABOriginal: true, InputGainDB: 3, EQEnabled: false,
 		Bands: [5]dsp.BandParams{
 			{FreqHz: 40, GainDB: -2, Q: .5, Type: dsp.FilterHighPass, Enabled: false},
 			{FreqHz: 300, GainDB: 2, Q: .8, Type: dsp.FilterLowShelf, Enabled: true},
@@ -112,7 +112,7 @@ func TestLiveControlsRejectInvalidValuesWithoutMutation(t *testing.T) {
 		index int
 		value float64
 	}{
-		{3, 37}, {5, 9}, {6, 25}, {7, .09}, {31, -81}, {32, .5},
+		{2, 1}, {3, 37}, {5, 9}, {6, 25}, {7, .09}, {31, -81}, {32, .5},
 		{33, 0}, {34, 4}, {35, 25}, {36, 37}, {37, 1001}, {40, 101},
 		{41, 7}, {43, 201}, {45, 19}, {47, 1}, {48, -4}, {49, 9},
 		{52, 25}, {53, -25}, {55, .5}, {55, 8}, {55, 32},

@@ -21,7 +21,8 @@ const (
 	// guarded input (nyquistGuard): the 8-phase grid can miss a 0.45 fs peak
 	// by 0.14 dB, and gain changes inside the 48-sample support move the
 	// reconstruction a little. Against the long-sinc reference
-	// (internal/audio/truepeakref) limited exports sit 0.18-0.23 dB under the ceiling.
+	// (internal/audio/truepeakref) limited exports sit at least 0.13 dB under
+	// the ceiling (QA worst 0.136 dB across 360 adversarial renders).
 	truePeakHeadroom = 0.977237221 // 10^(-0.2/20)
 )
 

@@ -129,8 +129,8 @@ func TestExportsHoldTheCeilingAgainstTheLongSincReference(t *testing.T) {
 	}
 	for _, c := range cases {
 		// The race detector slows these renders and the reference about 8x; it
-		// checks one rate, and CI's non-race step runs the whole matrix.
-		if raceEnabled && c.rate != 48000 {
+		// checks four 48 kHz corners, and CI's non-race step runs the whole matrix.
+		if raceEnabled && (c.rate != 48000 || !raceCeilingCase(c.fixture, c.chain, c.ceiling)) {
 			continue
 		}
 		t.Run(fmt.Sprintf("%s/%s/%.0f/%.1f", c.fixture, c.chain, c.rate, c.ceiling), func(t *testing.T) {
@@ -140,6 +140,19 @@ func TestExportsHoldTheCeilingAgainstTheLongSincReference(t *testing.T) {
 			checkCeiling(t, outL, outR, c.rate, c.ceiling, metrics)
 		})
 	}
+}
+
+// raceCeilingCase keeps four corners of the 48 kHz matrix under the race
+// detector: every chain and both fixtures once, the -2 dBTP ceiling once.
+func raceCeilingCase(fixture, chain string, ceiling float64) bool {
+	switch {
+	case fixture == "dense" && chain == "Crisp" && ceiling == -1,
+		fixture == "dense" && chain == "light-Warm",
+		fixture == "torture" && chain == "Tube",
+		fixture == "torture" && chain == "hot-limiter" && ceiling == -2:
+		return true
+	}
+	return false
 }
 
 // A converted export is limited again at the delivery rate after the

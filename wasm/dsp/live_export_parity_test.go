@@ -271,7 +271,11 @@ func TestLivePlaybackOfALoudAbruptEndRendersTheExport(t *testing.T) {
 	p.AlgorithmVersion, p.InputGainDB = dsp.TruePeakAlgorithmVersion, 4
 	p.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: -1, TargetLUFS: -9, ReleaseMS: 80, TruePeak: true}
 	every := heaviestLiveParams(dsp.TruePeakAlgorithmVersion, dsp.SatTube)
-	for _, rate := range []float64{44100, 48000} {
+	rates := []float64{44100, 48000}
+	if raceEnabled {
+		rates = []float64{48000} // the non-race run checks both rates
+	}
+	for _, rate := range rates {
 		// An end inside a quantum and one on its boundary.
 		for _, frames := range []int{int(rate/4) + 37, 128 * 90} {
 			left, right := loudAbruptEnd(rate, frames)

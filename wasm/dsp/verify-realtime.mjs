@@ -50,7 +50,8 @@ async function createKernel(fixture, abi = 1) {
   assert.equal(wasm.aurialis_control_count(2), 82);
   for (const unknown of [0, 3, 0xffffffff]) assert.equal(wasm.aurialis_control_count(unknown), 0);
   assert.equal(wasm.aurialis_algorithm_supported(1), 1);
-  for (const unknown of [0, 2, 3, 0xffffffff]) assert.equal(wasm.aurialis_algorithm_supported(unknown), 0);
+  assert.equal(wasm.aurialis_algorithm_supported(2), 1);
+  for (const unknown of [0, 3, 0xffffffff]) assert.equal(wasm.aurialis_algorithm_supported(unknown), 0);
   assert.equal(wasm.aurialis_latency_frames(), 0);
   // The compiled loudness snapshot starts empty: no readings, no peak, no reduction.
   assert.equal(wasm.aurialis_meter_snapshot(), 7);
@@ -244,7 +245,7 @@ assert.equal(versioned.wasm.aurialis_live_reset(), 1);
 versioned.render(Float32Array.from(active.left.slice(0, 128)), Float32Array.from(active.right.slice(0, 128)));
 const acceptedControls = versioned.controls().slice();
 for (const count of [0, 81, 83, 0xffffffff]) assert.equal(versioned.wasm.aurialis_set_controls_v2(count), 0);
-for (const algorithm of [0, 2, -1, 1.5, NaN, Infinity]) {
+for (const algorithm of [0, 3, -1, 1.5, NaN, Infinity]) {
   versioned.controls()[81] = algorithm;
   assert.equal(versioned.wasm.aurialis_set_controls_v2(82), 0);
 }
@@ -254,4 +255,24 @@ for (let frame = 0; frame < 128; frame++) {
   compare(afterInvalid[2][frame], active.outputLeft[128 + frame], "invalid ABI2 settings advanced left history");
   compare(afterInvalid[3][frame], active.outputRight[128 + frame], "invalid ABI2 settings advanced right history");
 }
-console.log(`wasm-realtime: ${fixtures.length} frozen native fixtures also matched exactly through ABI2/algorithm1; capability, length/version rejection and zero-frame drain passed`);
+// V1-10: live playback runs the export algorithm. The compiled reactor must
+// report the lookahead latency the worklet compensates, play a neutral chain
+// bit-exactly delayed by it, and drain exactly that tail.
+for (const rate of [44100, 48000, 96000]) {
+  const kernel = await createKernel({ ...neutral, rate }, 2);
+  kernel.controls()[81] = 2;
+  assert.equal(kernel.wasm.aurialis_set_controls_v2(82), 1);
+  assert.equal(kernel.wasm.aurialis_live_reset(), 1);
+  const latency = kernel.wasm.aurialis_latency_frames();
+  assert.equal(latency, Math.round(rate * 0.0015) + 46, `${rate} Hz export latency`);
+  const ramp = index => Math.fround(((index % 37) - 18) / 64);
+  const heard = [];
+  for (let block = 0; block < 4; block++) {
+    const input = Float32Array.from({ length: 128 }, (_, frame) => ramp(block * 128 + frame));
+    heard.push(...kernel.render(input, input)[2]);
+  }
+  for (let index = 0; index < heard.length; index++)
+    assert.equal(heard[index], index < latency ? 0 : ramp(index - latency), `${rate} Hz delayed passthrough frame ${index}`);
+  assert.equal(kernel.wasm.aurialis_live_drain(), Math.min(latency, 128));
+}
+console.log(`wasm-realtime: ${fixtures.length} frozen native fixtures also matched exactly through ABI2/algorithm1; capability, length/version rejection and zero-frame drain passed; ABI2/algorithm2 latency, delayed passthrough and drain passed at 44.1/48/96 kHz`);

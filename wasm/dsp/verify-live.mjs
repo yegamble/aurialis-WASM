@@ -24,7 +24,7 @@ assert.equal(wasm.aurialis_control_count(1), 81);
 assert.equal(wasm.aurialis_control_count(2), 82);
 assert.equal(wasm.aurialis_control_count(3), 0);
 assert.equal(wasm.aurialis_algorithm_supported(1), 1);
-assert.equal(wasm.aurialis_algorithm_supported(2), 0);
+assert.equal(wasm.aurialis_algorithm_supported(2), 1);
 assert.equal(wasm.aurialis_latency_frames(), 0);
 assert.equal(wasm.aurialis_live_drain(), 0);
 const pointers = [0, 1, 2, 3].map(channel => wasm.aurialis_live_buffer(channel) >>> 0);

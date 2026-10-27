@@ -1445,6 +1445,7 @@ function AdvancedControls({
         </span>
         Enable limiter
       </label>
+      <p className="disclosure">While on, audio above 0.45 × the sample rate (19.85 kHz at 44.1 kHz) is filtered out so true peaks stay under the ceiling.</p>
       <SliderField
         label="Limiter ceiling"
         value={adv.limiter.ceiling}

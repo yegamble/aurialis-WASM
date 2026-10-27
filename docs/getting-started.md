@@ -48,7 +48,7 @@ Select **Export**, choose a bit depth, a sample rate and, for 16/24-bit PCM, dit
 | **Sample rate** | The source rate (marked *source*) keeps every frame. 44.1, 48, 88.2 or 96 kHz converts after mastering and keeps the duration. With the limiter on, the converted audio is limited again to the true-peak ceiling at the new rate. A converted export may not exceed 33,554,432 frames (about 5:49 at 96 kHz). Rates that would exceed it, or that the source rate cannot convert to, are disabled and the dialog says why. |
 | **Dither** | **TPDF** (default) or **Off** for 16/24-bit PCM. Turn it off only for material that is already dithered. 32-bit Float is never dithered. |
 
-After export, the status line shows the delivered true peak at the delivery rate. It comes from a 4× meter that can read slightly high at 88.2/96 kHz, so it is a guide, not a certification. Integer exports clip samples outside ±1; enable the limiter or reduce gain before exporting a signal that exceeds that range.
+After export, the status line shows the delivered true peak at the delivery rate. It is measured on a near-ideal reconstruction and reads within 0.1 dB, but it is a guide, not a certification. Integer exports clip samples outside ±1; enable the limiter or reduce gain before exporting a signal that exceeds that range.
 
 Export renders the current processing settings from the reconstructed source. With Deep attached, the acknowledged applied script is authoritative; draft edits and pending revisions are excluded. Listening to **B Original** or changing monitor volume does not change those export settings. The download is a separate file; keep it and your original source in your own backup.
 
@@ -193,7 +193,7 @@ For a bug report, include your browser and operating system, the action that fai
 | **EQ / equalizer** | Controls that raise or lower parts of the frequency range, such as bass or treble. |
 | **Compression** | Reduces level differences once the signal crosses a threshold. |
 | **Saturation** | Adds nonlinear coloration and harmonics. Aurialis's named characters are original algorithms, not verified hardware replicas. |
-| **Limiter / ceiling** | Restricts peaks toward a chosen maximum. Live playback and export use a lookahead limiter that holds the reconstructed (inter-sample) peak under the ceiling; its meter is a guide, not a certification. |
+| **Limiter / ceiling** | Restricts peaks toward a chosen maximum. Live playback and export use a lookahead limiter that holds the reconstructed (inter-sample) peak under the ceiling. With the limiter on, the audio is band-limited, flat to 0.45 × the sample rate (19.85 kHz at 44.1 kHz), so true peaks stay under the ceiling; the limiter is therefore not null-transparent even at unity gain. Hard-clipped sources now get about 0.25 dB or more extra limiting than before, because earlier exports let their true peaks over the ceiling. The live true-peak meter is for display and can read low on unlimited content near the top of the band; the export report and Release Check read within 0.1 dB. |
 | **LUFS** | A measure of perceived loudness over time. A less negative reading generally means a louder signal. |
 | **dBFS** | Level relative to digital full scale. For integer PCM, 0 dBFS is the maximum sample level. |
 | **Sample rate** | Samples per second; 48 kHz means 48,000 samples per second per channel. |

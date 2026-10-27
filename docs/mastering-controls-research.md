@@ -47,17 +47,17 @@ Deep's measured proposal starts from one of five baselines (`internal/mastering/
 
 EQ columns are Sub / Low 250 Hz / Mid / Presence 4 kHz / Air 12 kHz shelf in dB; Sub is a 60 Hz shelf unless noted and Mid is 1 kHz unless noted. Measured signatures: Warm Analog +1.1 dB at 250 Hz and the darkest top (−0.8 dB at 12 kHz); Punchy Commercial +1.2 dB at 4 kHz; Dynamic & Open +1.2 dB at 12 kHz; Vocal Forward +1.25 dB at 2 kHz; Bass Heavy +1.5 dB at 40 Hz, +1.16 dB at 120 Hz and −0.47 dB at 250 Hz. Each exceeds every other profile by at least 0.5 dB at its signature frequency.
 
-**Level match.** The baseline adds no hidden loudness: no input gain and no makeup of its own. After the proposal is rendered through the export limiter, the measured loudness shortfall becomes one explicit **Level match** gain, set as compressor makeup, rounded to 0.1 dB and capped at the headroom between the predicted true peak and the ceiling (less 0.1 dB) and at +12 dB. The proposal is then rendered again; that second render is the prediction. Where the ceiling limits the match, the loudness-drop finding names the gain needed and the gain the ceiling allowed. Measured on two synthetic 6 s, 48 kHz fixtures (`TestDeepProfilesPredictExportLevelsAndExplainLargeChanges`):
+**Level match.** The baseline adds no hidden loudness: no input gain and no makeup of its own. After the proposal is rendered through the export limiter, the measured loudness shortfall becomes one explicit **Level match** gain, set as compressor makeup in 0.1 dB steps. Round E ruling: the Level match may push into the export limiter, but a positive gain never makes its predicted peak reduction exceed 2 dB (half the 4 dB heavy-limiting finding) and never exceeds +12 dB; the −1 dBTP ceiling is held by the limiter itself. Up to three more export renders (a secant step that learns how much loudness each dB buys once the limiter engages) stop within 0.1 LU of the source or at the cap, and the last render of the chosen gain is the prediction. When the 2 dB cap leaves the proposal more than 1 LU quieter, the loudness-drop finding says that holding the source loudness would need more than 2 dB of limiting and to raise the level by hand only if the extra limiting sounds clean. Measured on two synthetic 6 s, 48 kHz fixtures (`TestDeepProfilesPredictExportLevelsAndExplainLargeChanges`):
 
-| Profile | Dynamic: Δ LUFS / Δ crest / TP / avg GR / Level match | Dense: Δ LUFS / Δ crest / TP / avg GR / Level match |
+| Profile | Dynamic: Δ LUFS / Δ crest / TP / avg GR / limiter GR / Level match | Dense: Δ LUFS / Δ crest / TP / avg GR / limiter GR / Level match |
 | --- | --- | --- |
-| Warm Analog | −0.04 LU / +0.27 dB / −10.13 dBTP / 1.50 dB / +1.2 dB | −1.18 / +0.72 / −1.28 / 1.48 / +0.1 (ceiling) |
-| Punchy Commercial | −0.02 / +0.36 / −9.79 / 1.45 / +2.1 | −1.56 / +0.88 / −1.26 / 1.50 / +0.6 (ceiling) |
-| Dynamic & Open | −0.03 / +0.25 / −9.93 / 0.75 / +1.1 | −1.02 / +0.38 / −1.23 / 0.74 / +0.1 (ceiling) |
-| Vocal Forward | −0.01 / +0.40 / −9.84 / 1.49 / +2.3 | −1.68 / +1.11 / −1.26 / 1.47 / +0.6 (ceiling) |
-| Bass Heavy | +0.02 / +0.33 / −9.63 / 1.50 / +1.6 | −1.53 / +0.73 / −1.24 / 1.51 / +0.1 (ceiling) |
+| Warm Analog | −0.04 LU / +0.27 dB / −10.13 dBTP / 1.50 dB / 0.00 dB / +1.2 dB | −0.02 / −0.37 / −1.22 / 1.48 / 1.84 / +1.5 |
+| Punchy Commercial | −0.02 / +0.36 / −9.79 / 1.45 / 0.00 / +2.1 | −0.09 / −0.54 / −1.23 / 1.50 / 1.91 / +2.4 |
+| Dynamic & Open | −0.03 / +0.25 / −9.93 / 0.75 / 0.00 / +1.1 | −0.01 / −0.61 / −1.23 / 0.74 / 1.42 / +1.3 |
+| Vocal Forward | −0.01 / +0.40 / −9.84 / 1.49 / 0.00 / +2.3 | −0.16 / −0.35 / −1.22 / 1.47 / 1.91 / +2.4 (cap) |
+| Bass Heavy | +0.02 / +0.33 / −9.63 / 1.50 / 0.00 / +1.6 | −0.30 / −0.45 / −1.22 / 1.51 / 1.95 / +1.7 (cap) |
 
-The dense fixture's source peaks reach about −0.5 dBTP, so a −1 dBTP ceiling cannot hold its loudness without more limiting; every dense case carries the ceiling finding. The export limiter's peak reduction stayed below 0.5 dB in all ten cases.
+Dense sources now hold loudness within 0.3 LU at the cost of 1.4–2.0 dB of peak limiting and a 0.35–0.61 dB crest cut; before the ruling the true-peak headroom cap left them 1.0–1.7 LU quieter with 0.1–0.5 dB of limiting. Dynamic sources are unchanged. On a clipped, square-like 2 s source (`TestLevelMatchReportsTheLimitingCap`) the cap binds at +0.1 dB with 1.99 dB of limiting, the proposal is 1.36 LU quieter and the drop finding explains why.
 
 Generated section moves are capped (MUB-5) at +0.8 dB EQ, +8 width points and +0.5 dB saturation drive above the baseline; cuts are not capped. The generator currently emits only −0.5 dB input-gain headroom trims, so these caps guard future EQ, width and drive moves. A finding explains a loudness change above 1 LU, a crest cut above 4 dB or an export limiter peak reduction above 4 dB.
 

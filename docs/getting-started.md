@@ -65,7 +65,20 @@ Export renders the current processing settings from the reconstructed source. Wi
 | **Release check** on a project's Master view or in **Tools** | Choose one of six destination profiles and a delivery format, then review the exact WAV Export renders at that format. Download that measured file and its JSON report; saved reports retain measurements only. This is guidance, not platform certification. |
 | **Smart stem splitter** | In the native build, split a song into 2–6 stems, play each one and download it as `<title> - <Stem>.wav`. Open it from a project's Master view or from **Tools**. In the browser, Master and Tools state that it is unavailable instead of linking to it. See the status below. |
 
-**Smart Split status:** Smart Split runs only in the native Aurialis build, which you build from source; the browser build cannot separate stems. On an idle Apple-silicon Mac (8-core M2) one 20-second window took about 32 seconds; at that rate a four-minute song would take roughly 15 minutes, but no idle full-song timing has been recorded, and a busy machine took up to about three minutes per window. On Linux and Windows, plain Go did not finish one 20-second window in 30 minutes, so songs will generally not finish within the 90-minute job limit.
+**Smart Split status:** Smart Split runs only in the native Aurialis build, which you build from source; the browser build cannot separate stems. It needs the macOS build, which uses Apple Accelerate: on an idle Apple-silicon Mac (8-core M2) one 20-second window took about 32 seconds, so a four-minute song would take roughly 14 minutes, but no idle full-song timing has been recorded, and a busy machine took up to about three minutes per window. On Linux and Windows Smart Split is turned off: plain Go did not finish one 20-second window in 30 minutes, so a song could not finish within the 90-minute job limit.
+
+On the Split page, the note under the stem layout says where the model stands:
+
+| Note | Meaning |
+| --- | --- |
+| The first split downloads the 176 MB separation model once. | No model on this computer yet. |
+| Downloading the separation model: … | A split is downloading it now, with the bytes so far. |
+| The separation model is saved on this computer and verified. The first split loads it; nothing to download. | A model downloaded earlier passed its size and SHA-256 check; the first split after a restart loads it from disk. |
+| The saved separation model failed its check. … | The cached file is damaged or incomplete; the first split deletes it and downloads a fresh copy. |
+| The separation model is ready. | The model is in memory; splits start at once. |
+| Smart Split is off in this build: it runs the model in plain Go … | A Linux, Windows or `CGO_ENABLED=0` build. Split stays disabled. |
+
+On the macOS build the page also estimates the selected song, for example "Estimated split time for this 3:45 song: about 13 minutes (25 model windows …)", with the busy-machine figure and a warning when that would pass the 90-minute job limit. The figures were recorded on one 8-core M2 Mac, not measured on yours.
 
 An album's **Level** defaults to **Keep each master’s level**: each WAV matches that track's own export, including an applied Deep script. Choose **Normalize to a target** to render every track at the selected target (−23 to −9 LUFS) plus its own album offset (±6 LU), shown as "Renders at … LUFS". The level and offsets are saved on the album, not in the projects. Normalizing needs Deep automation detached in that master. After rendering, the album shows each WAV's measured loudness and true peak. No chart is shown until the masters have been rendered and measured. Projects included in an album render before this version still carry the input gain that render wrote into them, and the library labels them **Album render LUFS**; open each in Master and check its input gain.
 

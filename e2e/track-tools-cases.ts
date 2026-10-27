@@ -44,6 +44,16 @@ export function registerTrackToolCases(execution: Execution) {
   const split = execution === "native";
 
   test.describe(`${execution} per-track tools`, () => {
+    // The e2e server runs without the model, so it answers available: false and
+    // Master and Tools would state that instead of linking. Mock a native server
+    // that can split; e2e/smart-split.spec.ts covers the unavailable case.
+    if (split) {
+      test.beforeEach(async ({ page }) => {
+        await page.route("**/api/stems/model", (route) => route.fulfill({
+          json: { available: true, ready: true, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688, state: "loaded", accelerated: true, backend: "apple-accelerate", arch: "arm64" },
+        }));
+      });
+    }
     test("Master opens each tool for its own track by keyboard after a newer import", async ({ page }) => {
       test.setTimeout(120_000);
       const { a } = await importAThenB(page);

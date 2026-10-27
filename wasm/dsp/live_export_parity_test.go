@@ -111,10 +111,9 @@ func residualDB(got, want [2][]float32) float64 {
 // live true-peak meter, which reads after the true-peak limiter, reads what the
 // export measures and stays within 0.1 dB of the ceiling.
 //
-// Known export-path margin, not a live difference: with every module on but
-// saturation at 0.6% (so noise hats keep their near-Nyquist energy) the BS.1770
-// 4x meter read −0.75 dBTP at 48 kHz on export and live alike, where an
-// independent 32x reconstruction read −1.00 dBTP.
+// The export ceiling itself, including the 0.6% saturation case whose noise
+// hats keep their near-Nyquist energy, is V1-13's gate on a long-sinc
+// reconstruction (true_peak_ceiling_test.go).
 func TestLivePlaybackRendersTheExport(t *testing.T) {
 	hot := dsp.DefaultParams()
 	hot.AlgorithmVersion, hot.InputGainDB = dsp.TruePeakAlgorithmVersion, 15

@@ -212,7 +212,7 @@ Only the session artifact can download the measured WAV, and repeated downloads 
 | [CD](https://www.sony.co.uk/electronics/support/understanding-digital-audio) | 44.1 kHz / 16-bit stereo PCM only; no disc image, DDP or manufacturing approval. |
 | [Podcast](https://podcasters.apple.com/support/893-audio-requirements) | Apple subscriber WAV / pre-encoding guidance: −16 ±1 LUFS, peak at most −1 dBTP and supported 16/24-bit source PCM. RSS delivery still requires AAC or MP3. |
 
-The source links are recorded with policy check date **2026-10-23**. A nonnegative correlation, DC at or below −60 dBFS, no more than 0.5 s leading / 2 s trailing quiet and zero encoded full-scale frames are Aurialis review preferences/diagnostics. Crest factor is informational, not LRA or a standardized DR rating. The assessed count excludes informational rows. Reconstructed peaks remain finite FIR estimates; none of these checks certifies codec/converter peaks, platform acceptance, source provenance, metadata or hardware equivalence.
+The source links are recorded with policy check date **2026-10-23**. A nonnegative correlation, DC at or below −60 dBFS, no more than 0.5 s leading / 2 s trailing quiet and zero encoded full-scale frames are Aurialis review preferences/diagnostics. Crest factor is informational, not LRA or a standardized DR rating. The assessed count excludes informational rows. Reconstructed peaks are measured within 0.1 dB of a near-ideal reconstruction (see the metering notes below), but none of these checks certifies codec/converter peaks, platform acceptance, source provenance, metadata or hardware equivalence.
 
 ### Expanded mastering parameters
 

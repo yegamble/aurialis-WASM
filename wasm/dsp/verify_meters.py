@@ -5,7 +5,7 @@ Run after sourcing the repository Go toolchain environment:
 
 The script creates synthetic float32 stereo fixtures in a private temporary
 folder, runs the native Go fixture test and FFmpeg independently, then compares
-integrated loudness, final short-term loudness, and FIR peak estimates. Low/high
+integrated loudness, final short-term loudness, and true-peak readings. Low/high
 frequency probes have 100-sample edge tapers; the two reconstruction filters can
 differ at abrupt boundaries. This is a reference comparison, not certification. It never
 runs in the server/audio request path and requires a local FFmpeg installation.

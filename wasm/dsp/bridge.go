@@ -138,7 +138,7 @@ func (b *Bridge) ProcessBlock(inL, inR, outL, outR []float32) bool {
 	return true
 }
 
-// Measure computes gated K-weighted loudness, FIR inter-sample peak,
+// Measure computes gated K-weighted loudness, the reconstructed true peak,
 // crest factor, and stereo correlation estimates.
 func (b *Bridge) Measure(left, right []float32) dsp.Metrics {
 	b.mu.Lock()

@@ -11,8 +11,16 @@ import { denseFixture, uploadProject } from "./workflow-fixture";
 // V1-10: live playback renders the export algorithm, so what is heard is what is exported.
 const RATE = 48000, LOOP_SECONDS = 8, CEILING_DBTP = -1;
 const SOAK_SECONDS = Number(process.env.AURIALIS_LIVE_SOAK_SECONDS ?? "30");
+/** Audio-clock lag allowed per second of audio, so the limit scales with the
+ * soak length (150 ms at 30 s). Quiet-host runs lagged −4 to +2 ms in 30 s and
+ * under 40 ms in 600 s; the worst run QA called clean lagged 234 ms in 150 s
+ * (1.6 ms/s). A kernel too slow to keep up lags at (load − 1) s per second,
+ * 50 ms/s at a 1.05 load, so 5 ms/s keeps 3× margin over clean hosts and still
+ * fails a kernel over its deadline. Host stalls on an overloaded machine (915 ms
+ * in 30 s at load average 65, with 0 slow kernel calls) also fail it: rerun those. */
+const DRIFT_MS_PER_AUDIO_SECOND = 5;
 
-type Timing = { clock: string; quanta: number; totalMs: number; maxMs: number; slow: number; ringUnderruns: number; wallMs: number; audioMs: number; sampleRate: number };
+type Timing = { clock: string; resolutionMs: number; quanta: number; totalMs: number; maxMs: number; slow: number; maybeSlow: number; ringUnderruns: number; wallMs: number; audioMs: number; sampleRate: number };
 type TimingWindow = Window & { qaTiming?: Timing };
 
 /** Run the AudioContext at the 48 kHz source rate so live and export process the same samples. */
@@ -24,17 +32,27 @@ async function pinDeviceRate(page: Page): Promise<void> {
 }
 
 // Worklet-scope timing tap. Every 375 quanta it posts the kernel time, the
-// ring underrun counter and how far the audio clock trails the wall clock.
+// ring underrun counter and how far the audio clock (currentFrame) trails the
+// wall clock. Chromium exposes no performance.now in AudioWorkletGlobalScope,
+// so the kernel is timed with Date.now's whole milliseconds unless a finer clock
+// exists. A reading r then means a true time in (r - resolution, r + resolution):
+// summed readings stay unbiased for the mean load, `maybeSlow` cannot miss a
+// call over the 2.67 ms deadline (any reading of 2 ms or more at 48 kHz) and
+// `slow` counts only calls certainly over it.
 const TAP = `
 const qaClock = typeof performance === "object" && typeof performance.now === "function" ? "performance" : "date";
 const qaNow = qaClock === "performance" ? () => performance.now() : () => Date.now();
-let qaQuanta = 0, qaTotal = 0, qaMax = 0, qaSlow = 0, qaWallStart = 0, qaAudioStart = 0;
+const qaResolution = qaClock === "performance" ? 0.1 : 1;
+let qaQuanta = 0, qaTotal = 0, qaMax = 0, qaSlow = 0, qaMaybeSlow = 0, qaWallStart = 0, qaFrameStart = 0;
 function qaTiming(processor, elapsed) {
-  if (qaQuanta === 0) { qaWallStart = Date.now(); qaAudioStart = currentTime; }
+  if (qaQuanta === 0) { qaWallStart = Date.now(); qaFrameStart = currentFrame; }
+  const deadline = 1000 * QUANTUM / sampleRate;
   qaQuanta++; qaTotal += elapsed; qaMax = Math.max(qaMax, elapsed);
-  if (elapsed > 1000 * QUANTUM / sampleRate) qaSlow++;
-  if (qaQuanta % 375 === 0) processor.port.postMessage({ type: "qa-timing", clock: qaClock, quanta: qaQuanta, totalMs: qaTotal, maxMs: qaMax, slow: qaSlow,
-    ringUnderruns: Atomics.load(processor.header, UNDERRUNS), wallMs: Date.now() - qaWallStart, audioMs: (currentTime - qaAudioStart) * 1000, sampleRate });
+  if (elapsed - qaResolution > deadline) qaSlow++;
+  if (elapsed + qaResolution > deadline) qaMaybeSlow++;
+  if (qaQuanta % 375 === 0) processor.port.postMessage({ type: "qa-timing", clock: qaClock, resolutionMs: qaResolution, quanta: qaQuanta, totalMs: qaTotal, maxMs: qaMax,
+    slow: qaSlow, maybeSlow: qaMaybeSlow, ringUnderruns: Atomics.load(processor.header, UNDERRUNS), wallMs: Date.now() - qaWallStart,
+    audioMs: (currentFrame + QUANTUM - qaFrameStart) * 1000 / sampleRate, sampleRate });
 }`;
 
 /** Test-only: load the real worklet with its Go kernel call timed. No DSP is
@@ -231,14 +249,14 @@ test(`the export algorithm keeps up live for ${String(SOAK_SECONDS)} s with ever
   if (!timing) throw new Error("Missing worklet timing");
   const quantumMs = 1000 * 128 / timing.sampleRate;
   const evidence = { ...timing, meanKernelMs: timing.totalMs / timing.quanta, meanLoad: timing.totalMs / timing.quanta / quantumMs, quantumMs,
-    clockDriftMs: timing.wallMs - timing.audioMs };
+    clockDriftMs: timing.wallMs - timing.audioMs, driftLimitMs: DRIFT_MS_PER_AUDIO_SECOND * timing.audioMs / 1000 };
   await writeFile(info.outputPath("live-soak-evidence.json"), JSON.stringify(evidence, null, 2));
   await info.attach("live-soak-evidence", { body: JSON.stringify(evidence), contentType: "application/json" });
   expect(timing.sampleRate).toBe(RATE);
   // No underrun: every quantum's output was ready, and the audio clock kept pace
   // with the wall clock (a render thread that falls behind makes it lag).
   expect(timing.ringUnderruns, JSON.stringify(evidence)).toBe(0);
-  expect(Math.abs(evidence.clockDriftMs), JSON.stringify(evidence)).toBeLessThanOrEqual(250);
+  expect(Math.abs(evidence.clockDriftMs), JSON.stringify(evidence)).toBeLessThanOrEqual(evidence.driftLimitMs);
   // The 3x budget is measured on a quiet machine (docs/tasks.md V1-10). Shared CI
   // and agent hosts swing 2x, so this only catches gross regressions.
   expect(evidence.meanLoad, JSON.stringify(evidence)).toBeLessThanOrEqual(0.75);

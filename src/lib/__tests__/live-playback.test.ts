@@ -181,6 +181,29 @@ describe("per-track live audio lifecycle", () => {
     expect(worker).not.toHaveBeenCalled();
     controller.dispose();
   });
+  it("posts one static attenuate-only match gain to the processor and replays it on a new graph (V1-11)", async () => {
+    const { contexts, nodes } = graphHarness(true, false);
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams());
+    expect(controller.getState().loudnessMatch).toEqual({ processedDb: 0, originalDb: 0 });
+    controller.setLoudnessMatch({ processedDb: -6, originalDb: 0 });
+    expect(controller.getState().loudnessMatch).toEqual({ processedDb: -6, originalDb: 0 });
+    // Never a boost or a non-finite value: rejected without changing the applied match.
+    for (const invalid of [{ processedDb: 1, originalDb: 0 }, { processedDb: 0, originalDb: Number.NaN }, { processedDb: -Infinity, originalDb: 0 }])
+      controller.setLoudnessMatch(invalid);
+    expect(controller.getState().loudnessMatch).toEqual({ processedDb: -6, originalDb: 0 });
+    const playing = controller.play();
+    await vi.waitFor(() => { expect(nodes[0]?.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "arm" })); });
+    const context = contexts[0], node = nodes[0]; if (!context || !node) throw new Error("Missing graph");
+    const posted = () => node.port.postMessage.mock.calls.map(([message]) => message as { type?: string; processed?: number; original?: number }).filter((message) => message.type === "match");
+    expect(posted()).toHaveLength(1);
+    expect(posted()[0]?.processed).toBeCloseTo(10 ** (-6 / 20), 12); expect(posted()[0]?.original).toBe(1);
+    controller.setLoudnessMatch(null);
+    expect(posted().at(-1)).toMatchObject({ processed: 1, original: 1 });
+    expect(controller.getState().loudnessMatch).toEqual({ processedDb: 0, originalDb: 0 });
+    const arm = node.port.postMessage.mock.calls.find(([message]) => message.type === "arm")?.[0];
+    node.port.message({ type: "stream-armed", generation: arm?.generation }); await playing;
+    controller.dispose();
+  });
   it("waits for a delayed arm ACK before creating a native source and publishes a fresh shared quantum epoch", async () => {
     const { contexts, nodes } = graphHarness(true, false);
     const controller = createLivePlayback(source(), createDefaultAdvancedParams()); controller.seek(0.1234567);

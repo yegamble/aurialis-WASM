@@ -398,6 +398,34 @@ describe("direct Go worklet lifecycle", () => {
     expect(f.processor.failed).toBe(true);
     expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "error", message: "Live processing stalled. Pause and restart playback." });
   });
+  it("applies one static attenuate-only match gain to A or B, ramped once, without changing crest or contrast (V1-11)", () => {
+    const f = workletFixture();
+    f.message({ type: "reset", generation: 1 });
+    f.render(0.25, 0.25);
+    // The fake kernel doubles the input (+6.02 dB): A measures 6.02 LU louder than B.
+    const gain = 0.5;
+    f.message({ type: "match", processed: gain, original: 1 });
+    for (let block = 0; block < 4; block++) f.render(0.25, 0.25);
+    // Output is one quantum behind its input (delayBlocks 1).
+    f.render(0.1, 0.1);
+    const quiet = f.render(0.4, 0.4), loud = f.render(0.4, 0.4), settled = loud;
+    // A after the match equals B: the doubled source halved.
+    expect(settled.every(channel => channel.every(value => Math.abs(value - 0.4) < 1e-7))).toBe(true);
+    expect(quiet[0]?.at(-1)).toBeCloseTo(0.1, 7);
+    // Section contrast (quiet vs loud) is unchanged: a static gain scales both equally.
+    expect(20 * Math.log10((loud[0]?.at(-1) ?? 0) / (quiet[0]?.at(-1) ?? 1))).toBeCloseTo(20 * Math.log10(4), 3);
+    f.message({ type: "original", value: true });
+    for (let block = 0; block < 4; block++) f.render(0.4, 0.4);
+    expect(f.render(0.4, 0.4).every(channel => channel.every(value => value === Math.fround(0.4)))).toBe(true);
+    // Attenuate-only: a boost, zero, negative or non-finite gain is ignored.
+    for (const invalid of [1.5, 0, -0.5, Number.NaN, Number.POSITIVE_INFINITY, "0.5"])
+      f.message({ type: "match", processed: 1, original: invalid });
+    for (let block = 0; block < 4; block++) f.render(0.4, 0.4);
+    expect(f.render(0.4, 0.4).every(channel => channel.every(value => value === Math.fround(0.4)))).toBe(true);
+    f.message({ type: "match", processed: 1, original: 0.5 });
+    for (let block = 0; block < 4; block++) f.render(0.4, 0.4);
+    expect(f.render(0.4, 0.4).every(channel => channel.every(value => Math.abs(value - 0.2) < 1e-7))).toBe(true);
+  });
   it("ends at the exact sample and restores continuous output when the repeat gate is removed", () => {
     const f = workletFixture();
     f.message({ type: "reset", generation: 1 });

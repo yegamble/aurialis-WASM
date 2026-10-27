@@ -271,10 +271,16 @@ func hasFinding(findings []Finding, id string) bool {
 // cut above 4 dB carries a visible finding.
 func TestDeepProfilesPredictExportLevelsAndExplainLargeChanges(t *testing.T) {
 	t.Parallel()
+	// The race detector slows these renders about 5x; it checks concurrency on
+	// 2 s fixtures, and CI's non-race step runs the full 6 s verification.
+	seconds := 6.0
+	if raceEnabled {
+		seconds = 2
+	}
 	fixtures := []struct {
 		name string
 		buf  *audio.Buffer
-	}{{"dynamic", referenceMix(6, false)}, {"dense", referenceMix(6, true)}}
+	}{{"dynamic", referenceMix(seconds, false)}, {"dense", referenceMix(seconds, true)}}
 	for _, fixture := range fixtures {
 		for _, profile := range allProfiles {
 			// Read-only shared sources; each render is independent.

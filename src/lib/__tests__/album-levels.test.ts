@@ -3,6 +3,7 @@ import { albumLevelSummary, albumMastersKey, albumOffset, DEFAULT_ALBUM_LEVEL, p
 import { exportParams, exportScript } from "../engine-params";
 import type { ScriptV2 } from "../deep-mastering";
 import type { MeasuredAudioMetrics, Track } from "../types";
+import { normalizeHydratedState } from "../store";
 import { testStore } from "./fixtures";
 
 const [first, second] = testStore.tracks as [Track, Track];
@@ -107,5 +108,15 @@ describe("album track render", () => {
     expect(owned.render).toHaveBeenCalledWith(expect.any(Blob), exportParams({ ...first.advanced, input: 4.5 }), 24, controller.signal);
     expect(track.advanced).toEqual(first.advanced);
     expect(track.advanced.input).toBe(first.advanced.input);
+  });
+});
+
+describe("album level persistence", () => {
+  it("hydrates legacy albums to keep each level, drops the old display target and keeps saved levels", () => {
+    const legacy = { id: "legacy", title: "Old", artist: "", target: "−14 LUFS", trackIds: [first.id], mastered: true };
+    const saved = { id: "saved", title: "New", artist: "", level: { mode: "normalize", targetLufs: -16, offsets: [{ trackId: first.id, offsetDb: -1 }] }, trackIds: [first.id], mastered: false };
+    const state = normalizeHydratedState({ tracks: [first], albums: [legacy, saved] });
+    expect(state?.albums[0]).toEqual({ id: "legacy", title: "Old", artist: "", level: DEFAULT_ALBUM_LEVEL, trackIds: [first.id], mastered: false });
+    expect(state?.albums[1]?.level).toEqual(saved.level);
   });
 });

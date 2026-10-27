@@ -88,6 +88,7 @@ import { SimpleControls } from "./shared/SimpleControls";
 import { DeepProposalPanel } from "./shared/DeepProposalPanel";
 import { useDeepPlayback } from "@/lib/use-deep-playback";
 import { appliedRevisionKey } from "@/lib/deep-mastering";
+import { albumLevelSummary, DEFAULT_ALBUM_LEVEL } from "@/lib/album-levels";
 import type { ScriptV2 } from "@/lib/deep-mastering";
 import { DeepTimeline } from "./shared/DeepTimeline";
 import { StemSplitPanel } from "./shared/StemSplitPanel";
@@ -1606,7 +1607,7 @@ function AlbumsView() {
       id: `album-${String(Date.now())}`,
       title: `Untitled sequence ${String(state.albums.length + 1)}`,
       artist: "",
-      target: "−14 LUFS",
+      level: DEFAULT_ALBUM_LEVEL,
       trackIds: [],
       mastered: false,
     };
@@ -1654,7 +1655,7 @@ function AlbumsView() {
               </div>
               <span className="eyebrow">{album.trackIds.length} tracks</span>
               <h2>{album.title}</h2>
-              <p>Target {album.target}</p>
+              <p>{albumLevelSummary(album.level)}</p>
               <div className="album-score">
                 <span>Consistency</span>
                 <strong>—</strong>
@@ -1761,7 +1762,7 @@ function AlbumView({ albumId }: { albumId: string }) {
           {albumTracks.some((track) => track.deepMastering?.applied) && <p className="disclosure">Detach Deep automation in each master before applying album normalization. Individual live playback and export keep the applied script.</p>}
           <div className="album-meta">
             <span>{albumTracks.length} tracks</span>
-            <span>{album.target}</span>
+            <span>{albumLevelSummary(album.level)}</span>
             <span>{artifacts.length > 0 ? "Masters ready to download" : "In progress"}</span>
           </div>
         </div>
@@ -1992,7 +1993,7 @@ function AlbumView({ albumId }: { albumId: string }) {
               <span className="eyebrow">Across the album</span>
               <h2>Saved loudness measurements</h2>
             </div>
-            <strong>Target {album.target}</strong>
+            <strong>{albumLevelSummary(album.level)}</strong>
           </div>
           <div
             className="consistency-chart"

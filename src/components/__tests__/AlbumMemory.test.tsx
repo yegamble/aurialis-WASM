@@ -21,7 +21,7 @@ async function start() { fireEvent.click(await screen.findByRole("button", { nam
 beforeEach(() => {
   owners.length = 0;
   const tracks = testStore.tracks.map((track, index) => ({ ...track, title: "Album source " + String(index + 1) }));
-  const storage = new Map([["aurialis-state-v1", JSON.stringify({ tracks, albums: [{ id: "memory-album", title: "Memory album", artist: "", target: "−14 LUFS", trackIds: tracks.map((track) => track.id), mastered: false }], stems: [] })]]);
+  const storage = new Map([["aurialis-state-v1", JSON.stringify({ tracks, albums: [{ id: "memory-album", title: "Memory album", artist: "", level: { mode: "normalize", targetLufs: -14, offsets: [] }, trackIds: tracks.map((track) => track.id), mastered: false }], stems: [] })]]);
   vi.stubGlobal("localStorage", { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value); } });
   window.history.replaceState(null, "", "/albums/memory-album");
   mocks.getAudio.mockReset().mockResolvedValue(new Blob(["source fixture"]));

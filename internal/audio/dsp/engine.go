@@ -266,6 +266,8 @@ type Engine struct {
 	limPrevR    [3]float64
 	lastLimGRDB float64
 	truePeak    truePeakLimiter
+	// drainSaved holds the limiter across DrainDetached without allocating.
+	drainSaved truePeakLimiter
 
 	// Deterministic xorshift64* state for TPDF dither
 	prngState uint64

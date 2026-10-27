@@ -171,5 +171,13 @@ func (b *Bridge) Drain(outL, outR []float32) int {
 	return b.engine.Drain(outL, outR)
 }
 
+// DrainDetached writes the lookahead tail Drain would emit and leaves the
+// engine unchanged (dsp.Engine.DrainDetached).
+func (b *Bridge) DrainDetached(outL, outR []float32) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.engine.DrainDetached(outL, outR)
+}
+
 // SampleRate returns the current processing rate for compiled schedule binding.
 func (b *Bridge) SampleRate() float64 { b.mu.Lock(); defer b.mu.Unlock(); return b.engine.SampleRate() }

@@ -59,6 +59,21 @@ func (e *Engine) Drain(outL, outR []float32) int {
 	return n
 }
 
+// DrainDetached writes what Drain would emit now, then restores the engine
+// as if the source had not ended, so processing can continue seamlessly. Live
+// playback drains this way at the end of a finite pass that may still turn
+// into a loop (Repeat turned back on). It returns the frames written.
+func (e *Engine) DrainDetached(outL, outR []float32) int {
+	e.drainSaved = e.truePeak
+	prng, limiterGR := e.prngState, e.lastLimGRDB
+	envelope, previousL, previousR := e.limEnvLin, e.limPrevL, e.limPrevR
+	n := e.Drain(outL, outR)
+	e.truePeak = e.drainSaved
+	e.prngState, e.lastLimGRDB = prng, limiterGR
+	e.limEnvLin, e.limPrevL, e.limPrevR = envelope, previousL, previousR
+	return n
+}
+
 // RenderLatencyCompensated runs process over the whole input into buffers
 // sized for the engine's latency, drains the tail, and returns output aligned
 // with the input. process must write len(inL) frames starting at index 0.

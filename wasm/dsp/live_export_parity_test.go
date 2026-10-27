@@ -57,7 +57,8 @@ func liveVector(p dsp.Params) liveVersionedControlVector {
 
 // livePlayback renders a source the way the worklet plays it: ABI 2 controls,
 // 128-frame quanta, the source's end marked (aurialis_live_end_input) in the
-// quantum that holds it, silent quanta after it, and the processed ring read
+// quantum that holds it and its drained tail played in place of the engine's
+// frames (a finite pass), silent quanta after it, and the processed ring read
 // the engine's latency ahead of the dry ring so A lines up with B.
 // It returns what is heard for each source frame and the live meter snapshot.
 func livePlayback(t *testing.T, rate float64, left, right []float32, params dsp.Params) ([]float32, []float32, dsp.LiveLoudness) {
@@ -77,7 +78,8 @@ func livePlayback(t *testing.T, rate float64, left, right []float32, params dsp.
 				blocks.channels[0][frame], blocks.channels[1][frame] = left[start+frame], right[start+frame]
 			}
 		}
-		if start <= frames && frames < start+liveBlockFrames && blocks.endInput(liveFrameCount(frames-start)) != 1 {
+		marked := start <= frames && frames < start+liveBlockFrames
+		if marked && blocks.endInput(liveFrameCount(frames-start)) != 1 {
 			t.Fatal("source end rejected")
 		}
 		if blocks.process() != liveBlockFrames {
@@ -87,7 +89,12 @@ func livePlayback(t *testing.T, rate float64, left, right []float32, params dsp.
 		processed[1] = append(processed[1], blocks.channels[3][:]...)
 	}
 	blocks.meterSnapshot()
-	return processed[0][latency : latency+frames], processed[1][latency : latency+frames], blocks.meter.Snapshot()
+	meter := blocks.meter.Snapshot()
+	tail, tailL, tailR := int(blocks.tailFrames()), blocks.tailBuffer(0), blocks.tailBuffer(1)
+	for i := 0; i < tail && frames+i < len(processed[0]); i++ {
+		processed[0][frames+i], processed[1][frames+i] = tailL[i], tailR[i]
+	}
+	return processed[0][latency : latency+frames], processed[1][latency : latency+frames], meter
 }
 
 func residualDB(got, want [2][]float32) float64 {

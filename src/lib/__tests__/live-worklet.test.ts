@@ -462,10 +462,20 @@ describe("direct Go worklet lifecycle", () => {
       play(f, 5, quantumMs, quantumMs * 0.95, clock);
       expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "error", message: OVERLOAD });
     });
-    it("stays quiet for a kernel within budget, one host stall and a pause gap", () => {
+    it("fires on a short hitch every second that averages out of the lag and load", () => {
+      const { f, clock } = watched();
+      const quanta = 375; // one second at 48 kHz
+      let index = 0;
+      f.kernel.aurialis_live_process.mockImplementation(() => { clock.now += index++ % quanta === 100 ? 60 : 1; return f.processGo(); });
+      for (let block = 0; block < 5 * quanta && !f.processor.failed; block++) { f.render(); clock.now += quantumMs - 1; }
+      expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "error", message: OVERLOAD });
+    });
+    it("stays quiet for a kernel within budget, one host stall, one slow call and a pause gap", () => {
       const { f, clock } = watched();
       play(f, 2.5, quantumMs, quantumMs * 0.5, clock);
       clock.now += 900; // one stalled callback: a single late window, not two in a row
+      play(f, 2.5, quantumMs, quantumMs * 0.5, clock);
+      play(f, 128 / 48000, 6, 6, clock); // one 6 ms kernel call: a single missed window
       play(f, 2.5, quantumMs, quantumMs * 0.5, clock);
       f.message({ type: "hold" }); clock.now += 60_000;
       f.message({ type: "reset", generation: 1 });

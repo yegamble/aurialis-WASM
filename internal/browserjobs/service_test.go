@@ -297,3 +297,43 @@ func fixtureRoot(t *testing.T, directory string) *os.Root {
 	})
 	return files
 }
+
+// V1-13 Round E 2 S-a2: measure=render skips the source measurement a client
+// already cached. The render and its afterMetrics are unchanged, beforeMetrics
+// is null, and the native server answers the same. It is JSON-only, and a
+// bypass render still measures (its after is the source).
+func TestRenderMeasureOnlySkipsTheSourceMeasurement(t *testing.T) {
+	wav := source(t)
+	params := dsp.DefaultParams()
+	params.InputGainDB = -3
+	encoded, err := json.Marshal(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decode := func(raw []byte) map[string]json.RawMessage {
+		var body map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+	full := decode(run(t, browserjobs.Request{Operation: "render", Params: string(encoded), Format: "json"}, wav, nil).Metadata)
+	only := decode(run(t, browserjobs.Request{Operation: "render", Params: string(encoded), Format: "json", Measure: "render"}, wav, nil).Metadata)
+	if string(only["beforeMetrics"]) != "null" || string(full["beforeMetrics"]) == "null" || !bytes.Equal(only["afterMetrics"], full["afterMetrics"]) {
+		t.Fatalf("measure=render: before %s, after %s vs %s", only["beforeMetrics"], only["afterMetrics"], full["afterMetrics"])
+	}
+	native := decode(nativeRender(t, wav, [][2]string{{"params", string(encoded)}, {"format", "json"}, {"measure", "render"}}))
+	if string(native["beforeMetrics"]) != "null" || !bytes.Equal(native["afterMetrics"], full["afterMetrics"]) {
+		t.Fatalf("native measure=render: before %s, after %s", native["beforeMetrics"], native["afterMetrics"])
+	}
+	bypass := decode(run(t, browserjobs.Request{Operation: "render", Params: `{"bypass":true}`, Format: "json", Measure: "render"}, wav, nil).Metadata)
+	if string(bypass["beforeMetrics"]) == "null" {
+		t.Fatal("a bypass render skipped its only measurement")
+	}
+	for _, request := range []browserjobs.Request{{Operation: "render", Params: string(encoded), Measure: "render"}, {Operation: "render", Params: string(encoded), Format: "json", Measure: "source"}} {
+		raw, _ := json.Marshal(request)
+		if _, err := browserjobs.Execute(context.Background(), raw, wav, nil, nil); err == nil {
+			t.Fatalf("accepted %+v", request)
+		}
+	}
+}

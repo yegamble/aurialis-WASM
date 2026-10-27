@@ -374,7 +374,7 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request, exp
 				writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Audio file exceeds the decoded-frame storage limit")
 				return nil, false
 			}
-		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "format" || name == "script" || name == "scriptVersion" || (exportFields && (name == "sampleRate" || name == "dither"))) && disposition["filename"] == "" && values[name] == nil:
+		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "format" || name == "script" || name == "scriptVersion" || (exportFields && (name == "sampleRate" || name == "dither" || name == "measure"))) && disposition["filename"] == "" && values[name] == nil:
 			var value []byte
 			fieldLimit := 64 * 1024
 			if name == "script" {
@@ -634,6 +634,14 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_export_options", exportErr.Error())
 		return
 	}
+	// measure=render (JSON only) skips the source measurement: a client that
+	// already measured this exact source caches it and only needs the render.
+	measure := r.FormValue("measure")
+	jsonResponse := r.FormValue("format") == "json" || strings.Contains(r.Header.Get("Accept"), "application/json")
+	if measure != "" && (measure != "render" || !jsonResponse) {
+		writeErrorJSON(w, http.StatusBadRequest, "invalid_multipart", "measure must be \"render\" on a JSON render")
+		return
+	}
 	outputRate := buf.SampleRate
 	if export.Converts(buf.SampleRate) {
 		outputRate = export.SampleRate
@@ -650,7 +658,12 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		script.ChainParams = params
 	}
 
-	beforeMetrics, measureErr := dsp.MeasureStereoContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate))
+	skipSource := measure == "render" && (script != nil || !params.Bypass)
+	var beforeMetrics dsp.Metrics
+	var measureErr error
+	if !skipSource {
+		beforeMetrics, measureErr = dsp.MeasureStereoContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate))
+	}
 	if measureErr != nil {
 		writeExportCanceled(w, r, "Audio measurement")
 		return
@@ -691,7 +704,11 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 	// Report the dither the delivered file carries; a conversion dithers after rendering.
 	params.DitherBits = deliveredDither
 
-	if r.FormValue("format") == "json" || strings.Contains(r.Header.Get("Accept"), "application/json") {
+	if jsonResponse {
+		var before any = beforeMetrics
+		if skipSource {
+			before = nil
+		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status":        "ok",
 			"sampleRate":    outRate,
@@ -699,7 +716,7 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 			"duration":      float64(len(outL)) / float64(outRate),
 			"bitDepth":      bitDepth,
 			"params":        params,
-			"beforeMetrics": beforeMetrics,
+			"beforeMetrics": before,
 			"afterMetrics":  afterMetrics,
 		})
 		return

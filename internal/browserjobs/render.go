@@ -61,9 +61,18 @@ func render(ctx context.Context, request Request, buf *audio.Buffer) (*Result, e
 	if script != nil {
 		script.ChainParams = params
 	}
-	before, err := dsp.MeasureStereoContext(ctx, buf.Left, buf.Right, float64(buf.SampleRate))
-	if err != nil {
-		return nil, err
+	// measure=render (JSON only) skips the source measurement: the client
+	// caches it per source and only needs the render.
+	if request.Measure != "" && (request.Measure != "render" || request.Format != "json") {
+		return nil, errors.New("measure must be \"render\" on a JSON render")
+	}
+	skipSource := request.Measure == "render" && (script != nil || !params.Bypass)
+	var before dsp.Metrics
+	if !skipSource {
+		before, err = dsp.MeasureStereoContext(ctx, buf.Left, buf.Right, float64(buf.SampleRate))
+		if err != nil {
+			return nil, err
+		}
 	}
 	left, right, after := buf.Left, buf.Right, before
 	if script != nil || !params.Bypass {
@@ -83,6 +92,9 @@ func render(ctx context.Context, request Request, buf *audio.Buffer) (*Result, e
 	// Report the dither the delivered file carries; a conversion dithers after rendering.
 	params.DitherBits = deliveredDither
 	fields := map[string]any{"status": "ok", "sampleRate": rate, "frames": len(left), "duration": float64(len(left)) / float64(rate), "bitDepth": bits, "params": params, "beforeMetrics": before, "afterMetrics": after}
+	if skipSource {
+		fields["beforeMetrics"] = nil
+	}
 	if request.Format == "json" {
 		return metadata(fields)
 	}

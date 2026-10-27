@@ -431,23 +431,27 @@ func TestLegacyScriptsExplainLargeLoudnessChanges(t *testing.T) {
 	}
 }
 
-// A clipped, square-like source cannot get louder without more limiting: the
-// Level match stops at 2 dB of limiter reduction and the drop finding says why.
-// The source peaks at 0.75: since V1-13 the limiter band-limits at 0.45 fs and
-// reads the clipped edges' true peaks, so at 0.8 the proposal alone took 2.25
-// dB of reduction and left no Level match to cap.
-func TestLevelMatchReportsTheLimitingCap(t *testing.T) {
-	t.Parallel()
+// clippedSquare is a clipped, square-like 2 s, 48 kHz source peaking at peak.
+func clippedSquare(peak float64) *audio.Buffer {
 	const rate, seconds = 48000, 2.0
 	frames := int(seconds * rate)
 	left, right := make([]float32, frames), make([]float32, frames)
 	for i := range frames {
 		phase := float64(i) / rate
-		value := .75 * math.Tanh(8*(math.Sin(2*math.Pi*110*phase)+.5*math.Sin(2*math.Pi*1760*phase)))
+		value := peak * math.Tanh(8*(math.Sin(2*math.Pi*110*phase)+.5*math.Sin(2*math.Pi*1760*phase)))
 		left[i], right[i] = float32(value), float32(value)
 	}
-	buf := &audio.Buffer{Left: left, Right: right, SampleRate: rate, Channels: 2, Frames: frames, Duration: seconds}
-	script, prediction, err := AnalyzeDeepV2Context(context.Background(), buf, ProfilePunchyCommercial, nil)
+	return &audio.Buffer{Left: left, Right: right, SampleRate: rate, Channels: 2, Frames: frames, Duration: seconds}
+}
+
+// A clipped, square-like source cannot get louder without more limiting: the
+// Level match stops at 2 dB of limiter reduction and the drop finding says why.
+// The source peaks at 0.75: since V1-13 the limiter band-limits at 0.45 fs and
+// reads the clipped edges' true peaks, so at 0.8 the proposal alone takes more
+// than 2 dB (see the next test).
+func TestLevelMatchReportsTheLimitingCap(t *testing.T) {
+	t.Parallel()
+	script, prediction, err := AnalyzeDeepV2Context(context.Background(), clippedSquare(.75), ProfilePunchyCommercial, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,4 +463,28 @@ func TestLevelMatchReportsTheLimitingCap(t *testing.T) {
 		t.Fatalf("limiter %.2f dB, true peak %.2f dBTP", prediction.LimiterPeakGainReductionDB, prediction.AfterMetrics.TruePeakDBTP)
 	}
 	t.Logf("clipped square: %+.2f LU, %.2f dBTP, limiter %.2f dB, Level match %+.1f dB (needed %+.1f)", -drop, prediction.AfterMetrics.TruePeakDBTP, prediction.LimiterPeakGainReductionDB, prediction.LevelMatch.GainDB, prediction.LevelMatch.NeededDB)
+}
+
+// V1-13 Round E S4: at 0.8 the proposal alone already needs more than 2 dB
+// of export limiting (the true peaks of the clipped edges, which earlier
+// exports let over the ceiling). The honest outcome is no Level match, a
+// capped flag, the reduction reported and the drop explained.
+func TestLevelMatchStaysAtZeroWhenTheProposalAlreadyLimitsHeavily(t *testing.T) {
+	t.Parallel()
+	script, prediction, err := AnalyzeDeepV2Context(context.Background(), clippedSquare(.8), ProfilePunchyCommercial, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	match := prediction.LevelMatch
+	drop := script.BeforeMetrics.IntegratedLUFS - prediction.AfterMetrics.IntegratedLUFS
+	if !match.LimiterCapped || match.GainDB != 0 || match.NeededDB <= levelMatchToleranceLU {
+		t.Fatalf("match %+v", match)
+	}
+	if prediction.LimiterPeakGainReductionDB <= MaxLevelMatchLimiterReductionDB || prediction.AfterMetrics.TruePeakDBTP > MaxStartingCeilingDBTP {
+		t.Fatalf("limiter %.2f dB, true peak %.2f dBTP", prediction.LimiterPeakGainReductionDB, prediction.AfterMetrics.TruePeakDBTP)
+	}
+	if drop <= MaxUnexplainedLoudnessRiseLU || !hasFinding(script.Findings, "predicted-loudness-decrease") {
+		t.Fatalf("drop %.2f LU, findings %+v", drop, script.Findings)
+	}
+	t.Logf("clipped square at 0.8: %+.2f LU, %.2f dBTP, limiter %.2f dB with no Level match (needed %+.1f)", -drop, prediction.AfterMetrics.TruePeakDBTP, prediction.LimiterPeakGainReductionDB, match.NeededDB)
 }

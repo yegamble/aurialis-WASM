@@ -61,9 +61,9 @@ Export renders the current processing settings from the reconstructed source. Wi
 | **Advanced** | Adjust input gain, five-band EQ, compression, saturation, stereo width, a sample-peak limiter, De-Harsh and three-band compression. These controls change the shared chain used by Simple and export. |
 | **Deep** | Analyze a measured proposal, edit source-frame moves and explicitly Apply its complete baseline/schedule. Separate source diagnostics and legacy static profiles remain available. Neutral sections do not identify musical roles; AI repair remains unavailable. |
 | **Albums** | Create and order a sequence, choose its level, then select **Render album masters** to render and measure individual 24-bit WAVs. Rendering never changes your projects. |
-| **Reference match** in **Tools** | Measure your track against another imported recording, review a bounded EQ and optional width proposal, then explicitly apply it. |
-| **Release check** in **Tools** | Choose one of six destination profiles and an encoding, then review the exact rendered WAV. Download that measured file and its JSON report; saved reports retain measurements only. This is guidance, not platform certification. |
-| **Smart stem splitter** | In the native build, split a song into 2–6 stems, play each one and download it as `<title> - <Stem>.wav`. In the browser, inspect the layouts only. See the status below. |
+| **Reference match** on a project's Master view or in **Tools** | Measure your track against another imported recording, review a bounded EQ and optional width proposal, then explicitly apply it. |
+| **Release check** on a project's Master view or in **Tools** | Choose one of six destination profiles and an encoding, then review the exact rendered WAV. Download that measured file and its JSON report; saved reports retain measurements only. This is guidance, not platform certification. |
+| **Smart stem splitter** | In the native build, split a song into 2–6 stems, play each one and download it as `<title> - <Stem>.wav`. Open it from a project's Master view or from **Tools**. In the browser, Master and Tools state that it is unavailable instead of linking to it. See the status below. |
 
 **Smart Split status:** Smart Split runs only in the native Aurialis build, which you build from source; the browser build cannot separate stems. On an idle Apple-silicon Mac (8-core M2) one 20-second window took about 32 seconds; at that rate a four-minute song would take roughly 15 minutes, but no idle full-song timing has been recorded, and a busy machine took up to about three minutes per window. On Linux and Windows, plain Go did not finish one 20-second window in 30 minutes, so songs will generally not finish within the 90-minute job limit.
 
@@ -105,7 +105,7 @@ Deep currently uses algorithm 1, generic Optical compression and sample-peak lim
 
 ## Review the WAV you will hand off
 
-Open **Release check** from **Tools** for your project.
+Open **Release check** from the tool links below your project's title on its Master view. In **Tools**, choose the project in **Track** first; it starts on your newest import and remembers your choice while the tab stays open.
 
 1. Choose **Spotify**, **Apple Music**, **YouTube**, **SoundCloud**, **CD** or **Podcast**, then choose 16-bit PCM, 24-bit PCM or 32-bit float. Profiles describe different delivery scopes; read the linked source and the explanation beside each check.
 2. Select **Run release check**. Aurialis verifies the stored source, renders one WAV, then measures that encoded file, including quantization and dither. With Deep attached, it uses the acknowledged applied script; draft edits are excluded. **Cancel release check** stops the review without accepting a late result.
@@ -119,7 +119,7 @@ Spotify and SoundCloud profiles use published mastering guidance, not upload lou
 
 ## Compare with a reference recording
 
-Import the recording you want to use as a reference, then open **Reference match** from **Tools** for your source project.
+Import the recording you want to use as a reference, then open **Reference match** from the tool links on your source project's Master view, or choose the source project in **Tools** → **Track**.
 
 1. Choose a **Reference track**. Aurialis compares your source through this session's starting processing settings with the original reference audio. The reference project's saved knob positions are ignored.
 2. Choose **Match amount**. Leave **Protect low end** on to constrain changes in the 20–120 Hz range; enable **Include width** only if you want a stereo-width proposal too.

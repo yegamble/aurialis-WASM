@@ -29,6 +29,9 @@ export function releaseChecks(platform: ReleasePlatform, metrics: MeasuredAudioM
   const lossyStreaming = platform === "Spotify" || platform === "SoundCloud" || platform === "Apple Music" || platform === "YouTube";
   const peakLimit = lossyStreaming && metrics.integratedLufs > -14 ? -2 : -1;
   const publishedPeak = target !== null;
+  // Spotify and SoundCloud ask for peaks below their figure; the −2 dBTP lossy rule borrowed
+  // for Apple Music and YouTube keeps that same strict boundary. Other limits allow equality.
+  const strictPeak = platform === "Spotify" || platform === "SoundCloud" || peakLimit === -2;
   const format = platform === "CD" ? output.sampleRate === 44100 && output.bitDepth === 16
     : platform === "Apple Music" || platform === "Podcast" ? sourceRates.includes(output.sampleRate) && output.bitDepth !== 32
     : platform === "YouTube" ? output.sampleRate >= 48000 && output.bitDepth !== 32 : null;
@@ -39,8 +42,8 @@ export function releaseChecks(platform: ReleasePlatform, metrics: MeasuredAudioM
       guidance: target === null ? "No stereo LUFS requirement is asserted from this profile's source. Choose loudness by listening."
         : `Published working guidance: ${String(target)} LUFS${platform === "Podcast" ? " ±1 LU" : "; the ±1 LU review band is an Aurialis preference"}. No gain is applied by this check.` },
     { name: "Reconstructed peak estimate", reading: `${metrics.truePeakDbtp.toFixed(2)} dBTP`,
-      status: ((platform === "Spotify" || platform === "SoundCloud") ? metrics.truePeakDbtp < peakLimit : metrics.truePeakDbtp <= peakLimit) ? "pass" : "review",
-      guidance: `${publishedPeak ? "Published guidance" : "Aurialis working headroom"}: ${String(peakLimit).replace("-", "−")} dBTP${peakLimit === -2 ? " for a master louder than −14 LUFS" : ""}.${peakLimit === -2 && !publishedPeak ? " Lossy streaming encodes of loud masters can overshoot the source peak; this is not a published requirement of this destination." : ""} The finite 4× FIR estimate does not certify codec or converter peaks.` },
+      status: (strictPeak ? metrics.truePeakDbtp < peakLimit : metrics.truePeakDbtp <= peakLimit) ? "pass" : "review",
+      guidance: `${publishedPeak ? "Published guidance" : "Aurialis working headroom"}: ${strictPeak ? "below " : ""}${String(peakLimit).replace("-", "−")} dBTP${peakLimit === -2 ? " for a master louder than −14 LUFS" : ""}.${peakLimit === -2 && !publishedPeak ? " Lossy streaming encodes of loud masters can overshoot the source peak; this is not a published requirement of this destination." : ""} The finite 4× FIR estimate does not certify codec or converter peaks.` },
     { name: "Encoded full-scale frames", reading: String(output.fullScaleFrames), status: output.fullScaleFrames === 0 ? "pass" : "review",
       guidance: `Sample peak ${metrics.samplePeakDbfs.toFixed(2)} dBFS. Counted from the exact encoded samples; full scale does not establish how or when clipping happened.` },
     { name: "Output format", reading: `${String(output.sampleRate / 1000)} kHz · ${String(output.bitDepth)}-bit ${output.bitDepth === 32 ? "float" : "PCM"} · stereo`,

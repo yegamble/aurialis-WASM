@@ -28,9 +28,15 @@ describe("source-specific delivery guidance", () => {
       expect(check(platform, "Reconstructed peak estimate", { truePeakDbtp: -1 }).status).toBe("pass");
       const loud = check(platform, "Reconstructed peak estimate", { integratedLufs: -9, truePeakDbtp: -1 });
       expect(loud.status).toBe("review");
-      expect(loud.guidance).toContain("Aurialis working headroom: −2 dBTP for a master louder than −14 LUFS");
+      expect(loud.guidance).toContain("Aurialis working headroom: below −2 dBTP for a master louder than −14 LUFS");
       expect(loud.guidance).toMatch(/lossy streaming/iu);
-      expect(check(platform, "Reconstructed peak estimate", { integratedLufs: -9, truePeakDbtp: -2 }).status).toBe("pass");
+      expect(check(platform, "Reconstructed peak estimate", { integratedLufs: -9, truePeakDbtp: -2.01 }).status).toBe("pass");
+    }
+  });
+  it("compares every lossy-streaming platform with the same −2 dBTP boundary", () => {
+    for (const platform of ["Spotify", "SoundCloud", "Apple Music", "YouTube"] as const) {
+      expect(check(platform, "Reconstructed peak estimate", { integratedLufs: -9, truePeakDbtp: -2 }).status).toBe("review");
+      expect(check(platform, "Reconstructed peak estimate", { integratedLufs: -9, truePeakDbtp: -2.01 }).status).toBe("pass");
     }
     // CD is lossless PCM and Podcast keeps its published −1 dBTP.
     for (const platform of ["CD", "Podcast"] as const) expect(check(platform, "Reconstructed peak estimate", { integratedLufs: -9, truePeakDbtp: -1 }).status).toBe("pass");

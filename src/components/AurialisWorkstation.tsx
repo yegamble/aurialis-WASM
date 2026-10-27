@@ -42,6 +42,7 @@ import {
   createDefaultAdvancedParams,
   clampAdvancedToSampleRate,
   mapProfileToDSP,
+  MAX_LIMITER_CEILING_DB,
 } from "@/lib/audio-dsp";
 import { saveAudio, getAudio, discardStagedAudio, deleteAudio, newAudioAssetId, loadAlbumMasters, saveAlbumMasters, deleteAlbumMasters, ensureStorageFor, type SavedAlbumMasters } from "@/lib/db";
 import { albumEntryNames, createStoredZip, safeFileBaseName } from "@/lib/zip";
@@ -1074,6 +1075,7 @@ function MasterView({ trackId }: { trackId: string }) {
             {sourceLoading ? "Loading stored audio…" : message}
           </p>
           {track.importNotice && <p className="disclosure" role="status">{track.importNotice}</p>}
+          {track.limiterNotice && <div className="flex flex-wrap items-center gap-2"><p className="disclosure" role="status">{track.limiterNotice}</p><Button variant="ghost" onClick={() => { dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { limiterNotice: "" } }); }}>Dismiss ceiling note</Button></div>}
           {track.persistenceWarning && (
             <p className="disclosure" role="alert">
               {track.persistenceWarning}
@@ -1510,7 +1512,7 @@ function AdvancedControls({
         value={adv.limiter.ceiling}
         defaultValue={defaults.limiter.ceiling}
         min={-3.0}
-        max={-0.1}
+        max={MAX_LIMITER_CEILING_DB}
         step={0.1}
         unit="dBFS"
         onChange={(ceiling) => {

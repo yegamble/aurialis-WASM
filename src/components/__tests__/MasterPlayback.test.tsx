@@ -220,7 +220,7 @@ describe("master live playback lifecycle", () => {
     fireEvent.click(screen.getByRole("tab", { name: "simple" }));
     expect(screen.getByText("Custom settings")).toBeTruthy();
     fireEvent.change(screen.getByRole("combobox", { name: "Output target" }), { target: { value: "Loud" } });
-    expect(savedTrack().advanced).toEqual({ ...prepared, limiter: { ...prepared.limiter, targetLufs: -9, ceiling: -0.2 } });
+    expect(savedTrack().advanced).toEqual({ ...prepared, limiter: { ...prepared.limiter, targetLufs: -9, ceiling: -1 } });
     expect(screen.getByText("Custom settings")).toBeTruthy();
   }, 30000);
 
@@ -236,13 +236,13 @@ describe("master live playback lifecycle", () => {
     expect(savedTrack().advanced).toEqual(reset);
     fireEvent.click(screen.getByRole("button", { name: "Rock" }));
     expect(savedTrack().advanced.limiter.targetLufs).toBe(-14);
-    const custom = { ...savedTrack().advanced, limiter: { ...savedTrack().advanced.limiter, targetLufs: -12, ceiling: -0.7 } };
+    const custom = { ...savedTrack().advanced, limiter: { ...savedTrack().advanced.limiter, targetLufs: -12, ceiling: -1.5 } };
     cleanup();
     localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1).map((track) => ({ ...track, mode: "simple", target: "Streaming", advanced: custom })) }));
     mount(); await ready();
     expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Output target" }).value).toBe("custom");
     expect(screen.getByRole("option", { name: "Custom (−12 LUFS)" })).toBeTruthy();
-    expect(screen.getByText(/Current target: −12 LUFS · ceiling −0.7 dBFS/)).toBeTruthy();
+    expect(screen.getByText(/Current target: −12 LUFS · ceiling −1.5 dBFS/)).toBeTruthy();
     const normalize = vi.spyOn(engine, "normalizeSimpleAudio").mockResolvedValue({ advanced: custom, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } });
     vi.spyOn(engine, "processPreview").mockResolvedValue(pcm);
     fireEvent.click(screen.getByRole("button", { name: "Set target loudness" }));

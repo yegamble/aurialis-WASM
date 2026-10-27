@@ -181,6 +181,8 @@ export type Track = {
   simpleCustom?: boolean;
   simpleDirection?: SimpleDirection;
   persistenceWarning?: string;
+  /** Visible note when loading lowered a saved limiter ceiling to −1 dBTP. */
+  limiterNotice?: string;
   measurements?: MeasuredAudioMetrics;
   measurementKind?: "source" | "album-render";
   id: string;

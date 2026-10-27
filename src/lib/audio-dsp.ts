@@ -6,6 +6,9 @@ import type {
   SaturationCharacter,
 } from "./types";
 
+/** Highest limiter ceiling any target, preset or saved project may use (V1-09). */
+export const MAX_LIMITER_CEILING_DB = -1;
+
 function defaultEqBands(): [
   EQBandParams,
   EQBandParams,
@@ -124,7 +127,7 @@ export function createDefaultAdvancedParams(
     },
     limiter: {
       enabled: false,
-      ceiling: -1.0,
+      ceiling: MAX_LIMITER_CEILING_DB,
       targetLufs: -14.0,
       release: 85,
       truePeak: false,
@@ -268,7 +271,7 @@ export function mapSimpleToDSP(
     limiter: {
       ...base.limiter, enabled: true,
       targetLufs: target === "Loud" ? -9 : target === "Dynamic" || target === "Podcast" ? -16 : -14,
-      ceiling: target === "Loud" ? -0.2 : -1,
+      ceiling: MAX_LIMITER_CEILING_DB,
     },
   };
 }

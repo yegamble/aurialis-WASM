@@ -125,11 +125,11 @@ describe("Aurialis Control Isolation & Parameter Orthogonality", () => {
     const afterLimiter = reduceStoreState(afterStereo, {
       type: "UPDATE_LIMITER",
       trackId,
-      patch: { ceiling: -0.8 },
+      patch: { ceiling: -1.8 },
     });
     const limTrack = afterLimiter.tracks[0];
     if (!limTrack) throw new Error("Missing limTrack");
-    expect(limTrack.advanced.limiter.ceiling).toBe(-0.8);
+    expect(limTrack.advanced.limiter.ceiling).toBe(-1.8);
     expect(limTrack.advanced.stereo).toEqual(stereoTrack.advanced.stereo);
   });
 

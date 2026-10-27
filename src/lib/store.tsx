@@ -11,7 +11,7 @@ import {
   type Dispatch,
   type ReactNode,
 } from "react";
-import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP } from "./audio-dsp";
+import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP, MAX_LIMITER_CEILING_DB } from "./audio-dsp";
 import { normalizeShortcutUndo, pruneShortcutUndo, toggleMasteringShortcut, type MasteringShortcut } from "./mastering-shortcuts";
 import { masteringTargets } from "./mastering-targets";
 import { restoredSimpleDirection, type SimpleChange } from "./simple-directions";
@@ -347,6 +347,7 @@ export function reduceStoreState(
             limiter: {
               ...track.advanced.limiter,
               ...action.patch,
+              ceiling: Math.min(MAX_LIMITER_CEILING_DB, action.patch.ceiling ?? track.advanced.limiter.ceiling),
             },
           },
           updatedAt: new Date().toISOString(),
@@ -465,6 +466,28 @@ function restoredTopology(value: unknown): CompressorTopology {
   return compressorTopologies.find((topology) => topology === value) ?? "optical";
 }
 
+function dbLabel(value: number): string {
+  return String(Math.round(value * 100) / 100).replace("-", "−");
+}
+
+// V1-09: no saved project keeps a limiter ceiling above −1 dBTP. Lower the
+// current settings and the Deep snapshots together so they still match, and
+// leave a visible note so the change is never silent.
+function migrateLimiterCeiling(track: Track): Track {
+  const deep = track.deepMastering;
+  const saved = [track.advanced.limiter.ceiling, deep?.applied?.chainParams.limiter.ceilingDbtp, deep?.before?.advanced.limiter.ceiling]
+    .filter((value): value is number => value !== undefined && value > MAX_LIMITER_CEILING_DB);
+  if (saved.length === 0) return track;
+  const lower = (advanced: AdvancedParams): AdvancedParams => ({ ...advanced, limiter: { ...advanced.limiter, ceiling: Math.min(MAX_LIMITER_CEILING_DB, advanced.limiter.ceiling) } });
+  const migrated: Track = { ...track, advanced: lower(track.advanced), limiterNotice: `This project's saved limiter ceiling of ${dbLabel(Math.max(...saved))} dBFS was lowered to ${dbLabel(MAX_LIMITER_CEILING_DB)} dBFS, the highest ceiling Aurialis offers. Set target loudness or export again to re-measure.` };
+  if (deep) {
+    migrated.deepMastering = { ...deep };
+    if (deep.applied) migrated.deepMastering.applied = { ...deep.applied, chainParams: { ...deep.applied.chainParams, limiter: { ...deep.applied.chainParams.limiter, ceilingDbtp: Math.min(MAX_LIMITER_CEILING_DB, deep.applied.chainParams.limiter.ceilingDbtp) } } };
+    if (deep.before) migrated.deepMastering.before = { ...deep.before, advanced: lower(deep.before.advanced) };
+  }
+  return migrated;
+}
+
 export function normalizeHydratedState(raw: unknown): StoreState | null {
   if (typeof raw !== "object" || raw === null) return null;
   const candidate = raw as {
@@ -495,7 +518,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
     const simple = restoredSimpleDirection(track.simpleDirection);
     if (simple && simple.genre === track.genre && simple.tone === track.tone && simple.intensity === track.intensity) restored.simpleDirection = simple;
     else if (track.simpleDirection !== undefined) { delete restored.simpleDirection; restored.simpleCustom = true; }
-    return pruneShortcutUndo({
+    return migrateLimiterCeiling(pruneShortcutUndo({
       ...restored,
       shortcutUndo: normalizeShortcutUndo(track.shortcutUndo),
       simpleCustom: restored.simpleCustom !== false,
@@ -537,7 +560,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
           ...(track.advanced?.repair ?? {}),
         },
       }, track.sampleRate),
-    });
+    }));
   });
   return {
     tracks,

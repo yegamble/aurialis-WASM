@@ -469,7 +469,7 @@ describe("master live playback lifecycle", () => {
       if (!close) throw new Error("Missing export close button");
       fireEvent.click(close);
     };
-    const toggle = screen.getByRole("button", { name: "Match loudness" });
+    const toggle = screen.getByRole("button", { name: "Equal-loudness A/B" });
     expect(toggle.getAttribute("aria-pressed")).toBe("false");
     expect(measure).not.toHaveBeenCalled();
     await exportOnce(1);

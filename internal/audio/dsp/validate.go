@@ -22,7 +22,7 @@ func ValidateParams(p Params) error {
 		return errors.New("unsupported DSP algorithm version")
 	}
 	if p.RetiredLoudnessMatchAB {
-		return errors.New("loudnessMatchAb is retired and must be false; use Match loudness on the playback transport")
+		return errors.New("loudnessMatchAb is retired and must be false; use Equal-loudness A/B on the playback transport")
 	}
 	values := []struct {
 		name            string

@@ -119,7 +119,17 @@ function useHoldAction(direction: -1 | 1, onScrub: RealTransportProps["onScrub"]
 
 /** One live audio clock: A is processed, B original; restart always means this track at zero. */
 export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal, onVolume, onRestart, onForward, onRepeat, onScrub, nextTrackTitle, handover = false, inline = false, match }: RealTransportProps) {
-  const matchId = useId();
+  const matchId = useId(), noteId = useId();
+  const root = useRef<HTMLDivElement>(null);
+  // Publish the fixed transport's height so pages can clear it (--transport-height).
+  useEffect(() => {
+    const element = root.current;
+    if (inline || !element || typeof ResizeObserver === "undefined") return undefined;
+    const style = document.documentElement.style;
+    const observer = new ResizeObserver(() => { style.setProperty("--transport-height", `${String(Math.ceil(element.getBoundingClientRect().height))}px`); });
+    observer.observe(element);
+    return () => { observer.disconnect(); style.removeProperty("--transport-height"); };
+  }, [inline]);
   const playing = state?.playing ?? false;
   const loading = state?.loading ?? false;
   const original = state?.original ?? false;
@@ -133,7 +143,7 @@ export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal,
   const backActions = useHoldAction(-1, onScrub, onRestart, unavailable || loading);
   const forwardActions = useHoldAction(1, onScrub, onForward, unavailable || loading);
   return (
-    <div className={`transport @container ${inline ? "relative w-full" : "fixed right-[14px] bottom-[calc(82px+env(safe-area-inset-bottom,0px))] left-[14px] z-25 w-auto md:sticky md:right-auto md:bottom-3 md:left-auto md:w-full"} min-w-0 rounded-[22px] border border-line-dark bg-paper px-3 py-2 shadow-[var(--shadow)]`}
+    <div ref={root} className={`transport @container ${inline ? "relative w-full" : "fixed right-[14px] bottom-[var(--transport-bottom)] left-[14px] z-25 w-auto md:sticky md:right-auto md:bottom-3 md:left-auto md:w-full"} min-w-0 rounded-[22px] border border-line-dark bg-paper px-3 py-2 shadow-[var(--shadow)]`}
       aria-label="Playback transport" aria-busy={loading || handover}
       data-position={position} data-playing={playing} data-ready={state?.ready ?? false}
       data-parameter-version={state?.parameterVersion ?? 0} data-applied-version={state?.appliedVersion ?? 0}
@@ -183,13 +193,16 @@ export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal,
         </div>
       </div>
       {match && <div className="mt-1 flex min-w-0 items-center gap-2">
-        <button type="button" disabled={unavailable} aria-pressed={match.enabled} aria-describedby={matchId}
-          title="Match loudness · Lowers the louder of A and B by one fixed offset measured from the export render. Listening only; export is unchanged."
+        <button type="button" disabled={unavailable} aria-pressed={match.enabled} aria-describedby={`${matchId} ${noteId}`}
+          title="Equal-loudness A/B · Lowers the louder of A and B by one fixed offset measured from what you hear. Listening only; export is unchanged."
           className="min-h-[44px] min-w-[44px] shrink-0 rounded-full border border-line bg-paper-deep px-3 text-[11px] font-semibold text-ink-soft transition-colors hover:enabled:bg-paper aria-pressed:border-clay-dark aria-pressed:bg-clay-wash aria-pressed:text-clay-dark disabled:cursor-not-allowed disabled:opacity-45"
           onClick={() => { match.onToggle(!match.enabled); }}>
-          Match loudness
+          Equal-loudness A/B
         </button>
-        <p id={matchId} aria-live="polite" aria-atomic="true" title={match.text || undefined} className="match-status m-0 min-w-0 truncate text-[11px] text-ink-soft tabular-nums">{match.text}</p>
+        <div className="grid min-w-0 gap-0.5 text-[11px] leading-4">
+          <p id={matchId} aria-live="polite" aria-atomic="true" title={match.text || undefined} className="match-status m-0 min-w-0 truncate text-ink-soft tabular-nums">{match.text}</p>
+          <span id={noteId} className="match-note truncate text-ink-soft">Listening only — export unchanged</span>
+        </div>
       </div>}
       <p role="status" aria-live="polite" aria-atomic="true" title={status || undefined} className="transport-status m-0 h-4 truncate px-2 text-center text-[10px] leading-4 text-ink-soft">{status}</p>
     </div>

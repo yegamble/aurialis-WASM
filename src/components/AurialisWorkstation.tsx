@@ -574,6 +574,13 @@ function TrackCard({ track, index = 0 }: { track: Track; index?: number }) {
 }
 
 
+type TrackToolRoute = "release-check" | "reference" | "split";
+
+/** One track's tool route, so Master and Tools never open a tool for another track. */
+function trackToolHref(route: TrackToolRoute, trackId: string): string {
+  return `/${route}/${encodeURIComponent(trackId)}`;
+}
+
 function masteringSettingsKey(settings: AdvancedParams) {
   return JSON.stringify({ ...engineParams(settings), requestedTargetLufs: settings.limiter.targetLufs });
 }
@@ -581,6 +588,7 @@ function masteringSettingsKey(settings: AdvancedParams) {
 
 function MasterView({ trackId }: { trackId: string }) {
   const { state, dispatch } = useStore();
+  const browser = useBrowserBuild();
   const track = state.tracks.find((item) => item.id === trackId);
   // Match the unfiltered Library order; editing a project does not reorder this queue.
   const queueIndex = state.tracks.findIndex((item) => item.id === trackId);
@@ -957,6 +965,13 @@ function MasterView({ trackId }: { trackId: string }) {
             Export
           </Button>
         </div>
+        <nav className="col-span-full flex basis-full flex-wrap items-center gap-2" aria-label={`Tools for ${track.title || "Untitled track"}`}>
+          <Link className={buttonClassName("secondary")} href={trackToolHref("release-check", track.id)}><Icon name="check" />Release check</Link>
+          <Link className={buttonClassName("secondary")} href={trackToolHref("reference", track.id)}><Icon name="refresh-cw" />Reference match</Link>
+          {browser
+            ? <p className="disclosure basis-full">{stemSplitAvailability(true)}</p>
+            : <Link className={buttonClassName("secondary")} href={trackToolHref("split", track.id)}><Icon name="scissors" />Smart split</Link>}
+        </nav>
       </header>
       <div className="workspace-layout">
         <section className="workspace-canvas">
@@ -2025,11 +2040,27 @@ function AlbumView({ albumId }: { albumId: string }) {
 }
 
 
+/** Tab-scoped memory of the Tools track choice; storage can be absent or blocked. */
+const TOOLS_TRACK_KEY = "aurialis-tools-track";
+
+function readToolsTrack(): string {
+  try { return sessionStorage.getItem(TOOLS_TRACK_KEY) ?? ""; } catch { return ""; }
+}
+
+function rememberToolsTrack(id: string) {
+  try { sessionStorage.setItem(TOOLS_TRACK_KEY, id); } catch { /* the choice still applies until the page closes */ }
+}
+
 function ToolsView() {
   const { state } = useStore();
   const browser = useBrowserBuild();
-  const first = state.tracks[0];
-  const targetId = first?.id ?? "placeholder";
+  const chooserId = useId();
+  const [chosenId, setChosenId] = useState("");
+  // Read after mount so the static prerender and the first client render agree.
+  useEffect(() => { setChosenId(readToolsTrack()); }, []);
+  // A deleted choice falls back to the newest import, as before the chooser existed.
+  const target = state.tracks.find((item) => item.id === chosenId) ?? state.tracks[0];
+  const href = (route: TrackToolRoute) => target ? trackToolHref(route, target.id) : undefined;
   return (
     <div className="page">
       <PageTitle
@@ -2037,29 +2068,51 @@ function ToolsView() {
         title="Tools"
         copy="Focused tools for your local audio projects."
       />
-      <div className="tools-grid">
+      {target ? (
+        <div className="mb-8 max-w-md">
+          <ControlGroup label="Track" htmlFor={chooserId}>
+            <div className="select-wrap">
+              <select id={chooserId} value={target.id} onChange={(event) => { setChosenId(event.target.value); rememberToolsTrack(event.target.value); }}>
+                {state.tracks.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {`${item.title || "Untitled track"} · ${formatTime(item.duration)} · ${item.format}`}
+                  </option>
+                ))}
+              </select>
+              <Icon name="chevron-down" />
+            </div>
+          </ControlGroup>
+        </div>
+      ) : (
+        <div className="mb-8 flex flex-wrap items-center gap-3">
+          <p className="disclosure">Import a track to open these tools on it.</p>
+          <Link className={buttonClassName("primary")} href="/">Import a track</Link>
+        </div>
+      )}
+      <ul className="tools-grid" aria-label={target ? `Tools for ${target.title || "Untitled track"}` : "Tools"}>
         <ToolCard
           icon="scissors"
           eyebrow="Separation"
           title="Smart stem splitter"
           copy={`${STEM_SPLIT_PITCH} ${stemSplitAvailability(browser)}`}
-          href={`/split/${targetId}`}
+          // The browser build cannot split, so the card states that instead of linking.
+          href={browser ? undefined : href("split")}
         />
         <ToolCard
           icon="refresh-cw"
           eyebrow="Direction"
           title="Reference match"
           copy="Measure your starting chain against reference audio, then review bounded EQ and optional width changes."
-          href={`/reference/${targetId}`}
+          href={href("reference")}
         />
         <ToolCard
           icon="check"
           eyebrow="Delivery"
           title="Release check"
           copy="Measure rendered loudness, peak estimates, crest factor and stereo correlation."
-          href={`/release-check/${targetId}`}
+          href={href("release-check")}
         />
-      </div>
+      </ul>
     </div>
   );
 }
@@ -2075,19 +2128,30 @@ function ToolCard({
   eyebrow: string;
   title: string;
   copy: string;
-  href: string;
+  href: string | undefined;
 }) {
-  return (
-    <Link className="tool-card" href={href}>
+  const body = (
+    <>
       <div>
         <Icon name={icon} />
       </div>
       <span className="eyebrow">{eyebrow}</span>
       <h2>{title}</h2>
       <p>{copy}</p>
-      <span className="text-link">
-        Open tool <Icon name="arrow-right" />
-      </span>
-    </Link>
+    </>
+  );
+  return (
+    <li className="min-w-0">
+      {href === undefined ? (
+        <div className="tool-card h-full">{body}</div>
+      ) : (
+        <Link className="tool-card block h-full" href={href}>
+          {body}
+          <span className="text-link">
+            Open tool <Icon name="arrow-right" />
+          </span>
+        </Link>
+      )}
+    </li>
   );
 }

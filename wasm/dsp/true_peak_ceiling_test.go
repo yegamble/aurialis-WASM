@@ -123,6 +123,11 @@ func TestExportsHoldTheCeilingAgainstTheLongSincReference(t *testing.T) {
 		}
 	}
 	for _, c := range cases {
+		// The race detector slows these renders and the reference about 8x; it
+		// checks one rate, and CI's non-race step runs the whole matrix.
+		if raceEnabled && c.rate != 48000 {
+			continue
+		}
 		t.Run(fmt.Sprintf("%s/%s/%.0f/%.1f", c.fixture, c.chain, c.rate, c.ceiling), func(t *testing.T) {
 			t.Parallel()
 			left, right := fixtures[c.fixture](c.rate, 2)
@@ -136,6 +141,9 @@ func TestExportsHoldTheCeilingAgainstTheLongSincReference(t *testing.T) {
 // resampler, then dithered: the delivered file must hold the ceiling too.
 func TestConvertedExportsHoldTheCeilingAgainstTheLongSincReference(t *testing.T) {
 	for _, c := range []struct{ from, to int }{{96000, 44100}, {44100, 48000}} {
+		if raceEnabled && c.from == 96000 {
+			continue
+		}
 		t.Run(fmt.Sprintf("%d-%d", c.from, c.to), func(t *testing.T) {
 			t.Parallel()
 			left, right := nyquistTorture(float64(c.from), 2)

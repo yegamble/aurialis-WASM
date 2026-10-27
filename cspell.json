@@ -19,6 +19,10 @@
     "deploy/cloudflare/worker-configuration.d.ts"
   ],
   "words": [
+    "devicechange",
+    "rewatch",
+    "rewatches",
+    "statechange",
     "APETAGEX",
     "bitrates",
     "FLACLPC",

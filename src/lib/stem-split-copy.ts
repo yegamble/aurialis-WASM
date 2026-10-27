@@ -66,14 +66,22 @@ function clock(seconds: number): string {
 /**
  * A realistic split time for this song from the recorded per-window speed, or
  * null when the server reports no speed (plain Go) or the length is unknown.
- * These are recorded figures from one Mac, not a measurement of this computer.
+ * These are recorded figures from one Apple-silicon Mac, not a measurement of
+ * this computer; any other arch (an Intel Mac's amd64) was never timed, so the
+ * estimate leads with the busy figure there.
  */
-export function stemSplitEstimate(speed: StemSpeed | null, seconds: number): string | null {
+export function stemSplitEstimate(speed: StemSpeed | null, seconds: number, arch: string): string | null {
   if (!speed) return null;
   const windows = stemWindows(speed, seconds);
   if (windows === 0) return null;
   const idle = windows * speed.idleSecondsPerWindow, busy = windows * speed.busySecondsPerWindow;
   const limit = busy > JOB_LIMIT_SECONDS ? " and pass the 90-minute job limit, stopping the split" : "";
-  return `Estimated split time for this ${clock(seconds)} song: about ${minutes(idle)} (${String(windows)} model window${windows === 1 ? "" : "s"} at about ${String(speed.idleSecondsPerWindow)} s each, measured on an idle 8-core M2 Mac). ` +
+  const count = `${String(windows)} model window${windows === 1 ? "" : "s"}`;
+  if (arch !== "arm64") {
+    return `Estimated split time for this ${clock(seconds)} song: Intel Macs have not been timed, so plan for the slow case. ` +
+      `At the ${String(speed.busySecondsPerWindow)} s per window a busy 8-core M2 Mac measured, it would take about ${minutes(busy)} (${count})${limit}. ` +
+      `The same Mac took about ${String(speed.idleSecondsPerWindow)} s per window when idle, about ${minutes(idle)}.`;
+  }
+  return `Estimated split time for this ${clock(seconds)} song: about ${minutes(idle)} (${count} at about ${String(speed.idleSecondsPerWindow)} s each, measured on an idle 8-core M2 Mac). ` +
     `A busy computer measured up to ${String(speed.busySecondsPerWindow)} s per window, which would make it about ${minutes(busy)}${limit}.`;
 }

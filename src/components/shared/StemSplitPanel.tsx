@@ -135,7 +135,7 @@ export function StemSplitPanel({ audioId, title, duration = 0 }: { audioId: stri
   }
 
   const enabled = canSplit(browser, status, audioId);
-  const estimate = !browser && status?.available === true ? stemSplitEstimate(status.speed, duration) : null;
+  const estimate = !browser && status?.available === true ? stemSplitEstimate(status.speed, duration, status.arch) : null;
   return (
     <section className="split-intro paper-panel" aria-label="Smart Split">
       <div>

@@ -29,12 +29,19 @@ describe("Smart Split panel", () => {
 
   it("says a verified cached model loads on the first split and estimates this song's time", async () => {
     const speed = { windowSeconds: 20, hopSeconds: 10, idleSecondsPerWindow: 32, busySecondsPerWindow: 173 };
-    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ available: true, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688, state: "cached", accelerated: true, backend: "apple-accelerate", speed }))));
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ available: true, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688, state: "cached", accelerated: true, backend: "apple-accelerate", arch: "arm64", speed }))));
     const { container } = render(<StemSplitPanel audioId="a" title="Song" duration={225} />);
     expect(await screen.findByText("The separation model is saved on this computer and verified. The first split loads it; nothing to download.")).toBeTruthy();
     expect(container.textContent).not.toMatch(/downloads the 176 MB/u);
     expect(screen.getByText(/^Estimated split time for this 3:45 song: about 13 minutes/u)).toBeTruthy();
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Split Song into 4 stems" }).disabled).toBe(false);
+  });
+
+  it("leads with the busy estimate on an Intel Mac build, which was never timed", async () => {
+    const speed = { windowSeconds: 20, hopSeconds: 10, idleSecondsPerWindow: 32, busySecondsPerWindow: 173 };
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ available: true, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688, state: "cached", accelerated: true, backend: "apple-accelerate", arch: "amd64", speed }))));
+    render(<StemSplitPanel audioId="a" title="Song" duration={225} />);
+    expect(await screen.findByText(/^Estimated split time for this 3:45 song: Intel Macs have not been timed, so plan for the slow case\. At the 173 s per window/u)).toBeTruthy();
   });
 
   it("states browser-build availability once, without a model note or network request", async () => {

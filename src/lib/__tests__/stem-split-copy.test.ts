@@ -7,7 +7,7 @@ const total = 176_487_688;
 function status(state: StemModelState, extra: Partial<StemModelStatus> = {}): StemModelStatus {
   return {
     reachable: true, available: true, ready: state === "loaded", downloading: state === "downloading", downloadedBytes: 0, totalBytes: total,
-    state, accelerated: true, backend: "apple-accelerate", speed, ...extra,
+    state, accelerated: true, backend: "apple-accelerate", arch: "arm64", speed, ...extra,
   };
 }
 
@@ -44,17 +44,23 @@ describe("Smart Split estimate", () => {
   });
 
   it("estimates this song from the recorded idle and busy window times", () => {
-    expect(stemSplitEstimate(speed, 225)).toBe("Estimated split time for this 3:45 song: about 13 minutes (25 model windows at about 32 s each, measured on an idle 8-core M2 Mac). A busy computer measured up to 173 s per window, which would make it about 72 minutes.");
+    expect(stemSplitEstimate(speed, 225, "arm64")).toBe("Estimated split time for this 3:45 song: about 13 minutes (25 model windows at about 32 s each, measured on an idle 8-core M2 Mac). A busy computer measured up to 173 s per window, which would make it about 72 minutes.");
   });
 
   it("warns when a busy computer would pass the 90-minute job limit", () => {
-    expect(stemSplitEstimate(speed, 348)).toBe("Estimated split time for this 5:48 song: about 20 minutes (37 model windows at about 32 s each, measured on an idle 8-core M2 Mac). A busy computer measured up to 173 s per window, which would make it about 107 minutes and pass the 90-minute job limit, stopping the split.");
+    expect(stemSplitEstimate(speed, 348, "arm64")).toBe("Estimated split time for this 5:48 song: about 20 minutes (37 model windows at about 32 s each, measured on an idle 8-core M2 Mac). A busy computer measured up to 173 s per window, which would make it about 107 minutes and pass the 90-minute job limit, stopping the split.");
+  });
+
+  it("leads with the busy figure on an Intel Mac, where nothing has been timed", () => {
+    expect(stemSplitEstimate(speed, 225, "amd64")).toBe("Estimated split time for this 3:45 song: Intel Macs have not been timed, so plan for the slow case. At the 173 s per window a busy 8-core M2 Mac measured, it would take about 72 minutes (25 model windows). The same Mac took about 32 s per window when idle, about 13 minutes.");
+    expect(stemSplitEstimate(speed, 348, "amd64")).toContain("about 107 minutes (37 model windows) and pass the 90-minute job limit, stopping the split.");
+    expect(stemSplitEstimate(speed, 225, "")).toContain("have not been timed");
   });
 
   it("offers no estimate without a recorded speed or a known length", () => {
-    expect(stemSplitEstimate(null, 225)).toBeNull();
-    expect(stemSplitEstimate(speed, 0)).toBeNull();
-    expect(stemSplitEstimate(speed, Number.NaN)).toBeNull();
+    expect(stemSplitEstimate(null, 225, "arm64")).toBeNull();
+    expect(stemSplitEstimate(speed, 0, "arm64")).toBeNull();
+    expect(stemSplitEstimate(speed, Number.NaN, "arm64")).toBeNull();
   });
 });
 

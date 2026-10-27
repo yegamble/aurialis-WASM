@@ -25,6 +25,8 @@ export interface StemModelStatus {
   accelerated: boolean;
   /** "apple-accelerate", "portable-go", or "" when the server was started without the model. */
   backend: string;
+  /** The server's GOARCH; the recorded speed was timed on "arm64" (Apple silicon) only. */
+  arch: string;
   speed: StemSpeed | null;
 }
 
@@ -99,7 +101,7 @@ export function stemDownloadName(title: string, stem: string): string {
   return track ? `${track} - ${part}.wav` : `${part}.wav`;
 }
 
-const unavailable: StemModelStatus = { reachable: true, available: false, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 0, state: "disabled", accelerated: false, backend: "", speed: null };
+const unavailable: StemModelStatus = { reachable: true, available: false, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 0, state: "disabled", accelerated: false, backend: "", arch: "", speed: null };
 const unreachable: StemModelStatus = { ...unavailable, reachable: false };
 
 function record(value: unknown): Record<string, unknown> {
@@ -145,7 +147,8 @@ export async function stemModelStatus(signal?: AbortSignal): Promise<StemModelSt
     return {
       reachable: true, available: body.available === true, ready: body.ready === true, downloading: body.downloading === true,
       downloadedBytes: count(body.downloadedBytes), totalBytes: count(body.totalBytes), state: modelState(body),
-      accelerated: body.accelerated === true, backend: typeof body.backend === "string" ? body.backend.slice(0, 40) : "", speed: readSpeed(body.speed),
+      accelerated: body.accelerated === true, backend: typeof body.backend === "string" ? body.backend.slice(0, 40) : "",
+      arch: typeof body.arch === "string" ? body.arch.slice(0, 20) : "", speed: readSpeed(body.speed),
     };
   } catch (error) {
     if (signal?.aborted) throw error;

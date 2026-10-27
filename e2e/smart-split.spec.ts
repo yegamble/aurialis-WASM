@@ -14,7 +14,7 @@ test.describe("Smart Split (native, mocked model)", () => {
     const id = await uploadProject(page, "Night Drive.wav", 25)
     let deleted = 0
     await page.route("**/api/stems/model", (route) => route.fulfill({
-      json: { available: true, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688, state: "cached", accelerated: true, backend: "apple-accelerate", speed },
+      json: { available: true, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688, state: "cached", accelerated: true, backend: "apple-accelerate", arch: "arm64", speed },
     }))
     await page.route("**/api/separate", async (route) => {
       expect(route.request().method()).toBe("POST")

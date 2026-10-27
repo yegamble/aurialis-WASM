@@ -96,3 +96,21 @@ func TestPeakDBTPMatchesLongDirectSinc(t *testing.T) {
 		t.Fatalf("direct sinc %.4f dBTP vs spectral %.4f dBTP", 20*math.Log10(direct), ref)
 	}
 }
+
+// The direct kernel reads a lone sample and a crest-start tone exactly, and
+// agrees with PeakDBTP away from the edges.
+func TestDirectPeakDBTPEdges(t *testing.T) {
+	x := make([]float32, 64)
+	x[0] = 0.9
+	if got, want := DirectPeakDBTP([][]float32{x}), 20*math.Log10(0.9); math.Abs(got-want) > 0.001 {
+		t.Fatalf("lone sample read %.4f dBTP, want %.4f", got, want)
+	}
+	tone := make([]float32, 4096)
+	for i := range tone {
+		tone[i] = float32(0.5 * math.Sin(2*math.Pi*0.3*float64(i)+0.4))
+	}
+	fade(tone, 1024)
+	if a, b := DirectPeakDBTP([][]float32{tone}), PeakDBTP([][]float32{tone}, 0); math.Abs(a-b) > 0.01 {
+		t.Fatalf("direct %.4f dBTP vs spectral %.4f dBTP", a, b)
+	}
+}

@@ -22,9 +22,15 @@ const Phases = 32
 // circular reconstruction matches the aperiodic one away from the edges.
 const guard = 16384
 
+// edgeSpan frames of the zero extension are measured on each side when edge
+// is 0; it is well inside guard.
+const edgeSpan = 1024
+
 // PeakDBTP returns the highest absolute reconstructed value of any channel in
-// dBTP, ignoring edge frames at each end where the zero extension rings.
-// Channels must have equal length.
+// dBTP. With edge 0 it measures the whole zero-extended file, edgeSpan frames
+// before the first frame through edgeSpan after the last; a positive edge
+// instead ignores that many frames at each end, where truncated test tones
+// ring. Channels must have equal length.
 func PeakDBTP(channels [][]float32, edge int) float64 {
 	peak := 0.0
 	for c := 0; c < len(channels); c += 2 {
@@ -45,7 +51,7 @@ func PeakDBTP(channels [][]float32, edge int) float64 {
 // parts of one complex signal.
 func pairPeak(left, right []float32, edge int) float64 {
 	n := len(left)
-	if n <= 2*edge {
+	if n == 0 || n <= 2*edge {
 		return 0
 	}
 	size := 1 << bits.Len(uint(n+guard-1))
@@ -75,8 +81,14 @@ func pairPeak(left, right []float32, edge int) float64 {
 		f.transform(shifted, true)
 		// shifted[i] now holds x(i+delay) in its real (left) and imaginary
 		// (right) parts.
-		for i := edge; i < n-edge; i++ {
-			v := shifted[i]
+		from, to := edge, n-edge
+		if edge == 0 {
+			// The zero extension rings before the first frame and after the
+			// last; a file that starts or ends on a crest peaks there.
+			from, to = -edgeSpan, n+edgeSpan
+		}
+		for i := from; i < to; i++ {
+			v := shifted[(i+size)%size]
 			peak = math.Max(peak, math.Max(math.Abs(real(v)), math.Abs(imag(v))))
 		}
 	}

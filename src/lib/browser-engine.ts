@@ -15,6 +15,7 @@ async function audioRequest(
   signal?: AbortSignal,
   json = false,
   priority: JobPriority = "foreground",
+  onProgress?: RenderProgress,
 ): Promise<Response> {
   signal?.throwIfAborted();
   try {
@@ -23,7 +24,7 @@ async function audioRequest(
       body: data,
       ...(json ? { headers: { Accept: "application/json" } } : {}),
       ...(signal ? { signal } : {}),
-    }, undefined, priority);
+    }, onProgress, priority);
   } catch (error: unknown) {
     signal?.throwIfAborted();
     // A preempted background measurement is retried by its caller, not a connection failure.
@@ -74,8 +75,10 @@ type DeliveredWAV = {
   /** Go's X-Aurialis-After-Peak-dBTP: measured on the delivered audio, after any conversion. */
   truePeakDbtp: number | null;
 };
-async function renderWAV(data: FormData, failure: string, signal?: AbortSignal): Promise<DeliveredWAV> {
-  const response = await audioRequest(data, signal);
+/** Browser-build job progress (0–100) and stage; the native server reports none. */
+type RenderProgress = (progress: number, stage: string) => void;
+async function renderWAV(data: FormData, failure: string, signal?: AbortSignal, onProgress?: RenderProgress): Promise<DeliveredWAV> {
+  const response = await audioRequest(data, signal, false, "foreground", onProgress);
   if (!response.ok) throw await audioError(response, failure);
   const blob = await readAudioResponse(() => response.blob(), signal);
   const header = response.headers.get("X-Aurialis-After-Peak-dBTP");
@@ -102,11 +105,11 @@ export async function serverRender(
   return (await renderWAV(renderForm(file, "params", params, bitDepth), RENDER_FAILURE, signal)).blob;
 }
 /** A delivery export: the WAV plus its delivered true peak when the engine reports one. */
-export async function renderDelivery(file: Blob, render: { params: object } | { script: ScriptV2 }, bitDepth: 16 | 24 | 32, delivery: ExportDelivery, signal?: AbortSignal): Promise<DeliveredWAV> {
+export async function renderDelivery(file: Blob, render: { params: object } | { script: ScriptV2 }, bitDepth: 16 | 24 | 32, delivery: ExportDelivery, signal?: AbortSignal, onProgress?: RenderProgress): Promise<DeliveredWAV> {
   signal?.throwIfAborted();
   return "script" in render
-    ? renderWAV(renderForm(file, "script", render.script, bitDepth, delivery), SCRIPT_FAILURE, signal)
-    : renderWAV(renderForm(file, "params", render.params, bitDepth, delivery), RENDER_FAILURE, signal);
+    ? renderWAV(renderForm(file, "script", render.script, bitDepth, delivery), SCRIPT_FAILURE, signal, onProgress)
+    : renderWAV(renderForm(file, "params", render.params, bitDepth, delivery), RENDER_FAILURE, signal, onProgress);
 }
 export async function readCanonicalWAV(blob: Blob): Promise<StereoPCM> {
   const data = new DataView(await blob.arrayBuffer());

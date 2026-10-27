@@ -8,8 +8,10 @@ import { formatRate } from "./export-rates";
 const LIVE_MAX_SAMPLE_RATE = 48000;
 
 /** Rate the live AudioContext opens at: the source rate up to 48 kHz; above
- * it, 44.1 kHz for the 44.1 kHz family (88.2, 176.4) and 48 kHz otherwise
- * (96, 192), so the resampling ratio is an integer. Exports keep the source rate. */
+ * it, 44.1 kHz for the 44.1 kHz family (88.2, 176.4) and 48 kHz otherwise.
+ * The ratio is an integer for the 44.1/48 kHz families (88.2, 176.4, 96, 192);
+ * any other rate above 48 kHz plays at 48 kHz at a non-integer ratio. Exports
+ * keep the source rate. */
 export function liveContextRate(sourceRate: number): number {
   if (sourceRate <= LIVE_MAX_SAMPLE_RATE) return sourceRate;
   return sourceRate % 44100 === 0 ? 44100 : 48000;
@@ -32,9 +34,9 @@ export function liveRateStatus(sourceRate: number, contextRate: number | undefin
 /** Plain note for a live rate other than the source's, or null. */
 export function liveRateNote(status: LiveRateStatus): string | null {
   if (status.kind === "capped")
-    return `Aurialis plays this ${formatRate(status.sourceRate)} source at ${formatRate(status.liveRate)} to stay within its live CPU budget; the export keeps the source's ${formatRate(status.sourceRate)}.`;
+    return `Aurialis plays this ${formatRate(status.sourceRate)} source live at ${formatRate(status.liveRate)} to stay within its live CPU budget, so live A may differ slightly from the export (about 0.2 LU). Use Audition export for an exact listen; the export keeps the source's ${formatRate(status.sourceRate)}.`;
   if (status.kind === "resampled")
-    return `This device plays A at ${formatRate(status.liveRate)}, not ${status.targetRate === status.sourceRate ? "the source's " : ""}${formatRate(status.targetRate)}, so live A is resampled before processing and may differ slightly from the export.`;
+    return `This device plays A at ${formatRate(status.liveRate)}, not ${status.targetRate === status.sourceRate ? "the source's " : ""}${formatRate(status.targetRate)}, so live A is resampled before processing and may differ slightly from the export. Use Audition export for an exact listen.`;
   return null;
 }
 

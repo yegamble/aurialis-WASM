@@ -1576,7 +1576,7 @@ function SplitView({ trackId }: { trackId: string }) {
         action={<Link className={buttonClassName("secondary")} href={track ? `/master/${track.id}` : "/"}>
           {track ? "Back to master" : "Import a track"}
         </Link>} />
-      <StemSplitPanel key={track?.id ?? "none"} audioId={track ? audioKey(track) : null} title={track?.title ?? "track"} />
+      <StemSplitPanel key={track?.id ?? "none"} audioId={track ? audioKey(track) : null} title={track?.title ?? "track"} duration={track?.duration ?? 0} />
     </div>
   );
 }

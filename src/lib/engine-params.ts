@@ -91,9 +91,13 @@ export function exportScript<T extends { chainParams: { limiter: object; ditherB
  * you hear is what you export. Nothing needs to differ: dither follows the
  * export's bit depth after the render, and the worklet mixes B Original and
  * the equal-loudness offset outside the engine. */
-export const liveParams = exportParams;
+export function liveParams(advanced: AdvancedParams) {
+  return exportParams(advanced);
+}
 /** The applied Deep script as live playback renders it: the export copy. */
-export const liveScript = exportScript;
+export function liveScript<T extends { chainParams: { limiter: object; ditherBits: number } }>(script: T): T {
+  return exportScript(script);
+}
 
 /** What one master renders for delivery: its applied Deep script, else its settings. */
 export function exportRender(track: Pick<Track, "advanced" | "deepMastering">): { params: ReturnType<typeof exportParams> } | { script: ScriptV2 } {

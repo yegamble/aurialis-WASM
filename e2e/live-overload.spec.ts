@@ -13,8 +13,10 @@ const KERNEL = "if (this.kernel.aurialis_live_process() !== QUANTUM)\n        th
 const AFTER = "this.refreshBuffers();\n      if (this.generation !== Atomics.load(this.header, GENERATION)) {";
 type Where = "before" | "inside" | "after";
 
-async function hitch(page: Page, waitMs: number, everyQuanta: number, where: Where): Promise<void> {
-  const burn = `let qaN = 0; function qaBurn() { if (++qaN % ${String(everyQuanta)} === 0) { const s = Date.now(); while (Date.now() - s < ${String(waitMs)}) {} } }`;
+/** Spin `waitMs` every `everyQuanta` quanta; with `skipEvery`, leave out every
+ * skipEvery-th of those stalls (60/60/0 ms is skipEvery 3). */
+async function hitch(page: Page, waitMs: number, everyQuanta: number, where: Where, skipEvery = 0): Promise<void> {
+  const burn = `let qaN = 0; function qaBurn() { if (++qaN % ${String(everyQuanta)} === 0 && (${String(skipEvery)} === 0 || (qaN / ${String(everyQuanta)}) % ${String(skipEvery)} !== 0)) { const s = Date.now(); while (Date.now() - s < ${String(waitMs)}) {} } }`;
   const replace: [string, string] = where === "before" ? [WRITE, `${WRITE} qaBurn();`]
     : where === "inside" ? [KERNEL, `${KERNEL}\n      qaBurn();`] : [AFTER, `qaBurn(); ${AFTER}`];
   await page.addInitScript(({ burn, replace }) => {
@@ -71,20 +73,22 @@ for (const waitMs of [5, 8]) {
   });
 }
 
-// Real underruns must stop playback within a few seconds: every quantum 4 ms
-// late, or a 60 ms stall once a second on either side of the kernel (QA F-2,
-// missed before because the render thread catches up on the clock).
-for (const [waitMs, every, where] of [[4, 1, "before"], [60, 375, "before"], [60, 375, "after"]] as const) {
-  test(`${String(waitMs)} ms ${where} the kernel every ${String(every)} quanta stops with the can't-keep-up message`, async ({ page }) => {
+// Real underruns must stop playback within 8 s: every quantum 4 ms late, a
+// 60 ms stall once a second on either side of the kernel (QA F-2, missed before
+// because the render thread catches up on the clock), and periodic dropouts that
+// skip a second (Round 6 S-2): 60/60/0 ms, and 200 ms every 2 s.
+for (const [waitMs, every, where, skip] of [[4, 1, "before", 0], [60, 375, "before", 0], [60, 375, "after", 0], [60, 375, "after", 3], [200, 750, "after", 0]] as const) {
+  test(`${String(waitMs)} ms ${where} the kernel every ${String(every)} quanta${skip ? `, skipping every ${String(skip)}rd,` : ""} stops with the can't-keep-up message`, async ({ page }) => {
     test.setTimeout(120_000);
-    await hitch(page, waitMs, every, where);
-    const started = await play(page, `stall-${String(waitMs)}-${where}.wav`);
+    await hitch(page, waitMs, every, where, skip);
+    const started = await play(page, `stall-${String(waitMs)}-${String(every)}-${where}-${String(skip)}.wav`);
     await expect(page.getByText(OVERLOAD_MESSAGE, { exact: true })).toBeVisible({ timeout: 20_000 });
     const elapsed = Date.now() - started;
     await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
     await expect(page.getByText(/buffer fault/u)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Restore source", exact: true })).toHaveCount(0);
     test.info().annotations.push({ type: "fired-after-ms", description: String(elapsed) });
+    expect(elapsed, "fired after (ms)").toBeLessThanOrEqual(8000);
   });
 }
 

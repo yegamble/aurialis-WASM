@@ -7,6 +7,58 @@ import (
 	"testing"
 )
 
+// The detector's contiguous newest-first window is a speed layout for the live
+// worklet (V1-10). It must stay bit-identical to the plain ring walk it
+// replaced, or export goldens and live/export parity would silently move.
+func TestTruePeakDetectorMatchesRingWalk(t *testing.T) {
+	const taps = 2 * truePeakHalfTaps
+	var ring [2][taps]float64
+	cursor := 0
+	ringWalk := func(left, right float64) float64 {
+		ring[0][cursor], ring[1][cursor] = left, right
+		peak := 0.0
+		for phase := range truePeakFIR {
+			var l, r float64
+			index := cursor
+			for _, coefficient := range truePeakFIR[phase] {
+				l += coefficient * ring[0][index]
+				r += coefficient * ring[1][index]
+				if index == 0 {
+					index = taps
+				}
+				index--
+			}
+			peak = math.Max(peak, math.Max(math.Abs(l), math.Abs(r)))
+		}
+		cursor = (cursor + 1) % taps
+		return peak
+	}
+	var detector truePeakDetector
+	seed := uint32(0x2545f491)
+	for frame := 0; frame < 100000; frame++ {
+		seed ^= seed << 13
+		seed ^= seed >> 17
+		seed ^= seed << 5
+		left, right := float64(seed)/2147483648-1, math.Sin(float64(frame)*0.7)
+		if want, got := ringWalk(left, right), detector.sample(left, right); got != want {
+			t.Fatalf("frame %d: %v, ring walk %v", frame, got, want)
+		}
+	}
+}
+
+// BenchmarkTruePeakDetector times the 8-phase, 48-tap stereo FIR the v2
+// limiter runs per frame; under GOOS=wasip1 it measures the live worklet's cost.
+func BenchmarkTruePeakDetector(b *testing.B) {
+	var detector truePeakDetector
+	peak := 0.0
+	for i := 0; i < b.N; i++ {
+		peak = math.Max(peak, detector.sample(math.Sin(float64(i)*0.01), math.Cos(float64(i)*0.013)))
+	}
+	if peak == 0 {
+		b.Fatal("silent detector")
+	}
+}
+
 func truePeakParams(ceiling float64) Params {
 	p := DefaultParams()
 	p.AlgorithmVersion = TruePeakAlgorithmVersion

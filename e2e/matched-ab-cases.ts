@@ -75,6 +75,29 @@ export async function verifyLimitedMatchedAB(page: Page): Promise<LimitedEvidenc
   return evidence;
 }
 
+/**
+ * Round E REQUIRED-2: Export right after an edit, while Equal-loudness A/B is
+ * re-measuring (or about to), must succeed: the measurement yields the native
+ * server's single audio slot and resumes afterwards.
+ */
+export async function verifyExportDuringMeasurement(page: Page): Promise<void> {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await uploadProject(page, "matched-ab-export.wav", 30, "dense");
+  const toggle = page.getByRole("button", { name: "Equal-loudness A/B", exact: true });
+  await toggle.click();
+  const status = page.locator(".match-status");
+  await expect(status).toHaveText(/to match|already match/, { timeout: 60_000 });
+  const gain = page.getByRole("slider", { name: "Input gain", exact: true });
+  for (const [value, waitMs] of [["-3", 0], ["-5", 600]] as const) {
+    await gain.fill(value);
+    // 0 ms: before the 400 ms debounce; 600 ms: while the measurement renders.
+    if (waitMs) await page.waitForTimeout(waitMs);
+    await exportHash(page);
+  }
+  // The measurement resumes after Export and reports the new offset.
+  await expect(status).toHaveText("B −5.0 dB to match A", { timeout: 60_000 });
+}
+
 type MatchedABEvidence = { matchedDeltaDb: number; unmatchedDeltaDb: number; offsetDb: number; exportHash: string };
 
 /**

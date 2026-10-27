@@ -500,6 +500,20 @@ DISSENTING VIEW:     None.
 | `MUB-4E` | — | Loudness-matched A/B toggle | DECLINED | Conflicts with recorded owner decision (spec §2). The owner may reopen this explicitly. |
 | `MUB-5` | P2 | Genre matrix (blueprint §4) | MODIFY | Keep the conservative recipes in `docs/mastering-controls-research.md`. Blueprint values are candidates only. Section-move caps: ≤+0.8 dB EQ, ≤+8% width, ≤+0.5 dB drive delta; all profiles ≤ −1.0 dBTP (grammy-veteran-1). |
 
+**Disposition (v1 ruling 2026-10-26).** This table has no Status column, so `ledger.py` does not list it; current state per row:
+- MUB-0: resolved by merged PR #3 (`97964fc`).
+- MUB-1: rejected as a duplicate.
+- MUB-2A, MUB-3A, MUB-4A: verified and merged in PR #6 (`3886536`); see Verified & Merged.
+- MUB-2B: closed against merged PR #24.
+- MUB-2C: LR4 half merged in PR #23; the oversampling half is P2, gated on the alias measurement (DA-14).
+- MUB-2D: closed for exports; its ceiling + 0.05 dBTP acceptance is superseded by V1-01 (verified, PR #35).
+- MUB-3B: verified and merged in PR #8 (`d999f4e`) and PR #13 (`6154f87`).
+- MUB-3C: verified and merged in PR #9 (`f9ae077`).
+- MUB-4B: topology UI merged in PR #24; the true-peak part has no separate row and follows MUB-2D; repair UI not carried into v1 (AI Repair DECLINED).
+- MUB-4C, MUB-4D: closed against merged PRs.
+- MUB-4E: DECLINED here, reopened by the owner → V1-11 (verified, PR #54 `8222dc6`).
+- MUB-5: ruled in V1-09 (verified, PR #49 + PR #50).
+
 Recommended next command after MUB-0 merges: `/war-room-loop feature=wasm-dsp` (MUB-2A), with MUB-4A as a parallel non-overlapping frontend slice.
 
 ## Iteration Log
@@ -550,7 +564,7 @@ The corrective subset passed current-session QA and Devil’s Advocate review an
 | R-10 | P1 | Current transport: A Processed default, B Original, shared clock, no Match level | superseded (v1 ruling 2026-10-26; closed against merged PRs) |
 | R-11 | P1 | Independent move edits when real automation is delivered | superseded (v1 ruling 2026-10-26; closed against merged PRs) |
 | R-12 | P1 | Every enabled audio setting maps independently to sample output | superseded (v1 ruling 2026-10-26; closed against merged PRs) |
-| R-13 | P1 | Bounded full-song input capacity and visible current limits | superseded → V1-07 (v1 ruling 2026-10-26; V1-07 verified PR #39) |
+| R-13 | P1 | Bounded full-song input capacity and visible current limits | superseded → V1-07 (v1 ruling 2026-10-26; V1-07 verified PR #39). V1-07 covers the long-export deadline only; visible current limits and browser memory carry to P2 (render memory admission, security-6/QA-9; Go↔TS limit contract, DA-12) |
 | R-14 | P1 | Complete canonical component/CSS migration | superseded (v1 ruling 2026-10-26; closed against merged PRs) |
 | R-15 | P1 | Honest synchronized docs; no demo production state; output-based tests | superseded (v1 ruling 2026-10-26; closed against merged PRs) |
 | R-16 | P2 | Figma identity, metric hierarchy and responsive controls | superseded (v1 ruling 2026-10-26; closed against merged PRs) |

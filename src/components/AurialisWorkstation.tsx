@@ -21,6 +21,7 @@ import { EQBandControls, LimiterReleaseControl } from "./shared/EQBandControls";
 import { RealTransport } from "./shared/RealTransport";
 import { useLoudnessMatch } from "@/lib/use-loudness-match";
 import { ReleaseReview } from "./shared/ReleaseReview";
+import { liveRateNote, liveRateStatus } from "@/lib/live-rate";
 import { createLivePlayback, type LiveMeter, type LivePlaybackController, type LivePlaybackState, type LiveSpectrum } from "@/lib/live-playback";
 import { usePathname } from "next/navigation";
 import { navigateWorkspace, useWorkspacePath, workspaceRoute, type WorkstationRoute } from "@/lib/workspace-navigation";
@@ -607,9 +608,10 @@ function MasterView({ trackId }: { trackId: string }) {
   const [sourceLoading, setSourceLoading] = useState(true);
   const [sourceAttempt, setSourceAttempt] = useState(0);
   const ab = playback?.original ? "B" : "A";
-  // Live DSP runs at the source rate unless this browser cannot open it (V1-10).
-  const liveRate = playback?.liveSampleRate;
-  const liveResampled = source !== null && liveRate !== undefined && liveRate !== source.sampleRate;
+  // Live DSP runs at the source rate up to 48 kHz (V1-10); above that, or where
+  // the browser refuses the rate, say so — and claim nothing before Play.
+  const liveRate = source ? liveRateStatus(source.sampleRate, playback?.liveSampleRate) : { kind: "pending" as const };
+  const liveNote = liveRateNote(liveRate);
   const playheadRatio = playback?.duration ? playback.position / playback.duration : 0;
   const [activeBandId, setActiveBandId] = useState<EQBandId>("low");
   const [exportOpen, setExportOpen] = useState(false);
@@ -813,10 +815,10 @@ function MasterView({ trackId }: { trackId: string }) {
       const next = { ...expected, input: measured.input };
       renderSettings.current = masteringSettingsKey(next);
       dispatch({ type: "APPLY_NORMALIZED_GAIN", id: track.id, expected, input: next.input });
-      // Live playback is the preview: it already plays the export chain, so no second WAV is rendered.
-      dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { status: "mastered" } });
-      const rate = live.current?.getState().liveSampleRate;
-      setMessage(`Target set. ${exportLevelSummary(measurement.afterMetrics, rate !== undefined && rate !== source?.sampleRate)}`);
+      // Live playback is the preview: it already plays the export chain, so no
+      // second WAV is rendered. Only a finished export marks the project mastered.
+      const heard = source ? liveRateStatus(source.sampleRate, live.current?.getState().liveSampleRate) : { kind: "pending" as const };
+      setMessage(`Target set. ${exportLevelSummary(measurement.afterMetrics, heard)}`);
     } catch (error) {
       if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Could not prepare this master.");
     } finally {
@@ -976,7 +978,7 @@ function MasterView({ trackId }: { trackId: string }) {
             <div>
               <span>Sample peak</span>
               <strong>{levels?.peak ?? "—"}</strong>
-              <small>dBFS · preview</small>
+              <small>dBFS · live</small>
             </div>
             <div>
               <span>RMS level</span>
@@ -1021,7 +1023,7 @@ function MasterView({ trackId }: { trackId: string }) {
             {...(nextTrack ? { nextTrackTitle: nextTrack.title || "Untitled track" } : {})}
             handover={handover}
           />
-          {liveResampled && <p className="disclosure" role="status">This device plays A at {formatRate(liveRate)}, not the source&apos;s {formatRate(source.sampleRate)}, so live A is resampled before processing and may differ slightly from the export.</p>}
+          {liveNote && <p className="disclosure" role="status">{liveNote}</p>}
           {track.mode === "deep" && track.deepMastering && <DeepTimeline script={track.deepMastering.proposal} selectedId={deepMoveId} onSelect={selectDeepMove} playheadRatio={playheadRatio} />}
           <LiveSpectrumChart frame={spectrum} playing={playback?.playing ?? false} />
           {sourceError && <div className="flex flex-wrap items-center gap-3" role="alert">
@@ -1035,9 +1037,9 @@ function MasterView({ trackId }: { trackId: string }) {
                 ? "Playback and export use the acknowledged applied revision. Draft edits wait for Apply; pending baseline edits wait for acknowledgment."
                 : track.mode === "simple"
                   ? "Simple and Advanced share these settings. Set target loudness to measure the requested level; export uses the current settings."
-                  : liveResampled
-                    ? "Playback responds to your controls immediately and runs the export chain."
-                    : "Playback responds to your controls immediately and runs the export chain, so what you hear is what you export."}
+                  : liveRate.kind === "source"
+                    ? "Playback responds to your controls immediately and runs the export chain, so what you hear is what you export."
+                    : "Playback responds to your controls immediately and runs the export chain."}
             </span>
           </div>
           <p className="disclosure" role="status">

@@ -1,6 +1,7 @@
 import { exportParams } from "./engine-params";
 export { engineParams } from "./engine-params";
 import { deviceAudioRequest, usesBrowserAudio, type JobPriority } from "./browser-jobs";
+import { liveRateClaim, type LiveRateStatus } from "./live-rate";
 import type { ScriptV2 } from "./deep-mastering";
 import type { AdvancedParams, ExportDelivery, MeasuredAudioMetrics, SourceIdentity } from "./types";
 
@@ -304,13 +305,10 @@ function signedDb(value: number): string {
   return fixed === "-0.00" ? "0.00" : fixed.replace("-", "−");
 }
 
-/** Report the accepted export level. Live playback renders the export
- * chain (V1-10), so it is the preview; at the source rate it matches the
- * export, and resampled (a rate the browser cannot open) it can differ slightly. */
-export function exportLevelSummary(metrics: MeasuredAudioMetrics, liveResampled = false): string {
-  return `Export measures ${signedDb(metrics.integratedLufs)} LUFS, ${signedDb(metrics.truePeakDbtp)} dBTP. ${liveResampled
-    ? "Live playback runs the same chain, resampled on this device, so it may differ slightly."
-    : "Live playback runs the same chain at the source rate."}`;
+/** Report the accepted export level. Live playback renders the export chain
+ * (V1-10), so it is the preview; the rate claim follows what is known of it. */
+export function exportLevelSummary(metrics: MeasuredAudioMetrics, live: LiveRateStatus = { kind: "pending" }): string {
+  return `Export measures ${signedDb(metrics.integratedLufs)} LUFS, ${signedDb(metrics.truePeakDbtp)} dBTP. ${liveRateClaim(live)}`;
 }
 
 // Explicit Simple-mode automatic gain. Advanced rendering never calls this.

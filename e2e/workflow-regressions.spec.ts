@@ -71,7 +71,9 @@ test("Set target loudness measures the export chain without rendering a preview 
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await expect(page.getByRole("button", { name: "Export", exact: true }), "current canonical settings remain exportable after a Simple change").toBeEnabled();
   const exported = await exportPCM(page);
-  expect(exported.left.length).toBeGreaterThan(0);
+  // uploadProject's default source: a 1 s, 48 kHz tone; the export keeps every frame.
+  expect(exported.left.length).toBe(decode(fixture(1000, 1)).left.length);
+  expect(exported.right.length).toBe(exported.left.length);
 });
 
 test("re-applying an unchanged Simple direction never compounds EQ or other settings", async ({ page }) => {

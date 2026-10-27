@@ -211,9 +211,11 @@ describe("master live playback lifecycle", () => {
     await act(async () => { resolveMeasured?.({ advanced: { ...expected, input: 4, stereo: { ...expected.stereo, width: 199 } }, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } }); await Promise.resolve(); });
     const prepared = { ...expected, input: 4 };
     // The export is what was measured; live playback is the preview, so no second WAV is rendered.
-    expect(await screen.findByText("Target set. Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain at the source rate.")).toBeTruthy();
+    // Nothing has played yet, so no rate claim (S1).
+    expect(await screen.findByText("Target set. Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain.")).toBeTruthy();
     expect(savedTrack().advanced).toEqual(prepared);
-    expect(savedTrack().status).toBe("mastered");
+    // Measuring is not mastering: only a finished export marks it.
+    expect(savedTrack().status).not.toBe("mastered");
     expect(instance.controller.setParams).toHaveBeenLastCalledWith(prepared);
     expect(audioRequests()).toEqual([]);
     fireEvent.click(screen.getByRole("tab", { name: "simple" }));
@@ -251,14 +253,29 @@ describe("master live playback lifecycle", () => {
     mount(); await ready();
     const instance = latest();
     expect(screen.queryByText(/resampled/u)).toBeNull();
+    expect(screen.getByText("Playback responds to your controls immediately and runs the export chain.")).toBeTruthy();
     act(() => { instance.state = { ...instance.state, liveSampleRate: 48000 }; instance.callbacks.onState?.(instance.state); });
     expect(screen.queryByText(/resampled/u)).toBeNull();
+    expect(screen.getByText("Playback responds to your controls immediately and runs the export chain, so what you hear is what you export.")).toBeTruthy();
     act(() => { instance.state = { ...instance.state, liveSampleRate: 44100 }; instance.callbacks.onState?.(instance.state); });
     expect(screen.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export.")).toBeTruthy();
     vi.spyOn(engine, "normalizeSimpleAudio").mockImplementation((_blob, advanced) => Promise.resolve({ advanced, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } }));
     fireEvent.click(screen.getByRole("tab", { name: "simple" }));
     fireEvent.click(screen.getByRole("button", { name: "Set target loudness" }));
     expect(await screen.findByText("Target set. Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain, resampled on this device, so it may differ slightly.")).toBeTruthy();
+  }, 30000);
+
+  it("states the 48 kHz live cap for a 96 kHz source before Play, without blaming the device (V1-10)", async () => {
+    localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1).map((track) => ({ ...track, sampleRate: 96000 })) }));
+    mocks.getAudio.mockResolvedValue(canonicalWAV({ ...pcm, sampleRate: 96000 }));
+    mount(); await ready();
+    const note = "Aurialis plays this 96 kHz source at 48 kHz to stay within its live CPU budget; the export keeps the source's 96 kHz.";
+    expect(screen.getByText(note)).toBeTruthy();
+    const instance = latest();
+    act(() => { instance.state = { ...instance.state, liveSampleRate: 48000 }; instance.callbacks.onState?.(instance.state); });
+    expect(screen.getByText(note)).toBeTruthy();
+    expect(screen.queryByText(/This device plays/u)).toBeNull();
+    expect(screen.queryByText(/what you hear is what you export/u)).toBeNull();
   }, 30000);
 
   it("lowers a saved ceiling above −1 dBTP with a visible, dismissible note", async () => {

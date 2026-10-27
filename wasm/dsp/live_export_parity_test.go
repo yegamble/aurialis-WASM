@@ -119,8 +119,15 @@ func TestLivePlaybackRendersTheExport(t *testing.T) {
 		"hot limiter":     hot,
 		"every module on": heaviestLiveParams(dsp.TruePeakAlgorithmVersion, dsp.SatTube),
 	}
-	for _, rate := range []float64{44100, 48000, 96000} {
-		left, right := denseMix(rate, 12)
+	// The race detector makes this about 9x slower (502 s locally); under it
+	// one rate and a 3 s mix keep the check, and CI runs all three rates at
+	// 12 s without the detector.
+	rates, seconds := []float64{44100, 48000, 96000}, 12
+	if raceEnabled {
+		rates, seconds = []float64{48000}, 3
+	}
+	for _, rate := range rates {
+		left, right := denseMix(rate, seconds)
 		for name, params := range cases {
 			heardL, heardR, meter := livePlayback(t, rate, left, right, params)
 			exportL, exportR, exported := dsp.RenderBuffer(left, right, rate, params)
@@ -152,7 +159,11 @@ func TestLivePlaybackRendersTheExport(t *testing.T) {
 func TestLiveDeepScriptRendersTheExport(t *testing.T) {
 	const rate = 48000
 	ctx := context.Background()
-	left, right := denseMix(rate, 8)
+	seconds := 8
+	if raceEnabled {
+		seconds = 3 // the full 8 s runs in CI's non-race step
+	}
+	left, right := denseMix(rate, seconds)
 	buf := &audio.Buffer{SampleRate: rate, Channels: 2, Frames: len(left), Duration: float64(len(left)) / rate, Left: left, Right: right}
 	script, _, err := mastering.AnalyzeDeepV2Context(ctx, buf, mastering.ProfilePunchyCommercial, nil)
 	if err != nil {

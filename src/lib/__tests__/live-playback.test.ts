@@ -477,12 +477,13 @@ describe("per-track live audio lifecycle", () => {
     expect(controller.getState()).toMatchObject({ playing: true, liveSampleRate: 48000 });
     controller.dispose();
   });
-  it("leaves sources above 96 kHz at the device rate to stay inside the measured CPU budget", async () => {
+  it.each([[96000, 48000], [192000, 48000], [88200, 44100], [176400, 44100]])("caps a %i Hz source at %i Hz, an integer ratio inside the 2x real-worklet CPU budget", async (sourceRate, liveRate) => {
     const { contexts } = graphHarness(true, true, false, "honor");
-    const controller = createLivePlayback({ sampleRate: 192000, left: new Float32Array(1920), right: new Float32Array(1920) }, createDefaultAdvancedParams());
+    const frames = sourceRate / 100;
+    const controller = createLivePlayback({ sampleRate: sourceRate, left: new Float32Array(frames), right: new Float32Array(frames) }, createDefaultAdvancedParams());
     await controller.play();
-    expect(contexts[0]?.options.sampleRate).toBeUndefined();
-    expect(controller.getState().liveSampleRate).toBe(48000);
+    expect(contexts[0]?.options.sampleRate).toBe(liveRate);
+    expect(controller.getState().liveSampleRate).toBe(liveRate);
     controller.dispose();
   });
   it("rejects unsupported source layouts and leaves settings immutable", () => {

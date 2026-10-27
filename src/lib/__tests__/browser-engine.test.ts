@@ -282,9 +282,12 @@ describe("actual audio measurement and explicit Simple normalization", () => {
     expect(next.limiter.truePeak).toBe(false);
   });
   it("summarizes the export-measured level and that live playback runs the same chain", () => {
-    expect(exportLevelSummary({ ...measured, integratedLufs: -9.0143, truePeakDbtp: -0.3006 }))
-      .toBe("Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain at the source rate.");
-    expect(exportLevelSummary({ ...measured, integratedLufs: -9.0143, truePeakDbtp: -0.3006 }, true))
+    const hot = { ...measured, integratedLufs: -9.0143, truePeakDbtp: -0.3006 };
+    expect(exportLevelSummary(hot)).toBe("Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain.");
+    expect(exportLevelSummary(hot, { kind: "source" })).toBe("Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain at the source rate.");
+    expect(exportLevelSummary(hot, { kind: "capped", liveRate: 44100, sourceRate: 88200 }))
+      .toBe("Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain at 44.1 kHz to stay within its CPU budget; the export keeps the source's 88.2 kHz.");
+    expect(exportLevelSummary(hot, { kind: "resampled", liveRate: 44100, targetRate: 48000, sourceRate: 48000 }))
       .toBe("Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain, resampled on this device, so it may differ slightly.");
     expect(exportLevelSummary({ ...measured, integratedLufs: -14.004, truePeakDbtp: 0.004 })).toMatch(/^Export measures −14\.00 LUFS, 0\.00 dBTP\./u);
   });

@@ -15,7 +15,11 @@ import (
 // same offsets from the 4x grid instead of sweeping across it. The 49-tap
 // BS.1770-4 Annex 2 filter the meter replaced read these up to 0.44 dB low.
 func TestTruePeakMeterReadsHighFrequencySinesWithinATenthOfADecibel(t *testing.T) {
-	for _, rate := range []float64{44100, 48000, 96000} {
+	rates := []float64{44100, 48000, 96000}
+	if raceEnabled {
+		rates = []float64{48000} // the non-race run measures every rate
+	}
+	for _, rate := range rates {
 		for _, ratio := range []float64{0.05, 0.25, 0.375, 0.4, 0.4375, 0.45} {
 			t.Run(fmt.Sprintf("%.0f/%.2ffs", rate, ratio), func(t *testing.T) {
 				t.Parallel()
@@ -85,7 +89,11 @@ func nearNyquistProgram(rate float64, frames int) ([]float32, []float32) {
 // The live display meter keeps a 48-tap kernel and under-reads such content;
 // it is held to 0.1 dB only on limited exports (true_peak_ceiling_test.go).
 func TestExportMeterReadsUnlimitedNearNyquistContent(t *testing.T) {
-	for _, rate := range []float64{44100, 48000, 96000} {
+	rates := []float64{44100, 48000, 96000}
+	if raceEnabled {
+		rates = []float64{48000} // the non-race run measures every rate
+	}
+	for _, rate := range rates {
 		t.Run(fmt.Sprintf("%.0f", rate), func(t *testing.T) {
 			t.Parallel()
 			left, right := nearNyquistProgram(rate, int(3*rate)) // several transform blocks
@@ -136,8 +144,14 @@ func TestExportMeterReadsFilesThatStartOrEndOnACrest(t *testing.T) {
 		x    []float32
 	}
 	var cases []edgeCase
-	for _, ratio := range []float64{0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.47} {
-		for _, phase := range []float64{0, 0.2, 0.5, 1.0} {
+	// The race detector makes the direct reference about 10x slower; under it
+	// the sweep keeps its corners, and the non-race run covers every case.
+	ratios, phases := []float64{0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.47}, []float64{0, 0.2, 0.5, 1.0}
+	if raceEnabled {
+		ratios, phases = []float64{0.2, 0.47}, []float64{0, 0.5}
+	}
+	for _, ratio := range ratios {
+		for _, phase := range phases {
 			for _, reversed := range []bool{false, true} {
 				cases = append(cases, edgeCase{fmt.Sprintf("%.2ffs/%.1f/reversed=%t", ratio, phase, reversed), crestStart(ratio, phase, reversed)})
 			}

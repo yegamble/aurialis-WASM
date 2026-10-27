@@ -254,6 +254,8 @@ test("a rejected source rate falls back to the device rate with a visible resamp
   await observeOutputEnergy(page);
   await uploadProject(page, "live-fallback.wav");
   await expect(page.getByText(/so live A is resampled/u)).toHaveCount(0);
+  // The 1 s source would end before a loaded host reaches Pause; loop it.
+  await page.getByRole("button", { name: "Repeat track", exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
   expect(await outputEnergyRate(page)).toBe(44100);

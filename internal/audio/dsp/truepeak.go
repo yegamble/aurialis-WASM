@@ -9,11 +9,14 @@ import "math"
 // attack ramp.
 const (
 	truePeakAttackSeconds = 0.0015
-	truePeakPhases        = 8  // oversampling ratio of the limiter detector
-	truePeakHalfTaps      = 24 // K: input samples on each side of a detected point
-	truePeakSupport       = 2*truePeakHalfTaps - 2
-	truePeakRing          = 384 // > A+2K-1 at 192 kHz (288+47)
-	truePeakKaiser        = 8.0
+	// guardFadeSeconds crossfades guarded and unguarded audio when limiting
+	// is switched live, so the switch leaves no splice.
+	guardFadeSeconds = 0.005
+	truePeakPhases   = 8  // oversampling ratio of the limiter detector
+	truePeakHalfTaps = 24 // K: input samples on each side of a detected point
+	truePeakSupport  = 2*truePeakHalfTaps - 2
+	truePeakRing     = 384 // > A+2K-1 at 192 kHz (288+47)
+	truePeakKaiser   = 8.0
 	// truePeakHeadroom (-0.2 dB) absorbs the detector's remaining error on
 	// guarded input (nyquistGuard): the 8-phase grid can miss a 0.45 fs peak
 	// by 0.14 dB, and gain changes inside the 48-sample support move the
@@ -138,6 +141,13 @@ type truePeakLimiter struct {
 
 	guard    nyquistGuard
 	detector truePeakDetector
+	// guardMix crossfades unguarded (0) and guarded (1) input when limiting
+	// starts or stops, guardStep per frame over guardFadeSeconds. The first
+	// frame after a reset takes the target at once, so a render whose
+	// settings never change is never faded. guardStale marks a guard that
+	// ran on bypassed audio; processing restarts it from silence instead.
+	guardMix, guardStep     float64
+	guardPrimed, guardStale bool
 
 	// Delay line: processed L/R and raw L/R for A/B monitoring and bypass.
 	delay  [4][truePeakRing]float64
@@ -161,14 +171,15 @@ type truePeakLimiter struct {
 
 func newTruePeakLimiter(sampleRate float64) truePeakLimiter {
 	attack := max(1, int(math.Round(sampleRate*truePeakAttackSeconds)))
-	t := truePeakLimiter{attack: attack, latency: attack + truePeakSupport, hold: attack + truePeakSupport + 1}
+	t := truePeakLimiter{attack: attack, latency: attack + truePeakSupport, hold: attack + truePeakSupport + 1,
+		guardStep: 1 / math.Max(1, math.Round(sampleRate*guardFadeSeconds))}
 	t.reset()
 	return t
 }
 
 func (t *truePeakLimiter) reset() {
-	attack, latency, hold := t.attack, t.latency, t.hold
-	*t = truePeakLimiter{attack: attack, latency: latency, hold: hold, envelope: 1}
+	attack, latency, hold, step := t.attack, t.latency, t.hold, t.guardStep
+	*t = truePeakLimiter{attack: attack, latency: latency, hold: hold, guardStep: step, envelope: 1}
 	for i := 0; i < attack; i++ {
 		t.average[i] = 1
 	}
@@ -230,10 +241,31 @@ func (t *truePeakLimiter) push(l, r, rawL, rawR float64) (float64, float64, floa
 
 // process advances the limiter by one frame and returns the delayed frame with
 // its gain. With limit false it runs at unity gain on the unfiltered frame;
-// the guard still runs so state stays aligned when limiting resumes.
+// the guard still runs so its state is current when limiting resumes, and a
+// change of limit crossfades the two over guardFadeSeconds.
 func (t *truePeakLimiter) process(l, r, rawL, rawR, ceiling, release float64, limit bool) (float64, float64, float64, float64, float64) {
-	if guardL, guardR := t.guard.sample(l, r); limit {
+	guardL, guardR := t.guard.sample(l, r)
+	target := 0.0
+	if limit {
+		target = 1
+	}
+	if !t.guardPrimed {
+		t.guardMix, t.guardPrimed = target, true
+	}
+	if t.guardMix < target {
+		t.guardMix = math.Min(target, t.guardMix+t.guardStep)
+	} else if t.guardMix > target {
+		t.guardMix = math.Max(target, t.guardMix-t.guardStep)
+	}
+	switch t.guardMix {
+	case 1:
 		l, r = guardL, guardR
+	case 0:
+	default:
+		// A raised-cosine ramp leaves less splice energy than a linear one.
+		weight := 0.5 - 0.5*math.Cos(math.Pi*t.guardMix)
+		l += weight * (guardL - l)
+		r += weight * (guardR - r)
 	}
 	gain := t.gain(t.requirement(l, r, ceiling*truePeakHeadroom, limit), release)
 	l, r, rawL, rawR = t.push(l, r, rawL, rawR)

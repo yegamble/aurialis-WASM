@@ -55,7 +55,7 @@ describe("one canonical mastering snapshot", () => {
     const initial = reduceStoreState(testStore, { type: "UPDATE_INPUT_GAIN", trackId: source().id, input: 6 });
     const before = trackOf(initial);
     const changed = trackOf(reduceStoreState(initial, { type: "UPDATE_SIMPLE", id: before.id, patch: { target: "Loud" } }));
-    expect(changed.advanced).toEqual({ ...before.advanced, limiter: { ...before.advanced.limiter, targetLufs: -9, ceiling: -0.2 } });
+    expect(changed.advanced).toEqual({ ...before.advanced, limiter: { ...before.advanced.limiter, targetLufs: -9, ceiling: -1 } });
     expect(changed.simpleCustom).toBe(true);
   });
 
@@ -64,10 +64,10 @@ describe("one canonical mastering snapshot", () => {
     const reset = reduceStoreState(loud, { type: "RESET_ADVANCED", trackId: source().id });
     const rock = trackOf(reduceStoreState(reset, { type: "UPDATE_SIMPLE", id: source().id, patch: { genre: "Rock" } }));
     expect(rock.target).toBe("Loud"); expect(rock.advanced.limiter.targetLufs).toBe(-14); expect(rock.advanced.limiter.ceiling).toBe(-1);
-    let custom = reduceStoreState(reset, { type: "UPDATE_LIMITER", trackId: source().id, patch: { targetLufs: -12, ceiling: -0.7 } });
+    let custom = reduceStoreState(reset, { type: "UPDATE_LIMITER", trackId: source().id, patch: { targetLufs: -12, ceiling: -1.5 } });
     for (const patch of [{ tone: "Warm" }, { intensity: 80 }]) {
       custom = reduceStoreState(custom, { type: "UPDATE_SIMPLE", id: source().id, patch });
-      expect(trackOf(custom).advanced.limiter.targetLufs).toBe(-12); expect(trackOf(custom).advanced.limiter.ceiling).toBe(-0.7);
+      expect(trackOf(custom).advanced.limiter.targetLufs).toBe(-12); expect(trackOf(custom).advanced.limiter.ceiling).toBe(-1.5);
     }
   });
 

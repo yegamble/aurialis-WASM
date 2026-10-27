@@ -39,15 +39,14 @@ test.describe("End-to-End Parameter Orthogonality & Control Isolation", () => {
     await expect(stereoWidthSlider).toHaveValue("100")
   })
 
-  test("profiles apply real processing while disabled separation cannot invent stems", async ({ page }) => {
+  test("Deep offers one measured profile control while disabled separation cannot invent stems", async ({ page }) => {
     const id = await uploadProject(page)
     await page.getByRole("tab", { name: "deep", exact: true }).click()
     await expect(page.getByRole("button", { name: "Analyze Deep proposal", exact: true })).toBeEnabled()
-    await expect(page.getByText("Deep proposals above use source-frame automation.", { exact: false })).toBeVisible()
-    await expect(page.getByText("Musical role detection and AI repair remain unavailable.", { exact: false })).toBeVisible()
-    await page.getByRole("button", { name: "Apply profile", exact: true }).click()
-    await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled()
-    await expect(page.getByText("Profile applied to live playback. Adjust it in Advanced mode while you listen.", { exact: true })).toBeVisible()
+    await expect(page.getByRole("combobox", { name: /profile/iu })).toHaveCount(1)
+    await expect(page.getByRole("combobox", { name: "Deep engineer profile", exact: true })).toBeVisible()
+    await expect(page.getByRole("button", { name: "Apply profile", exact: true })).toHaveCount(0)
+    await expect(page.getByText("Engineer profiles", { exact: true })).toHaveCount(0)
     await page.goto(`/split/${id}`)
     await expect(page.getByRole("group", { name: "Stem count", exact: true })).toBeVisible()
     // The e2e binary runs without a model (--stem-model-url ""), so nothing downloads.

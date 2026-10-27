@@ -216,21 +216,27 @@ func ValidSourceIdentity(source SourceIdentity) bool {
 // RenderScriptV2Context renders exact source-frame automation through the common evaluator.
 // It never normalizes loudness or implicitly enables processing modules.
 func RenderScriptV2Context(ctx context.Context, buf *audio.Buffer, script *ScriptV2) ([]float32, []float32, dsp.Metrics, error) {
+	left, right, metrics, _, err := renderScriptV2Context(ctx, buf, script)
+	return left, right, metrics, err
+}
+
+// renderScriptV2Context also returns the render's gain reduction statistics.
+func renderScriptV2Context(ctx context.Context, buf *audio.Buffer, script *ScriptV2) ([]float32, []float32, dsp.Metrics, dsp.GainReductionStats, error) {
 	identity, err := SourceIdentityContext(ctx, buf)
 	if err != nil {
-		return nil, nil, dsp.Metrics{}, err
+		return nil, nil, dsp.Metrics{}, dsp.GainReductionStats{}, err
 	}
 	if script == nil || identity != script.Source {
-		return nil, nil, dsp.Metrics{}, errors.New("script source identity does not match canonical PCM")
+		return nil, nil, dsp.Metrics{}, dsp.GainReductionStats{}, errors.New("script source identity does not match canonical PCM")
 	}
 	schedule, err := ValidateScriptV2Context(ctx, script, buf.SampleRate)
 	if err != nil {
-		return nil, nil, dsp.Metrics{}, err
+		return nil, nil, dsp.Metrics{}, dsp.GainReductionStats{}, err
 	}
 	engine := dsp.NewEngine(float64(buf.SampleRate))
 	processor, err := automator.New(engine, script.ChainParams, schedule)
 	if err != nil {
-		return nil, nil, dsp.Metrics{}, err
+		return nil, nil, dsp.Metrics{}, dsp.GainReductionStats{}, err
 	}
 	left, right, err := dsp.RenderLatencyCompensated(engine, len(buf.Left), func(left, right []float32) error {
 		for start := 0; start < len(left); start += 4096 {
@@ -245,14 +251,15 @@ func RenderScriptV2Context(ctx context.Context, buf *audio.Buffer, script *Scrip
 		return nil
 	})
 	if err != nil {
-		return nil, nil, dsp.Metrics{}, err
+		return nil, nil, dsp.Metrics{}, dsp.GainReductionStats{}, err
 	}
+	stats := engine.GainReductionStats()
 	metrics, err := dsp.MeasureStereoContext(ctx, left, right, float64(buf.SampleRate))
 	metrics.GainReductionDB = engine.LastGainReductionDB()
 	if err != nil {
-		return nil, nil, dsp.Metrics{}, err
+		return nil, nil, dsp.Metrics{}, dsp.GainReductionStats{}, err
 	}
-	return left, right, metrics, nil
+	return left, right, metrics, stats, nil
 }
 
 // ErrScriptV2Storage reports a result that cannot fit the retained script contract.

@@ -14,26 +14,26 @@ import (
 
 // AnalyzeDeepV2Context creates conservative, reviewable proposals from measured source features.
 // It reports uncertainty and does not infer instruments, musical roles or lost transients.
-func AnalyzeDeepV2Context(ctx context.Context, buf *audio.Buffer, profile ProfileID, onProgress func(int, string)) (*ScriptV2, error) {
-	features, err := AnalyzeFeaturesContext(ctx, buf, onProgress)
+// The prediction measures the proposal rendered through the export algorithm.
+func AnalyzeDeepV2Context(ctx context.Context, buf *audio.Buffer, profile ProfileID, onProgress func(int, string)) (*ScriptV2, *ProposalPrediction, error) {
+	var featureProgress func(int, string)
+	if onProgress != nil {
+		featureProgress = func(progress int, stage string) { onProgress(progress*6/10, stage) }
+	}
+	features, err := AnalyzeFeaturesContext(ctx, buf, featureProgress)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	canonical, err := NormalizeProfile(string(profile))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	metrics, err := dsp.MeasureStereoContext(ctx, buf.Left, buf.Right, float64(buf.SampleRate))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	params := ProfilePreset(canonical)
-	params.AlgorithmVersion = dsp.LegacyAlgorithmVersion
-	params.Limiter.TruePeak = false
-	params.Repair = dsp.RepairParams{}
-	params.Compressor.Topology = dsp.CompOptical
-	params.Limiter.CeilingDBTP = math.Min(params.Limiter.CeilingDBTP, -1)
-	script := &ScriptV2{Version: "2.0", Source: features.Source, Revision: 1, Profile: canonical, Summary: "Measured spectral-balance proposal; review the explicit baseline before applying. No instrument or musical-role inference.", Sections: features.Sections, Moves: []automation.Move{}, Findings: []Finding{}, ChainParams: params, BeforeMetrics: metrics}
+	params := ProposalBaseline(canonical)
+	script := &ScriptV2{Version: "2.0", Source: features.Source, Revision: 1, Profile: canonical, Summary: "Measured spectral-balance proposal from a conservative baseline. Its compressor threshold is set from the source's level, and its only loudness change is the measured Level match gain shown with the prediction; review it before applying. No instrument or musical-role inference.", Sections: features.Sections, Moves: []automation.Move{}, Findings: []Finding{}, ChainParams: params, BeforeMetrics: metrics}
 	audible := false
 	for _, frame := range features.Frames {
 		audible = audible || frame.RMSDB > -90
@@ -42,10 +42,17 @@ func AnalyzeDeepV2Context(ctx context.Context, buf *audio.Buffer, profile Profil
 	if len(frequencies) >= 3 && audible {
 		fitted, residual, fitErr := fitEQContext(ctx, params, float64(buf.SampleRate), frequencies, desired)
 		if fitErr != nil {
-			return nil, fitErr
+			return nil, nil, fitErr
 		}
 		script.ChainParams = fitted
 		script.Findings = append(script.Findings, Finding{ID: "measured-tonal-balance", Severity: "info", Title: "Conservative tonal proposal", Detail: fmt.Sprintf("Five-filter response fitted to 15%% of measured deviations from a smooth log-frequency trend, with regularization and +/-3 dB gain deltas. Residual %.3f dB RMS. This trend is a heuristic, not a target mastering standard.", residual), Lane: "EQ"})
+	}
+	if audible {
+		calibrated, calibrateErr := calibrateCompressorThreshold(ctx, buf, script.ChainParams, proposalRecipes[canonical].averageGR, metrics.SamplePeakDBFS)
+		if calibrateErr != nil {
+			return nil, nil, calibrateErr
+		}
+		script.ChainParams = calibrated
 	}
 	if features.WindowCrestPercentiles[1] < 6 && audible {
 		script.Findings = append(script.Findings, Finding{ID: "measured-low-crest", Severity: "warning", Title: "Low measured crest factor", Detail: "The median one-second crest factor is below 6 dB. Existing dynamics may already be restricted; no transient restoration or additional compression was inferred.", Lane: "Dynamics"})
@@ -62,13 +69,41 @@ func AnalyzeDeepV2Context(ctx context.Context, buf *audio.Buffer, profile Profil
 			script.Moves = append(script.Moves, automation.Move{ID: "headroom-" + section.ID, SectionID: section.ID, Reason: fmt.Sprintf("Measured window peak estimate plus proposed input gain is %.2f dBFS; reduce this section by 0.5 dB before the chain. No loudness boost is added.", peakEstimate), Target: "inputGainDb", Operation: "add", Points: []automation.Point{{Frame: section.StartFrame, Value: -.5}, {Frame: section.EndFrame, Value: -.5}}, FadeFrames: fade})
 		}
 	}
+	for i := range script.Moves {
+		script.Moves[i] = CapSectionMove(script.ChainParams, script.Moves[i])
+	}
 	if _, err := ValidateScriptV2Context(ctx, script, buf.SampleRate); err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	if onProgress != nil {
+		onProgress(70, "Rendering the proposal through the export limiter to predict its levels...")
+	}
+	prediction, err := predictExportContext(ctx, buf, script)
+	if err != nil {
+		return nil, nil, err
+	}
+	if audible {
+		// One explicit, listed gain holds the source loudness where the ceiling allows (V1-09).
+		match := levelMatchFor(metrics, prediction.AfterMetrics, script.ChainParams.Limiter.CeilingDBTP)
+		if match.GainDB != 0 {
+			script.ChainParams.Compressor.MakeupDB = match.GainDB
+			if _, err := ValidateScriptV2Context(ctx, script, buf.SampleRate); err != nil {
+				return nil, nil, err
+			}
+			if onProgress != nil {
+				onProgress(85, "Re-measuring the proposal with its Level match gain...")
+			}
+			if prediction, err = predictExportContext(ctx, buf, script); err != nil {
+				return nil, nil, err
+			}
+		}
+		prediction.LevelMatch = match
+		script.Findings = append(script.Findings, predictionFindings(metrics, prediction.AfterMetrics, &prediction)...)
 	}
 	if onProgress != nil {
 		onProgress(100, "Measured proposal ready for review")
 	}
-	return script, nil
+	return script, &prediction, nil
 }
 
 func spectralTrendCorrection(features *AnalysisFeatures) ([]float64, []float64) {

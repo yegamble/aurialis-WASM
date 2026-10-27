@@ -125,6 +125,9 @@ jobs:
       - name: Calibrate export budgets against measured render cost
         timeout-minutes: 5
         run: go test -run '^TestExportBudgetCalibration$' -count=1 -v ./internal/server
+      - name: Verify full-length Deep profile predictions without the race detector
+        timeout-minutes: 5
+        run: go test -run '^TestDeepProfilesPredictExportLevelsAndExplainLargeChanges$' -count=1 -v ./internal/mastering
       - name: Install FFmpeg for independent meter verification
         timeout-minutes: 5
         run: |

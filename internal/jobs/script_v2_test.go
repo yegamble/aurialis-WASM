@@ -18,8 +18,12 @@ func TestScriptV2JobRetentionSnapshotAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := waitFeatures(t, manager, admitted.ID)
-	if result.ScriptV2 == nil || result.Script != nil || result.Kind != KindAnalyzeDeepV2 {
+	if result.ScriptV2 == nil || result.Script != nil || result.Kind != KindAnalyzeDeepV2 || result.Prediction == nil {
 		t.Fatal("wrong v2 result")
+	}
+	result.Prediction.AfterMetrics.IntegratedLUFS = 123
+	if again, _ := manager.Get(admitted.ID); again.Prediction.AfterMetrics.IntegratedLUFS == 123 {
+		t.Fatal("consumer mutated retained prediction")
 	}
 	manager.mu.Lock()
 	if manager.usedBytes != mastering.MaxScriptV2Bytes {

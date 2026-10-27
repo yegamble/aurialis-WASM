@@ -152,11 +152,11 @@ func Execute(ctx context.Context, raw, source, reference []byte, progress func(i
 			return nil, err
 		}
 		if request.ScriptVersion == "2.0" {
-			script, err := mastering.AnalyzeDeepV2Context(ctx, buf, profile, progress)
+			script, prediction, err := mastering.AnalyzeDeepV2Context(ctx, buf, profile, progress)
 			if err != nil {
 				return nil, err
 			}
-			return metadata(map[string]any{"kind": "analyze_deep_v2", "status": "done", "scriptV2": script})
+			return metadata(map[string]any{"kind": "analyze_deep_v2", "status": "done", "scriptV2": script, "prediction": prediction})
 		}
 		if request.ScriptVersion != "" {
 			return nil, errors.New("unsupported local script version")

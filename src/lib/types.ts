@@ -182,6 +182,8 @@ export type Track = {
   simpleCustom?: boolean;
   simpleDirection?: SimpleDirection;
   persistenceWarning?: string;
+  /** Visible note when loading lowered a saved limiter ceiling to −1 dBTP. */
+  limiterNotice?: string;
   measurements?: MeasuredAudioMetrics;
   measurementKind?: "source" | "album-render";
   id: string;
@@ -203,6 +205,7 @@ export type Track = {
   target: string;
   metrics: Metrics;
   advanced: AdvancedParams;
+  /** Legacy static profile id kept for saved projects; no control applies it. */
   profile: ProfileId;
   releaseScore?: number;
 };

@@ -91,7 +91,7 @@ func TestMeasuredProposalsSilenceAndRegularizedEQFit(t *testing.T) {
 	buf, _ := scriptFixture(t)
 	clear(buf.Left)
 	clear(buf.Right)
-	script, err := AnalyzeDeepV2Context(context.Background(), buf, ProfileDynamicOpen, nil)
+	script, _, err := AnalyzeDeepV2Context(context.Background(), buf, ProfileDynamicOpen, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,12 +127,12 @@ func TestMeasuredProposalsSilenceAndRegularizedEQFit(t *testing.T) {
 func TestPublicScriptV2ProposalsAvoidUnsupportedProcessing(t *testing.T) {
 	buf, _ := scriptFixture(t)
 	for _, profile := range []ProfileID{ProfileWarmAnalog, ProfilePunchyCommercial, ProfileDynamicOpen, ProfileVocalForward, ProfileBassHeavy} {
-		script, err := AnalyzeDeepV2Context(context.Background(), buf, profile, nil)
+		script, _, err := AnalyzeDeepV2Context(context.Background(), buf, profile, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		params := script.ChainParams
-		if params.AlgorithmVersion != dsp.LegacyAlgorithmVersion || params.Repair != (dsp.RepairParams{}) || params.Limiter.TruePeak || params.Compressor.Topology != dsp.CompOptical || params.Limiter.CeilingDBTP > -1 {
+		if params.AlgorithmVersion != dsp.LegacyAlgorithmVersion || params.Repair != (dsp.RepairParams{}) || params.Limiter.TruePeak || params.Compressor.Topology != ProposalBaseline(profile).Compressor.Topology || params.Limiter.CeilingDBTP > -1 {
 			t.Fatal("public v2 proposal contains unavailable processing", profile, params)
 		}
 		legacy := ProfilePreset(profile)

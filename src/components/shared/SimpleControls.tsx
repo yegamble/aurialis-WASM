@@ -134,7 +134,7 @@ export function SimpleControls({
       {busy && <div role="status"><p>Checking Elevated on the complete source. Current settings stay audible.</p><Button variant="secondary" onClick={cancel}>Cancel Elevated check</Button></div>}
       {error && <p className="disclosure" role="alert">{error}</p>}
       {check && check.owner === track.advanced && check.source === sourceBlob && <p className="disclosure" role="status">Rendered check: {check.lufs.toFixed(1)} LUFS · {check.peak.toFixed(2)} dBTP.</p>}
-      <p className="disclosure">Current target: {targetLufsLabel} LUFS · ceiling {targetCeilingLabel} dBFS. Set target loudness measures these current settings.</p>
+      <p className="disclosure">Current target: {targetLufsLabel} LUFS · ceiling {targetCeilingLabel} dBTP. Set target loudness measures these current settings.</p>
       <Button
         className="full-button"
         disabled={processing || busy || !sourceReady || hasAppliedDeep(track)}

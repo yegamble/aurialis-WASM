@@ -1,5 +1,5 @@
 import { MAX_SOURCE_FRAMES } from "./audio-limits";
-import { createDefaultAdvancedParams } from "./audio-dsp";
+import { createDefaultAdvancedParams, MAX_LIMITER_CEILING_DB } from "./audio-dsp";
 import { runAudioJob } from "./audio-jobs";
 import { deviceAudioRequest } from "./browser-jobs";
 import { engineParams } from "./browser-engine";
@@ -40,7 +40,12 @@ interface CompiledScript {
   sourceVerified: false;
 }
 export type DeepSettingsSnapshot = { advanced: AdvancedParams; profile: ProfileId; genre: string; tone: string; intensity: number; target: string; simpleCustom: boolean; shortcutUndo: ShortcutUndo };
-export interface DeepMasteringState { sourceRevision: number; proposal: ScriptV2; targets: TargetMetadata[]; applied?: ScriptV2; before?: DeepSettingsSnapshot }
+/** The one explicit gain (compressor makeup) that holds the source loudness, limited by the ceiling's headroom. */
+export interface LevelMatch { gainDb: number; neededDb: number; ceilingLimited: boolean }
+/** Levels measured by rendering a draft revision through the export algorithm. Predictions saved before the Level match have only `afterMetrics`. */
+export interface DeepPrediction { revision: number; afterMetrics: MeasuredAudioMetrics; levelMatch?: LevelMatch; compressorAverageGainReductionDb?: number; limiterPeakGainReductionDb?: number }
+export interface MeasuredProposal { proposal: ScriptV2; prediction: Omit<DeepPrediction, "revision"> }
+export interface DeepMasteringState { sourceRevision: number; proposal: ScriptV2; targets: TargetMetadata[]; prediction?: DeepPrediction; applied?: ScriptV2; before?: DeepSettingsSnapshot }
 
 const failure = () => new Error("Invalid or unsupported mastering script.");
 function object(value: unknown, names?: readonly string[]): Record<string, unknown> {
@@ -86,7 +91,9 @@ function params(value: unknown): ScriptParams {
   for (const band of parsed.bands) if (!["high_pass", "low_shelf", "peaking", "high_shelf"].includes(band.type)) throw failure();
   if (!["optical", "vari_mu", "fet", "vca"].includes(parsed.compressor.topology) || !["Warm", "Thick", "Crisp", "Clean", "Tube", "Tape", "Transformer"].includes(parsed.saturation.character)) throw failure();
   if (parsed.repair.enabled || (parsed.limiter.enabled && parsed.limiter.truePeak)) throw failure();
-  return { ...parsed, ...(algorithmVersion !== undefined ? { algorithmVersion: number(algorithmVersion, 0, 1, true) } : {}) };
+  // V1-09: no script, saved or downloaded, applies a ceiling above −1 dBTP.
+  const limiter = { ...parsed.limiter, ceilingDbtp: Math.min(MAX_LIMITER_CEILING_DB, parsed.limiter.ceilingDbtp) };
+  return { ...parsed, limiter, ...(algorithmVersion !== undefined ? { algorithmVersion: number(algorithmVersion, 0, 1, true) } : {}) };
 }
 function points(value: unknown, frames: number): AutomationPoint[] {
   const values = list(value, 256, 2).map((item) => { const point = object(item, ["frame", "value"]); return { frame: number(point.frame, 0, frames, true), value: number(point.value) }; });
@@ -120,9 +127,19 @@ export function readScriptV2(value: unknown, expectedSource?: SourceIdentity): S
   return { version: "2.0", source: identity, revision: number(data.revision, 1, Number.MAX_SAFE_INTEGER, true), profile: data.profile as DeepProfile, summary: text(data.summary, 4096), chainParams: params(data.chainParams), sections, moves, findings, beforeMetrics: typedShape(metricsTemplate, data.beforeMetrics) };
 }
 
-export function analyzeDeep(blob: Blob, profile: DeepProfile, identity: SourceIdentity, signal: AbortSignal, onProgress: (progress: number, stage: string) => void): Promise<ScriptV2> {
+const predictionFields = ["afterMetrics", "levelMatch", "compressorAverageGainReductionDb", "limiterPeakGainReductionDb"] as const;
+function measuredPrediction(record: Record<string, unknown>): Omit<DeepPrediction, "revision"> {
+  const match = object(record.levelMatch, ["gainDb", "neededDb", "ceilingLimited"]);
+  return { afterMetrics: typedShape(metricsTemplate, record.afterMetrics), levelMatch: { gainDb: number(match.gainDb, -36, 36), neededDb: number(match.neededDb), ceilingLimited: bool(match.ceilingLimited) }, compressorAverageGainReductionDb: number(record.compressorAverageGainReductionDb, 0), limiterPeakGainReductionDb: number(record.limiterPeakGainReductionDb, 0) };
+}
+function predictedMetrics(value: unknown): Omit<DeepPrediction, "revision"> {
+  return measuredPrediction(object(value, predictionFields));
+}
+
+/** Analyze a source; the prediction is Go's export-algorithm render of the returned proposal. */
+export function analyzeDeep(blob: Blob, profile: DeepProfile, identity: SourceIdentity, signal: AbortSignal, onProgress: (progress: number, stage: string) => void): Promise<MeasuredProposal> {
   const body = new FormData(); body.append("file", blob, "source.wav"); body.append("scriptVersion", "2.0"); body.append("profile", profile);
-  return runAudioJob("/api/analyze/deep", body, signal, onProgress, (job) => { if (job.kind !== "analyze_deep_v2") throw failure(); return readScriptV2(job.scriptV2, identity); });
+  return runAudioJob("/api/analyze/deep", body, signal, onProgress, (job) => { if (job.kind !== "analyze_deep_v2") throw failure(); return { proposal: readScriptV2(job.scriptV2, identity), prediction: predictedMetrics(job.prediction) }; });
 }
 
 function targetMetadata(value: unknown): TargetMetadata[] {
@@ -165,10 +182,16 @@ export async function compileScript(script: ScriptV2, deviceRate: number, signal
 /** Hydration never applies a saved script; the live controller validates it before publication. */
 export function readDeepMasteringState(value: unknown, identity: SourceIdentity | undefined, sourceRevision: number): DeepMasteringState {
   if (!identity) throw failure();
-  const data = object(value); const allowed = ["sourceRevision", "proposal", "targets", "applied", "before"];
+  const data = object(value); const allowed = ["sourceRevision", "proposal", "targets", "prediction", "applied", "before"];
   if (Object.keys(data).some((key) => !allowed.includes(key)) || data.sourceRevision !== sourceRevision) throw failure();
   const proposal = readScriptV2(data.proposal, identity); const targets = targetMetadata(data.targets);
   const state: DeepMasteringState = { sourceRevision, proposal, targets };
+  if (data.prediction !== undefined) {
+    const record = object(data.prediction); const revision = number(record.revision, 1, Number.MAX_SAFE_INTEGER, true);
+    state.prediction = Object.keys(record).length === 2
+      ? { revision, afterMetrics: typedShape(metricsTemplate, object(data.prediction, ["revision", "afterMetrics"]).afterMetrics) }
+      : { revision, ...measuredPrediction(object(data.prediction, ["revision", ...predictionFields])) };
+  }
   if (data.applied !== undefined) state.applied = readScriptV2(data.applied, identity);
   if (data.before !== undefined) {
     const before = object(data.before, ["advanced", "profile", "genre", "tone", "intensity", "target", "simpleCustom", "shortcutUndo"]);
@@ -195,7 +218,7 @@ export function advancedFromScript(script: ScriptV2): AdvancedParams {
     compressor: { enabled: params.compressor.enabled, threshold: params.compressor.thresholdDb, ratio: params.compressor.ratio, attack: params.compressor.attackMs, release: params.compressor.releaseMs, knee: params.compressor.kneeDb, makeup: params.compressor.makeupDb, sidechainHpfHz: params.compressor.sidechainHpfHz, autoRelease: params.compressor.autoRelease, topology: params.compressor.topology },
     saturationModule: { enabled: params.saturation.enabled, drive: params.saturation.amount, character: params.saturation.character },
     stereo: { enabled: params.stereo.enabled, width: params.stereo.widthPct, monoBass: params.stereo.monoBass, crossoverHz: params.stereo.crossoverHz, midGainDb: params.stereo.midGainDb, sideGainDb: params.stereo.sideGainDb },
-    limiter: { enabled: params.limiter.enabled, ceiling: params.limiter.ceilingDbtp, targetLufs: params.limiter.targetLufs, release: params.limiter.releaseMs, truePeak: params.limiter.truePeak },
+    limiter: { enabled: params.limiter.enabled, ceiling: Math.min(MAX_LIMITER_CEILING_DB, params.limiter.ceilingDbtp), targetLufs: params.limiter.targetLufs, release: params.limiter.releaseMs, truePeak: params.limiter.truePeak },
     deHarsh: params.deHarsh, multiband: params.multiband,
   };
 }

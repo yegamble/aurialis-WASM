@@ -33,6 +33,36 @@ New genre presets use modest tonal shifts, compression ratios, saturation and wi
 - Actual browser controls change exported PCM and live output, without mode-switch or playback regressions.
 - Responsive, keyboard and accessibility gates, documentation sync, and adversarial review before merge.
 
+## Deep proposal baselines
+
+Deep's measured proposal starts from one of five baselines (`internal/mastering/starting_points.go`) on the same conservative scale as the Simple presets. Each has one signature EQ move of at least 1 dB that matches its name, checked against the actual filter response (`TestProfileSignaturesMatchTheirNames`). Every limiter ceiling is −1 dBTP. Compression uses a 6 dB knee with automatic release off, so the listed release is the one applied. The threshold is not fixed: analysis searches for the threshold that gives the listed average gain reduction on this source (frames whose detector reads above −60 dBFS). The measured spectral fit may then move each EQ band by up to ±3 dB from these values.
+
+| Profile | EQ (signature in bold) | Compressor | Average reduction | Ratio | Attack / release ms | Detector HPF Hz | Saturation | Width % | Mono bass |
+| --- | --- | --- | ---: | ---: | --- | ---: | --- | ---: | --- |
+| Warm Analog | 0.5 / **1.1** / 0 / −0.4 / −0.8 | Optical | 1.5 dB | 1.7 | 30 / 250 | 90 | Tube 8% | 100 | Off |
+| Punchy Commercial | 0.6 / −0.8 / 0 / **1.2** / 0.5 | VCA | 1.5 dB | 2 | 30 / 150 | 90 | Transformer 4% | 104 | 110 Hz |
+| Dynamic & Open | 0.2 / −0.3 / 0 / 0.2 / **1.2** | Optical | 0.75 dB | 1.4 | 40 / 300 | 60 | Clean (off) | 104 | Off |
+| Vocal Forward | 0 / −0.6 / **1.2 at 2 kHz** / 0.3 / 0.3 | Optical | 1.5 dB | 1.7 | 30 / 200 | 100 | Tube 3% | 100 | 110 Hz |
+| Bass Heavy | **1.5 shelf at 90 Hz** / −0.6 / 0 / 0 / 0.2 | VCA | 1.5 dB | 1.8 | 30 / 200 | 120 | Tape 4% | 102 | 110 Hz |
+
+EQ columns are Sub / Low 250 Hz / Mid / Presence 4 kHz / Air 12 kHz shelf in dB; Sub is a 60 Hz shelf unless noted and Mid is 1 kHz unless noted. Measured signatures: Warm Analog +1.1 dB at 250 Hz and the darkest top (−0.8 dB at 12 kHz); Punchy Commercial +1.2 dB at 4 kHz; Dynamic & Open +1.2 dB at 12 kHz; Vocal Forward +1.25 dB at 2 kHz; Bass Heavy +1.5 dB at 40 Hz, +1.16 dB at 120 Hz and −0.47 dB at 250 Hz. Each exceeds every other profile by at least 0.5 dB at its signature frequency.
+
+**Level match.** The baseline adds no hidden loudness: no input gain and no makeup of its own. After the proposal is rendered through the export limiter, the measured loudness shortfall becomes one explicit **Level match** gain, set as compressor makeup, rounded to 0.1 dB and capped at the headroom between the predicted true peak and the ceiling (less 0.1 dB) and at +12 dB. The proposal is then rendered again; that second render is the prediction. Where the ceiling limits the match, the loudness-drop finding names the gain needed and the gain the ceiling allowed. Measured on two synthetic 6 s, 48 kHz fixtures (`TestDeepProfilesPredictExportLevelsAndExplainLargeChanges`):
+
+| Profile | Dynamic: Δ LUFS / Δ crest / TP / avg GR / Level match | Dense: Δ LUFS / Δ crest / TP / avg GR / Level match |
+| --- | --- | --- |
+| Warm Analog | −0.04 LU / +0.27 dB / −10.13 dBTP / 1.50 dB / +1.2 dB | −1.18 / +0.72 / −1.28 / 1.48 / +0.1 (ceiling) |
+| Punchy Commercial | −0.02 / +0.36 / −9.79 / 1.45 / +2.1 | −1.56 / +0.88 / −1.26 / 1.50 / +0.6 (ceiling) |
+| Dynamic & Open | −0.03 / +0.25 / −9.93 / 0.75 / +1.1 | −1.02 / +0.38 / −1.23 / 0.74 / +0.1 (ceiling) |
+| Vocal Forward | −0.01 / +0.40 / −9.84 / 1.49 / +2.3 | −1.68 / +1.11 / −1.26 / 1.47 / +0.6 (ceiling) |
+| Bass Heavy | +0.02 / +0.33 / −9.63 / 1.50 / +1.6 | −1.53 / +0.73 / −1.24 / 1.51 / +0.1 (ceiling) |
+
+The dense fixture's source peaks reach about −0.5 dBTP, so a −1 dBTP ceiling cannot hold its loudness without more limiting; every dense case carries the ceiling finding. The export limiter's peak reduction stayed below 0.5 dB in all ten cases.
+
+Generated section moves are capped (MUB-5) at +0.8 dB EQ, +8 width points and +0.5 dB saturation drive above the baseline; cuts are not capped. The generator currently emits only −0.5 dB input-gain headroom trims, so these caps guard future EQ, width and drive moves. A finding explains a loudness change above 1 LU, a crest cut above 4 dB or an export limiter peak reduction above 4 dB.
+
+The removed static profile cards (Modern Pop Polish, Hip-Hop Low-End, Indie Warmth, Metal Wall, Pop Punk Air) applied EQ moves that contradicted their own genres and ceilings up to −0.3 dBTP. Simple and Deep cover those starting points.
+
 ## Simple preset reference
 
 The following values describe **100% intensity** before adding the tone intention. EQ columns are Sub 60 Hz / Low 250 Hz / Mid 1 kHz / Presence 4 kHz / Air 12 kHz, in dB. The Low band is a broad bell (Q 0.7); Sub and Air are shelves.

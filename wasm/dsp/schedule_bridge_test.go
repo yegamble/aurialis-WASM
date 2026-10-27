@@ -191,7 +191,7 @@ func TestWriteAutomationParityFixture(t *testing.T) {
 			buf.Left[i] = float32(i*73%997-498) / 1024
 			buf.Right[i] = float32(i*31%991-495) / 1024
 		}
-		script, err := mastering.AnalyzeDeepV2Context(context.Background(), buf, profile, nil)
+		script, _, err := mastering.AnalyzeDeepV2Context(context.Background(), buf, profile, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

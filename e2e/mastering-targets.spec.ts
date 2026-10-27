@@ -55,18 +55,22 @@ test("canonical loudness targets survive reset and custom project normalization"
   const reset = (await savedTrack(page, id)).advanced;
   await page.getByRole("tab", { name: "simple", exact: true }).click();
   await expect(page.getByRole("combobox", { name: "Output target", exact: true })).toHaveValue("Streaming");
-  await expect(page.getByText("Current target: −14 LUFS · ceiling −1 dBFS. Set target loudness measures these current settings.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Current target: −14 LUFS · ceiling −1 dBTP. Set target loudness measures these current settings.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Rock", exact: true }).click();
   expect((await savedTrack(page, id)).advanced.limiter).toMatchObject({ targetLufs: -14, ceiling: -1 });
 
-  // There is no arbitrary LUFS input. Seed a persisted custom/profile project,
-  // then exercise the real UI and native normalization without mocking either.
-  const custom = { ...reset, limiter: { ...reset.limiter, targetLufs: -12, ceiling: -0.7 } };
-  await seedCustomTarget(page, id, custom);
+  // There is no arbitrary LUFS input. Seed a persisted custom/profile project
+  // saved before V1-09 with a −0.7 dBTP ceiling: loading lowers it to −1 with
+  // a visible note, then the real UI and native normalization run unmocked.
+  const saved = { ...reset, limiter: { ...reset.limiter, targetLufs: -12, ceiling: -0.7 } };
+  const custom = { ...saved, limiter: { ...saved.limiter, ceiling: -1 } };
+  await seedCustomTarget(page, id, saved);
   await expect(page.getByRole("button", { name: "Set target loudness", exact: true })).toBeEnabled({ timeout: 30_000 });
+  await expect(page.getByText("This project's saved limiter ceiling of −0.7 dBTP was lowered to −1 dBTP, the highest ceiling Aurialis offers. Set target loudness or export again to re-measure.", { exact: true })).toBeVisible();
+  await expect.poll(async () => (await savedTrack(page, id)).advanced.limiter.ceiling).toBe(-1);
   await expect(page.getByRole("combobox", { name: "Output target", exact: true })).toHaveValue("custom");
   await expect(page.getByRole("option", { name: "Custom (−12 LUFS)", exact: true })).toBeAttached();
-  await expect(page.getByText("Current target: −12 LUFS · ceiling −0.7 dBFS. Set target loudness measures these current settings.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Current target: −12 LUFS · ceiling −1 dBTP. Set target loudness measures these current settings.", { exact: true })).toBeVisible();
   await page.evaluate(() => { (window as TargetWindow).qaTargetParameters = []; });
   const measurements: { integratedLufs: number; truePeakDbtp: number }[] = [];
   const responses: Promise<void>[] = [];
@@ -84,11 +88,11 @@ test("canonical loudness targets survive reset and custom project normalization"
   await Promise.all(responses);
   const params = await page.evaluate(() => (window as TargetWindow).qaTargetParameters);
   expect(params?.length).toBeGreaterThan(1);
-  for (const value of params ?? []) expect(value.limiter).toMatchObject({ targetLufs: -12, ceilingDbtp: -0.7 });
+  for (const value of params ?? []) expect(value.limiter).toMatchObject({ targetLufs: -12, ceilingDbtp: -1 });
   const last = measurements.at(-1);
   expect(last).toBeDefined();
   expect(Math.abs((last?.integratedLufs ?? -Infinity) + 12)).toBeLessThanOrEqual(0.2);
-  expect(last?.truePeakDbtp).toBeLessThanOrEqual(-0.5);
+  expect(last?.truePeakDbtp).toBeLessThanOrEqual(-0.8);
   const normalized = (await savedTrack(page, id)).advanced;
   expect(normalized.input).not.toBe(custom.input);
   expect({ ...normalized, input: custom.input }).toEqual(custom);
@@ -107,12 +111,12 @@ async function measureWAV(request: APIRequestContext, buffer: Buffer): Promise<M
 // A dense program needs limiting to reach these targets. Normalization must
 // measure the export algorithm (true-peak limiter), not the live sample-peak
 // limiter whose inter-sample overshoot used to reject it.
-// Custom holds the Loud −9 LUFS target under the Streaming −1 dBTP ceiling,
-// which needs about 0.8 dB more limiting than the shipped Loud preset (−0.2).
+// Loud is −9 LUFS at −1 dBTP (V1-09: no target starts above −1). Custom holds
+// −9 LUFS under a −1.5 dBTP ceiling, which needs about 0.5 dB more limiting.
 const denseTargets = [
   { name: "Streaming", targetLufs: -14, ceiling: -1 },
-  { name: "Loud", targetLufs: -9, ceiling: -0.2 },
-  { name: "Custom", targetLufs: -9, ceiling: -1 },
+  { name: "Loud", targetLufs: -9, ceiling: -1 },
+  { name: "Custom", targetLufs: -9, ceiling: -1.5 },
 ];
 for (const { name, targetLufs, ceiling } of denseTargets) {
   test(`Set target loudness exports a dense program at ${String(targetLufs)} LUFS / ${String(ceiling)} dBTP (${name})`, async ({ page, request }, info) => {
@@ -134,7 +138,7 @@ for (const { name, targetLufs, ceiling } of denseTargets) {
       const loud = (await savedTrack(page, id)).advanced;
       await seedCustomTarget(page, id, { ...loud, limiter: { ...loud.limiter, ceiling } });
       await expect(target).toHaveValue("custom", { timeout: 30_000 });
-      await expect(page.getByText("Current target: −9 LUFS · ceiling −1 dBFS. Set target loudness measures these current settings.", { exact: true })).toBeVisible();
+      await expect(page.getByText("Current target: −9 LUFS · ceiling −1.5 dBTP. Set target loudness measures these current settings.", { exact: true })).toBeVisible();
     }
     await expect.poll(async () => (await savedTrack(page, id)).advanced.limiter).toMatchObject({ enabled: true, targetLufs, ceiling });
     const before = (await savedTrack(page, id)).advanced;

@@ -40,11 +40,11 @@ import {
 import {
   createDefaultAdvancedParams,
   clampAdvancedToSampleRate,
-  mapProfileToDSP,
+  MAX_LIMITER_CEILING_DB,
 } from "@/lib/audio-dsp";
 import { saveAudio, getAudio, discardStagedAudio, deleteAudio, newAudioAssetId, loadAlbumMasters, saveAlbumMasters, deleteAlbumMasters, ensureStorageFor, type SavedAlbumMasters } from "@/lib/db";
 import { albumEntryNames, createStoredZip, safeFileBaseName } from "@/lib/zip";
-import { profiles, useStore } from "@/lib/store";
+import { useStore } from "@/lib/store";
 import type {
   Album,
   AdvancedParams,
@@ -52,7 +52,6 @@ import type {
   ExportBitDepth,
   ExportDelivery,
   ExportSampleRate,
-  ProfileId,
   SaturationCharacter,
   Track,
 } from "@/lib/types";
@@ -1012,7 +1011,7 @@ function MasterView({ trackId }: { trackId: string }) {
             <div>
               <span>Sample peak</span>
               <strong>{levels?.peak ?? "—"}</strong>
-              <small>dBFS</small>
+              <small>dBFS · preview</small>
             </div>
             <div>
               <span>RMS level</span>
@@ -1090,6 +1089,7 @@ function MasterView({ trackId }: { trackId: string }) {
             {sourceLoading ? "Loading stored audio…" : message}
           </p>
           {track.importNotice && <p className="disclosure" role="status">{track.importNotice}</p>}
+          {track.limiterNotice && <div className="flex flex-wrap items-center gap-2"><p className="disclosure" role="status">{track.limiterNotice}</p><Button variant="ghost" onClick={() => { dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { limiterNotice: "" } }); }}>Dismiss ceiling note</Button></div>}
           {track.persistenceWarning && (
             <p className="disclosure" role="alert">
               {track.persistenceWarning}
@@ -1118,17 +1118,12 @@ function MasterView({ trackId }: { trackId: string }) {
           {track.mode === "deep" && (
             <DeepControls
               track={track}
-              processing={processing}
               sourceReady={source !== null}
               selectedMoveId={deepMoveId}
               onSelectMove={selectDeepMove}
               onApplyScript={deepPlayback.apply}
               editorOpen={deepEditorOpen}
               onCloseEditor={closeDeepEditor}
-              onApply={(next) => {
-                dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: next, shortcutUndo: {} } });
-                setMessage("Profile applied to live playback. Adjust it in Advanced mode while you listen.");
-              }}
             />
           )}
           {track.mode === "advanced" && (
@@ -1526,9 +1521,9 @@ function AdvancedControls({
         value={adv.limiter.ceiling}
         defaultValue={defaults.limiter.ceiling}
         min={-3.0}
-        max={-0.1}
+        max={MAX_LIMITER_CEILING_DB}
         step={0.1}
-        unit="dBFS"
+        unit="dBTP"
         onChange={(ceiling) => {
           dispatch({
             type: "UPDATE_LIMITER",
@@ -1554,47 +1549,18 @@ function AdvancedControls({
   );
 }
 
-function DeepControls({ track, processing, sourceReady, onApply, selectedMoveId, onSelectMove, editorOpen, onCloseEditor, onApplyScript }: {
+function DeepControls({ track, sourceReady, selectedMoveId, onSelectMove, editorOpen, onCloseEditor, onApplyScript }: {
   track: Track;
-  processing: boolean;
   sourceReady: boolean;
-  onApply: (params: AdvancedParams) => void;
   selectedMoveId: string;
   editorOpen: boolean;
   onCloseEditor: () => void;
   onApplyScript: (script: ScriptV2) => Promise<void>;
   onSelectMove: (id: string) => void;
 }) {
-  const { dispatch } = useStore();
-  const [selectedProfile, setSelectedProfile] = useState<ProfileId>(track.profile);
   return (
     <div className="control-stack deep-controls">
       <DeepProposalPanel track={track} sourceReady={sourceReady} selectedMoveId={selectedMoveId} onSelectMove={onSelectMove} editorOpen={editorOpen} onCloseEditor={onCloseEditor} onApply={onApplyScript} />
-      <div>
-        <h2>Engineer profiles</h2>
-        <p>Apply a static tonal starting point, then refine it in Advanced mode.</p>
-      </div>
-      <ControlGroup label="Engineer profile">
-        <div className="profile-list">
-          {profiles.map((profile) => (
-            <button type="button" key={profile.id}
-              className={selectedProfile === profile.id ? "profile-card is-active" : "profile-card"}
-              aria-pressed={selectedProfile === profile.id}
-              onClick={() => { setSelectedProfile(profile.id); }}>
-              <strong>{profile.name}</strong><span>{profile.note}</span>
-            </button>
-          ))}
-        </div>
-      </ControlGroup>
-      <p className="disclosure">These legacy static profiles apply the same settings throughout your track. Deep proposals above use source-frame automation. Musical role detection and AI repair remain unavailable.</p>
-      <Button className="full-button" disabled={processing || !sourceReady} icon={<Icon name="sparkles" />}
-        onClick={() => {
-          const params = clampAdvancedToSampleRate(mapProfileToDSP(selectedProfile), track.sampleRate);
-          dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { profile: selectedProfile } });
-          onApply(params);
-        }}>
-        {processing ? "Rendering profile…" : "Apply profile"}
-      </Button>
       <FeatureAnalysisPanel trackId={track.id} audioId={audioKey(track)} sourceReady={sourceReady} />
     </div>
   );

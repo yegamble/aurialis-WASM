@@ -21,7 +21,7 @@ describe("fixed Go live control ABI", () => {
       compressor: { enabled: false, thresholdDb: -21, ratio: 3, attackMs: 9, releaseMs: 130, kneeDb: 5, makeupDb: 2, sidechainHpfHz: 95, autoRelease: true, topology: "vca" },
       saturation: { enabled: true, amount: 23, character: "Crisp" },
       stereo: { enabled: false, widthPct: 125, monoBass: true, crossoverHz: 120, midGainDb: 2, sideGainDb: -1 },
-      limiter: { enabled: true, ceilingDbtp: -0.7, targetLufs: -12, releaseMs: 70, truePeak: true },
+      limiter: { enabled: true, ceilingDbtp: -1.7, targetLufs: -12, releaseMs: 70, truePeak: true },
       repair: { enabled: true, deEssDb: 3, transientDb: -2, deClip: true }, ditherBits: 24,
       deHarsh: {enabled: true, frequencyHz: 4000, thresholdDb: -20, rangeDb: 4},
       multiband: {enabled: false, lowMidHz: 200, midHighHz: 4000, bands: [{thresholdDb: -24, ratio: 1.5, attackMs: 30, releaseMs: 150, makeupDb: 0}, {thresholdDb: -24, ratio: 1.5, attackMs: 30, releaseMs: 150, makeupDb: 0}, {thresholdDb: -24, ratio: 1.5, attackMs: 30, releaseMs: 150, makeupDb: 0}]},
@@ -31,7 +31,7 @@ describe("fixed Go live control ABI", () => {
       35, -1, 0.5, 0, 1, 150, 2, 0.6, 1, 0, 900, -3, 0.7, 2, 1,
       3000, 4, 0.8, 3, 0, 14000, -5, 0.9, 2, 1,
       0, -21, 3, 9, 130, 5, 2, 95, 3,
-      1, 23, 2, 0, 125, 1, 120, 1, -0.7, -12, 70, 1, 1, 3, -2, 1, 24,
+      1, 23, 2, 0, 125, 1, 120, 1, -1.7, -12, 70, 1, 1, 3, -2, 1, 24,
       1, 2, -1, 1, 4000, -20, 4, 0, 200, 4000,
       -24, 1.5, 30, 150, 0, -24, 1.5, 30, 150, 0, -24, 1.5, 30, 150, 0,
     ]);

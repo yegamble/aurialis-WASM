@@ -116,7 +116,7 @@ test("missing cached audio disables playback and Apply without inventing a sourc
   await page.getByRole("tab", { name: "simple", exact: true }).click();
   await expect(page.getByRole("button", { name: "Set target loudness", exact: true })).toBeDisabled();
   await page.getByRole("tab", { name: "deep", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Apply profile", exact: true })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Analyze Deep proposal", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Retry source", exact: true }).click();
   await expect(page.getByRole("button", { name: "Play", exact: true })).toBeDisabled();
 });

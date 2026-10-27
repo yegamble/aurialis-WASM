@@ -28,6 +28,9 @@ const metric = "(?:integratedLufs|shortTermLufs|truePeakDbtp|samplePeakDbfs|dyna
 const diagnosticPaths = [
   new RegExp(`^(?:beforeMetrics|afterMetrics)\\.${metric}$`, "u"),
   new RegExp(`^scriptV2\\.beforeMetrics\\.${metric}$`, "u"),
+  // Deep prediction measurements; the Level match gain and thresholds are rounded parameters and stay exact.
+  new RegExp(`^prediction\\.afterMetrics\\.${metric}$`, "u"),
+  /^prediction\.(?:compressorAverageGainReductionDb|limiterPeakGainReductionDb|levelMatch\.neededDb)$/u,
   /^features\.bands\[\d+\]\.(?:powerDb|densityDbPerHz)$/u,
   /^features\.frames\[\d+\]\.(?:rmsDb|centroidHz|sideMidDb|crestDb)$/u,
   /^features\.sibilanceRatioDb$/u,

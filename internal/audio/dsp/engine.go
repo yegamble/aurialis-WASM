@@ -272,6 +272,9 @@ type Engine struct {
 
 	// Deterministic xorshift64* state for TPDF dither
 	prngState uint64
+
+	// Per-sample gain reduction statistics (see GainReductionStats).
+	grStats grStatsState
 }
 
 // NewEngine constructs and pre-allocates a mastering DSP engine for the given sample rate.
@@ -395,6 +398,7 @@ func (e *Engine) Reset() {
 	e.outEnergySum = 0.0
 	e.abGainLin = 1.0
 	e.prngState = 0x9E3779B97F4A7C15
+	e.grStats = grStatsState{}
 }
 
 // LastGainReductionDB returns the most recent combined compressor + limiter gain reduction in dB.
@@ -810,6 +814,7 @@ func (e *Engine) processBlock(inL, inR, outL, outR []float32, lanes *automationL
 			e.lastLimGRDB = 0
 		}
 		outL[i], outR[i] = e.finishSample(l, r, rawL, rawR, limActive)
+		e.grStats.observe(compActive, e.compModel.level, e.lastGRDB, e.lastLimGRDB)
 	}
 	if truePeakV2 {
 		e.truePeak.pending = e.truePeak.latency

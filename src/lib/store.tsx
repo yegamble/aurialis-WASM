@@ -11,7 +11,7 @@ import {
   type Dispatch,
   type ReactNode,
 } from "react";
-import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP } from "./audio-dsp";
+import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP, MAX_LIMITER_CEILING_DB } from "./audio-dsp";
 import { normalizeShortcutUndo, pruneShortcutUndo, toggleMasteringShortcut, type MasteringShortcut } from "./mastering-shortcuts";
 import { masteringTargets } from "./mastering-targets";
 import { restoredSimpleDirection, type SimpleChange } from "./simple-directions";
@@ -30,41 +30,12 @@ import type {
   EQBandId,
   EQBandParams,
   LimiterParams,
-  ProfileId,
   RepairParams,
   SaturationParams,
   StereoParams,
   Track,
 } from "./types";
 import { compressorTopologies } from "./types";
-
-export const profiles: { id: ProfileId; name: string; note: string }[] = [
-  {
-    id: "modern_pop_polish",
-    name: "Modern Pop Polish",
-    note: "Tight lows, open top, controlled chorus lift.",
-  },
-  {
-    id: "hip_hop_low_end",
-    name: "Hip-Hop Low-End",
-    note: "Sub-forward weight with articulate transients.",
-  },
-  {
-    id: "indie_warmth",
-    name: "Indie Warmth",
-    note: "Soft compression and an organic midrange.",
-  },
-  {
-    id: "metal_wall",
-    name: "Metal Wall",
-    note: "Dense impact, precise bass and assertive mids.",
-  },
-  {
-    id: "pop_punk_air",
-    name: "Pop Punk Air",
-    note: "Bright presence and energetic drum movement.",
-  },
-];
 
 type StoreState = {
   tracks: Track[];
@@ -115,7 +86,7 @@ type StoreAction =
   | { type: "ADD_ALBUM"; album: Album }
   | { type: "UPDATE_ALBUM"; id: string; patch: Partial<Album> }
   | { type: "DELETE_ALBUM"; id: string }
-  | { type: "SAVE_DEEP_PROPOSAL"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedProposalRevision: number | null; expectedAdvanced?: AdvancedParams; deep: Pick<DeepMasteringState, "sourceRevision" | "proposal" | "targets"> }
+  | { type: "SAVE_DEEP_PROPOSAL"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedProposalRevision: number | null; expectedAdvanced?: AdvancedParams; deep: Pick<DeepMasteringState, "sourceRevision" | "proposal" | "targets" | "prediction"> }
   | { type: "COMMIT_DEEP_APPLIED"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedAppliedRevision: number | null; expectedAdvanced: AdvancedParams; script: ScriptV2; advanced: AdvancedParams; before: DeepSettingsSnapshot }
   | { type: "DETACH_DEEP_APPLIED"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedAppliedRevision: number; expectedAdvanced: AdvancedParams; snapshot: DeepSettingsSnapshot }
   | { type: "HYDRATE_STATE"; state: StoreState }
@@ -168,7 +139,8 @@ export function reduceStoreState(
     case "SAVE_DEEP_PROPOSAL":
       return { ...state, tracks: updateTrackInList(state.tracks, action.id, (track) => {
         if (action.deep.sourceRevision !== action.expectedSourceRevision || !deepSourceMatches(track, action.deep.proposal, action.expectedSourceRevision) || (track.sourceAudioId ?? track.id) !== action.expectedAudioKey || (track.deepMastering?.proposal.revision ?? null) !== action.expectedProposalRevision || (action.expectedAdvanced && track.advanced !== action.expectedAdvanced)) return track;
-        return { ...track, deepMastering: { ...track.deepMastering, sourceRevision: action.deep.sourceRevision, proposal: action.deep.proposal, targets: action.deep.targets }, updatedAt: new Date().toISOString() };
+        // A new analysis replaces the prediction; draft edits keep it, marked by its revision.
+        return { ...track, deepMastering: { ...track.deepMastering, sourceRevision: action.deep.sourceRevision, proposal: action.deep.proposal, targets: action.deep.targets, ...(action.deep.prediction ? { prediction: action.deep.prediction } : {}) }, updatedAt: new Date().toISOString() };
       }) };
 
     case "COMMIT_DEEP_APPLIED":
@@ -348,6 +320,7 @@ export function reduceStoreState(
             limiter: {
               ...track.advanced.limiter,
               ...action.patch,
+              ceiling: Math.min(MAX_LIMITER_CEILING_DB, action.patch.ceiling ?? track.advanced.limiter.ceiling),
             },
           },
           updatedAt: new Date().toISOString(),
@@ -468,6 +441,28 @@ function restoredTopology(value: unknown): CompressorTopology {
   return compressorTopologies.find((topology) => topology === value) ?? "optical";
 }
 
+function dbLabel(value: number): string {
+  return String(Math.round(value * 100) / 100).replace("-", "−");
+}
+
+// V1-09: no saved project keeps a limiter ceiling above −1 dBTP. Lower the
+// current settings and the Deep snapshots together so they still match, and
+// leave a visible note so the change is never silent.
+function migrateLimiterCeiling(track: Track): Track {
+  const deep = track.deepMastering;
+  const saved = [track.advanced.limiter.ceiling, deep?.applied?.chainParams.limiter.ceilingDbtp, deep?.before?.advanced.limiter.ceiling]
+    .filter((value): value is number => value !== undefined && value > MAX_LIMITER_CEILING_DB);
+  if (saved.length === 0) return track;
+  const lower = (advanced: AdvancedParams): AdvancedParams => ({ ...advanced, limiter: { ...advanced.limiter, ceiling: Math.min(MAX_LIMITER_CEILING_DB, advanced.limiter.ceiling) } });
+  const migrated: Track = { ...track, advanced: lower(track.advanced), limiterNotice: `This project's saved limiter ceiling of ${dbLabel(Math.max(...saved))} dBTP was lowered to ${dbLabel(MAX_LIMITER_CEILING_DB)} dBTP, the highest ceiling Aurialis offers. Set target loudness or export again to re-measure.` };
+  if (deep) {
+    migrated.deepMastering = { ...deep };
+    if (deep.applied) migrated.deepMastering.applied = { ...deep.applied, chainParams: { ...deep.applied.chainParams, limiter: { ...deep.applied.chainParams.limiter, ceilingDbtp: Math.min(MAX_LIMITER_CEILING_DB, deep.applied.chainParams.limiter.ceilingDbtp) } } };
+    if (deep.before) migrated.deepMastering.before = { ...deep.before, advanced: lower(deep.before.advanced) };
+  }
+  return migrated;
+}
+
 export function normalizeHydratedState(raw: unknown): StoreState | null {
   if (typeof raw !== "object" || raw === null) return null;
   const candidate = raw as {
@@ -498,7 +493,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
     const simple = restoredSimpleDirection(track.simpleDirection);
     if (simple && simple.genre === track.genre && simple.tone === track.tone && simple.intensity === track.intensity) restored.simpleDirection = simple;
     else if (track.simpleDirection !== undefined) { delete restored.simpleDirection; restored.simpleCustom = true; }
-    return pruneShortcutUndo({
+    return migrateLimiterCeiling(pruneShortcutUndo({
       ...restored,
       shortcutUndo: normalizeShortcutUndo(track.shortcutUndo),
       simpleCustom: restored.simpleCustom !== false,
@@ -540,7 +535,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
           ...(track.advanced?.repair ?? {}),
         },
       }, track.sampleRate),
-    });
+    }));
   });
   return {
     tracks,

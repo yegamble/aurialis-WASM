@@ -17,7 +17,7 @@ export type AlbumLevel = { mode: AlbumLevelMode; targetLufs: AlbumTarget; offset
 export const DEFAULT_ALBUM_LEVEL: AlbumLevel = { mode: "keep", targetLufs: -14, offsets: [] };
 
 type AlbumTrackPlan =
-  | { trackId: string; mode: "keep"; gainDb: 0 }
+  | { trackId: string; mode: "keep" }
   | { trackId: string; mode: "normalize"; targetLufs: AlbumTarget; offsetDb: number; requestedLufs: number };
 type AlbumPlan = { ok: true; tracks: AlbumTrackPlan[] } | { ok: false; error: string };
 /** Integrated loudness and true peak measured from one rendered album master. */
@@ -66,7 +66,7 @@ export function albumLevelSummary(level: AlbumLevel): string {
 /** What each album master renders. Keep: the single export, unchanged.
  * Normalize: the target plus that track's album offset, or a reason it cannot. */
 export function planAlbumLevels(level: AlbumLevel, tracks: readonly Pick<Track, "id" | "title" | "deepMastering">[]): AlbumPlan {
-  if (level.mode === "keep") return { ok: true, tracks: tracks.map((track) => ({ trackId: track.id, mode: "keep", gainDb: 0 })) };
+  if (level.mode === "keep") return { ok: true, tracks: tracks.map((track) => ({ trackId: track.id, mode: "keep" })) };
   const plans: AlbumTrackPlan[] = [];
   for (const track of tracks) {
     if (track.deepMastering?.applied)

@@ -30,10 +30,10 @@ describe("album level plan", () => {
   it("keeps every master at its own single-export level by default, Deep scripts included", () => {
     expect(DEFAULT_ALBUM_LEVEL.mode).toBe("keep");
     expect(planAlbumLevels(DEFAULT_ALBUM_LEVEL, [first, deep])).toEqual({ ok: true, tracks: [
-      { trackId: first.id, mode: "keep", gainDb: 0 }, { trackId: deep.id, mode: "keep", gainDb: 0 },
+      { trackId: first.id, mode: "keep" }, { trackId: deep.id, mode: "keep" },
     ] });
     // Offsets are ignored while keeping each level; nothing is normalized.
-    expect(planAlbumLevels({ ...DEFAULT_ALBUM_LEVEL, offsets: [{ trackId: first.id, offsetDb: 3 }] }, [first])).toEqual({ ok: true, tracks: [{ trackId: first.id, mode: "keep", gainDb: 0 }] });
+    expect(planAlbumLevels({ ...DEFAULT_ALBUM_LEVEL, offsets: [{ trackId: first.id, offsetDb: 3 }] }, [first])).toEqual({ ok: true, tracks: [{ trackId: first.id, mode: "keep" }] });
   });
 
   it("normalizes each track to the displayed target plus its own album offset", () => {
@@ -95,7 +95,7 @@ describe("album level plan", () => {
 describe("album track render", () => {
   it("keeps a master's level by rendering exactly its single-export parameters, then measures the rendered file", async () => {
     const owned = engine(), track = deepFreeze(structuredClone(first)), file = new Blob(["source"]);
-    const result = await renderAlbumTrack(track, file, { trackId: track.id, mode: "keep", gainDb: 0 }, owned);
+    const result = await renderAlbumTrack(track, file, { trackId: track.id, mode: "keep" }, owned);
     expect(owned.normalize).not.toHaveBeenCalled();
     expect(owned.render).toHaveBeenCalledWith(file, exportParams(first.advanced), 24, undefined);
     expect(owned.measure).toHaveBeenCalledWith(await owned.render.mock.results[0]?.value, { bypass: true }, undefined);
@@ -105,7 +105,7 @@ describe("album track render", () => {
 
   it("keeps an applied Deep master on its script, like its single export", async () => {
     const owned = engine(), track = deepFreeze(structuredClone(deep));
-    await renderAlbumTrack(track, new Blob(["source"]), { trackId: track.id, mode: "keep", gainDb: 0 }, owned);
+    await renderAlbumTrack(track, new Blob(["source"]), { trackId: track.id, mode: "keep" }, owned);
     expect(owned.render).not.toHaveBeenCalled();
     expect(owned.renderScript).toHaveBeenCalledWith(expect.any(Blob), exportScript(script), 24, undefined);
   });

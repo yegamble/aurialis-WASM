@@ -9,7 +9,7 @@ import (
 
 // The detector's contiguous newest-first window is a speed layout for the live
 // worklet (V1-10). It must stay bit-identical to the plain ring walk it
-// replaced, or export goldens and live/export parity would silently move.
+// replaced, or export golden files and live/export parity would silently move.
 func TestTruePeakDetectorMatchesRingWalk(t *testing.T) {
 	const taps = 2 * truePeakHalfTaps
 	var ring [2][taps]float64

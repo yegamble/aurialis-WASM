@@ -128,13 +128,13 @@ func TestLivePlaybackRendersTheExport(t *testing.T) {
 			heard := dsp.MeasureStereo(heardL, heardR, rate)
 			deltaLUFS := heard.IntegratedLUFS - exported.IntegratedLUFS
 			meterDelta := meter.IntegratedLUFS - exported.IntegratedLUFS
-			t.Logf("%.0f Hz %s: residual %.1f dB, ΔLUFS %.4f (meter %.4f), live TP meter %.3f dBTP, export TP %.3f dBTP",
+			t.Logf("%.0f Hz %s: residual %.1f dB, LUFS delta %.4f (meter %.4f), live TP meter %.3f dBTP, export TP %.3f dBTP",
 				rate, name, residual, deltaLUFS, meterDelta, meter.TruePeakDBTP, exported.TruePeakDBTP)
 			if residual > -60 {
 				t.Errorf("%.0f Hz %s: live vs export residual %.1f dB", rate, name, residual)
 			}
 			if math.Abs(deltaLUFS) > 0.1 || math.Abs(meterDelta) > 0.1 {
-				t.Errorf("%.0f Hz %s: ΔLUFS %.3f, live meter ΔLUFS %.3f", rate, name, deltaLUFS, meterDelta)
+				t.Errorf("%.0f Hz %s: LUFS delta %.3f, live meter LUFS delta %.3f", rate, name, deltaLUFS, meterDelta)
 			}
 			if math.Abs(meter.TruePeakDBTP-exported.TruePeakDBTP) > 0.01 {
 				t.Errorf("%.0f Hz %s: live TP meter %.3f dBTP, export %.3f dBTP", rate, name, meter.TruePeakDBTP, exported.TruePeakDBTP)
@@ -207,9 +207,9 @@ func TestLiveDeepScriptRendersTheExport(t *testing.T) {
 	heard[0], heard[1] = heard[0][latency:latency+len(left)], heard[1][latency:latency+len(left)]
 	residual := residualDB(heard, [2][]float32{exportL, exportR})
 	deltaLUFS := dsp.MeasureStereo(heard[0], heard[1], rate).IntegratedLUFS - exported.IntegratedLUFS
-	t.Logf("applied script: residual %.1f dB, ΔLUFS %.4f, %d moves", residual, deltaLUFS, len(schedule.NumericMoves()))
+	t.Logf("applied script: residual %.1f dB, LUFS delta %.4f, %d moves", residual, deltaLUFS, len(schedule.NumericMoves()))
 	if residual > -60 || math.Abs(deltaLUFS) > 0.1 {
-		t.Fatalf("live script vs export: residual %.1f dB, ΔLUFS %.3f", residual, deltaLUFS)
+		t.Fatalf("live script vs export: residual %.1f dB, LUFS delta %.3f", residual, deltaLUFS)
 	}
 }
 

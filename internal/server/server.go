@@ -64,6 +64,24 @@ type StemModelStatus struct {
 	Downloading bool  `json:"downloading"`
 	Downloaded  int64 `json:"downloadedBytes"`
 	Total       int64 `json:"totalBytes"`
+	// State is "disabled", "absent", "downloading", "loading", "cached",
+	// "invalid" or "loaded" (see steminfer.ModelState).
+	State string `json:"state"`
+	// Accelerated and Backend name the inference kernel; only an accelerated
+	// build is available for Smart Split.
+	Accelerated bool   `json:"accelerated"`
+	Backend     string `json:"backend"`
+	// Speed is the recorded per-window time, present on accelerated builds.
+	Speed *StemSpeed `json:"speed,omitempty"`
+}
+
+// StemSpeed is the model's window geometry and the recorded seconds per
+// window, from which the client estimates a song's split time.
+type StemSpeed struct {
+	WindowSeconds        float64 `json:"windowSeconds"`
+	HopSeconds           float64 `json:"hopSeconds"`
+	IdleSecondsPerWindow float64 `json:"idleSecondsPerWindow"`
+	BusySecondsPerWindow float64 `json:"busySecondsPerWindow"`
 }
 
 // Server serves the Aurialis HTTP API and embedded Next.js + WASM assets.
@@ -482,6 +500,9 @@ func (s *Server) handleStemModel(w http.ResponseWriter, _ *http.Request) {
 		status = s.cfg.StemModelStatus()
 	}
 	status.Available = s.cfg.Separator != nil
+	if status.State == "" {
+		status.State = "disabled"
+	}
 	writeJSON(w, http.StatusOK, status)
 }
 

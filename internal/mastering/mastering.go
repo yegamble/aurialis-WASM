@@ -277,7 +277,7 @@ func AnalyzeDeep(ctx context.Context, buf *audio.Buffer, profile ProfileID, onPr
 		return nil, renderErr
 	}
 	script.AfterMetrics = afterMetrics
-	script.Findings = append(script.Findings, predictionFindings(beforeMetrics, afterMetrics)...)
+	script.Findings = append(script.Findings, predictionFindings(beforeMetrics, afterMetrics, nil)...)
 
 	if onProgress != nil {
 		onProgress(100, "Deep MasteringScript v1 ready")

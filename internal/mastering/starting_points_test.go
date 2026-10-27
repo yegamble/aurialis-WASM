@@ -165,18 +165,23 @@ func TestSectionMoveCapsFollowMUB5(t *testing.T) {
 
 func TestPredictionFindingsExplainLoudnessAndCrestChanges(t *testing.T) {
 	before := dsp.Metrics{IntegratedLUFS: -16, DynamicRangeDB: 14}
+	limited := &ProposalPrediction{LevelMatch: LevelMatch{GainDB: 0.4, NeededDB: 2.9, CeilingLimited: true}}
 	for _, tc := range []struct {
-		name  string
-		after dsp.Metrics
-		want  []string
+		name       string
+		after      dsp.Metrics
+		prediction *ProposalPrediction
+		want       []string
 	}{
-		{"within", dsp.Metrics{IntegratedLUFS: -15.1, DynamicRangeDB: 10.1}, nil},
-		{"louder", dsp.Metrics{IntegratedLUFS: -14.5, DynamicRangeDB: 13}, []string{"predicted-loudness-increase"}},
-		{"crest", dsp.Metrics{IntegratedLUFS: -17, DynamicRangeDB: 9.5}, []string{"predicted-crest-reduction"}},
-		{"quieter", dsp.Metrics{IntegratedLUFS: -18.5, DynamicRangeDB: 15}, []string{"predicted-loudness-decrease"}},
-		{"both", dsp.Metrics{IntegratedLUFS: -12, DynamicRangeDB: 8}, []string{"predicted-loudness-increase", "predicted-crest-reduction"}},
+		{"within", dsp.Metrics{IntegratedLUFS: -15.1, DynamicRangeDB: 10.1}, nil, nil},
+		{"louder", dsp.Metrics{IntegratedLUFS: -14.5, DynamicRangeDB: 13}, nil, []string{"predicted-loudness-increase"}},
+		{"crest", dsp.Metrics{IntegratedLUFS: -17, DynamicRangeDB: 9.5}, nil, []string{"predicted-crest-reduction"}},
+		{"quieter", dsp.Metrics{IntegratedLUFS: -18.5, DynamicRangeDB: 15}, nil, []string{"predicted-loudness-decrease"}},
+		{"ceiling", dsp.Metrics{IntegratedLUFS: -18.5, DynamicRangeDB: 15}, limited, []string{"predicted-loudness-decrease"}},
+		{"both", dsp.Metrics{IntegratedLUFS: -12, DynamicRangeDB: 8}, nil, []string{"predicted-loudness-increase", "predicted-crest-reduction"}},
+		{"limiting", dsp.Metrics{IntegratedLUFS: -16, DynamicRangeDB: 13}, &ProposalPrediction{LimiterPeakGainReductionDB: 4.6}, []string{"predicted-heavy-limiting"}},
+		{"light limiting", dsp.Metrics{IntegratedLUFS: -16, DynamicRangeDB: 13}, &ProposalPrediction{LimiterPeakGainReductionDB: 3.9}, nil},
 	} {
-		findings := predictionFindings(before, tc.after)
+		findings := predictionFindings(before, tc.after, tc.prediction)
 		if len(findings) != len(tc.want) {
 			t.Fatalf("%s: findings %+v, want %v", tc.name, findings, tc.want)
 		}
@@ -190,8 +195,35 @@ func TestPredictionFindingsExplainLoudnessAndCrestChanges(t *testing.T) {
 			}
 		}
 	}
-	if findings := predictionFindings(dsp.Metrics{IntegratedLUFS: -120}, dsp.Metrics{IntegratedLUFS: -60, DynamicRangeDB: 0}); len(findings) != 0 {
+	// A ceiling-limited drop names the gain it needed and the gain the ceiling allowed.
+	if detail := predictionFindings(before, dsp.Metrics{IntegratedLUFS: -18.5, DynamicRangeDB: 15}, limited)[0].Detail; !strings.Contains(detail, "+2.9 dB") || !strings.Contains(detail, "+0.4 dB") || !strings.Contains(detail, "−1 dBTP ceiling") {
+		t.Fatal("ceiling-limited drop does not explain the ceiling:", detail)
+	}
+	if findings := predictionFindings(dsp.Metrics{IntegratedLUFS: -120}, dsp.Metrics{IntegratedLUFS: -60, DynamicRangeDB: 0}, nil); len(findings) != 0 {
 		t.Fatal("silent source fabricated findings")
+	}
+}
+
+// R1: the Level match gain restores the measured shortfall unless the
+// prediction's true peak leaves less headroom below the ceiling.
+func TestLevelMatchHoldsLoudnessWithinCeilingHeadroom(t *testing.T) {
+	for _, tc := range []struct {
+		name                string
+		beforeLUFS, afterLU float64
+		afterTP             float64
+		want                LevelMatch
+	}{
+		{"restores", -16, -18.04, -9, LevelMatch{GainDB: 2, NeededDB: 2.04}},
+		{"lowers", -16, -14.5, -3, LevelMatch{GainDB: -1.5, NeededDB: -1.5}},
+		{"tiny", -16, -16.04, -3, LevelMatch{GainDB: 0, NeededDB: 0.04}},
+		{"ceiling", -10, -13, -2.25, LevelMatch{GainDB: 1.1, NeededDB: 3, CeilingLimited: true}},
+		{"at ceiling", -8, -9.5, -1.05, LevelMatch{GainDB: 0, NeededDB: 1.5, CeilingLimited: true}},
+		{"capped", -20, -40, -30, LevelMatch{GainDB: MaxLevelMatchGainDB, NeededDB: 20, CeilingLimited: false}},
+	} {
+		got := levelMatchFor(dsp.Metrics{IntegratedLUFS: tc.beforeLUFS}, dsp.Metrics{IntegratedLUFS: tc.afterLU, TruePeakDBTP: tc.afterTP}, -1)
+		if math.Abs(got.GainDB-tc.want.GainDB) > 1e-9 || math.Abs(got.NeededDB-tc.want.NeededDB) > 1e-9 || got.CeilingLimited != tc.want.CeilingLimited {
+			t.Fatalf("%s: %+v, want %+v", tc.name, got, tc.want)
+		}
 	}
 }
 
@@ -264,8 +296,9 @@ func verifyProfilePrediction(t *testing.T, name string, buf *audio.Buffer, profi
 	if prediction == nil {
 		t.Fatal("missing prediction")
 	}
-	if script.ChainParams.Compressor.MakeupDB != 0 || script.ChainParams.Limiter.CeilingDBTP > MaxStartingCeilingDBTP {
-		t.Fatal("proposal baseline adds makeup or exceeds -1 dBTP")
+	match := prediction.LevelMatch
+	if script.ChainParams.Compressor.MakeupDB != match.GainDB || script.ChainParams.InputGainDB != 0 || script.ChainParams.Limiter.CeilingDBTP > MaxStartingCeilingDBTP {
+		t.Fatalf("level changes other than the listed Level match %+v: makeup %.2f input %.2f", match, script.ChainParams.Compressor.MakeupDB, script.ChainParams.InputGainDB)
 	}
 	exported := script.Clone()
 	exported.ChainParams.AlgorithmVersion = dsp.TruePeakAlgorithmVersion
@@ -282,17 +315,27 @@ func verifyProfilePrediction(t *testing.T, name string, buf *audio.Buffer, profi
 	}
 	rise := prediction.AfterMetrics.IntegratedLUFS - script.BeforeMetrics.IntegratedLUFS
 	cut := script.BeforeMetrics.DynamicRangeDB - prediction.AfterMetrics.DynamicRangeDB
+	// Chair ruling: loudness holds within 1 LU, or a finding says the ceiling prevented it.
+	if math.Abs(rise) > MaxUnexplainedLoudnessRiseLU && !(rise < 0 && match.CeilingLimited && hasFinding(script.Findings, "predicted-loudness-decrease")) {
+		t.Fatalf("Δ LUFS %+.2f LU without a ceiling explanation; level match %+v", rise, match)
+	}
 	if (rise > MaxUnexplainedLoudnessRiseLU) != hasFinding(script.Findings, "predicted-loudness-increase") ||
 		(-rise > MaxUnexplainedLoudnessRiseLU) != hasFinding(script.Findings, "predicted-loudness-decrease") ||
-		(cut > MaxUnexplainedCrestCutDB) != hasFinding(script.Findings, "predicted-crest-reduction") {
-		t.Fatalf("rise %.2f LU cut %.2f dB findings %+v", rise, cut, script.Findings)
+		(cut > MaxUnexplainedCrestCutDB) != hasFinding(script.Findings, "predicted-crest-reduction") ||
+		(prediction.LimiterPeakGainReductionDB > MaxUnexplainedLimiterReductionDB) != hasFinding(script.Findings, "predicted-heavy-limiting") {
+		t.Fatalf("rise %.2f LU cut %.2f dB limiter %.2f dB findings %+v", rise, cut, prediction.LimiterPeakGainReductionDB, script.Findings)
+	}
+	// R2: the measured threshold sets about 1-2 dB of average reduction (0.5-1 dB for Dynamic & Open).
+	target := proposalRecipes[profile].averageGR
+	if gr := prediction.CompressorAverageGainReductionDB; math.Abs(gr-target) > target/3 {
+		t.Fatalf("average compressor reduction %.2f dB, want %.2f ± %.2f dB (threshold %.1f dBFS)", gr, target, target/3, script.ChainParams.Compressor.ThresholdDB)
 	}
 	for _, move := range script.Moves {
 		if capped := CapSectionMove(script.ChainParams, move); !sameMovePoints(capped, move) {
 			t.Fatalf("move %s exceeds MUB-5 caps", move.ID)
 		}
 	}
-	t.Logf("%-7s %-17s Δ LUFS %+5.2f LU  Δ crest %+5.2f dB  TP %6.2f dBTP  findings %d", name, profile, rise, -cut, prediction.AfterMetrics.TruePeakDBTP, len(script.Findings))
+	t.Logf("| %s | %s | %+.2f LU | %+.2f dB | %.2f dBTP | %.2f dB (threshold %.1f) | %.2f dB | %+.1f dB%s |", name, profile, rise, -cut, prediction.AfterMetrics.TruePeakDBTP, prediction.CompressorAverageGainReductionDB, script.ChainParams.Compressor.ThresholdDB, prediction.LimiterPeakGainReductionDB, match.GainDB, map[bool]string{true: " (ceiling)"}[match.CeilingLimited])
 }
 
 func sameMovePoints(a, b automation.Move) bool {

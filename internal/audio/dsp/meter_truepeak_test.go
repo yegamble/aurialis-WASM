@@ -101,7 +101,7 @@ func TestExportMeterReadsUnlimitedNearNyquistContent(t *testing.T) {
 			live := NewLoudnessMeter(rate)
 			live.Process(outL, outR)
 			display := live.Snapshot().TruePeakDBTP
-			t.Logf("reference %+.3f dBTP, export meter %+.3f (%+.3f), live display %+.3f (%+.3f)", reference, metrics.TruePeakDBTP, metrics.TruePeakDBTP-reference, display, display-reference)
+			t.Logf("%.0f Hz: reference %+.3f dBTP, export meter %+.3f (%+.3f), live display %+.3f (%+.3f)", rate, reference, metrics.TruePeakDBTP, metrics.TruePeakDBTP-reference, display, display-reference)
 			if diff := metrics.TruePeakDBTP - reference; diff < -0.1 || diff > 0.02 {
 				t.Fatalf("export meter %.3f dBTP against reference %.3f dBTP", metrics.TruePeakDBTP, reference)
 			}

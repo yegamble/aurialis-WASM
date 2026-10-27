@@ -17,20 +17,29 @@ const (
 	offlinePeakSize   = 1 << 16 // transform length
 	offlinePeakGuard  = 1 << 13 // frames of context on each side
 	// Each transform measures offlinePeakSize - 2*offlinePeakGuard = 49152 frames.
+	// offlinePeakEdge frames of the zero extension are measured before the
+	// first frame and after the last: a file that starts or ends on a crest
+	// rings there, and its true peak can lie past the last frame. Starting
+	// before the file also gives the first parabola real neighbors, not
+	// zeros (a lone 0.9 sample once read -0.15 dBTP instead of -0.92).
+	offlinePeakEdge = 1 << 10
 )
 
 // offlineTruePeak returns the highest reconstructed absolute value of either
-// channel, evaluated on a 4x grid from each frame to just before the next,
-// with the file zero-extended at both ends. It checks ctx once per block.
+// channel of the zero-extended file, evaluated on a 4x grid from
+// offlinePeakEdge frames before the first frame to offlinePeakEdge frames
+// after the last. It checks ctx once per block.
 func offlineTruePeak(ctx context.Context, left, right []float32) (float64, error) {
 	n := min(len(left), len(right))
 	if n == 0 {
 		return 0, nil
 	}
+	// Measured frames run from -offlinePeakEdge to n+offlinePeakEdge-1.
+	first, end := -offlinePeakEdge, n+offlinePeakEdge
 	size := offlinePeakSize
-	if n+2*offlinePeakGuard < size {
+	if end-first+2*offlinePeakGuard < size {
 		// A short file fits one transform; shrink it to the next power of two.
-		size = 1 << bits.Len(uint(n+2*offlinePeakGuard-1))
+		size = 1 << bits.Len(uint(end-first+2*offlinePeakGuard-1))
 	}
 	block := size - 2*offlinePeakGuard
 	transform := newPeakFFT(size)
@@ -52,15 +61,18 @@ func offlineTruePeak(ctx context.Context, left, right []float32) (float64, error
 	}
 	var grid [2][2]float64 // previous two grid values per channel, oldest first
 	peak := 0.0
-	for start := 0; start < n; start += block {
+	sample := func(at int) complex128 {
+		if at < 0 || at >= n {
+			return 0
+		}
+		return complex(sanitizeSample(float64(left[at])), sanitizeSample(float64(right[at])))
+	}
+	for start := first; start < end; start += block {
 		if err := ctx.Err(); err != nil {
 			return 0, err
 		}
 		for i := range spectrum {
-			spectrum[i] = 0
-			if at := start - offlinePeakGuard + i; at >= 0 && at < n {
-				spectrum[i] = complex(sanitizeSample(float64(left[at])), sanitizeSample(float64(right[at])))
-			}
+			spectrum[i] = sample(start - offlinePeakGuard + i)
 		}
 		transform.run(spectrum, false)
 		for p := range phases {
@@ -77,9 +89,8 @@ func offlineTruePeak(ctx context.Context, left, right []float32) (float64, error
 			transform.run(shifted, true)
 			copy(phases[p], shifted[offlinePeakGuard:offlinePeakGuard+block])
 		}
-		for i := 0; i < block && start+i < n; i++ {
-			at := start + i
-			values := [offlinePeakPhases]complex128{complex(sanitizeSample(float64(left[at])), sanitizeSample(float64(right[at])))}
+		for i := 0; i < block && start+i < end; i++ {
+			values := [offlinePeakPhases]complex128{sample(start + i)}
 			for p := range phases {
 				values[p+1] = phases[p][i]
 			}

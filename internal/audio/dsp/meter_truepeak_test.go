@@ -108,3 +108,56 @@ func TestExportMeterReadsUnlimitedNearNyquistContent(t *testing.T) {
 		})
 	}
 }
+
+// crestStart is the Round E 2 probe: 0.5·cos(2π f i + φ)·e^(−i/400) over
+// 3000 frames, starting on (or near) a crest; reversed, it ends on one.
+func crestStart(ratio, phase float64, reversed bool) []float32 {
+	const n = 3000
+	x := make([]float32, n)
+	for i := range x {
+		at := i
+		if reversed {
+			at = n - 1 - i
+		}
+		x[i] = float32(0.5 * math.Cos(2*math.Pi*ratio*float64(at)+phase) * math.Exp(-float64(at)/400))
+	}
+	return x
+}
+
+// V1-13 Round E 2 R-A: a file that starts or ends on a crest reads within
+// 0.1 dB of an independent time-domain reference (a ±1024-tap sinc over the
+// zero-extended file, before its first frame and after its last). The export
+// meter once fitted its first parabola through a fake zero and read up to
+// 0.79 dB high.
+func TestExportMeterReadsFilesThatStartOrEndOnACrest(t *testing.T) {
+	type edgeCase struct {
+		name string
+		x    []float32
+	}
+	var cases []edgeCase
+	for _, ratio := range []float64{0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.47} {
+		for _, phase := range []float64{0, 0.2, 0.5, 1.0} {
+			for _, reversed := range []bool{false, true} {
+				cases = append(cases, edgeCase{fmt.Sprintf("%.2ffs/%.1f/reversed=%t", ratio, phase, reversed), crestStart(ratio, phase, reversed)})
+			}
+		}
+	}
+	for _, at := range []int{0, 37, 63} {
+		lone := make([]float32, 64)
+		lone[at] = 0.9
+		cases = append(cases, edgeCase{fmt.Sprintf("sample %d of 64", at), lone})
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			reference := truepeakref.DirectPeakDBTP([][]float32{c.x})
+			for _, rate := range []float64{44100, 96000} {
+				got := MeasureStereo(c.x, c.x, rate).TruePeakDBTP
+				t.Logf("%.0f Hz: export meter %+.4f dB against the reference", rate, got-reference)
+				if diff := got - reference; diff < -0.1 || diff > 0.02 {
+					t.Fatalf("%.0f Hz: export meter %.3f dBTP against reference %.3f dBTP (%+.3f dB)", rate, got, reference, diff)
+				}
+			}
+		})
+	}
+}

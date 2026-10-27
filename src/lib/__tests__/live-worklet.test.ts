@@ -429,7 +429,8 @@ describe("direct Go worklet lifecycle", () => {
     expect(silent(f.render())).toBe(true);
     expect(f.header[6]).toBe(79);
     expect(f.processor.failed).toBe(true);
-    expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "error", message: "Live processing stalled. Pause and restart playback." });
+    // The stall names its cause and what to change, not just "restart".
+    expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "error", message: "Playback can't keep up on this device with these modules on. Turn off heavy modules such as Multiband compressor, De-Harsh or Saturation, then press Play. Sources at 88.2 kHz and above cost about twice as much to play." });
   });
   it("applies one static attenuate-only match gain to A or B, ramped once, without changing crest or contrast (V1-11)", () => {
     const f = workletFixture();

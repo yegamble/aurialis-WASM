@@ -376,7 +376,8 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       Atomics.add(this.header, UNDERRUNS, 1);
       if (++this.missing > Math.ceil(sampleRate * 0.2 / QUANTUM)) {
         this.failed = true;
-        this.port.postMessage({ type: "error", message: "Live processing stalled. Pause and restart playback." });
+        // Name the cause and the fix: the kernel misses its deadline, so the chain is too heavy for this CPU.
+        this.port.postMessage({ type: "error", message: "Playback can't keep up on this device with these modules on. Turn off heavy modules such as Multiband compressor, De-Harsh or Saturation, then press Play. Sources at 88.2 kHz and above cost about twice as much to play." });
       }
     } else this.missing = 0;
     if (available) Atomics.store(this.header, APPLIED, Atomics.load(this.tags, 4 * SLOTS + (wetFirst - 1) % SLOTS));

@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+// MaxCeilingDBTP is the highest limiter ceiling any route may set (V1-09).
+// Ceilings above it leave lossy encoders too little inter-sample headroom.
+const MaxCeilingDBTP = -1.0
+
 // ValidateParams rejects non-finite and unsupported settings before they reach
 // persistent DSP state. Disabled stages must still carry valid settings.
 func ValidateParams(p Params) error {
@@ -33,7 +37,7 @@ func ValidateParams(p Params) error {
 		{"stereo.sideGainDb", p.Stereo.SideGainDB, -24, 24},
 		{"stereo.widthPct", p.Stereo.WidthPct, 0, 200},
 		{"stereo.crossoverHz", p.Stereo.CrossoverHz, 20, 1000},
-		{"limiter.ceilingDbtp", p.Limiter.CeilingDBTP, -24, 0},
+		{"limiter.ceilingDbtp", p.Limiter.CeilingDBTP, -24, MaxCeilingDBTP},
 		{"limiter.targetLufs", p.Limiter.TargetLUFS, -36, -5},
 		{"limiter.releaseMs", p.Limiter.ReleaseMS, 10, 10000},
 		{"repair.deEssDb", p.Repair.DeEssDB, 0, 24},
@@ -161,10 +165,19 @@ func DecodeParamsJSON(data []byte, base Params) (Params, error) {
 		return base, errors.New("trailing DSP settings JSON")
 	}
 	if err := ValidateParams(next); err != nil {
-		return base, err
+		return base, &RangeError{Err: err}
 	}
 	return next, nil
 }
+
+// RangeError reports well-formed settings that ValidateParams rejects. Its
+// message names the field and its supported range and never echoes request
+// text, so HTTP handlers may return it to clients.
+type RangeError struct{ Err error }
+
+func (e *RangeError) Error() string { return e.Err.Error() }
+
+func (e *RangeError) Unwrap() error { return e.Err }
 
 func validateJSONValues(object map[string]json.RawMessage) error {
 	for _, value := range object {

@@ -183,7 +183,7 @@ func TestDisabledOrInactiveControlsPreserveAudio(t *testing.T) {
 	p.Compressor.KneeDB = 18
 	p.Limiter.Enabled = true
 	p.Limiter.TruePeak = false
-	p.Limiter.CeilingDBTP = 0
+	p.Limiter.CeilingDBTP = -1
 	p.Limiter.ReleaseMS = 900
 	output, _ := renderControl(48000, p, left, right)
 	for i := range baseline {

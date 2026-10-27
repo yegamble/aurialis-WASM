@@ -357,6 +357,46 @@
       }
     },
     {
+      "name": "TS-008c Reject a Limiter Ceiling Above -1 dBTP",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Ceiling -0.5 dBTP is rejected with 400', function () { pm.response.to.have.status(400); });",
+              "pm.test('The error names the ceiling limit', function () { pm.expect(pm.response.text()).to.include('limiter.ceilingDbtp'); pm.expect(pm.response.text()).to.include('-1'); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "bitDepth",
+              "value": "24",
+              "type": "text"
+            },
+            {
+              "key": "params",
+              "value": "{\"limiter\":{\"enabled\":true,\"ceilingDbtp\":-0.5,\"targetLufs\":-14,\"releaseMs\":80,\"truePeak\":true}}",
+              "type": "text"
+            }
+          ]
+        },
+        "url": "{{baseUrl}}/api/master/render"
+      }
+    },
+    {
       "name": "TS-009 POST /separate Missing File Returns 400",
       "event": [
         {

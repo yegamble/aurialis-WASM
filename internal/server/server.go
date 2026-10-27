@@ -570,7 +570,11 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 	if rawParams := strings.TrimSpace(r.FormValue("params")); rawParams != "" {
 		parsed, err := dsp.DecodeParamsJSON([]byte(rawParams), params)
 		if err != nil {
-			writeErrorJSON(w, http.StatusBadRequest, "invalid_params", "Invalid DSP params JSON")
+			detail := "Invalid DSP params JSON"
+			if rangeErr, ok := errors.AsType[*dsp.RangeError](err); ok {
+				detail = rangeErr.Error()
+			}
+			writeErrorJSON(w, http.StatusBadRequest, "invalid_params", detail)
 			return
 		}
 		params = parsed

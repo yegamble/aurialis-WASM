@@ -49,7 +49,7 @@ func truePeakFixtures(rate float64) map[string][2][]float32 {
 func TestTruePeakLimiterBoundsReconstructedPeaks(t *testing.T) {
 	for _, rate := range []float64{44100, 48000, 96000, 192000} {
 		for name, fixture := range truePeakFixtures(rate) {
-			for _, ceiling := range []float64{-1, -0.1, -6} {
+			for _, ceiling := range []float64{-1, -2, -6} {
 				t.Run(fmt.Sprintf("%.0f/%s/%g", rate, name, ceiling), func(t *testing.T) {
 					p := truePeakParams(ceiling)
 					p.InputGainDB = 6

@@ -390,7 +390,7 @@ describe("actual audio measurement and explicit Simple normalization", () => {
   });
   it("summarizes the export-measured level and warns that preview meters can read higher", () => {
     expect(exportLevelSummary({ ...measured, integratedLufs: -9.0143, truePeakDbtp: -0.3006 }))
-      .toBe("Export measures −9.01 LUFS, −0.30 dBTP. Live meters and the offline preview use the preview limiter and can read higher.");
+      .toBe("Export measures −9.01 LUFS, −0.30 dBTP. Live playback uses the same limiter; the offline preview uses the preview limiter and can read higher.");
     expect(exportLevelSummary({ ...measured, integratedLufs: -14.004, truePeakDbtp: 0.004 })).toMatch(/^Export measures −14\.00 LUFS, 0\.00 dBTP\./u);
   });
   it("gates the measured export true peak strictly at the ceiling", async () => {

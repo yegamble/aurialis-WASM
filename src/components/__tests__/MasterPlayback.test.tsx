@@ -217,7 +217,7 @@ describe("master live playback lifecycle", () => {
     await act(async () => { resolveMeasured?.({ advanced: { ...expected, input: 4, stereo: { ...expected.stereo, width: 199 } }, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } }); await Promise.resolve(); });
     const prepared = { ...expected, input: 4 };
     // The export, not the algorithm 1 preview, is what was measured; say so.
-    expect(await screen.findByText("Preview ready. Export measures −9.01 LUFS, −0.30 dBTP. Live meters and the offline preview use the preview limiter and can read higher.")).toBeTruthy();
+    expect(await screen.findByText("Preview ready. Export measures −9.01 LUFS, −0.30 dBTP. Live playback uses the same limiter; the offline preview uses the preview limiter and can read higher.")).toBeTruthy();
     expect(savedTrack().advanced).toEqual(prepared);
     expect(instance.controller.setParams).toHaveBeenLastCalledWith(prepared);
     expect(offline).toHaveBeenCalledWith(pcm, prepared, expect.any(AbortSignal));
@@ -481,9 +481,8 @@ describe("master live playback lifecycle", () => {
     expect(storage.get("aurialis-match-loudness-v1")).toBe("1");
     await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("B −4.5 dB to match A"); }, { timeout: 5000 });
     expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: -4.5 });
-    // A is measured on what live playback plays (algorithm 1), not the export limiter.
-    expect(measure.mock.calls.at(-1)?.[1]).toMatchObject({ params: { inputGainDb: -4.5, limiter: { truePeak: false } } });
-    expect(measure.mock.calls.at(-1)?.[1]).not.toHaveProperty("params.algorithmVersion");
+    // A is measured on what live playback plays: the export algorithm since V1-10.
+    expect(measure.mock.calls.at(-1)?.[1]).toMatchObject({ params: { inputGainDb: -4.5, limiter: { truePeak: true }, algorithmVersion: 2 } });
     // A settings change makes the reading stale: the last static offset is held, then replaced.
     fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "3" } });
     await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("Re-measuring (holding B −4.5 dB)"); });

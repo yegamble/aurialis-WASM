@@ -67,14 +67,14 @@ test("first Simple apply previews exactly the settings exported from the uploade
   await page.getByRole("tab", { name: "simple", exact: true }).click();
   await page.getByRole("button", { name: "Set target loudness", exact: true }).click();
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
-  await expect(page.getByText("Offline preview matches your settings. It and live meters use the preview limiter, so peaks can read higher than the export. Live playback updates independently.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Offline preview matches your settings. It uses the preview limiter, so its peaks can read higher than the export. Live playback and its meters use the export limiter.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Download offline preview", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await expect(page.getByRole("button", { name: "Export", exact: true }), "current canonical settings remain exportable after a Simple change").toBeEnabled();
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
   await page.getByRole("button", { name: "Set target loudness", exact: true }).click();
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
-  await expect(page.getByText("Offline preview matches your settings. It and live meters use the preview limiter, so peaks can read higher than the export. Live playback updates independently.", { exact: true })).toBeVisible();
+  await expect(page.getByText("Offline preview matches your settings. It uses the preview limiter, so its peaks can read higher than the export. Live playback and its meters use the export limiter.", { exact: true })).toBeVisible();
   const preview = await previewPCM(page);
   const exported = await exportPCM(page);
   expect(preview.left).toHaveLength(exported.left.length);

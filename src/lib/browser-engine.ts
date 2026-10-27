@@ -435,16 +435,17 @@ function signedDb(value: number): string {
   return fixed === "-0.00" ? "0.00" : fixed.replace("-", "−");
 }
 
-/** Report the accepted export level. Preview and live meters run algorithm 1,
- * whose sample-peak limiter can read higher than the true-peak export. */
+/** Report the accepted export level. Live playback renders the export
+ * algorithm (V1-10); the offline preview still runs algorithm 1, whose
+ * sample-peak limiter can read higher than the true-peak export. */
 export function exportLevelSummary(metrics: MeasuredAudioMetrics): string {
-  return `Export measures ${signedDb(metrics.integratedLufs)} LUFS, ${signedDb(metrics.truePeakDbtp)} dBTP. Live meters and the offline preview use the preview limiter and can read higher.`;
+  return `Export measures ${signedDb(metrics.integratedLufs)} LUFS, ${signedDb(metrics.truePeakDbtp)} dBTP. Live playback uses the same limiter; the offline preview uses the preview limiter and can read higher.`;
 }
 
 // Explicit Simple-mode automatic gain. Advanced rendering never calls this.
 // Every candidate is measured with the export parameters (algorithm 2, the
 // lookahead true-peak limiter) so the search converges on the delivered WAV,
-// not on the live sample-peak limiter whose inter-sample peaks overshoot.
+// not on algorithm 1's sample-peak limiter whose inter-sample peaks overshoot.
 // Fail rather than claiming a target when nonlinear processing or limiting
 // cannot meet both loudness and the measured peak ceiling.
 export async function normalizeSimpleAudio(

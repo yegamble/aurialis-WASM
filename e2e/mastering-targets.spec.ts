@@ -150,7 +150,7 @@ for (const { name, targetLufs, ceiling } of denseTargets) {
     await expect(page.getByText(/exceeds the measured peak ceiling|could not be reached/u)).toHaveCount(0);
     await expect.poll(async () => (await savedTrack(page, id)).advanced.input).not.toBe(before.input);
     // The status reports the export measurement, not the algorithm 1 preview.
-    const summary = page.getByText(/^Preview ready\. Export measures (−?\d+\.\d{2}) LUFS, (−?\d+\.\d{2}) dBTP\. Live meters and the offline preview use the preview limiter and can read higher\.$/u);
+    const summary = page.getByText(/^Preview ready\. Export measures (−?\d+\.\d{2}) LUFS, (−?\d+\.\d{2}) dBTP\. Live playback uses the same limiter; the offline preview uses the preview limiter and can read higher\.$/u);
     await expect(summary).toBeVisible();
     const [, statusLufs, statusPeak] = /Export measures (−?\d+\.\d{2}) LUFS, (−?\d+\.\d{2}) dBTP/u.exec(await summary.innerText()) ?? [];
 
@@ -176,8 +176,8 @@ test("Elevated accepts a dense program whose export true peak meets the ceiling"
   const id = await uploadProject(page, "qa-dense-elevated.wav", 8, "dense");
   await page.getByRole("tab", { name: "simple", exact: true }).click();
   await page.getByRole("button", { name: "Pop", exact: true }).click();
-  // +2 dB drives the limiter: the live sample-peak limiter overshoots the
-  // ceiling between samples here, the export true-peak limiter does not.
+  // +2 dB drives the limiter: algorithm 1's sample-peak limiter overshoots
+  // the ceiling between samples here, the true-peak limiter does not.
   await page.getByRole("tab", { name: "advanced", exact: true }).click();
   await page.getByRole("slider", { name: "Input gain", exact: true }).fill("2");
   await page.getByRole("tab", { name: "simple", exact: true }).click();

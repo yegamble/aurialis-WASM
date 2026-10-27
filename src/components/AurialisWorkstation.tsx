@@ -1082,7 +1082,7 @@ function MasterView({ trackId }: { trackId: string }) {
               {track.deepMastering?.applied
                 ? "Playback and export use the acknowledged applied revision. Draft edits wait for Apply; pending baseline edits wait for acknowledgment."
                 : fresh
-                  ? "Offline preview matches your settings. It and live meters use the preview limiter, so peaks can read higher than the export. Live playback updates independently."
+                  ? "Offline preview matches your settings. It uses the preview limiter, so its peaks can read higher than the export. Live playback and its meters use the export limiter."
                   : track.mode === "simple"
                     ? "Simple and Advanced share these settings. Set target loudness to measure the requested level; export uses the current settings."
                     : "Playback responds to your controls immediately. Render an offline preview for a full-track check; export always uses current settings."}
@@ -1473,7 +1473,7 @@ function AdvancedControls({
 
       </DSPModule>
       <FrequencyDynamicsControls track={track} />
-      <DSPModule title="Sample-peak limiter">
+      <DSPModule title="True-peak limiter">
       <label className="check-row">
         <input
           type="checkbox"

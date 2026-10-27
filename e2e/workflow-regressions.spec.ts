@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { decode } from "./audio-fixture";
+import { decode, fixture } from "./audio-fixture";
 import { denseFixture, uploadProject } from "./workflow-fixture";
 import type { AdvancedParams } from "../src/lib/types";
 
@@ -201,6 +201,56 @@ async function renderAlbum(page: Page, request: APIRequestContext, titles: strin
   for (const level of levels) await expect(table).toContainText(`${signed(level.integratedLufs, 2)} LUFS`);
   return levels;
 }
+
+async function exportAt(page: Page, rate: RegExp, bits: string): Promise<Buffer> {
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("group", { name: "Bit depth", exact: true }).getByRole("button", { name: bits, exact: true }).click();
+  await dialog.getByRole("group", { name: "Sample rate", exact: true }).getByRole("button", { name: rate }).click();
+  const waiting = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Render & download WAV", exact: true }).click();
+  const path = await (await waiting).path();
+  await page.keyboard.press("Escape");
+  return readFile(path);
+}
+
+// V1-04: one album delivery format makes a mixed-rate album uniform, and a kept
+// master is the single export at that format.
+test("a mixed 48 kHz / 44.1 kHz album renders every master at 44.1 kHz/16-bit, each equal to its single export", async ({ page, request }, info) => {
+  test.setTimeout(180_000);
+  const tracks = [{ title: "qa mixed album 48k", source: fixture(1000, 1) }, { title: "qa mixed album 44k", source: fixture(997, 1, 44100) }];
+  const singles: Buffer[] = [];
+  for (const track of tracks) {
+    await uploadProject(page, `${track.title.replaceAll(" ", "-")}.wav`, 1, track.source);
+    await page.getByRole("slider", { name: "Input gain", exact: true }).fill("2");
+    singles.push(await exportAt(page, /^44\.1 kHz/u, "16-bit PCM"));
+  }
+  await page.goto("/albums");
+  await page.getByRole("button", { name: "New album", exact: true }).click();
+  await page.getByRole("link", { name: /Untitled sequence 1/ }).click();
+  for (const track of tracks) await page.getByRole("button", { name: track.title, exact: true }).click();
+  const panel = page.getByRole("region", { name: "Album level", exact: true });
+  await expect(panel.getByText("These sources use 44.1 kHz and 48 kHz. Choose one sample rate for a uniform album.", { exact: true })).toBeVisible();
+  await panel.getByRole("group", { name: "Sample rate", exact: true }).getByRole("button", { name: "44.1 kHz", exact: true }).click();
+  await panel.getByRole("group", { name: "Bit depth", exact: true }).getByRole("button", { name: "16-bit PCM", exact: true }).click();
+  await expect(page.locator(".album-meta")).toContainText("44.1 kHz · 16-bit PCM · TPDF dither");
+  await page.getByRole("button", { name: "Render album masters", exact: true }).click();
+  const evidence: { title: string; rate: number; bits: number; frames: number; albumLufs: number; singleLufs: number; identical: boolean }[] = [];
+  for (const [index, track] of tracks.entries()) {
+    const button = page.getByRole("button", { name: `Download ${track.title}`, exact: true });
+    await expect(button).toBeVisible({ timeout: 120_000 });
+    const waiting = page.waitForEvent("download");
+    await button.click();
+    const wav = await readFile(await (await waiting).path()), single = singles.at(index) ?? Buffer.alloc(0);
+    const pcm = decode(wav);
+    expect([wav.readUInt32LE(24), wav.readUInt16LE(34), pcm.rate, pcm.bits, pcm.left.length]).toEqual([44100, 16, 44100, 16, 44100]);
+    const [album, alone] = [await measureWAV(request, wav), await measureWAV(request, single)];
+    evidence.push({ title: track.title, rate: pcm.rate, bits: pcm.bits, frames: pcm.left.length, albumLufs: album.integratedLufs, singleLufs: alone.integratedLufs, identical: wav.equals(single) });
+    expect(Math.abs(album.integratedLufs - alone.integratedLufs)).toBeLessThanOrEqual(0.1);
+    expect(wav.equals(single)).toBe(true);
+  }
+  await info.attach("mixed-rate-album", { body: JSON.stringify(evidence, null, 2), contentType: "application/json" });
+});
 
 // Albums never write into projects. Keep (the default) renders every master at
 // its own single-export level; normalize renders the displayed target plus each

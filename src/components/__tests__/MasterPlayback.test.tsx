@@ -63,11 +63,14 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+/** Requests other than Master's read-only Smart Split availability check. */
+const audioRequests = () => vi.mocked(fetch).mock.calls.filter(([input]) => input !== "/api/stems/model");
+
 describe("master live playback lifecycle", () => {
   it("loads canonical stored PCM offline, applies settings live, and clears meters on pause", async () => {
     mount();
     await ready();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(audioRequests()).toEqual([]);
     const instance = latest();
     expect(mocks.createLivePlayback.mock.calls[0]?.[0]).toEqual(pcm);
     fireEvent.click(screen.getByRole("button", { name: "Play" }));
@@ -287,7 +290,7 @@ describe("master live playback lifecycle", () => {
     await screen.findByRole("button", { name: "Pause" });
     expect(current.controller.play).toHaveBeenCalledOnce();
     expect(previous.controller.play).not.toHaveBeenCalled();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(audioRequests()).toEqual([]);
   }, 20000);
 
   it("offers an honest retry for missing audio and enables A/B only after it is restored", async () => {

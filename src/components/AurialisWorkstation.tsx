@@ -978,7 +978,7 @@ function MasterView({ trackId }: { trackId: string }) {
             <div>
               <span>Sample peak</span>
               <strong>{levels?.peak ?? "—"}</strong>
-              <small>dBFS · preview</small>
+              <small>dBFS · live</small>
             </div>
             <div>
               <span>RMS level</span>

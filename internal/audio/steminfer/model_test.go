@@ -137,7 +137,7 @@ func TestStoreDownloadsOnceAndReplacesCorruptCache(t *testing.T) {
 func TestLoadModelRefusesASymlink(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "elsewhere.safetensors")
-	file, err := os.Create(target)
+	file, err := os.Create(target) // #nosec G304 -- the test's own temp directory.
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,6 +179,7 @@ func TestStoreReplacesASymlinkedCacheWithoutTouchingItsTarget(t *testing.T) {
 	if err != nil || !info.Mode().IsRegular() {
 		t.Fatalf("cache entry after the split: %v %v", info, err)
 	}
+	// #nosec G304 -- the test's own temp directory.
 	if kept, err := os.ReadFile(target); err != nil || string(kept) != string(body) {
 		t.Fatalf("link target changed: %q %v", kept, err)
 	}

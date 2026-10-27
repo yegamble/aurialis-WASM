@@ -31,6 +31,21 @@ describe("saved album masters", () => {
     expect(await db.loadAlbumMasters("album-2")).toBeUndefined();
   });
 
+  it("keeps each master's measured level and drops a corrupt measurement without losing the file", async () => {
+    vi.stubGlobal("indexedDB", new IDBFactory());
+    vi.stubGlobal("Blob", NativeBlob);
+    const db = await import("../db");
+    const measured = db.newAudioAssetId("master"), corrupt = db.newAudioAssetId("master");
+    await db.saveAlbumMasters("album-3", { key: "k", createdAt: "now", files: [
+      { trackId: "a", title: "One", audioId: measured, bytes: 1, measured: { integratedLufs: -14.02, truePeakDbtp: -1.1 } },
+      { trackId: "b", title: "Two", audioId: corrupt, bytes: 1, measured: { integratedLufs: Number.NaN, truePeakDbtp: -1 } },
+    ] });
+    const files = (await db.loadAlbumMasters("album-3"))?.files;
+    expect(files?.[0]?.measured).toEqual({ integratedLufs: -14.02, truePeakDbtp: -1.1 });
+    expect(files?.[1]?.audioId).toBe(corrupt);
+    expect(files?.[1]).not.toHaveProperty("measured");
+  });
+
   it("refuses to render when the browser reports too little free storage", async () => {
     vi.stubGlobal("navigator", { storage: { estimate: () => Promise.resolve({ usage: 900 * 1048576, quota: 1000 * 1048576 }), persisted: () => Promise.resolve(false) } });
     const db = await import("../db");

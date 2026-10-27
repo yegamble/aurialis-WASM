@@ -1,3 +1,4 @@
+import type { AlbumMasterLevel } from "./album-levels";
 import { MAX_SOURCE_BYTES } from "./audio-limits";
 const memoryAudio = new Map<string, Blob>();
 const freshAssets = new Set<string>();
@@ -139,14 +140,23 @@ export async function discardStagedAudio(id: string, durable: boolean): Promise<
 }
 
 /** Rendered album masters saved for one album. Audio lives in the immutable audio store. */
-export type SavedAlbumMasters = { key: string; createdAt: string; files: { trackId: string; title: string; audioId: string; bytes: number }[] };
+export type SavedAlbumMasters = { key: string; createdAt: string; files: { trackId: string; title: string; audioId: string; bytes: number; measured?: AlbumMasterLevel }[] };
+
+/** A measured level is display data: drop a corrupt one rather than the master it describes. */
+function readMasterLevel(file: SavedAlbumMasters["files"][number]): SavedAlbumMasters["files"][number] {
+  const { measured, ...rest } = file as Omit<typeof file, "measured"> & { measured?: unknown };
+  if (typeof measured !== "object" || measured === null || !("integratedLufs" in measured) || !("truePeakDbtp" in measured)) return rest;
+  const { integratedLufs, truePeakDbtp } = measured;
+  return typeof integratedLufs === "number" && typeof truePeakDbtp === "number" && Number.isFinite(integratedLufs) && Number.isFinite(truePeakDbtp)
+    ? { ...rest, measured: { integratedLufs, truePeakDbtp } } : rest;
+}
 
 function readAlbumMasters(value: unknown): SavedAlbumMasters | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const record = value as Partial<SavedAlbumMasters>;
   if (typeof record.key !== "string" || record.key.length > 65_536 || typeof record.createdAt !== "string" || !Array.isArray(record.files) || record.files.length === 0 || record.files.length > 512) return undefined;
   const files = (record.files as unknown[]).filter((file): file is SavedAlbumMasters["files"][number] => typeof file === "object" && file !== null && "trackId" in file && typeof file.trackId === "string" && "title" in file && typeof file.title === "string" && "audioId" in file && typeof file.audioId === "string" && /^master-[a-zA-Z0-9-]{1,96}$/u.test(file.audioId) && "bytes" in file && Number.isSafeInteger(file.bytes) && typeof file.bytes === "number" && file.bytes > 0);
-  return files.length === record.files.length ? { key: record.key, createdAt: record.createdAt, files } : undefined;
+  return files.length === record.files.length ? { key: record.key, createdAt: record.createdAt, files: files.map(readMasterLevel) } : undefined;
 }
 
 async function albumRequest<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest | undefined): Promise<T | undefined> {

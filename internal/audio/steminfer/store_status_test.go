@@ -86,6 +86,43 @@ func TestStoreStatusHashesACachedModelOnce(t *testing.T) {
 	}
 }
 
+// Rewriting the cached file in place at the same size and putting its
+// modification time back must not keep the "cached" status: the marker also
+// records the change time, which the kernel sets on every write and which
+// cannot be set back.
+func TestStoreStatusRehashesASameSizeEditWithRestoredMtime(t *testing.T) {
+	body := []byte("pretend separation model")
+	store := smallStore(t, body)
+	if err := os.WriteFile(store.Path(), body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Status(); got.State != ModelCached {
+		t.Fatalf("status %+v", got)
+	}
+	before, err := os.Stat(store.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changeStamp(before) == "" {
+		t.Skip("this platform reports no change time; the marker uses size and modification time only")
+	}
+	// Some kernels advance the change time on a coarse clock tick.
+	time.Sleep(50 * time.Millisecond)
+	if err := os.WriteFile(store.Path(), []byte("pretend separation modex"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(store.Path(), before.ModTime(), before.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if got := store.Status(); got.State != ModelInvalid || store.verifications != 2 {
+		t.Fatalf("same-size edit status %+v after %d hashes", got, store.verifications)
+	}
+	restarted := &Store{Dir: store.Dir, size: store.size, digest: store.digest}
+	if got := restarted.Status(); got.State != ModelInvalid || restarted.verifications != 1 {
+		t.Fatalf("restart status %+v after %d hashes", got, restarted.verifications)
+	}
+}
+
 func TestStoreStatusIgnoresAForgedMarker(t *testing.T) {
 	body := []byte("pretend separation model")
 	store := smallStore(t, body)

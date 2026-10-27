@@ -66,23 +66,24 @@ type StemDescriptor struct {
 
 // Job holds the state and result artifacts of an asynchronous audio processing task.
 type Job struct {
-	ID                string                       `json:"jobId"`
-	JobID             string                       `json:"job_id"`
-	Kind              Kind                         `json:"kind"`
-	Status            Status                       `json:"status"`
-	Progress          int                          `json:"progress"`
-	Stage             string                       `json:"stage"`
-	Profile           string                       `json:"profile,omitempty"`
-	StemCount         int                          `json:"stemCount,omitempty"`
-	Error             string                       `json:"error,omitempty"`
-	Detail            string                       `json:"detail,omitempty"`
-	CreatedAt         time.Time                    `json:"createdAt"`
-	UpdatedAt         time.Time                    `json:"updatedAt"`
-	ReferenceProposal *mastering.ReferenceProposal `json:"referenceProposal,omitempty"`
-	ScriptV2          *mastering.ScriptV2          `json:"scriptV2,omitempty"`
-	Script            *mastering.Script            `json:"script,omitempty"`
-	Features          *mastering.AnalysisFeatures  `json:"features,omitempty"`
-	Stems             []StemDescriptor             `json:"stems,omitempty"`
+	ID                string                        `json:"jobId"`
+	JobID             string                        `json:"job_id"`
+	Kind              Kind                          `json:"kind"`
+	Status            Status                        `json:"status"`
+	Progress          int                           `json:"progress"`
+	Stage             string                        `json:"stage"`
+	Profile           string                        `json:"profile,omitempty"`
+	StemCount         int                           `json:"stemCount,omitempty"`
+	Error             string                        `json:"error,omitempty"`
+	Detail            string                        `json:"detail,omitempty"`
+	CreatedAt         time.Time                     `json:"createdAt"`
+	UpdatedAt         time.Time                     `json:"updatedAt"`
+	ReferenceProposal *mastering.ReferenceProposal  `json:"referenceProposal,omitempty"`
+	ScriptV2          *mastering.ScriptV2           `json:"scriptV2,omitempty"`
+	Prediction        *mastering.ProposalPrediction `json:"prediction,omitempty"`
+	Script            *mastering.Script             `json:"script,omitempty"`
+	Features          *mastering.AnalysisFeatures   `json:"features,omitempty"`
+	Stems             []StemDescriptor              `json:"stems,omitempty"`
 
 	stemPCM       map[string]stemAudio
 	cancel        context.CancelFunc
@@ -445,6 +446,7 @@ func (m *Manager) Cancel(id string) (*Job, bool) {
 		j.Stems = nil
 		j.Script = nil
 		j.ScriptV2 = nil
+		j.Prediction = nil
 		j.ReferenceProposal = nil
 		j.Features = nil
 		j.UpdatedAt = time.Now().UTC()
@@ -463,6 +465,10 @@ func (m *Manager) cloneJob(j *Job) *Job {
 	cp.ReferenceProposal = j.ReferenceProposal.Clone()
 	if j.ScriptV2 != nil {
 		cp.ScriptV2 = j.ScriptV2.Clone()
+	}
+	if j.Prediction != nil {
+		prediction := *j.Prediction
+		cp.Prediction = &prediction
 	}
 	if j.Stems != nil {
 		cp.Stems = make([]StemDescriptor, len(j.Stems))

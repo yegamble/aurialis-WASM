@@ -21,7 +21,7 @@ func (m *Manager) SubmitAnalyzeDeepV2(buf *audio.Buffer, profile mastering.Profi
 	}
 	snapshot := m.cloneJob(job)
 	work := workItem{jobID: id, run: func(ctx context.Context) {
-		script, err := mastering.AnalyzeDeepV2Context(ctx, buf, profile, func(progress int, stage string) { m.updateProgress(id, progress, stage) })
+		script, prediction, err := mastering.AnalyzeDeepV2Context(ctx, buf, profile, func(progress int, stage string) { m.updateProgress(id, progress, stage) })
 		if err != nil {
 			if ctx.Err() != nil {
 				m.markCanceled(id)
@@ -43,6 +43,7 @@ func (m *Manager) SubmitAnalyzeDeepV2(buf *audio.Buffer, profile mastering.Profi
 			return
 		}
 		current.ScriptV2 = script
+		current.Prediction = prediction
 		current.Status = StatusDone
 		current.Progress = 100
 		current.Stage = "Measured proposal ready for review"

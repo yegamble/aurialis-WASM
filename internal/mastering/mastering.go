@@ -133,7 +133,7 @@ func ProfilePreset(profile ProfileID) dsp.Params {
 		p.Saturation.Character = dsp.SatCrisp
 		p.Stereo.WidthPct = 122.0
 		p.Stereo.MonoBass = true
-		p.Limiter.CeilingDBTP = -0.8
+		p.Limiter.CeilingDBTP = MaxStartingCeilingDBTP
 		p.Limiter.TargetLUFS = -9.5
 		p.Repair.TransientDB = 1.6
 	case ProfileDynamicOpen:
@@ -194,7 +194,7 @@ func ProfilePreset(profile ProfileID) dsp.Params {
 		p.Stereo.WidthPct = 116.0
 		p.Stereo.MonoBass = true
 		p.Stereo.CrossoverHz = 115.0
-		p.Limiter.CeilingDBTP = -0.9
+		p.Limiter.CeilingDBTP = MaxStartingCeilingDBTP
 		p.Limiter.TargetLUFS = -10.5
 	case ProfileWarmAnalog:
 		fallthrough
@@ -277,6 +277,7 @@ func AnalyzeDeep(ctx context.Context, buf *audio.Buffer, profile ProfileID, onPr
 		return nil, renderErr
 	}
 	script.AfterMetrics = afterMetrics
+	script.Findings = append(script.Findings, predictionFindings(beforeMetrics, afterMetrics)...)
 
 	if onProgress != nil {
 		onProgress(100, "Deep MasteringScript v1 ready")

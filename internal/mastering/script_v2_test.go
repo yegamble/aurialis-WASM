@@ -91,7 +91,7 @@ func TestMeasuredProposalsSilenceAndRegularizedEQFit(t *testing.T) {
 	buf, _ := scriptFixture(t)
 	clear(buf.Left)
 	clear(buf.Right)
-	script, err := AnalyzeDeepV2Context(context.Background(), buf, ProfileDynamicOpen, nil)
+	script, _, err := AnalyzeDeepV2Context(context.Background(), buf, ProfileDynamicOpen, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestMeasuredProposalsSilenceAndRegularizedEQFit(t *testing.T) {
 func TestPublicScriptV2ProposalsAvoidUnsupportedProcessing(t *testing.T) {
 	buf, _ := scriptFixture(t)
 	for _, profile := range []ProfileID{ProfileWarmAnalog, ProfilePunchyCommercial, ProfileDynamicOpen, ProfileVocalForward, ProfileBassHeavy} {
-		script, err := AnalyzeDeepV2Context(context.Background(), buf, profile, nil)
+		script, _, err := AnalyzeDeepV2Context(context.Background(), buf, profile, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

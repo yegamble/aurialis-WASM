@@ -499,6 +499,18 @@ describe("master live playback lifecycle", () => {
     await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe(""); });
   }, 30000);
 
+  it("re-measures after Export or Deep pre-empts the background loudness measurement instead of failing", async () => {
+    const storage = new Map<string, string>([["aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1) })], ["aurialis-match-loudness-v1", "1"]]);
+    vi.stubGlobal("localStorage", { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value); } });
+    const measure = vi.spyOn(engine, "measureRender")
+      .mockRejectedValueOnce(new DOMException("A foreground audio job pre-empted this measurement.", "AbortError"))
+      .mockResolvedValue({ sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: { ...exportMetrics, integratedLufs: -14 }, afterMetrics: { ...exportMetrics, integratedLufs: -11 } });
+    mount(); await ready();
+    await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("A −3.0 dB to match B"); }, { timeout: 8000 });
+    expect(measure).toHaveBeenCalledTimes(2);
+    expect(measure.mock.calls.every((call) => call[3] === "background")).toBe(true);
+  }, 20000);
+
   it("does not create an engine when an old source load resolves after navigation", async () => {
     let resolveSource: ((value: Blob) => void) | undefined;
     mocks.getAudio.mockReturnValueOnce(new Promise<Blob>((resolve) => { resolveSource = resolve; }));

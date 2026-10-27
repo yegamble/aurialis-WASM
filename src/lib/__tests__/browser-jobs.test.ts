@@ -137,6 +137,29 @@ describe("device-local browser audio transport", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("pre-empts background loudness measurements so a foreground export never reports busy (V1-11)", async () => {
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    const running = deviceAudioRequest("/api/master/render", { method: "POST", body: render(source()) }, undefined, "background").then(() => undefined, (error: unknown) => error);
+    await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
+    const queued = deviceAudioRequest("/api/master/render", { method: "POST", body: render(source()) }, undefined, "background").then(() => undefined, (error: unknown) => error);
+    const exported = deviceAudioRequest("/api/master/render", { method: "POST", body: render(source()) });
+    expect(await running).toMatchObject({ name: "AbortError" });
+    expect(await queued).toMatchObject({ name: "AbortError" });
+    expect(TestWorker.all[0]?.terminated).toBe(true);
+    await waitFor(() => { expect(TestWorker.all[1]?.message).toBeDefined(); });
+    expect(TestWorker.all).toHaveLength(2);
+    TestWorker.all[1]?.reply();
+    expect((await exported).status).toBe(200);
+    // A background request waits behind a foreground job instead of pre-empting it.
+    const foreground = deviceAudioRequest("/api/master/render", { method: "POST", body: render(source()) });
+    await waitFor(() => { expect(TestWorker.all[2]?.message).toBeDefined(); });
+    const later = deviceAudioRequest("/api/master/render", { method: "POST", body: render(source()) }, undefined, "background");
+    TestWorker.all[2]?.reply(); await foreground;
+    expect(TestWorker.all[2]?.terminated).toBe(true);
+    await waitFor(() => { expect(TestWorker.all[3]?.message).toBeDefined(); });
+    TestWorker.all[3]?.reply(); await later;
+  });
+
   it("rejects unsafe browser memory before creating a worker or reading the full file", async () => {
     const { deviceAudioRequest } = await import("../browser-jobs");
     const oversized = new File([source()], "source.wav");

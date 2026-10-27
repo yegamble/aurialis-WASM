@@ -179,9 +179,23 @@ function awaitCancellation<T>(promise: Promise<T>, signal: AbortSignal): Promise
   });
 }
 
-async function execute(request: JobRequest, source = new Blob(), reference = new Blob(), signal = new AbortController().signal, onProgress?: (progress: number, stage: string) => void): Promise<JobResult> {
-  signal.throwIfAborted();
+/** Background jobs (the A/B loudness measurement) yield to anything the user started. */
+export type JobPriority = "foreground" | "background";
+const backgroundJobs = new Set<{ controller: AbortController; settled: Promise<void> }>();
+
+async function execute(request: JobRequest, source = new Blob(), reference = new Blob(), callerSignal = new AbortController().signal, onProgress?: (progress: number, stage: string) => void, priority: JobPriority = "foreground"): Promise<JobResult> {
+  callerSignal.throwIfAborted();
+  if (priority === "foreground" && backgroundJobs.size > 0) {
+    // Export, Deep and the other user actions pre-empt measurements, so a
+    // background job can neither delay them in the FIFO nor make them busy.
+    const preempted = [...backgroundJobs];
+    for (const job of preempted) job.controller.abort(new DOMException("A foreground audio job pre-empted this measurement.", "AbortError"));
+    await Promise.all(preempted.map((job) => job.settled));
+    callerSignal.throwIfAborted();
+  }
   if (pending >= 2) throw new Error("Local audio processing is busy. Cancel the current job or try again shortly.");
+  const preemption = priority === "background" ? new AbortController() : undefined;
+  const signal = preemption ? AbortSignal.any([callerSignal, preemption.signal]) : callerSignal;
   const inputBytes = source.size + reference.size;
   if (inputBytes > MAX_JOB_INPUT_BYTES) throw new Error("The combined audio exceeds the 257 MiB local job limit. " + LOCAL_FALLBACK);
   // A waiting request already retains these Blobs, before its full preflight.
@@ -201,6 +215,11 @@ async function execute(request: JobRequest, source = new Blob(), reference = new
   };
   const result = queue.then(run, run).finally(() => { pending--; inputMemory.dispose(); });
   queue = result.then(() => undefined, () => undefined);
+  if (preemption) {
+    const job = { controller: preemption, settled: queue };
+    backgroundJobs.add(job);
+    void queue.then(() => { backgroundJobs.delete(job); });
+  }
   return awaitCancellation(result, signal);
 }
 
@@ -256,7 +275,7 @@ function deliveredPeak(json: string): number | undefined {
 }
 
 /** Same contract as the device-local HTTP transport, implemented without network audio on websites. */
-export async function deviceAudioRequest(path: string, init: RequestInit, onProgress?: (progress: number, stage: string) => void): Promise<Response> {
+export async function deviceAudioRequest(path: string, init: RequestInit, onProgress?: (progress: number, stage: string) => void, priority: JobPriority = "foreground"): Promise<Response> {
   const url = new URL(path, typeof location === "undefined" ? "https://local.invalid" : location.origin);
   if (!path.startsWith("/api/") || path.startsWith("//") || url.origin !== (typeof location === "undefined" ? "https://local.invalid" : location.origin)) throw new Error("Audio requests must stay on this device.");
   if (!usesBrowserAudio()) return fetch(path, init);
@@ -275,7 +294,7 @@ export async function deviceAudioRequest(path: string, init: RequestInit, onProg
       request.deviceRate = Number(rate);
     }
   } else throw new Error("Invalid local audio request body.");
-  const result = await execute(request, source, reference, init.signal ?? undefined, onProgress);
+  const result = await execute(request, source, reference, init.signal ?? undefined, onProgress, priority);
   const headers = new Headers({ "Content-Type": result.audio.byteLength ? "audio/wav" : "application/json", "Cache-Control": "no-store" });
   if (result.audio.byteLength) {
     headers.set("X-Aurialis-Source-Metrics", result.json);

@@ -138,6 +138,27 @@ describe("direct Go worklet lifecycle", () => {
     const stopped = f.render()[0]; expect(stopped?.slice(0, 19).every(value => value === .5)).toBe(true); expect(stopped?.slice(19).every(value => value === 0)).toBe(true);
   });
 
+  it("marks the source's last input frame once, a delay ahead of the audible deadline, and revives on a later deadline (V1-13)", () => {
+    const f = workletFixture(false, 2, null, true);
+    const endInput = vi.fn((offset: number) => Number(offset >= 0 && offset <= 128));
+    Object.assign(f.kernel, { aurialis_live_end_input: endInput });
+    f.message({ type: "arm", generation: 1, sourceFrame: 0, looping: false });
+    // Audible until 3 × 128 + 37; with one delay block the input ends at 2 × 128 + 37.
+    f.epochTime[0] = 0; f.epochTime[1] = 3 * 128 + 37; f.epochHeader[1] = 1; f.epochHeader[0] = 2;
+    f.render(); f.render();
+    expect(endInput).not.toHaveBeenCalled();
+    f.render();
+    expect(endInput).toHaveBeenCalledExactlyOnceWith(37);
+    f.render();
+    expect(endInput).toHaveBeenCalledOnce();
+    const resets = f.kernel.aurialis_live_reset.mock.calls.length;
+    f.epochTime[1] = Infinity; f.epochHeader[0] = 4;
+    f.render();
+    expect(f.kernel.aurialis_live_reset).toHaveBeenCalledTimes(resets + 1);
+    expect(endInput).toHaveBeenCalledOnce();
+    expect(f.processor.failed).toBe(false);
+  });
+
   it.each(["revision", "commit"] as const)("fails closed when %s verification fails after commit", (failure) => {
     const f = workletFixture(false, 2);
     f.message({ type: "bind-source", token: 1, source: new Float64Array([1, 48000, 48000, 1, 2, 3, 4, 5, 6, 7, 8]) });

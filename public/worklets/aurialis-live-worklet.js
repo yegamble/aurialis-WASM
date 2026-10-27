@@ -327,7 +327,23 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
   }
   resetKernel() {
     if (this.kernel.aurialis_live_reset() !== 1) throw new Error("The live audio engine could not reset.");
+    this.inputEnd = undefined;
     this.refreshBuffers();
+  }
+  // V1-13: an export drains the limiter's lookahead against silence after the
+  // source's last frame (the Go Drain also clears the Nyquist guard). Mark that
+  // input frame in the quantum that carries it, so a file that ends loud
+  // renders the same final frames live. Input runs the alignment delay ahead of
+  // the audible deadline. A later deadline (Repeat turned back on) revives the
+  // drained engine with a reset.
+  markInputEnd() {
+    if (typeof this.kernel.aurialis_live_end_input !== "function") return;
+    const end = this.endTime === Infinity ? Infinity : Math.round(this.endTime * sampleRate) - this.delay * QUANTUM;
+    if (this.inputEnd !== undefined && end > this.inputEnd) this.resetKernel();
+    const offset = end - Math.round(currentTime * sampleRate);
+    if (this.inputEnd !== undefined || offset >= QUANTUM) return;
+    if (this.kernel.aurialis_live_end_input(Math.max(0, offset)) !== 1) throw new Error("The live audio engine rejected the source end.");
+    this.inputEnd = end;
   }
   tryReady() {
     if (this.ready || !this.applyControls()) return;
@@ -379,6 +395,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       Atomics.store(this.tags, slot, sequence);
       Atomics.store(this.tags, SLOTS + slot, this.generation);
       Atomics.store(this.header, WRITE, sequence);
+      this.markInputEnd();
       const kernelStart = wallNow();
       if (this.kernel.aurialis_live_process() !== QUANTUM)
         throw new Error("The live audio engine rejected an audio block.");

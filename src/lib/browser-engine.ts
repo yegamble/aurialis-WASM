@@ -84,7 +84,9 @@ async function audioRequest(
     }, undefined, priority);
   } catch (error: unknown) {
     signal?.throwIfAborted();
-    if (usesBrowserAudio()) throw error;
+    // A preempted background measurement is retried by its caller, not a connection failure.
+    const preempted = typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
+    if (usesBrowserAudio() || preempted) throw error;
     const address = typeof location === "undefined" ? "this address" : location.origin;
     throw new Error(
       `Could not reach the local audio server at ${address}. Check that Aurialis is running, then try again. If your browser reports a blocked local connection, check this site's local-network permission.`,

@@ -360,6 +360,15 @@ describe("device-local browser audio transport", () => {
       expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
     });
 
+    it("surfaces a native preemption to the measurement caller as AbortError, not as an unreachable server", async () => {
+      oneSlotServer();
+      const { withForegroundAudio } = await import("../browser-jobs");
+      const { measureRender } = await import("../browser-engine");
+      let refused: unknown;
+      await withForegroundAudio(async () => { refused = await measureRender(source(), { params: {} }, undefined, "background").then(() => undefined, (error: unknown) => error); });
+      expect(refused).toMatchObject({ name: "AbortError" });
+    });
+
     it("reports a native 503 to a background measurement as a retryable preemption, not a failure", async () => {
       vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 503, headers: { "Retry-After": "1" } }));
       const { deviceAudioRequest } = await import("../browser-jobs");

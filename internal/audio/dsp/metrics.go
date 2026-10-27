@@ -24,7 +24,8 @@ type Metrics struct {
 	GainReductionDB    float64 `json:"gainReductionDb"`
 }
 
-// MeasureStereo computes gated K-weighted stereo loudness, a 4x FIR peak estimate,
+// MeasureStereo computes gated K-weighted stereo loudness, the reconstructed
+// (true) peak within 0.1 dB of a near-ideal reconstruction,
 // crest factor, uncentered stereo correlation, low-bass correlation, and DC offset.
 func MeasureStereo(left, right []float32, sampleRate float64) Metrics {
 	m, _ := measureStereoContext(context.Background(), left, right, sampleRate)
@@ -74,11 +75,9 @@ func measureStereoContext(ctx context.Context, left, right []float32, sampleRate
 	var sumSqK float64
 	var sumSqRaw float64
 	var maxSamplePeak float64
-	var maxTruePeak float64
 	var sumL, sumR float64
 	var corrLL, corrRR, corrLR float64
 	var lbLL, lbRR, lbLR float64
-	var interpolator peakInterpolator
 	var clipping int
 
 	windowLen := int(math.Round(sampleRate * 0.4))
@@ -109,8 +108,6 @@ func measureStereoContext(ctx context.Context, left, right []float32, sampleRate
 		if sp > maxSamplePeak {
 			maxSamplePeak = sp
 		}
-
-		maxTruePeak = math.Max(maxTruePeak, interpolator.sample(l, r))
 
 		corrLL += l * l
 		corrRR += r * r
@@ -146,8 +143,12 @@ func measureStereoContext(ctx context.Context, left, right []float32, sampleRate
 			blocks = append(blocks, math.Max(0, windowEnergy)/float64(windowLen))
 		}
 	}
-	// Include reconstructed peaks at the final edge against trailing silence.
-	maxTruePeak = math.Max(maxTruePeak, interpolator.flush())
+	// The export report and Release Check need the true peak of any content,
+	// so this offline meter reconstructs by spectral shift (V1-13).
+	maxTruePeak, err := offlineTruePeak(ctx, left[:n], right[:n])
+	if err != nil {
+		return Metrics{}, err
+	}
 	if n < windowLen {
 		blocks = append(blocks, sumSqK/float64(n))
 	}

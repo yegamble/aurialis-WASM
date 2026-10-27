@@ -1,6 +1,7 @@
 package dsp
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"testing"
@@ -41,5 +42,69 @@ func TestTruePeakMeterReadsHighFrequencySinesWithinATenthOfADecibel(t *testing.T
 				}
 			})
 		}
+	}
+}
+
+// nearNyquistProgram is dense content between 0.47 fs and Nyquist (noise
+// mirrored to the top of the band, plus tones at 0.48 and 0.497 fs) over a
+// bass line, peaking at -3 dBFS sample peak.
+func nearNyquistProgram(rate float64, frames int) ([]float32, []float32) {
+	left, right := make([]float64, frames), make([]float64, frames)
+	state := uint32(0x51ed27)
+	noise := func() float64 {
+		state = state*1664525 + 1013904223
+		return float64(state)/math.MaxUint32*2 - 1
+	}
+	var narrowL, narrowR float64
+	for i := range left {
+		sign := 1 - 2*float64(i%2)
+		// A one-pole low-pass near 0.015 fs, mirrored to 0.485-0.5 fs.
+		narrowL += 0.09 * (noise() - narrowL)
+		narrowR += 0.09 * (noise() - narrowR)
+		at := float64(i)
+		hf := 0.15*math.Sin(2*math.Pi*0.48*at+0.3) + 0.12*math.Sin(2*math.Pi*0.497*at+1.1)
+		bass := 0.3 * math.Sin(2*math.Pi*55*at/rate)
+		left[i] = bass + hf + 1.2*sign*narrowL
+		right[i] = 0.8*bass - hf + 1.2*sign*narrowR
+	}
+	peak := 0.0
+	for i := range left {
+		peak = math.Max(peak, math.Max(math.Abs(left[i]), math.Abs(right[i])))
+	}
+	scale := math.Pow(10, -3.0/20) / peak
+	outL, outR := make([]float32, frames), make([]float32, frames)
+	for i := range left {
+		outL[i], outR[i] = float32(left[i]*scale), float32(right[i]*scale)
+	}
+	return outL, outR
+}
+
+// V1-13 Round E R5 (Chair): the export and Release Check meter
+// (MeasureStereo) reads within 0.1 dB of the long-sinc reference on all
+// content, including an unlimited export dense between 0.47 fs and Nyquist.
+// The live display meter keeps a 48-tap kernel and under-reads such content;
+// it is held to 0.1 dB only on limited exports (true_peak_ceiling_test.go).
+func TestExportMeterReadsUnlimitedNearNyquistContent(t *testing.T) {
+	for _, rate := range []float64{44100, 48000, 96000} {
+		t.Run(fmt.Sprintf("%.0f", rate), func(t *testing.T) {
+			t.Parallel()
+			left, right := nearNyquistProgram(rate, int(rate))
+			p := DefaultParams()
+			p.AlgorithmVersion = TruePeakAlgorithmVersion
+			p.Limiter.Enabled = false
+			p.Bands[2].GainDB = 1 // a live chain, not bypass
+			outL, outR, metrics, err := RenderBufferContext(context.Background(), left, right, rate, p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reference := truepeakref.PeakDBTP([][]float32{outL, outR}, 0)
+			live := NewLoudnessMeter(rate)
+			live.Process(outL, outR)
+			display := live.Snapshot().TruePeakDBTP
+			t.Logf("reference %+.3f dBTP, export meter %+.3f (%+.3f), live display %+.3f (%+.3f)", reference, metrics.TruePeakDBTP, metrics.TruePeakDBTP-reference, display, display-reference)
+			if diff := metrics.TruePeakDBTP - reference; diff < -0.1 || diff > 0.02 {
+				t.Fatalf("export meter %.3f dBTP against reference %.3f dBTP", metrics.TruePeakDBTP, reference)
+			}
+		})
 	}
 }

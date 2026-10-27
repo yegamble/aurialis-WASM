@@ -101,9 +101,10 @@ var peakFIR = func() [peakPhases - 1][2 * peakHalfTaps]float64 {
 	return coefficients
 }()
 
-// peakInterpolator is the streaming true-peak meter shared by MeasureStereo
-// and the live LoudnessMeter. Its readings lag the input by K-1 samples; flush
-// evaluates the tail of a finite signal against trailing silence. As in
+// peakInterpolator is the live LoudnessMeter's streaming true-peak display.
+// Its readings lag the input by K-1 samples. It is held to 0.1 dB on what the
+// export limiter emits; content above 0.46 fs (an unlimited source) reads low
+// on it, and the export meter (offlineTruePeak) covers that. As in
 // truePeakDetector, each sample is stored twice so the window is contiguous.
 type peakInterpolator struct {
 	history [2][4 * peakHalfTaps]float64
@@ -138,16 +139,6 @@ func (p *peakInterpolator) sample(left, right float64) float64 {
 			peak = math.Max(peak, refinePeak(grid[0], grid[1], value))
 			grid[0], grid[1] = grid[1], value
 		}
-	}
-	return peak
-}
-
-// flush evaluates the last K-1 samples against trailing silence and returns
-// their peak. The interpolator is then ready for a new signal.
-func (p *peakInterpolator) flush() float64 {
-	peak := 0.0
-	for range 2 * peakHalfTaps {
-		peak = math.Max(peak, p.sample(0, 0))
 	}
 	return peak
 }

@@ -524,6 +524,8 @@ describe("per-track live audio lifecycle", () => {
     context.listeners.get("statechange")?.();
     devices.dispatchEvent(new Event("devicechange"));
     expect(node.port.postMessage.mock.calls.filter(([message]) => message.type === "rewatch")).toHaveLength(2);
+    // The new device's latency is re-read for the fallback slack rule (S-1).
+    expect(node.port.postMessage).toHaveBeenCalledWith({ type: "rewatch", slackMs: 10 });
     controller.dispose();
     expect(context.removeEventListener).toHaveBeenCalledWith("statechange", expect.any(Function));
     node.port.postMessage.mockClear();

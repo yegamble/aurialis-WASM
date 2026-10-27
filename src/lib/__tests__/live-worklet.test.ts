@@ -517,6 +517,16 @@ describe("direct Go worklet lifecycle", () => {
       play(f, 8, quantumMs, quantumMs * 0.95, clock);
       expect(fired(f)).toBe(true);
     });
+    it("takes the new device's slack with a rewatch, and drops the rule for a bad value", () => {
+      const f = workletFixture(false, 1, null, false, 0, undefined, 10.6);
+      expect(Reflect.get(f.processor, "slackMs")).toBe(10.6);
+      f.message({ type: "rewatch", slackMs: 42 });
+      expect(Reflect.get(f.processor, "slackMs")).toBe(42);
+      f.message({ type: "rewatch", slackMs: null });
+      expect(Reflect.get(f.processor, "slackMs")).toBeNull();
+      f.message({ type: "rewatch" });
+      expect(Reflect.get(f.processor, "slackMs")).toBeNull();
+    });
     it("rewatches after a device or context change instead of counting its gap", () => {
       const { f, clock } = watched();
       play(f, 3, quantumMs, quantumMs * 0.4, clock);

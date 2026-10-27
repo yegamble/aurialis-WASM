@@ -144,7 +144,7 @@ Import the recording you want to use as a reference, then open **Reference match
 
 **Revert Reference** restores the settings from before this Reference session while its applied settings remain current. This is a temporary, session-specific undo: leaving Reference or making other processing/source changes ends that protection. For a lasting alternative, use **Duplicate settings** in Library before experimenting.
 
-Changing the reference or matching options requires fresh analysis before Apply. There is no hidden gain adjustment or automatic loudness matching; check final loudness and peak headroom separately. Both audio sources share the **129 MiB multipart request ceiling**, so two individually supported files may still be too large together. See the [measured Reference API contract](api.md#measured-reference-proposals) for its exact bounds.
+Changing the reference or matching options requires fresh analysis before Apply. There is no hidden gain adjustment or automatic loudness matching; check final loudness and peak headroom separately. Both audio sources share the **257 MiB multipart request ceiling**, so two individually supported files may still be too large together. See the [measured Reference API contract](api.md#measured-reference-proposals) for its exact bounds.
 
 ## Playback and keyboard shortcuts
 

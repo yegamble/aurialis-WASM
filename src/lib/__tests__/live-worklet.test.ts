@@ -64,7 +64,7 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
     aurialis_algorithm_supported: vi.fn((version: number) => capability === "algorithm" ? 0 : Number(version === 1 || version === 2)),
     // One delay block lets A be read at most 128 frames ahead of B.
     aurialis_latency_frames: vi.fn(() => capability === "latency" ? 129 : latency),
-    aurialis_live_drain: vi.fn(() => 0),
+    aurialis_live_end_input: vi.fn((offset: number) => Number(offset >= 0 && offset <= 128)),
     aurialis_control_buffer_v2: vi.fn(() => 2560),
     aurialis_set_controls_v2: vi.fn((count: number) => count === 82 ? applyGo() : 0),
     aurialis_meter_buffer: vi.fn(() => 3328),

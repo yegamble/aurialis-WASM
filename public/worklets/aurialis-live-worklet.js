@@ -152,7 +152,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         || typeof exports.aurialis_live_process !== "function" || typeof exports.aurialis_live_reset !== "function"
         || typeof exports.aurialis_set_controls !== "function"
         || typeof exports.aurialis_control_count !== "function" || typeof exports.aurialis_algorithm_supported !== "function"
-        || typeof exports.aurialis_latency_frames !== "function" || typeof exports.aurialis_live_drain !== "function"
+        || typeof exports.aurialis_latency_frames !== "function" || typeof exports.aurialis_live_end_input !== "function"
         || typeof exports.aurialis_meter_buffer !== "function" || typeof exports.aurialis_meter_snapshot !== "function")
         throw new Error("The live audio engine is missing its fixed-buffer interface.");
       host.attach(exports.memory);
@@ -337,7 +337,6 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
   // the audible deadline. A later deadline (Repeat turned back on) revives the
   // drained engine with a reset.
   markInputEnd() {
-    if (typeof this.kernel.aurialis_live_end_input !== "function") return;
     const end = this.endTime === Infinity ? Infinity : Math.round(this.endTime * sampleRate) - this.delay * QUANTUM;
     if (this.inputEnd !== undefined && end > this.inputEnd) this.resetKernel();
     const offset = end - Math.round(currentTime * sampleRate);

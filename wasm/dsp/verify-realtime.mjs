@@ -23,7 +23,7 @@ const requiredExports = new Set([
   "_initialize", "memory", "aurialis_init", "aurialis_live_buffer", "aurialis_live_process",
   "aurialis_live_reset", "aurialis_control_buffer", "aurialis_set_controls",
   "aurialis_control_count", "aurialis_algorithm_supported", "aurialis_latency_frames",
-  "aurialis_live_drain", "aurialis_live_end_input", "aurialis_control_buffer_v2", "aurialis_set_controls_v2",
+  "aurialis_live_end_input", "aurialis_control_buffer_v2", "aurialis_set_controls_v2",
   "aurialis_schedule_abi", "aurialis_schedule_source_buffer", "aurialis_schedule_bind_source",
   "aurialis_schedule_begin", "aurialis_schedule_move_buffer", "aurialis_schedule_stage_move",
   "aurialis_schedule_commit", "aurialis_schedule_revision", "aurialis_schedule_seek", "aurialis_schedule_detach", "aurialis_schedule_set_looping",
@@ -234,9 +234,11 @@ for (const [index, fixture] of fixtures.entries()) {
       compare(output[3][frame], fixture.outputRight[start + frame], `ABI2 right fixture${index} frame${start + frame}`);
     }
   }
-  const beforeDrain = kernel.channels().map(channel => channel.slice());
-  assert.equal(kernel.wasm.aurialis_live_drain(), 0);
-  assert.deepEqual(kernel.channels(), beforeDrain, "drain changed immediate-engine output");
+  // Algorithm 1 buffers nothing: after the source's end the block is silent.
+  assert.equal(kernel.wasm.aurialis_live_end_input(0), 1);
+  const ended = kernel.render(left.subarray(0, 128), right.subarray(0, 128));
+  assert.ok(ended[2].every(sample => sample === 0) && ended[3].every(sample => sample === 0), "audio after the source's end");
+  assert.equal(kernel.wasm.aurialis_live_reset(), 1);
 }
 const versioned = versionedKernels.get(active.rate);
 versioned.controls().set(packLiveControls(active.params, 2));
@@ -257,7 +259,7 @@ for (let frame = 0; frame < 128; frame++) {
 }
 // V1-10: live playback runs the export algorithm. The compiled reactor must
 // report the lookahead latency the worklet compensates, play a neutral chain
-// bit-exactly delayed by it, and drain exactly that tail.
+// bit-exactly delayed by it, and drain that tail from the source's end.
 for (const rate of [44100, 48000, 96000]) {
   const kernel = await createKernel({ ...neutral, rate }, 2);
   kernel.controls()[81] = 2;
@@ -273,7 +275,6 @@ for (const rate of [44100, 48000, 96000]) {
   }
   for (let index = 0; index < heard.length; index++)
     assert.equal(heard[index], index < latency ? 0 : ramp(index - latency), `${rate} Hz delayed passthrough frame ${index}`);
-  assert.equal(kernel.wasm.aurialis_live_drain(), Math.min(latency, 128));
   // V1-13: the source's end, marked 37 frames into a quantum, drains the
   // lookahead there like an export; later input is ignored until reset.
   assert.equal(kernel.wasm.aurialis_live_reset(), 1);
@@ -293,4 +294,4 @@ for (const rate of [44100, 48000, 96000]) {
   assert.equal(kernel.wasm.aurialis_live_reset(), 1);
   assert.equal(kernel.wasm.aurialis_live_end_input(0), 1);
 }
-console.log(`wasm-realtime: ${fixtures.length} frozen native fixtures also matched exactly through ABI2/algorithm1; capability, length/version rejection and zero-frame drain passed; ABI2/algorithm2 latency, delayed passthrough, drain and source-end drain passed at 44.1/48/96 kHz`);
+console.log(`wasm-realtime: ${fixtures.length} frozen native fixtures also matched exactly through ABI2/algorithm1; capability, length/version rejection and silent source end passed; ABI2/algorithm2 latency, delayed passthrough and source-end drain passed at 44.1/48/96 kHz`);

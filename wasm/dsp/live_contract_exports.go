@@ -22,15 +22,6 @@ func WasmAlgorithmSupported(version uint32) uint32 { return liveAlgorithmSupport
 //go:wasmexport aurialis_latency_frames
 func WasmLatencyFrames() uint32 { return liveFrameCount(runtimeBridge().LatencyFrames()) }
 
-// WasmLiveDrain emits buffered tail frames into the fixed output channels.
-// The immediate v1 engine returns zero and leaves channel contents untouched.
-//
-//go:wasmexport aurialis_live_drain
-func WasmLiveDrain() uint32 {
-	blocks := runtimeBlocks()
-	return liveFrameCount(runtimeBridge().Drain(blocks.channels[2][:], blocks.channels[3][:]))
-}
-
 // WasmVersionedControlBuffer exposes ABI 2 without changing the legacy buffer.
 //
 //go:wasmexport aurialis_control_buffer_v2

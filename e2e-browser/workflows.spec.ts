@@ -7,11 +7,11 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fixture, decode } from "../e2e/audio-fixture";
 import { denseFixture } from "../e2e/workflow-fixture";
-import { engineParams, exportParams, exportScript } from "../src/lib/engine-params";
+import { exportParams, exportScript, liveParams, liveScript } from "../src/lib/engine-params";
 import type { AdvancedParams, ExportDelivery, MeasuredAudioMetrics, Track } from "../src/lib/types";
 import type { ReleaseReport } from "../src/lib/release-review";
 import type { ScriptV2 } from "../src/lib/deep-mastering";
-import { captureDeepDevice, capturedDevice, capturedProgress } from "../e2e/deep-capture";
+import { captureDeepDevice, capturedDevice, capturedProgress, exportLatencyFrames } from "../e2e/deep-capture";
 
 function observeNetwork(context: BrowserContext) {
   const requests: { method: string; url: string; bodyBytes: number }[] = [];
@@ -40,7 +40,8 @@ async function nativeRender(info: TestInfo, source: Buffer, advanced: AdvancedPa
   const directory = info.outputPath(`native-oracle-${String(bitDepth)}${live ? "-live" : ""}${delivery.sampleRate ? `-${String(delivery.sampleRate)}` : ""}${delivery.dither ? `-${delivery.dither}` : ""}`);
   await mkdir(directory, { recursive: true });
   await writeFile(directory + "/source.wav", source);
-  const rendered = script ? { script: JSON.stringify(live ? script : exportScript(script)) } : { params: JSON.stringify(live ? engineParams(advanced) : exportParams(advanced)) };
+  // Live playback renders the export chain (V1-10); live oracles use the live helpers.
+  const rendered = script ? { script: JSON.stringify(live ? liveScript(script) : exportScript(script)) } : { params: JSON.stringify(live ? liveParams(advanced) : exportParams(advanced)) };
   await writeFile(directory + "/request.json", JSON.stringify({ operation: "render", ...rendered, bitDepth, ...delivery }));
   execFileSync("go", ["test", "./internal/browserjobs", "-run", "^TestWriteBrowserOracle$", "-count=1"], { env: { ...process.env, AURIALIS_BROWSER_ORACLE_DIR: directory }, stdio: "pipe" });
   return { audio: await readFile(directory + "/native.wav"), metadata: JSON.parse(await readFile(directory + "/native.json", "utf8")) as { sampleRate: number; frames: number; afterMetrics: { integratedLufs: number; samplePeakDbfs: number; truePeakDbtp: number } } };
@@ -430,9 +431,11 @@ test("Deep analysis compilation live apply and source-bound export keep every au
   expect(capture.missing).toBe(0);
   expect(capture.compiledMoves).toBe(applied.moves.length);
   const pcm = decode((await nativeRender(info, source, accepted.advanced, 32, applied, true)).audio);
+  // The raw processed ring trails the latency-compensated render by the lookahead.
+  const latency = exportLatencyFrames(48000);
   let maximumLiveError = 0;
-  for (let frame = 0; frame < 16384; frame++) {
-    maximumLiveError = Math.max(maximumLiveError, Math.abs((pcm.left.at(frame) ?? Infinity) - (capture.outputLeft.at(frame) ?? 0)), Math.abs((pcm.right.at(frame) ?? Infinity) - (capture.outputRight.at(frame) ?? 0)));
+  for (let frame = 0; frame < 16384 - latency; frame++) {
+    maximumLiveError = Math.max(maximumLiveError, Math.abs((pcm.left.at(frame) ?? Infinity) - (capture.outputLeft.at(latency + frame) ?? 0)), Math.abs((pcm.right.at(frame) ?? Infinity) - (capture.outputRight.at(latency + frame) ?? 0)));
   }
   expect(maximumLiveError).toBeLessThan(1e-6);
   await page.getByRole("button", { name: "Export", exact: true }).click();

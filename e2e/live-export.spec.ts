@@ -15,7 +15,8 @@ const SOAK_SECONDS = Number(process.env.AURIALIS_LIVE_SOAK_SECONDS ?? "30");
  * 30 s. Quiet-host runs lagged −4 to +2 ms in 30 s and under 40 ms in 600 s;
  * the worst run QA called clean lagged 234 ms in 150 s (1.6 ms/s). A kernel too
  * slow to keep up lags at (load − 1) s per second, 50 ms/s at a 1.05 load, and
- * the worklet's own deadline watch stops playback within about 3 s of that.
+ * the overload stop (playbackStats, else the worklet's watch) follows within
+ * about 5–6 s (measured 5.2–5.4 s in e2e/live-overload.spec.ts).
  * Host stalls on an overloaded machine (915 ms in 30 s at load average 65, with
  * 0 slow kernel calls) also fail it: rerun those. */
 const DRIFT_MS_PER_AUDIO_SECOND = 5, DRIFT_MS_MAX = 250;
@@ -398,8 +399,9 @@ test(`the export algorithm keeps up live for ${String(SOAK_SECONDS)} s with ever
   // gauge: the kernel runs inside process(), so the ring cannot run dry from load.
   expect(evidence.deviceUnderrunsAfterWarmUp, JSON.stringify(evidence)).toBe(0);
   expect(Math.abs(evidence.clockDriftMs), JSON.stringify(evidence)).toBeLessThanOrEqual(evidence.driftLimitMs);
-  // The budget gate is mean load ≤ 0.5 on a quiet machine (docs/tasks.md V1-10). Shared CI
-  // and agent hosts swing 2x, so this only catches gross regressions.
-  expect(evidence.meanLoad, JSON.stringify(evidence)).toBeLessThanOrEqual(0.75);
+  // The budget gate is a real-worklet mean load ≤ 0.5 (docs/tasks.md V1-10). The
+  // 600 s run is the budget evidence and holds that gate; the short CI run only
+  // catches gross regressions, since shared CI and agent hosts swing about 2x.
+  expect(evidence.meanLoad, JSON.stringify(evidence)).toBeLessThanOrEqual(SOAK_SECONDS >= 600 ? 0.5 : 0.75);
 });
 });

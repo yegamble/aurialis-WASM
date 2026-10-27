@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { downloadLocalBlob } from "@/lib/download";
 import { getAudio } from "@/lib/db";
 import { audioKey } from "@/lib/library";
+import { availableDelivery, CD_DELIVERY, DEFAULT_DELIVERY, deliveredRate, deliverySummary, type DeliveryFormat } from "@/lib/delivery-format";
+import { exportRateChoices, unavailableRateNote } from "@/lib/export-rates";
 import { collectReleaseReview, releaseBindingHash, reserveReleaseReviewMemory, type ReleaseArtifact } from "@/lib/release-review";
-import { releaseChecks, releaseProfiles, type OutputBits, type ReleasePlatform } from "@/lib/release-policy";
+import { releaseChecks, releaseProfiles, type ReleasePlatform } from "@/lib/release-policy";
 import { useStore } from "@/lib/store";
-import type { Track } from "@/lib/types";
+import { EXPORT_SAMPLE_RATES, type Track } from "@/lib/types";
+import { DeliveryFormatControls } from "./DeliveryFormatControls";
 import { Button, PageTitle, buttonClassName } from "./Primitives";
 import { Icon } from "./Icon";
 import { WorkspaceLink as Link } from "./WorkspaceLink";
@@ -18,14 +21,26 @@ export function ReleaseReview({ trackId }: { trackId: string }) {
   return track ? <TrackReleaseReview key={track.id} track={track} /> : <div className="page"><PageTitle eyebrow="Release check" title="Choose your audio first" copy="Import a track to review an encoded master." /><Link className={buttonClassName("primary")} href="/">Import audio</Link></div>;
 }
 
+/** The format a saved check measured, so reopening shows that check. */
+function savedFormat(track: Track): DeliveryFormat {
+  const review = track.releaseReview;
+  if (!review) return DEFAULT_DELIVERY;
+  const rate = EXPORT_SAMPLE_RATES.find((item) => item === review.output.sampleRate && item !== track.sampleRate);
+  return { bitDepth: review.output.bitDepth, sampleRate: rate ?? "source", dither: review.output.bitDepth === 32 || review.dither === "tpdf" };
+}
+
 function TrackReleaseReview({ track }: { track: Track }) {
   const { dispatch } = useStore();
   const [platform, setPlatform] = useState<ReleasePlatform>(track.releaseReview?.platform ?? "Spotify");
-  const [bits, setBits] = useState<OutputBits>(track.releaseReview?.output.bitDepth ?? 24);
+  const [chosen, setChosen] = useState<DeliveryFormat>(() => savedFormat(track));
+  const frames = track.sourceIdentity?.frames ?? Math.round(track.duration * track.sampleRate);
+  const rateChoices = useMemo(() => exportRateChoices(track.sampleRate, frames), [track.sampleRate, frames]);
+  // The same fallback as Export: a rate this source cannot reach renders at the source rate.
+  const format = useMemo(() => availableDelivery(chosen, rateChoices), [chosen, rateChoices]);
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
-  const [basis, setBasis] = useState<{ owner: Track; bits: OutputBits; hash: string } | null>(null);
+  const [basis, setBasis] = useState<{ owner: Track; format: DeliveryFormat; hash: string } | null>(null);
   const [artifact, setArtifact] = useState<ReleaseArtifact | null>(null);
-  const pending = useRef<{ controller: AbortController; owner: Track; bits: OutputBits } | null>(null);
+  const pending = useRef<{ controller: AbortController; owner: Track; format: DeliveryFormat } | null>(null);
   const latest = useRef(track); latest.current = track;
   const retainedArtifact = useRef<ReleaseArtifact | null>(null);
   function owns(controller: AbortController) { return pending.current?.controller === controller; }
@@ -39,11 +54,11 @@ function TrackReleaseReview({ track }: { track: Track }) {
     if (retainedArtifact.current === artifact) retainedArtifact.current = null;
   }, [artifact]);
   useEffect(() => {
-    if (pending.current && (pending.current.owner !== track || pending.current.bits !== bits)) cancel("The source, settings or encoding changed. Run the release check again.");
+    if (pending.current && (pending.current.owner !== track || pending.current.format !== format)) cancel("The source, settings or delivery format changed. Run the release check again.");
     const controller = new AbortController();
-    void releaseBindingHash(track, bits, controller.signal).then((hash) => {
+    void releaseBindingHash(track, format, controller.signal).then((hash) => {
       if (!controller.signal.aborted) {
-        setBasis({ owner: track, bits, hash });
+        setBasis({ owner: track, format, hash });
         setArtifact((current) => current?.report.bindingHash === hash ? current : null);
       }
     }).catch((cause: unknown) => {
@@ -53,8 +68,8 @@ function TrackReleaseReview({ track }: { track: Track }) {
       }
     });
     return () => { controller.abort(); };
-  }, [track, bits]);
-  const key = basis?.owner === track && basis.bits === bits ? basis.hash : null;
+  }, [track, format]);
+  const key = basis?.owner === track && basis.format === format ? basis.hash : null;
   const measured = artifact?.report.bindingHash === key ? artifact : null;
   const saved = track.releaseReview?.bindingHash === key ? track.releaseReview : null;
   const report = measured?.report ?? saved;
@@ -64,14 +79,14 @@ function TrackReleaseReview({ track }: { track: Track }) {
 
   async function run() {
     cancel();
-    const controller = new AbortController(); pending.current = { controller, owner: track, bits }; setBusy(true);
+    const controller = new AbortController(); pending.current = { controller, owner: track, format }; setBusy(true);
     let memory: ReturnType<typeof reserveReleaseReviewMemory> | undefined;
     let published = false;
     try {
-      memory = reserveReleaseReviewMemory(track, bits);
+      memory = reserveReleaseReviewMemory(track, format);
       const source = await getAudio(audioKey(track)); controller.signal.throwIfAborted();
       if (!source) throw new Error("The source audio is missing. Restore the matching source in Library.");
-      const result = await collectReleaseReview(source, track, bits, platform, controller.signal, memory);
+      const result = await collectReleaseReview(source, track, format, platform, controller.signal, memory);
       if (controller.signal.aborted || !owns(controller) || latest.current !== track) { result.dispose(); return; }
       pending.current = null; setBusy(false); retainedArtifact.current = result; setArtifact(result); published = true;
     } catch (cause) {
@@ -83,23 +98,28 @@ function TrackReleaseReview({ track }: { track: Track }) {
   function downloadReport() {
     if (!report || !profile) return;
     const payload = { ...report, platform, measurementBasis: "decoded final encoded WAV", policy: { checkedAt: "2026-10-23", source: profile.source, scope: profile.scope }, checks,
-      limitations: "Finite reconstructed-peak estimates and working diagnostics; no platform, codec, hardware or mastering certification. No automatic gain, resampling or repair." };
+      limitations: "Finite reconstructed-peak estimates and working diagnostics; no platform, codec, hardware or mastering certification. No automatic gain or repair; the source is resampled only to the chosen delivery rate." };
     try { downloadLocalBlob(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }), "aurialis-audio-review.json"); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "The report could not be downloaded. Try again."); }
   }
+  const cdFormat = deliveredRate(format, track.sampleRate) === 44100 && format.bitDepth === 16;
+  const chooseFormat = (next: DeliveryFormat) => { cancel(); setArtifact(null); setChosen(next); };
   return <div className="page">
     <PageTitle eyebrow="Release check" title="Ready for the handoff?" copy="Review the exact WAV you will download, with guidance for your destination."
       action={<Link className={buttonClassName("secondary")} href={`/master/${track.id}`}>Back to master</Link>} />
     <div className="release-top paper-panel">
       <div className="score-ring" aria-label="Measured checks within guidance"><strong>{report ? `${String(passed)}/${String(assessed.length)}` : "—"}</strong><span>within guidance</span></div>
       <div><span className="eyebrow">Selected release</span><h2>{track.title}</h2>
-        <p>{report ? "Measurements describe the final encoded samples. Settings, source and encoding changes invalidate this check." : "Run a check to render and measure one master. Nothing is normalized or trimmed by the review."}</p>
+        <p>{report ? "Measurements describe the final encoded samples. Settings, source and delivery format changes invalidate this check." : "Run a check to render and measure the master Export delivers at the format below. Nothing is normalized or trimmed by the review."}</p>
         <div className="platforms" role="group" aria-label="Delivery profile">
           {releaseProfiles.map((item) => <button type="button" key={item.name} className={`chip min-h-[44px]${platform === item.name ? " is-active" : ""}`} aria-pressed={platform === item.name} onClick={() => { setPlatform(item.name); }}>{item.name}</button>)}
         </div>
-        <label className="control-label">Review encoding <select className="min-h-[44px] max-w-full" aria-label="Review encoding" value={bits} onChange={(event) => {
-          const value = Number(event.target.value); if (value === 16 || value === 24 || value === 32) { cancel(); setArtifact(null); setBits(value); }
-        }}><option value={16}>16-bit PCM WAV</option><option value={24}>24-bit PCM WAV</option><option value={32}>32-bit Float WAV</option></select></label>
+        <fieldset className="m-0 mt-4 min-w-0 border-0 p-0">
+          <legend className="eyebrow">Delivery format</legend>
+          <DeliveryFormatControls value={format} rateChoices={rateChoices} rateNote={unavailableRateNote(rateChoices, track.sampleRate)} onChange={chooseFormat} />
+          <p className="disclosure" role="status">Checks {deliverySummary(format, track.sampleRate)}, the same file Export renders at this format.</p>
+          {platform === "CD" && !cdFormat && <Button variant="secondary" onClick={() => { chooseFormat(CD_DELIVERY); }}>Use CD format: 44.1 kHz, 16-bit</Button>}
+        </fieldset>
       </div>
       <Button onClick={() => void run()} disabled={busy || !track.sourceIdentity} icon={<Icon name={busy ? "refresh-cw" : "gauge"} />}>{busy ? "Measuring encoded audio…" : "Run release check"}</Button>
     </div>

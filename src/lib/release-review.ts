@@ -119,6 +119,7 @@ export function readReleaseReport(value: unknown): ReleaseReport | undefined {
   const channels = (output as { channels: unknown }).channels;
   const dither: unknown = (item as { dither?: unknown }).dither;
   // A converted delivery keeps the duration; an earlier receipt carries no dither field.
+  // Silence and full-scale counts describe the delivered file, so they are bounded by its frames.
   const converted = output.sampleRate !== source.sampleRate;
   const expectedFrames = converted ? convertedFrames(source.frames, source.sampleRate, output.sampleRate) : source.frames;
   const silenceThreshold = (output as { silenceThresholdDbfs: unknown }).silenceThresholdDbfs;
@@ -128,7 +129,7 @@ export function readReleaseReport(value: unknown): ReleaseReport | undefined {
     || !(dither === undefined || dither === "tpdf" || dither === "none")
     || ![16, 24, 32].includes(output.bitDepth) || silenceThreshold !== -60
     || output.bytes !== 44 + output.frames * 2 * output.bitDepth / 8
-    || ![output.fullScaleFrames, output.leadingSilenceFrames, output.trailingSilenceFrames].every((count) => Number.isSafeInteger(count) && count >= 0 && count <= source.frames)
+    || ![output.fullScaleFrames, output.leadingSilenceFrames, output.trailingSilenceFrames].every((count) => Number.isSafeInteger(count) && count >= 0 && count <= expectedFrames)
     || Object.keys(item.metrics).length !== 11 || !Object.values(item.metrics).every((number) => typeof number === "number" && Number.isFinite(number))) return undefined;
   const metrics = item.metrics;
   if (![metrics.integratedLufs, metrics.shortTermLufs, metrics.truePeakDbtp, metrics.samplePeakDbfs, metrics.dynamicRangeDb, metrics.correlation,

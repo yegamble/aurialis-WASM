@@ -171,6 +171,18 @@ describe("encoded release artifacts and saved receipts", () => {
     expect(readReleaseReport({ ...retained.report, output: { ...retained.report.output, sampleRate: 22050 } })).toBeUndefined();
     expect(readReleaseReport({ ...retained.report, dither: "noise" })).toBeUndefined();
   });
+  it("bounds an upsampled receipt's silence and full-scale counts by the delivered frames, not the source frames", async () => {
+    const hiRes: DeliveryFormat = { bitDepth: 16, sampleRate: 96000, dither: true };
+    vi.mocked(renderDelivery).mockImplementation(() => delivered(pcm16(96000, 2)));
+    vi.mocked(measureAudio).mockResolvedValue({ sampleRate: 96000, frames: 2, duration: 2 / 96000, beforeMetrics: metrics, afterMetrics: metrics });
+    const retained = await collectReleaseReview(source(), track, hiRes, "Apple Music", signal()); retained.dispose();
+    expect(retained.report.output.frames).toBe(2); expect(track.sourceIdentity?.frames).toBe(1);
+    // Two silent delivered frames from a one-frame source: more than the source holds, all of the file.
+    const silent = { ...retained.report, output: { ...retained.report.output, leadingSilenceFrames: 2, trailingSilenceFrames: 2, fullScaleFrames: 2 } };
+    expect(readReleaseReport(silent)).toEqual(silent);
+    expect(normalizeHydratedState({ ...testStore, tracks: [{ ...track, releaseReview: silent }] })?.tracks[0]?.releaseReview).toEqual(silent);
+    expect(readReleaseReport({ ...silent, output: { ...silent.output, leadingSilenceFrames: 3 } })).toBeUndefined();
+  });
   it("restores a bounded valid receipt and discards malformed receipts without losing settings", async () => {
     const retained = await collectReleaseReview(source(), track, bits(32), "Spotify", signal());
     const { report } = retained;

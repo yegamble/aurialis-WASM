@@ -179,6 +179,37 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
     }
   })
 
+  test("album level controls and the measured chart reflow from 320px to 1440px, axe clean", async ({ page }) => {
+    test.setTimeout(120_000)
+    await uploadProject(page, "qa-album-level-layout.wav")
+    await page.goto("/albums")
+    await page.getByRole("button", { name: "New album", exact: true }).click()
+    await page.getByRole("link", { name: /Untitled sequence 1/ }).click()
+    await page.getByRole("button", { name: "qa album level layout", exact: true }).click()
+    await page.getByRole("button", { name: "Normalize to a target", exact: true }).click()
+    await page.getByRole("button", { name: "−18 LUFS", exact: true }).click()
+    await page.getByRole("slider", { name: "qa album level layout album offset", exact: true }).fill("-1.5")
+    await page.getByRole("button", { name: "Render album masters", exact: true }).click()
+    const table = page.getByRole("table", { name: "Measured album masters", exact: true })
+    await expect(table).toContainText("−19.5 LUFS", { timeout: 60_000 })
+    for (const vp of VIEWPORTS) {
+      await page.setViewportSize({ width: vp.width, height: vp.height })
+      await expect(table).toBeVisible()
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+      expect(overflow, `Album level panel overflowed at ${vp.width}px`).toBeLessThanOrEqual(0)
+      for (const target of await page.locator(".consistency .choice, .consistency input[type=range]").all()) {
+        const box = await target.boundingBox()
+        expect(box?.height, `album level target height at ${vp.width}px`).toBeGreaterThanOrEqual(44)
+        expect(box?.width, `album level target width at ${vp.width}px`).toBeGreaterThanOrEqual(44)
+        expect((box?.x ?? 0) + (box?.width ?? 0), `album level target clipped at ${vp.width}px`).toBeLessThanOrEqual(vp.width)
+      }
+      const results = await new AxeBuilder({ page })
+        .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+        .analyze()
+      expect(results.violations, `WCAG 2.2 AA on the album level panel at ${vp.width}px: ${JSON.stringify(results.violations)}`).toEqual([])
+    }
+  })
+
   for (const vp of VIEWPORTS) {
     test(`passes axe WCAG 2.2 AA at ${vp.width}px`, async ({ page }) => {
       const id = await uploadProject(page)

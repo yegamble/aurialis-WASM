@@ -31,6 +31,50 @@ async function sideLevel(page: Page, side: "A Processed" | "B Original"): Promis
   return meanOutputLevel(page, 24_000);
 }
 
+/** One whole source loop of K-weighted speaker output for A or B (equal content, so only loudness differs). */
+async function sideLoudness(page: Page, side: "A Processed" | "B Original", loopFrames: number): Promise<number> {
+  await page.getByRole("button", { name: side, exact: true }).click();
+  await expect(page.getByRole("button", { name: side, exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.waitForTimeout(150);
+  return meanOutputLevel(page, loopFrames, "k");
+}
+
+export type LimitedEvidence = { matchedDeltaLu: number; unmatchedDeltaLu: number; offsetDb: number };
+
+/**
+ * Round E REQUIRED-1: a heavily limited master (+14 dB into the −1 dBTP
+ * limiter on the dense loop). The match is measured on what live playback
+ * plays, so speaker-output K-weighted loudness of A and B agrees within 0.5 LU.
+ */
+export async function verifyLimitedMatchedAB(page: Page): Promise<LimitedEvidence> {
+  await observeOutput(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await uploadProject(page, "matched-ab-limited.wav", 8, "dense");
+  await page.getByRole("slider", { name: "Input gain", exact: true }).fill("14");
+  const limiter = page.getByRole("checkbox", { name: "Enable limiter", exact: true });
+  await limiter.check();
+  await expect(limiter).toBeChecked();
+  const toggle = page.getByRole("button", { name: "Equal-loudness A/B", exact: true });
+  await page.getByRole("button", { name: "Repeat track", exact: true }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  const transport = page.locator(".transport");
+  await expect(transport).toHaveAttribute("data-playing", "true");
+  const loopFrames = await page.evaluate(() => 8 * ((window as Window & { qaOutput?: { sampleRate: number } }).qaOutput?.sampleRate ?? 48000));
+  const unmatchedA = await sideLoudness(page, "A Processed", loopFrames);
+  const unmatchedB = await sideLoudness(page, "B Original", loopFrames);
+  await toggle.click();
+  await expect(page.locator(".match-status")).toHaveText(/^A −\d+\.\d dB to match B$/, { timeout: 60_000 });
+  const offsetDb = Number(await transport.getAttribute("data-match-processed-db"));
+  const matchedA = await sideLoudness(page, "A Processed", loopFrames);
+  const matchedB = await sideLoudness(page, "B Original", loopFrames);
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  await toggle.click();
+  const evidence = { matchedDeltaLu: matchedA - matchedB, unmatchedDeltaLu: unmatchedA - unmatchedB, offsetDb };
+  expect(Math.abs(evidence.matchedDeltaLu), JSON.stringify(evidence)).toBeLessThanOrEqual(0.5);
+  expect(evidence.unmatchedDeltaLu, JSON.stringify(evidence)).toBeGreaterThan(3);
+  return evidence;
+}
+
 export type MatchedABEvidence = { matchedDeltaDb: number; unmatchedDeltaDb: number; offsetDb: number; exportHash: string };
 
 /**
@@ -42,8 +86,9 @@ export async function verifyMatchedAB(page: Page): Promise<MatchedABEvidence> {
   await observeOutput(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await uploadProject(page, "matched-ab.wav", 4);
-  const toggle = page.getByRole("button", { name: "Match loudness", exact: true });
+  const toggle = page.getByRole("button", { name: "Equal-loudness A/B", exact: true });
   await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("Listening only — export unchanged", { exact: true })).toBeVisible();
   await page.getByRole("slider", { name: "Input gain", exact: true }).fill("-6");
   const off = await exportHash(page);
 
@@ -52,7 +97,7 @@ export async function verifyMatchedAB(page: Page): Promise<MatchedABEvidence> {
   const status = page.locator(".match-status");
   await expect(status).toHaveAttribute("aria-live", "polite");
   await expect(status).toHaveText("B −6.0 dB to match A", { timeout: 30_000 });
-  await expect(toggle).toHaveAttribute("aria-describedby", (await status.getAttribute("id")) ?? "missing");
+  await expect(toggle).toHaveAttribute("aria-describedby", new RegExp(`^${(await status.getAttribute("id")) ?? "missing"} `));
   const transport = page.locator(".transport");
   const offsetDb = Number(await transport.getAttribute("data-match-original-db"));
   expect(Number(await transport.getAttribute("data-match-processed-db"))).toBe(0);
@@ -81,11 +126,11 @@ export async function verifyMatchedAB(page: Page): Promise<MatchedABEvidence> {
   // The opt-in is a per-browser preference and survives a reload.
   await toggle.click();
   await page.reload();
-  await expect(page.getByRole("button", { name: "Match loudness", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Equal-loudness A/B", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".match-status")).toHaveText("B −6.0 dB to match A", { timeout: 30_000 });
   for (const width of [320, 1440]) {
     await page.setViewportSize({ width, height: width === 320 ? 640 : 900 });
-    const box = await page.getByRole("button", { name: "Match loudness", exact: true }).boundingBox();
+    const box = await page.getByRole("button", { name: "Equal-loudness A/B", exact: true }).boundingBox();
     expect(box?.width).toBeGreaterThanOrEqual(44);
     expect(box?.height).toBeGreaterThanOrEqual(44);
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
@@ -101,8 +146,8 @@ export async function verifyMatchedAB(page: Page): Promise<MatchedABEvidence> {
     }
   }
   // Keyboard: the toggle is reachable and operable without a pointer.
-  await page.getByRole("button", { name: "Match loudness", exact: true }).focus();
+  await page.getByRole("button", { name: "Equal-loudness A/B", exact: true }).focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("button", { name: "Match loudness", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByRole("button", { name: "Equal-loudness A/B", exact: true })).toHaveAttribute("aria-pressed", "false");
   return evidence;
 }

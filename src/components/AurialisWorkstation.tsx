@@ -2040,11 +2040,24 @@ function AlbumView({ albumId }: { albumId: string }) {
 }
 
 
+/** Tab-scoped memory of the Tools track choice; storage can be absent or blocked. */
+const TOOLS_TRACK_KEY = "aurialis-tools-track";
+
+function readToolsTrack(): string {
+  try { return sessionStorage.getItem(TOOLS_TRACK_KEY) ?? ""; } catch { return ""; }
+}
+
+function rememberToolsTrack(id: string) {
+  try { sessionStorage.setItem(TOOLS_TRACK_KEY, id); } catch { /* the choice still applies until the page closes */ }
+}
+
 function ToolsView() {
   const { state } = useStore();
   const browser = useBrowserBuild();
   const chooserId = useId();
   const [chosenId, setChosenId] = useState("");
+  // Read after mount so the static prerender and the first client render agree.
+  useEffect(() => { setChosenId(readToolsTrack()); }, []);
   // A deleted choice falls back to the newest import, as before the chooser existed.
   const target = state.tracks.find((item) => item.id === chosenId) ?? state.tracks[0];
   const href = (route: TrackToolRoute) => target ? trackToolHref(route, target.id) : undefined;
@@ -2059,7 +2072,7 @@ function ToolsView() {
         <div className="mb-8 max-w-md">
           <ControlGroup label="Track" htmlFor={chooserId}>
             <div className="select-wrap">
-              <select id={chooserId} value={target.id} onChange={(event) => { setChosenId(event.target.value); }}>
+              <select id={chooserId} value={target.id} onChange={(event) => { setChosenId(event.target.value); rememberToolsTrack(event.target.value); }}>
                 {state.tracks.map((item) => (
                   <option key={item.id} value={item.id}>
                     {`${item.title || "Untitled track"} · ${formatTime(item.duration)} · ${item.format}`}

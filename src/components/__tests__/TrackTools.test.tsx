@@ -33,6 +33,7 @@ beforeEach(() => {
   vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
   vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Network unavailable")));
   seed([trackB, trackA]);
+  sessionStorage.clear();
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
@@ -64,6 +65,26 @@ describe("Tools track chooser", () => {
     fireEvent.change(chooser, { target: { value: "track-a" } });
     expect(chooser.value).toBe("track-a");
     expect(linkTargets(screen.getByRole("list", { name: "Tools for Alpha mix" }))).toEqual(["/split/track-a", "/reference/track-a", "/release-check/track-a"]);
+  });
+
+  it("remembers the chosen track for this tab when you come back to Tools", async () => {
+    const session = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", { getItem: (key: string) => session.get(key) ?? null, setItem: (key: string, value: string) => { session.set(key, value); } });
+    const first = mount("tools", "/tools");
+    fireEvent.change(await screen.findByRole("combobox", { name: "Track" }), { target: { value: "track-a" } });
+    first.unmount();
+    mount("tools", "/tools");
+    await screen.findByRole("list", { name: "Tools for Alpha mix" });
+    expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Track" }).value).toBe("track-a");
+  });
+
+  it("falls back to the newest import when the remembered track was deleted or storage is blocked", async () => {
+    vi.stubGlobal("sessionStorage", { getItem: () => "track-deleted", setItem: () => { throw new Error("blocked"); } });
+    mount("tools", "/tools");
+    const chooser = await screen.findByRole<HTMLSelectElement>("combobox", { name: "Track" });
+    expect(chooser.value).toBe("track-b");
+    fireEvent.change(chooser, { target: { value: "track-a" } });
+    expect(chooser.value).toBe("track-a");
   });
 
   it("keeps the Smart Split card as availability copy, not a link, in the browser build", async () => {

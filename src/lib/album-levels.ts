@@ -53,6 +53,12 @@ export function withAlbumOffset(level: AlbumLevel, trackId: string, offsetDb: nu
   return { ...level, offsets };
 }
 
+/** Keep only offsets for tracks still on the album. */
+export function pruneAlbumOffsets(level: AlbumLevel, trackIds: readonly string[]): AlbumLevel {
+  const offsets = level.offsets.filter((item) => trackIds.includes(item.trackId));
+  return offsets.length === level.offsets.length ? level : { ...level, offsets };
+}
+
 export function albumLevelSummary(level: AlbumLevel): string {
   return level.mode === "keep" ? "Keeps each master’s level" : `Normalizes to ${lufs(level.targetLufs)}`;
 }

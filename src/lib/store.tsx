@@ -17,7 +17,7 @@ import { masteringTargets } from "./mastering-targets";
 import { restoredSimpleDirection, type SimpleChange } from "./simple-directions";
 import { hasAppliedDeep } from "./reference-matching";
 import { readReleaseReport } from "./release-review";
-import { readAlbumLevel } from "./album-levels";
+import { pruneAlbumOffsets, readAlbumLevel } from "./album-levels";
 import { deepSourceMatches, readDeepMasteringState, type DeepMasteringState, type DeepSettingsSnapshot, type ScriptV2 } from "./deep-mastering";
 import type {
   Album,
@@ -412,10 +412,10 @@ export function reduceStoreState(
       return {
         ...state,
         tracks: state.tracks.filter((track) => track.id !== action.id),
-        albums: state.albums.map((album) => ({
-          ...album,
-          trackIds: album.trackIds.filter((id) => id !== action.id),
-        })),
+        albums: state.albums.map((album) => {
+          const trackIds = album.trackIds.filter((id) => id !== action.id);
+          return { ...album, trackIds, level: pruneAlbumOffsets(album.level, trackIds) };
+        }),
         stems: [],
       };
 
@@ -425,9 +425,11 @@ export function reduceStoreState(
     case "UPDATE_ALBUM":
       return {
         ...state,
-        albums: state.albums.map((a) =>
-          a.id === action.id ? { ...a, ...action.patch } : a,
-        ),
+        albums: state.albums.map((a) => {
+          if (a.id !== action.id) return a;
+          const album = { ...a, ...action.patch };
+          return { ...album, level: pruneAlbumOffsets(album.level, album.trackIds) };
+        }),
       };
 
     case "DELETE_ALBUM":
@@ -542,7 +544,10 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
   });
   return {
     tracks,
-    albums: Array.isArray(candidate.albums) ? candidate.albums.map(({ target: _legacyTarget, ...album }) => ({ ...album, level: readAlbumLevel(album.level), mastered: false, trackIds: album.trackIds.filter((id) => tracks.some((track) => track.id === id)) })) : [],
+    albums: Array.isArray(candidate.albums) ? candidate.albums.map(({ target: _legacyTarget, ...album }) => {
+      const trackIds = album.trackIds.filter((id) => tracks.some((track) => track.id === id));
+      return { ...album, level: pruneAlbumOffsets(readAlbumLevel(album.level), trackIds), mastered: false, trackIds };
+    }) : [],
     stems: [],
   };
 }

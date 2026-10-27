@@ -3,7 +3,7 @@ import { albumLevelSummary, albumMastersKey, albumOffset, DEFAULT_ALBUM_LEVEL, p
 import { exportParams, exportScript } from "../engine-params";
 import type { ScriptV2 } from "../deep-mastering";
 import type { MeasuredAudioMetrics, Track } from "../types";
-import { normalizeHydratedState } from "../store";
+import { normalizeHydratedState, reduceStoreState } from "../store";
 import { testStore } from "./fixtures";
 
 const [first, second] = testStore.tracks as [Track, Track];
@@ -127,5 +127,17 @@ describe("album level persistence", () => {
     const state = normalizeHydratedState({ tracks: [first], albums: [legacy, saved] });
     expect(state?.albums[0]).toEqual({ id: "legacy", title: "Old", artist: "", level: DEFAULT_ALBUM_LEVEL, trackIds: [first.id], mastered: false });
     expect(state?.albums[1]?.level).toEqual(saved.level);
+  });
+
+  it("drops offsets for tracks that are no longer on the album", () => {
+    const level: AlbumLevel = { mode: "normalize", targetLufs: -16, offsets: [{ trackId: first.id, offsetDb: -1 }, { trackId: second.id, offsetDb: 2 }, { trackId: "gone", offsetDb: 3 }] };
+    const album = { id: "pruned", title: "Pruned", artist: "", level, trackIds: [first.id, second.id, "gone"], mastered: false };
+    const hydrated = normalizeHydratedState({ tracks: [first, second], albums: [album] });
+    expect(hydrated?.albums[0]?.level.offsets).toEqual([{ trackId: first.id, offsetDb: -1 }, { trackId: second.id, offsetDb: 2 }]);
+    if (!hydrated) throw new Error("hydration failed");
+    const removed = reduceStoreState(hydrated, { type: "UPDATE_ALBUM", id: "pruned", patch: { trackIds: [second.id] } });
+    expect(removed.albums[0]?.level.offsets).toEqual([{ trackId: second.id, offsetDb: 2 }]);
+    const deleted = reduceStoreState(hydrated, { type: "DELETE_TRACK", id: second.id });
+    expect(deleted.albums[0]?.level.offsets).toEqual([{ trackId: first.id, offsetDb: -1 }]);
   });
 });

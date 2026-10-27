@@ -38,7 +38,7 @@ Your audio  →  Choose a direction  →  Listen and refine  →  Download a WAV
 | --- | --- |
 | Find a starting point | **Simple** genre, tone and intensity, Precise/Organic/Elevated styles, Depth/Presence, and an explicit **Set target loudness** action. |
 | Shape the details | **Advanced** five-band EQ, compression, saturation, stereo controls, sample-peak limiting, De-Harsh and multiband dynamics. EQ changes tonal balance; compression controls changes in level. |
-| Hear your decisions | **A Processed / B Original** listening, a measured live spectrum and waveform, and shared settings across Simple and Advanced. A/B does not automatically match loudness. |
+| Hear your decisions | **A Processed / B Original** listening, a measured live spectrum and waveform, and shared settings across Simple and Advanced. Opt-in **Equal-loudness A/B** lowers the louder of A or B by one fixed, measured offset for listening only; export is unchanged. |
 | Understand and compare | **Deep** proposes bounded, editable changes over source-frame intervals; review them before Apply. **Reference** compares your current starting chain with another track's original audio and proposes bounded EQ and optional width changes. |
 | Make a handoff | **Export** as 16/24-bit PCM or 32-bit float WAV at the source rate or converted to 44.1, 48, 88.2 or 96 kHz, with TPDF dither or none, preserving duration. With the limiter on, a converted export is true-peak limited again at its new rate. **Release check** measures and retains the exact encoded WAV for download. Album rendering creates individual 24-bit WAV downloads that keep each master's level or normalize to a chosen target with per-track offsets, without changing the projects. |
 

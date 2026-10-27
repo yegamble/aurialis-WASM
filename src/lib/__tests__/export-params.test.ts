@@ -4,7 +4,7 @@ import { EXPORT_ALGORITHM_VERSION, engineParams, exportParams, exportRender, exp
 import type { ScriptV2 } from "../deep-mastering";
 
 describe("export parameters", () => {
-  it("select the true-peak limiter while live parameters stay on algorithm 1", () => {
+  it("select the true-peak limiter (algorithm 2) over the engine parameters they copy", () => {
     const advanced = createDefaultAdvancedParams();
     const live = engineParams(advanced), exported = exportParams(advanced);
     expect(live).not.toHaveProperty("algorithmVersion");

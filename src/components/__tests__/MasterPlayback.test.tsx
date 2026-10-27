@@ -7,6 +7,7 @@ import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP 
 import type { AdvancedParams } from "@/lib/types";
 import type { LiveMeter, LivePlaybackController, LivePlaybackState, LiveSpectrum } from "@/lib/live-playback";
 import { StoreProvider } from "@/lib/store";
+import { OVERLOAD_MESSAGE } from "@/lib/live-overload";
 import { canonicalWAV, testStore } from "@/lib/__tests__/fixtures";
 import { AurialisWorkstation } from "../AurialisWorkstation";
 
@@ -265,6 +266,20 @@ describe("master live playback lifecycle", () => {
     fireEvent.click(screen.getByRole("tab", { name: "simple" }));
     fireEvent.click(screen.getByRole("button", { name: "Set target loudness" }));
     expect(await screen.findByText("Target set. Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain, resampled on this device, so it may differ slightly.")).toBeTruthy();
+  }, 30000);
+
+  it("shows the overload message without a Restore source action, which cannot help (V1-10)", async () => {
+    mount(); await ready();
+    const instance = latest();
+    act(() => { instance.callbacks.onError?.(new Error(OVERLOAD_MESSAGE)); });
+    const alert = screen.getByText(OVERLOAD_MESSAGE).closest("[role=alert]");
+    if (!(alert instanceof HTMLElement)) throw new Error("Missing overload alert");
+    expect(within(alert).getByRole("button", { name: "Retry playback" })).toBeTruthy();
+    expect(within(alert).queryByRole("button", { name: "Restore source" })).toBeNull();
+    act(() => { instance.callbacks.onError?.(new Error("Live playback lost its processed audio.")); });
+    const fault = screen.getByText("Live playback lost its processed audio.").closest("[role=alert]");
+    if (!(fault instanceof HTMLElement)) throw new Error("Missing fault alert");
+    expect(within(fault).getByRole("button", { name: "Restore source" })).toBeTruthy();
   }, 30000);
 
   it("states the 48 kHz live cap for a 96 kHz source before Play, without blaming the device (V1-10)", async () => {

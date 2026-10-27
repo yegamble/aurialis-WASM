@@ -1,8 +1,10 @@
 import { formatRate } from "./export-rates";
 
-/** Highest rate live playback runs at. The CPU gate is a mean kernel load of
- * at most a third of the quantum (3× headroom); with every module on, 96 kHz
- * measured 2.7–2.9× (docs/tasks.md V1-10), so higher rates are capped. */
+/** Highest rate live playback runs at. The CPU gate, on the real worklet, is a
+ * mean kernel load of at most half the quantum (2× headroom). With every module
+ * on, QA measured 0.35–0.47 at 48 kHz (2.1–2.9×) and 0.65 at 96 kHz (1.53×), so
+ * higher rates are capped (docs/tasks.md V1-10). The Node V8 bench reads about
+ * 2.5× lower load and is not used for this gate. */
 const LIVE_MAX_SAMPLE_RATE = 48000;
 
 /** Rate the live AudioContext opens at: the source rate up to 48 kHz; above

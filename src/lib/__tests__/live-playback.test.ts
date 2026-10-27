@@ -477,7 +477,7 @@ describe("per-track live audio lifecycle", () => {
     expect(controller.getState()).toMatchObject({ playing: true, liveSampleRate: 48000 });
     controller.dispose();
   });
-  it.each([[96000, 48000], [192000, 48000], [88200, 44100], [176400, 44100]])("caps a %i Hz source at %i Hz, an integer ratio inside the 3x CPU budget", async (sourceRate, liveRate) => {
+  it.each([[96000, 48000], [192000, 48000], [88200, 44100], [176400, 44100]])("caps a %i Hz source at %i Hz, an integer ratio inside the 2x real-worklet CPU budget", async (sourceRate, liveRate) => {
     const { contexts } = graphHarness(true, true, false, "honor");
     const frames = sourceRate / 100;
     const controller = createLivePlayback({ sampleRate: sourceRate, left: new Float32Array(frames), right: new Float32Array(frames) }, createDefaultAdvancedParams());

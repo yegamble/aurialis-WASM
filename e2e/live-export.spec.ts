@@ -206,7 +206,8 @@ for (const [sourceRate, deviceRate] of [[48000, 44100], [44100, 48000]] as const
 }
 
 // Above 48 kHz live playback is capped at an integer ratio to stay inside the
-// 3x CPU budget (V1-10 Round E 2), even on an interface at the source's rate;
+// real-worklet CPU budget (mean load ≤ 0.5; V1-10 Round E 2), even on an
+// interface at the source's rate;
 // the export keeps the source rate. Measured (two runs each, heaviest chain):
 // 96→48 kHz ΔLU +0.174, live TP −1.2 against the export's −1.08 dBTP; 88.2→44.1
 // kHz ΔLU +0.139, −1.0 against −1.24. The note says live may differ; these
@@ -303,7 +304,7 @@ test(`the export algorithm keeps up live for ${String(SOAK_SECONDS)} s with ever
   // inside process(), so the ring cannot run dry from load (it is always 0 here).
   expect(timing.slow, JSON.stringify(evidence)).toBe(0);
   expect(Math.abs(evidence.clockDriftMs), JSON.stringify(evidence)).toBeLessThanOrEqual(evidence.driftLimitMs);
-  // The 3x budget is measured on a quiet machine (docs/tasks.md V1-10). Shared CI
+  // The budget gate is mean load ≤ 0.5 on a quiet machine (docs/tasks.md V1-10). Shared CI
   // and agent hosts swing 2x, so this only catches gross regressions.
   expect(evidence.meanLoad, JSON.stringify(evidence)).toBeLessThanOrEqual(0.75);
 });

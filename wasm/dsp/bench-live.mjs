@@ -1,7 +1,9 @@
-// Measure the compiled WASI reactor's live quantum cost in V8 (the engine
-// Chromium runs AudioWorklets on), through the real restricted browser host.
+// Relative V8 benchmark of the compiled WASI reactor's live quantum cost,
+// through the real restricted browser host, for comparing chains, rates and
+// algorithms. It is not a browser CPU load: the real AudioWorklet measured about
+// 2.5x more (docs/tasks.md V1-10), and the live CPU gate uses the worklet.
 // Usage: node wasm/dsp/bench-live.mjs public/wasm/aurialis-realtime.wasm [seconds]
-// Load = mean (or p99/max) processing time / the quantum's real-time duration.
+// Ratio = mean (or p99) kernel time / the quantum's real-time duration, in Node.
 import { readFile } from "node:fs/promises";
 import { webcrypto } from "node:crypto";
 import assert from "node:assert/strict";
@@ -66,14 +68,14 @@ async function measure(rate, algorithm, character) {
   timings.sort();
   const quantumMs = 128 / rate * 1000, mean = timings.reduce((sum, value) => sum + value, 0) / blocks;
   return { rate, algorithm, character, latency: wasm.aurialis_latency_frames(), meanUs: mean * 1000, p99Us: timings[Math.floor(blocks * 0.99)] * 1000,
-    maxUs: timings[blocks - 1] * 1000, meanLoad: mean / quantumMs, p99Load: timings[Math.floor(blocks * 0.99)] / quantumMs };
+    maxUs: timings[blocks - 1] * 1000, meanRatio: mean / quantumMs, p99Ratio: timings[Math.floor(blocks * 0.99)] / quantumMs };
 }
 
 const rows = [];
 for (const rate of [44100, 48000, 96000])
   for (const algorithm of [1, 2])
     for (const character of ["Warm", "Tube", "Transformer"]) rows.push(await measure(rate, algorithm, character));
-console.log(`${process.version} ${seconds}s of audio per row, 128-frame quanta, heaviest live chain`);
-console.log("rate  alg saturation  latency  mean µs  p99 µs   max µs  mean load  p99 load");
+console.log(`${process.version} relative V8 benchmark, not a browser load: ${seconds}s of audio per row, 128-frame quanta, heaviest live chain`);
+console.log("rate  alg saturation  latency  mean µs  p99 µs   max µs  V8 mean ratio  V8 p99 ratio");
 for (const r of rows)
-  console.log(`${String(r.rate).padEnd(5)} ${r.algorithm}   ${r.character.padEnd(11)} ${String(r.latency).padStart(7)} ${r.meanUs.toFixed(1).padStart(8)} ${r.p99Us.toFixed(1).padStart(7)} ${r.maxUs.toFixed(1).padStart(8)} ${r.meanLoad.toFixed(3).padStart(10)} ${r.p99Load.toFixed(3).padStart(9)}`);
+  console.log(`${String(r.rate).padEnd(5)} ${r.algorithm}   ${r.character.padEnd(11)} ${String(r.latency).padStart(7)} ${r.meanUs.toFixed(1).padStart(8)} ${r.p99Us.toFixed(1).padStart(7)} ${r.maxUs.toFixed(1).padStart(8)} ${r.meanRatio.toFixed(3).padStart(14)} ${r.p99Ratio.toFixed(3).padStart(13)}`);

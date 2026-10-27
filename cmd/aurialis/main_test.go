@@ -3,6 +3,7 @@ package main
 // cspell:words steminfer
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio/steminfer"
@@ -28,8 +29,8 @@ func TestConfigureStemsReportsBackendAndCacheState(t *testing.T) {
 	if status.State != string(steminfer.ModelAbsent) || status.Ready || status.Downloading || status.Total != steminfer.ModelBytes {
 		t.Fatalf("empty cache status %+v", status)
 	}
-	if status.Backend != steminfer.Backend() || status.Accelerated != steminfer.Accelerated() {
-		t.Fatalf("backend %s accelerated %v", status.Backend, status.Accelerated)
+	if status.Backend != steminfer.Backend() || status.Accelerated != steminfer.Accelerated() || status.Arch != runtime.GOARCH {
+		t.Fatalf("backend %s accelerated %v arch %q", status.Backend, status.Accelerated, status.Arch)
 	}
 	if (status.Speed != nil) != steminfer.Accelerated() {
 		t.Fatalf("speed %+v on accelerated %v", status.Speed, steminfer.Accelerated())

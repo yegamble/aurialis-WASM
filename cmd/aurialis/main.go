@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -171,7 +172,7 @@ func configureStems(cfg *server.Config, url, dir string) error {
 		report := server.StemModelStatus{
 			Ready: status.State == steminfer.ModelLoaded, Downloading: status.State == steminfer.ModelDownloading,
 			Downloaded: status.Written, Total: steminfer.ModelBytes, State: string(status.State),
-			Accelerated: accelerated, Backend: steminfer.Backend(),
+			Accelerated: accelerated, Backend: steminfer.Backend(), Arch: runtime.GOARCH,
 		}
 		if accelerated {
 			report.Speed = &server.StemSpeed{WindowSeconds: speed.WindowSeconds, HopSeconds: speed.HopSeconds,

@@ -280,9 +280,9 @@ func TestSeparateReportsUnavailableModel(t *testing.T) {
 	}{
 		{server.Config{Workers: 1}, `{"available":false,"ready":false,"downloading":false,"downloadedBytes":0,"totalBytes":0,"state":"disabled","accelerated":false,"backend":""}`},
 		{server.Config{Workers: 1, Separator: copySeparator, StemModelStatus: func() server.StemModelStatus {
-			return server.StemModelStatus{Downloading: true, Downloaded: 10, Total: 20, State: "downloading", Accelerated: true, Backend: "apple-accelerate",
+			return server.StemModelStatus{Downloading: true, Downloaded: 10, Total: 20, State: "downloading", Accelerated: true, Backend: "apple-accelerate", Arch: "amd64",
 				Speed: &server.StemSpeed{WindowSeconds: 20, HopSeconds: 10, IdleSecondsPerWindow: 32, BusySecondsPerWindow: 173}}
-		}}, `{"available":true,"ready":false,"downloading":true,"downloadedBytes":10,"totalBytes":20,"state":"downloading","accelerated":true,"backend":"apple-accelerate","speed":{"windowSeconds":20,"hopSeconds":10,"idleSecondsPerWindow":32,"busySecondsPerWindow":173}}`},
+		}}, `{"available":true,"ready":false,"downloading":true,"downloadedBytes":10,"totalBytes":20,"state":"downloading","accelerated":true,"backend":"apple-accelerate","arch":"amd64","speed":{"windowSeconds":20,"hopSeconds":10,"idleSecondsPerWindow":32,"busySecondsPerWindow":173}}`},
 		// A plain-Go build reports its backend but leaves Separator nil, so Split is unavailable.
 		{server.Config{Workers: 1, StemModelStatus: func() server.StemModelStatus {
 			return server.StemModelStatus{State: "cached", Backend: "portable-go", Total: 20}

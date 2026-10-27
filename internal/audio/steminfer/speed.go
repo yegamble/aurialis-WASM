@@ -22,7 +22,9 @@ type Speed struct {
 	// docs/tasks.md ("Smart Split with a trained model"): 32 s on an idle
 	// 8-core M2 MacBook Air with Accelerate, and 2 min 53 s on the same Mac
 	// under heavy load. They are recorded figures, not a calibration of the
-	// computer running the server.
+	// computer running the server, and only Apple silicon (arm64) was timed:
+	// a darwin/amd64 cgo build also uses Accelerate but has no measurement,
+	// so /api/stems/model reports the arch and the client caveats it.
 	IdleSecondsPerWindow float64
 	BusySecondsPerWindow float64
 }

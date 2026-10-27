@@ -71,6 +71,9 @@ type StemModelStatus struct {
 	// build is available for Smart Split.
 	Accelerated bool   `json:"accelerated"`
 	Backend     string `json:"backend"`
+	// Arch is the server's GOARCH. The recorded speed was measured on arm64
+	// (Apple silicon) only, so the client caveats estimates elsewhere.
+	Arch string `json:"arch,omitempty"`
 	// Speed is the recorded per-window time, present on accelerated builds.
 	Speed *StemSpeed `json:"speed,omitempty"`
 }

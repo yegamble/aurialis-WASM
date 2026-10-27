@@ -149,6 +149,19 @@ it("never offers masters kept at each level while a blocked normalize level is c
   expect(screen.getByRole("button", { name: "Render album masters" }).hasAttribute("disabled")).toBe(true);
 });
 
+it("replaces the render success notice with the stale notice once the level or sequence changes", async () => {
+  mocks.saveAudio.mockResolvedValue({ durable: true });
+  mount(); await start();
+  expect(await screen.findByText(/masters are saved in this browser/u)).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "Normalize to a target" }));
+  expect(await screen.findByText(/Saved masters no longer match/u)).toBeDefined();
+  expect(screen.queryByText(/masters are saved in this browser/u)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Keep each master’s level" }));
+  await screen.findByRole("button", { name: "Download all as ZIP" });
+  fireEvent.click(screen.getByRole("button", { name: "Remove Album source 2 from album" }));
+  expect(await screen.findByText(/Saved masters no longer match/u)).toBeDefined();
+});
+
 it("keeps each master's single-export level by default and never writes into the projects", async () => {
   mount();
   expect((await screen.findAllByText("Keeps each master’s level")).length).toBeGreaterThan(0);

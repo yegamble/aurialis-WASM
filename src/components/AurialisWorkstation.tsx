@@ -1749,7 +1749,10 @@ function AlbumView({ albumId }: { albumId: string }) {
     const step = plan.ok ? plan.tracks.at(index) : undefined;
     return file.measured ? [{ id: file.id, title: file.title, measured: file.measured, requestedLufs: step?.mode === "normalize" ? step.requestedLufs : null }] : [];
   });
-  const updateLevel = (next: AlbumLevel) => { dispatch({ type: "UPDATE_ALBUM", id: album.id, patch: { level: next } }); };
+  // A sequence or level change outdates the last render notice, so the status
+  // line can say whether saved masters still match.
+  const changeSequence = (patch: Partial<Pick<Album, "level" | "trackIds">>) => { setMessage(""); dispatch({ type: "UPDATE_ALBUM", id: album.id, patch }); };
+  const updateLevel = (next: AlbumLevel) => { changeSequence({ level: next }); };
   const staleSaved = artifacts.length === 0 && saved !== undefined;
   const download = (run: () => Promise<void>) => { void run().catch((error: unknown) => { setMessage(error instanceof Error ? error.message : "The album master could not be downloaded. Try again."); }); };
 
@@ -1931,11 +1934,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                       const curr = nextIds.at(index);
                       if (prev !== undefined && curr !== undefined) {
                         nextIds.splice(index - 1, 2, curr, prev);
-                        dispatch({
-                          type: "UPDATE_ALBUM",
-                          id: album.id,
-                          patch: { trackIds: nextIds },
-                        });
+                        changeSequence({ trackIds: nextIds });
                       }
                     }}
                   >
@@ -1952,11 +1951,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                       const curr = nextIds.at(index);
                       if (next !== undefined && curr !== undefined) {
                         nextIds.splice(index, 2, next, curr);
-                        dispatch({
-                          type: "UPDATE_ALBUM",
-                          id: album.id,
-                          patch: { trackIds: nextIds },
-                        });
+                        changeSequence({ trackIds: nextIds });
                       }
                     }}
                   >
@@ -1968,15 +1963,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                     disabled={working}
                     aria-label={`Remove ${track.title} from album`}
                     onClick={() => {
-                      dispatch({
-                        type: "UPDATE_ALBUM",
-                        id: album.id,
-                        patch: {
-                          trackIds: album.trackIds.filter(
-                            (id) => id !== track.id,
-                          ),
-                        },
-                      });
+                      changeSequence({ trackIds: album.trackIds.filter((id) => id !== track.id) });
                     }}
                   >
                     <Icon name="x" />
@@ -1995,11 +1982,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                   key={track.id}
                   disabled={working}
                   onClick={() => {
-                    dispatch({
-                      type: "UPDATE_ALBUM",
-                      id: album.id,
-                      patch: { trackIds: [...album.trackIds, track.id] },
-                    });
+                    changeSequence({ trackIds: [...album.trackIds, track.id] });
                   }}
                 >
                   <Icon name="plus" />

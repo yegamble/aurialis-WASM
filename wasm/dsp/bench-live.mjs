@@ -21,7 +21,7 @@ function heaviest(character, algorithmVersion) {
     bands: [[60, 0.707, "low_shelf"], [250, 1, "peaking"], [1000, 1, "peaking"], [4000, 1.2, "peaking"], [12000, 0.707, "high_shelf"]]
       .map(([freqHz, q, type]) => ({ freqHz, gainDb: 2, q, type, enabled: true })),
     compressor: { enabled: true, thresholdDb: -20, ratio: 3, attackMs: 18, releaseMs: 140, kneeDb: 3, makeupDb: 0, sidechainHpfHz: 90, autoRelease: true, topology: "optical" },
-    saturation: { enabled: true, amount: 0.6, character },
+    saturation: { enabled: true, amount: 60, character },
     stereo: { enabled: true, widthPct: 130, monoBass: true, crossoverHz: 110, midGainDb: 1, sideGainDb: -1 },
     limiter: { enabled: true, ceilingDbtp: -1, targetLufs: -9, releaseMs: 80, truePeak: algorithmVersion === 2 },
     repair: { enabled: false, deEssDb: 0, transientDb: 0, deClip: false },

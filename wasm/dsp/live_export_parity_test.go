@@ -105,27 +105,23 @@ func residualDB(got, want [2][]float32) float64 {
 // heard is what is exported. Through the worklet's ABI and 128-frame quanta,
 // heard A matches the export render within −60 dB residual and 0.1 LU, and the
 // live true-peak meter, which reads after the true-peak limiter, reads what the
-// export measures and stays within 0.1 dB of the ceiling on program material.
+// export measures and stays within 0.1 dB of the ceiling.
 //
-// With every module on (130% width, a +2 dB 12 kHz shelf and driven Tube
-// saturation over noise hats) the BS.1770 4x meter reads up to 0.25 dB above
-// the ceiling on export and live alike, where an independent 32x reference
-// reads at most 0.06 dB over: an export-limiter margin, not a live difference.
+// Known export-path margin, not a live difference: with every module on but
+// saturation at 0.6% (so noise hats keep their near-Nyquist energy) the BS.1770
+// 4x meter read −0.75 dBTP at 48 kHz on export and live alike, where an
+// independent 32x reconstruction read −1.00 dBTP.
 func TestLivePlaybackRendersTheExport(t *testing.T) {
 	hot := dsp.DefaultParams()
 	hot.AlgorithmVersion, hot.InputGainDB = dsp.TruePeakAlgorithmVersion, 15
 	hot.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: -1, TargetLUFS: -9, ReleaseMS: 80, TruePeak: true}
-	cases := map[string]struct {
-		params       dsp.Params
-		holdsCeiling bool
-	}{
-		"hot limiter":     {hot, true},
-		"every module on": {heaviestLiveParams(dsp.TruePeakAlgorithmVersion, dsp.SatTube), false},
+	cases := map[string]dsp.Params{
+		"hot limiter":     hot,
+		"every module on": heaviestLiveParams(dsp.TruePeakAlgorithmVersion, dsp.SatTube),
 	}
 	for _, rate := range []float64{44100, 48000, 96000} {
 		left, right := denseMix(rate, 12)
-		for name, c := range cases {
-			params := c.params
+		for name, params := range cases {
 			heardL, heardR, meter := livePlayback(t, rate, left, right, params)
 			exportL, exportR, exported := dsp.RenderBuffer(left, right, rate, params)
 			residual := residualDB([2][]float32{heardL, heardR}, [2][]float32{exportL, exportR})
@@ -143,7 +139,7 @@ func TestLivePlaybackRendersTheExport(t *testing.T) {
 			if math.Abs(meter.TruePeakDBTP-exported.TruePeakDBTP) > 0.01 {
 				t.Errorf("%.0f Hz %s: live TP meter %.3f dBTP, export %.3f dBTP", rate, name, meter.TruePeakDBTP, exported.TruePeakDBTP)
 			}
-			if ceiling := params.Limiter.CeilingDBTP; c.holdsCeiling && meter.TruePeakDBTP > ceiling+0.1 {
+			if ceiling := params.Limiter.CeilingDBTP; meter.TruePeakDBTP > ceiling+0.1 {
 				t.Errorf("%.0f Hz %s: live TP meter %.3f dBTP over ceiling %.1f", rate, name, meter.TruePeakDBTP, ceiling)
 			}
 		}

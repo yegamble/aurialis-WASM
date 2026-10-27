@@ -24,7 +24,7 @@ func heaviestLiveParams(algorithm uint32, character dsp.SatCharacter) dsp.Params
 		p.Multiband.Bands[i] = dsp.DynamicsBandParams{ThresholdDB: -24, Ratio: 3, AttackMS: 10, ReleaseMS: 120, MakeupDB: 1}
 	}
 	p.Compressor.ThresholdDB, p.Compressor.Ratio, p.Compressor.AutoRelease = -20, 3, true
-	p.Saturation.Amount, p.Saturation.Character = 0.6, character
+	p.Saturation.Amount, p.Saturation.Character = 60, character
 	p.Stereo = dsp.StereoParams{Enabled: true, WidthPct: 130, MonoBass: true, CrossoverHz: 110, MidGainDB: 1, SideGainDB: -1}
 	p.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: -1, TargetLUFS: -9, ReleaseMS: 80, TruePeak: algorithm == dsp.TruePeakAlgorithmVersion}
 	return p

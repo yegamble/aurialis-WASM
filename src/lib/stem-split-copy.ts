@@ -21,7 +21,7 @@ export function stemSplitAvailability(browser: boolean): string {
 }
 
 /** The note for a native server built without Apple Accelerate, where Split is off. */
-export const STEM_MODEL_UNACCELERATED = "Smart Split is off in this build: it runs the model in plain Go, which did not finish one 20-second window in 30 minutes. Splitting needs the macOS build, which uses Apple Accelerate.";
+export const STEM_MODEL_PLAIN_GO = "Smart Split is off in this build: it runs the model in plain Go, which did not finish one 20-second window in 30 minutes. Splitting needs the macOS build, which uses Apple Accelerate.";
 
 function megabytes(bytes: number): string {
   return `${String(Math.round(bytes / 1_000_000))} MB`;
@@ -31,7 +31,7 @@ function megabytes(bytes: number): string {
 export function stemModelNote(status: StemModelStatus | null, lastFailure: StemSplitFailure | null): string {
   if (!status) return "Checking the separation model…";
   if (!status.reachable) return "Aurialis can't reach its local server to check the separation model. Checking again every few seconds; Split comes back when the server answers.";
-  if (!status.available) return status.backend !== "" && !status.accelerated ? STEM_MODEL_UNACCELERATED : STEM_MODEL_DISABLED;
+  if (!status.available) return status.backend !== "" && !status.accelerated ? STEM_MODEL_PLAIN_GO : STEM_MODEL_DISABLED;
   const size = megabytes(status.totalBytes);
   if (status.state === "downloading") return `Downloading the separation model: ${megabytes(status.downloadedBytes)} of ${size}.`;
   if (status.state === "loading") return "Loading the separation model from this computer…";

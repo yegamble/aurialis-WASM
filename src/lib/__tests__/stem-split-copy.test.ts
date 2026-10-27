@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { STEM_MODEL_UNACCELERATED, stemModelNote, stemSplitEstimate, stemWindows } from "../stem-split-copy";
+import { STEM_MODEL_PLAIN_GO, stemModelNote, stemSplitEstimate, stemWindows } from "../stem-split-copy";
 import { canSplit, STEM_MODEL_DISABLED, type StemModelState, type StemModelStatus, type StemSpeed } from "../stem-split";
 
 const speed: StemSpeed = { windowSeconds: 20, hopSeconds: 10, idleSecondsPerWindow: 32, busySecondsPerWindow: 173 };
@@ -16,7 +16,7 @@ describe("Smart Split model note", () => {
     ["checking", null, "Checking the separation model…"],
     ["unreachable", { ...status("absent"), reachable: false, available: false }, "Aurialis can't reach its local server to check the separation model. Checking again every few seconds; Split comes back when the server answers."],
     ["disabled", { ...status("disabled"), available: false, accelerated: false, backend: "", speed: null }, STEM_MODEL_DISABLED],
-    ["plain Go", { ...status("cached"), available: false, accelerated: false, backend: "portable-go", speed: null }, STEM_MODEL_UNACCELERATED],
+    ["plain Go", { ...status("cached"), available: false, accelerated: false, backend: "portable-go", speed: null }, STEM_MODEL_PLAIN_GO],
     ["absent", status("absent"), "The first split downloads the 176 MB separation model once."],
     ["downloading", status("downloading", { downloadedBytes: 40_000_000 }), "Downloading the separation model: 40 MB of 176 MB."],
     ["loading", status("loading"), "Loading the separation model from this computer…"],

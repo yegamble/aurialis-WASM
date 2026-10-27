@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { STEM_MODEL_UNACCELERATED, stemSplitAvailability } from "@/lib/stem-split-copy";
+import { STEM_MODEL_PLAIN_GO, stemSplitAvailability } from "@/lib/stem-split-copy";
 import { StemSplitPanel } from "../StemSplitPanel";
 
 const mocks = vi.hoisted(() => ({ download: vi.fn() }));
@@ -22,7 +22,7 @@ describe("Smart Split panel", () => {
   it("marks Split unavailable on a plain-Go build, with no estimate", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ available: false, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688, state: "cached", accelerated: false, backend: "portable-go" }))));
     const { container } = render(<StemSplitPanel audioId="a" title="Song" duration={225} />);
-    expect(await screen.findByText(STEM_MODEL_UNACCELERATED)).toBeTruthy();
+    expect(await screen.findByText(STEM_MODEL_PLAIN_GO)).toBeTruthy();
     expect(container.textContent).not.toMatch(/Estimated split time/u);
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Split Song into 4 stems" }).disabled).toBe(true);
   });

@@ -16,7 +16,7 @@ import {
   type StereoPCM,
 } from "@/lib/browser-engine";
 import { reserveBrowserAudioMemory } from "@/lib/browser-jobs";
-import { exportParams, exportScript } from "@/lib/engine-params";
+import { exportRender } from "@/lib/engine-params";
 import { downloadLocalBlob } from "@/lib/download";
 import { clearNextPlaybackHandoff, reconcileNextPlaybackHandoff, stageNextPlaybackHandoff, takeNextPlaybackHandoff } from "@/lib/playback-handoff";
 import { bindPlaybackControls } from "@/lib/media-session";
@@ -49,13 +49,12 @@ import type {
   Album,
   AdvancedParams,
   EQBandId,
-  ExportBitDepth,
-  ExportDelivery,
-  ExportSampleRate,
   SaturationCharacter,
   Track,
 } from "@/lib/types";
 import { exportRateChoices, formatRate, unavailableRateNote } from "@/lib/export-rates";
+import { availableDelivery, DEFAULT_DELIVERY, deliveredRate, deliveryRequest, type DeliveryFormat } from "@/lib/delivery-format";
+import { DeliveryFormatControls } from "./shared/DeliveryFormatControls";
 import { MAX_SOURCE_FRAMES } from "@/lib/audio-limits";
 import { Icon, type IconName } from "./shared/Icon";
 import {
@@ -620,10 +619,7 @@ function MasterView({ trackId }: { trackId: string }) {
   const [deepEditorOpen, setDeepEditorOpen] = useState(false);
   const selectDeepMove = useCallback((id: string) => { setDeepMoveId(id); setDeepEditorOpen(Boolean(id)); }, []);
   const closeDeepEditor = useCallback(() => { setDeepEditorOpen(false); }, []);
-  const [bitDepth, setBitDepth] = useState<ExportBitDepth>(24);
-  const [exportRate, setExportRate] = useState<ExportSampleRate | "source">("source");
-  const [dither, setDither] = useState(true);
-  const rateNoteId = useId();
+  const [exportFormat, setExportFormat] = useState<DeliveryFormat>(DEFAULT_DELIVERY);
   const [message, setMessage] = useState("");
   const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
   const renderAbort = useRef<AbortController | null>(null);
@@ -640,7 +636,7 @@ function MasterView({ trackId }: { trackId: string }) {
   const fresh = renderedKey === settingsKey && preview !== null;
   const rateChoices = track ? exportRateChoices(track.sampleRate, source?.left.length ?? track.sourceIdentity?.frames ?? Math.round(track.duration * track.sampleRate)) : [];
   // A choice that is unavailable for this track falls back to the source rate.
-  const deliveryRate = rateChoices.some((choice) => choice.value === exportRate && choice.unavailable === undefined) ? exportRate : "source";
+  const delivery = availableDelivery(exportFormat, rateChoices);
   useEffect(() => {
     if (renderAbort.current && !renderAbort.current.signal.aborted && renderSettings.current !== settingsKey) {
       renderAbort.current.abort();
@@ -864,16 +860,12 @@ function MasterView({ trackId }: { trackId: string }) {
     renderSettings.current = settingsKey;
     setMessage("Rendering WAV from the imported source…");
     try {
-      const outputRate = deliveryRate === "source" ? track.sampleRate : deliveryRate;
-      const delivery: ExportDelivery = {
-        ...(deliveryRate !== "source" ? { sampleRate: deliveryRate } : {}),
-        ...(bitDepth !== 32 && !dither ? { dither: "none" as const } : {}),
-      };
+      const { bitDepth, dither } = delivery, outputRate = deliveredRate(delivery, track.sampleRate);
       const { blob, truePeakDbtp } = await renderDelivery(
         sourceBlob,
-        track.deepMastering?.applied ? { script: exportScript(track.deepMastering.applied) } : { params: exportParams(track.advanced) },
+        exportRender(track),
         bitDepth,
-        delivery,
+        deliveryRequest(delivery),
         controller.signal,
       );
       if (controller.signal.aborted || renderAbort.current !== controller) return;
@@ -1157,40 +1149,12 @@ function MasterView({ trackId }: { trackId: string }) {
           </>
         }
       >
-        <ChoiceGroup
-          label="Bit depth"
-          value={bitDepth}
-          options={([16, 24, 32] as const).map((depth) => ({ value: depth, label: depth === 32 ? "32-bit Float" : `${String(depth)}-bit PCM` }))}
-          onChange={setBitDepth}
+        <DeliveryFormatControls
+          value={delivery}
+          rateChoices={rateChoices}
+          rateNote={unavailableRateNote(rateChoices, track.sampleRate)}
+          onChange={setExportFormat}
         />
-        <ChoiceGroup
-          label="Sample rate"
-          className="choice-grid--pairs"
-          value={deliveryRate}
-          options={rateChoices.map((choice) => ({
-            value: choice.value,
-            label: choice.value === "source" ? `${formatRate(choice.hz)} (source)` : formatRate(choice.hz),
-            // An unlisted source rate sits on its own row above the even set.
-            wide: choice.value === "source" && rateChoices.length % 2 === 1,
-            disabled: choice.unavailable !== undefined,
-            ...(choice.unavailable ? { describedBy: rateNoteId } : {}),
-          }))}
-          onChange={setExportRate}
-        />
-        {unavailableRateNote(rateChoices, track.sampleRate) && (
-          <p id={rateNoteId} className="disclosure">
-            {unavailableRateNote(rateChoices, track.sampleRate)}
-          </p>
-        )}
-        {bitDepth !== 32 && (
-          <ChoiceGroup
-            label="Dither"
-            className="choice-grid--pairs"
-            value={dither}
-            options={[{ value: true, label: "TPDF" }, { value: false, label: "Off" }]}
-            onChange={setDither}
-          />
-        )}
         <p className="disclosure">
           Source sample rate: {formatRate(track.sampleRate)}. The source rate
           keeps every frame. A converted rate keeps the duration, so the frame

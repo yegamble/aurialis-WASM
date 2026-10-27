@@ -1,6 +1,6 @@
 import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import type { StereoPCM } from "./browser-engine";
-import { liveParams } from "./engine-params";
+import { exportParams } from "./engine-params";
 import { usesBrowserAudio } from "./browser-jobs";
 import { prepareLiveAutomation, verifiedSourceVector } from "./live-automation";
 import { sameSource } from "./library";
@@ -24,7 +24,28 @@ export type LivePlaybackState = {
   parameterVersion: number;
   appliedVersion: number;
   error: string | null;
+  /** Rate the live engine runs at once its context exists. It equals the
+   * source rate unless the browser cannot open that rate (or the source is
+   * above LIVE_MAX_SAMPLE_RATE); then A is resampled before processing. */
+  liveSampleRate?: number;
 };
+
+/** Highest source rate the live engine runs natively. 96 kHz with every module
+ * on measured 2.7–2.9× headroom (docs/tasks.md V1-10); higher rates would leave
+ * too little, so they play at the device rate instead. */
+const LIVE_MAX_SAMPLE_RATE = 96000;
+
+/** Open the context at the source rate so live DSP processes the samples the
+ * export processes. A browser that rejects the rate gets its device rate. */
+function openLiveContext(sourceRate: number): AudioContext {
+  if (sourceRate <= LIVE_MAX_SAMPLE_RATE) {
+    // Browsers reject unsupported rates differently (NotSupportedError, SyntaxError);
+    // any real fault recurs below and propagates.
+    try { return new AudioContext({ latencyHint: "interactive", sampleRate: sourceRate }); }
+    catch { /* Fall back to the device rate. */ }
+  }
+  return new AudioContext({ latencyHint: "interactive" });
+}
 
 /** One static, attenuate-only A/B monitor gain pair in dB (V1-11). Never part of export. */
 export type LoudnessMatchGains = { processedDb: number; originalDb: number };
@@ -130,7 +151,7 @@ export function createLivePlayback(
   let publicationToken = 0;
   let activePublication: AbortController | undefined;
   const publications = new Map<number, { resolve: (revision: number) => void; reject: (error: Error) => void; canCommit: () => boolean; commitSent: boolean }>();
-  let currentParams = liveParams(settings);
+  let currentParams = exportParams(settings);
   let serializedSettings = JSON.stringify(currentParams);
   let state: LivePlaybackState = {
     position: 0, duration: source.left.length / source.sampleRate,
@@ -384,8 +405,9 @@ export function createLivePlayback(
         : "Live playback requires cross-origin isolation. Restart the Aurialis server and reload.");
     // Called synchronously from play(), before its first await, preserving the
     // user's activation for AudioContext creation/resume in Brave and Safari.
-    const context = new AudioContext({ latencyHint: "interactive" });
+    const context = openLiveContext(source.sampleRate);
     audio = context;
+    state = { ...state, liveSampleRate: context.sampleRate };
     const resumed = context.resume();
     const sharedHeader = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 8);
     const sharedStream = new SharedArrayBuffer(24);
@@ -527,14 +549,14 @@ export function createLivePlayback(
     async detachScript(next, signal, canCommit = () => true) {
       activePublication?.abort();
       if (!canCommit()) throw new DOMException("The source or settings changed.", "AbortError");
-      if (!installedScript) { desiredScript = undefined; currentParams = liveParams(next); serializedSettings = JSON.stringify(currentParams); controls?.publish(currentParams, ++state.parameterVersion); return; }
+      if (!installedScript) { desiredScript = undefined; currentParams = exportParams(next); serializedSettings = JSON.stringify(currentParams); controls?.publish(currentParams, ++state.parameterVersion); return; }
       await ensureInitialized(); signal.throwIfAborted();
       const context = audio; if (!context) throw new Error("The audio graph is unavailable.");
       await context.resume();
       try {
         signal.throwIfAborted();
         if (!canCommit()) throw new DOMException("The source or settings changed before detach.", "AbortError");
-        const params = liveParams(next), version = state.parameterVersion + 1;
+        const params = exportParams(next), version = state.parameterVersion + 1;
         controls?.publish(params, version);
         await requestPublication({ type: "detach", controls: packLiveControls(params, 2), version }, signal, canCommit);
         signal.throwIfAborted();
@@ -592,7 +614,7 @@ export function createLivePlayback(
     setParams(next) {
       if (disposed) return;
       if (installedScript) throw new Error("Attached automation requires a complete baseline and schedule transaction.");
-      const params = liveParams(next);
+      const params = exportParams(next);
       const serialized = JSON.stringify(params);
       if (serialized === serializedSettings) return;
       const version = state.parameterVersion + 1;

@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { expect, test, type Page } from "@playwright/test";
 import type { Track } from "../src/lib/types";
-import { liveScript } from "../src/lib/engine-params";
+import { exportScript } from "../src/lib/engine-params";
 import { capturedDevice, captureDeepDevice, exportLatencyFrames } from "./deep-capture";
 const execute = promisify(execFile);
 type SpeakerCapture = { left: number[]; right: number[]; chunks: { time: number; contextTime: number; begin: number }[]; starts: { when: number; offset: number; looping: boolean }[] };
@@ -88,7 +88,7 @@ for (const [sourceRate, frames, deviceRate] of [[8001, 129, 44100], [8000, 129, 
       let dryError = 0; for (let index = 0; index < capture.frames; index++) dryError = Math.max(dryError, Math.abs((expected.left[index] ?? 0) - (capture.deviceLeft[index] ?? 0)), Math.abs((expected.right[index] ?? 0) - (capture.deviceRight[index] ?? 0)));
       expect(dryError, "Actual finite SRC must match independent loop=false zero exterior, including its final device frames").toBeLessThan(1e-6);
       const inputPath = info.outputPath("finite-input-" + String(seek) + ".json"), outputPath = info.outputPath("finite-native-" + String(seek) + ".json");
-      await writeFile(inputPath, JSON.stringify({ sourceRate, frames, deviceRate, seek: capture.seekFrame, looping: false, capturedFrames: capture.frames, script: liveScript(script), deviceLeft: capture.deviceLeft, deviceRight: capture.deviceRight }));
+      await writeFile(inputPath, JSON.stringify({ sourceRate, frames, deviceRate, seek: capture.seekFrame, looping: false, capturedFrames: capture.frames, script: exportScript(script), deviceLeft: capture.deviceLeft, deviceRight: capture.deviceRight }));
       const native = await execute("go", ["test", "./wasm/dsp", "-run", "^TestCapturedDeviceNativeOracle$", "-count=1"], { cwd: process.cwd(), env: { ...process.env, AURIALIS_CAPTURED_INPUT_FIXTURE: inputPath, AURIALIS_CAPTURED_OUTPUT_FIXTURE: outputPath }, timeout: 60000 }); expect(native.stdout).toContain("ok");
       const wet = JSON.parse(await readFile(outputPath, "utf8")) as { outputLeft: number[]; outputRight: number[] };
       let wetError = 0; for (let index = 0; index < capture.frames; index++) wetError = Math.max(wetError, Math.abs((wet.outputLeft[index] ?? 0) - (capture.outputLeft[index] ?? 0)), Math.abs((wet.outputRight[index] ?? 0) - (capture.outputRight[index] ?? 0))); expect(wetError).toBeLessThan(1e-6);

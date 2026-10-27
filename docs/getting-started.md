@@ -23,17 +23,15 @@ Choose a **Genre**, a **Tone intention**, a **Mastering style**, and an **Intens
 
 **Depth** and **Presence** add optional low-frequency and upper-frequency contours. They combine once in either order. Metal and Jazz are also available as genre starting points.
 
-Use **Play**, then compare **A Processed** with **B Original**. What you hear as A is what you export: live playback renders the same processing as the WAV download, including its lookahead true-peak limiter, and its level and true-peak meters read that audio. The limiter looks about 2.5 ms ahead; A and B are both delayed by that amount, so they follow the same playback position and switching between them is never offset. A is selected by default. A louder version can seem more impressive even when its tone is less useful, so turn on **Equal-loudness A/B** beside A/B to compare at equal loudness. Aurialis measures the integrated loudness of the source and of exactly what you hear for A, then lowers whichever of A or B is louder by that one fixed amount; it never boosts either side and does not ride the level while you listen. The line next to the toggle shows the offset, for example "B −4.2 dB to match A", and screen readers announce it. After you change a setting it keeps the previous offset and reads "Re-measuring (holding B −4.2 dB)" until the new measurement arrives. Equal-loudness A/B only changes what you hear, as its note says: exports are identical with it on or off, and the level meters show A or B before the offset. In the browser version, Export and Deep analysis take priority over the measurement, which resumes afterwards. Your choice is remembered in this browser, not saved in the project.
+Use **Play**, then compare **A Processed** with **B Original**. What you hear as A is what you export: live playback renders the same processing as the WAV download, including its lookahead true-peak limiter, at your source's sample rate, and its level and true-peak meters read that audio. If your browser can't play at the source's rate, or the source is above 96 kHz, playback uses your device's rate instead, and a note under the transport says live A is resampled before processing and may differ slightly from the export. The limiter looks about 2.5 ms ahead; A and B are both delayed by that amount, so they follow the same playback position and switching between them is never offset. A is selected by default. A louder version can seem more impressive even when its tone is less useful, so turn on **Equal-loudness A/B** beside A/B to compare at equal loudness. Aurialis measures the integrated loudness of the source and of exactly what you hear for A, then lowers whichever of A or B is louder by that one fixed amount; it never boosts either side and does not ride the level while you listen. The line next to the toggle shows the offset, for example "B −4.2 dB to match A", and screen readers announce it. After you change a setting it keeps the previous offset and reads "Re-measuring (holding B −4.2 dB)" until the new measurement arrives. Equal-loudness A/B only changes what you hear, as its note says: exports are identical with it on or off, and the level meters show A or B before the offset. In the browser version, Export and Deep analysis take priority over the measurement, which resumes afterwards. Your choice is remembered in this browser, not saved in the project.
 
 Simple and Advanced share one set of processing settings. Switching tabs preserves your sound. Choosing a new genre, tone, style, modifier or intensity replaces other custom Advanced edits while retaining explicit **Input gain** and the selected loudness/ceiling. Manual edits clear active direction badges and remember the last style/modifiers. Zero intensity removes direction shaping while retaining explicit gain and limiter targets.
 
 ## 3. Set the level, if you need to
 
-Choose an **Output target**, then select **Set target loudness**. Aurialis measures the current chain and adjusts its input gain toward the requested average loudness. It then prepares an offline preview. If the target cannot be reached within the supported processing and peak limits, it reports an error.
+Choose an **Output target**, then select **Set target loudness**. Aurialis measures the current chain and adjusts its input gain toward the requested average loudness, then reports the level the export measures. Press **Play** to hear it: live playback already runs the export chain, so there is no separate preview to render. If the target cannot be reached within the supported processing and peak limits, it reports an error.
 
 Every target uses a −1 dBTP ceiling (Streaming −14, Loud −9, Dynamic and Podcast −16 LUFS), and −1 is the highest ceiling Advanced offers. A saved project with a higher ceiling is lowered to −1 when it loads, with a note you can dismiss; run Set target loudness or export again to re-measure. Selecting a target alone does not measure or normalize the whole track. If you change processing afterward, run **Set target loudness** again when you want a fresh measurement. Targets are working preferences, not a promise that a streaming service will accept or preserve that level.
-
-You can also select **Render offline preview** for a full-track render using the current settings. Once ready, **Download offline preview** saves that preview. The offline preview still uses the older sample-peak limiter, so its peaks can read higher than the export; live playback uses the export limiter. Live playback updates independently; a preview becomes out of date when the processing settings change.
 
 ## 4. Export a WAV
 
@@ -52,7 +50,7 @@ Select **Export**, choose a bit depth, a sample rate and, for 16/24-bit PCM, dit
 
 After export, the status line shows the delivered true peak at the delivery rate. It comes from a 4× meter that can read slightly high at 88.2/96 kHz, so it is a guide, not a certification. Integer exports clip samples outside ±1; enable the limiter or reduce gain before exporting a signal that exceeds that range.
 
-Export renders the current processing settings from the reconstructed source. With Deep attached, the acknowledged applied script is authoritative; draft edits and pending revisions are excluded. Listening to **B Original**, changing monitor volume, or leaving an older offline preview on screen does not change those export settings. The download is a separate file; keep it and your original source in your own backup.
+Export renders the current processing settings from the reconstructed source. With Deep attached, the acknowledged applied script is authoritative; draft edits and pending revisions are excluded. Listening to **B Original** or changing monitor volume does not change those export settings. The download is a separate file; keep it and your original source in your own backup.
 
 ## Go further when you are ready
 
@@ -144,7 +142,7 @@ Import the recording you want to use as a reference, then open **Reference match
 
 **Revert Reference** restores the settings from before this Reference session while its applied settings remain current. This is a temporary, session-specific undo: leaving Reference or making other processing/source changes ends that protection. For a lasting alternative, use **Duplicate settings** in Library before experimenting.
 
-Changing the reference or matching options requires fresh analysis before Apply. There is no hidden gain adjustment or automatic loudness matching; check final loudness and peak headroom separately. Both audio sources share the **129 MiB multipart request ceiling**, so two individually supported files may still be too large together. See the [measured Reference API contract](api.md#measured-reference-proposals) for its exact bounds.
+Changing the reference or matching options requires fresh analysis before Apply. There is no hidden gain adjustment or automatic loudness matching; check final loudness and peak headroom separately. Both audio sources share the **257 MiB multipart request ceiling**, so two individually supported files may still be too large together. See the [measured Reference API contract](api.md#measured-reference-proposals) for its exact bounds.
 
 ## Playback and keyboard shortcuts
 
@@ -175,6 +173,7 @@ If Aurialis warns that audio is available only in this tab, export before closin
 | A file exceeds the browser's memory budget | Try a shorter selection or a lower sample rate, close other heavy tabs, or use [the native build](#appendix-the-native-build). Aurialis never uploads or silently shortens a rejected file. |
 | Import rejects the file | Check its format, channel count, size and duration against step 1. Renaming a compressed file to `.wav` does not convert it. |
 | “The source audio is missing” | Use **Retry source** if offered, then **Restore source** to reconnect the original WAV without creating a new project. |
+| “Playback can't keep up on this device” | Turn off heavy modules such as **Multiband compressor**, **De-Harsh** or **Saturation**, then press Play. Sources at 88.2 kHz and above cost about twice as much to play. Export is unaffected. |
 | Playback initialization fails | Select **Retry playback** when shown, then Play. A current Chromium-based browser is a useful starting point; recorded Chromium/Brave results do not establish support for every browser or device. |
 | The requested loudness cannot be reached | Choose a less demanding target or change processing, then run **Set target loudness** again. |
 | An album exceeds its download cache | Render a smaller sequence or export its tracks individually. |
@@ -193,7 +192,7 @@ For a bug report, include your browser and operating system, the action that fai
 | **EQ / equalizer** | Controls that raise or lower parts of the frequency range, such as bass or treble. |
 | **Compression** | Reduces level differences once the signal crosses a threshold. |
 | **Saturation** | Adds nonlinear coloration and harmonics. Aurialis's named characters are original algorithms, not verified hardware replicas. |
-| **Limiter / ceiling** | Restricts peaks toward a chosen maximum. Live playback and export use a lookahead limiter that holds the reconstructed (inter-sample) peak under the ceiling; its meter is a guide, not a certification. The offline preview still controls sample peaks only. |
+| **Limiter / ceiling** | Restricts peaks toward a chosen maximum. Live playback and export use a lookahead limiter that holds the reconstructed (inter-sample) peak under the ceiling; its meter is a guide, not a certification. |
 | **LUFS** | A measure of perceived loudness over time. A less negative reading generally means a louder signal. |
 | **dBFS** | Level relative to digital full scale. For integer PCM, 0 dBFS is the maximum sample level. |
 | **Sample rate** | Samples per second; 48 kHz means 48,000 samples per second per channel. |

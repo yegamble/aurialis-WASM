@@ -122,6 +122,9 @@ const MaxRetainedJobs = 64
 // Retention is the lifetime of completed, failed and canceled job records.
 const Retention = 15 * time.Minute
 
+// WorkerTimeout bounds one non-separation job from the moment a worker starts it.
+const WorkerTimeout = 2 * time.Minute
+
 // NewManager creates and starts a concurrent job manager with the given worker count.
 func NewManager(workers int) *Manager {
 	if workers <= 0 {
@@ -138,7 +141,7 @@ func NewManager(workers int) *Manager {
 	m.stemQueue = make(chan workItem, MaxQueuedSeparations)
 	for i := 0; i < workers; i++ {
 		m.wg.Add(1)
-		go m.workerLoop(m.queue, 2*time.Minute)
+		go m.workerLoop(m.queue, WorkerTimeout)
 	}
 	m.wg.Add(1)
 	go m.workerLoop(m.stemQueue, SeparationTimeout)

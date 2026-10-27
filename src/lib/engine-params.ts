@@ -71,6 +71,9 @@ function withExportLimiter<T extends { limiter: object }>(params: T): T & { algo
   return { ...params, limiter: { ...params.limiter, truePeak: true }, algorithmVersion: EXPORT_ALGORITHM_VERSION };
 }
 
+/** What export and live playback both render (V1-10): what you hear is what
+ * you export. Dither follows the export's bit depth after the render, and the
+ * worklet mixes B Original and the equal-loudness offset outside the engine. */
 export function exportParams(advanced: AdvancedParams) {
   return withExportLimiter(engineParams(advanced));
 }
@@ -81,22 +84,11 @@ export function exportChain<T extends { limiter: object; ditherBits: number }>(p
   return { ...withExportLimiter(params), ditherBits: 0 };
 }
 
-/** Copy of an applied script whose render uses the export algorithm. */
+/** Copy of an applied script whose render uses the export algorithm; live
+ * playback installs this same copy. */
 export function exportScript<T extends { chainParams: { limiter: object; ditherBits: number } }>(script: T): T {
   const copy = structuredClone(script);
   return { ...copy, chainParams: exportChain(copy.chainParams) };
-}
-
-/** What live playback renders (V1-10): the export settings themselves, so what
- * you hear is what you export. Nothing needs to differ: dither follows the
- * export's bit depth after the render, and the worklet mixes B Original and
- * the equal-loudness offset outside the engine. */
-export function liveParams(advanced: AdvancedParams) {
-  return exportParams(advanced);
-}
-/** The applied Deep script as live playback renders it: the export copy. */
-export function liveScript<T extends { chainParams: { limiter: object; ditherBits: number } }>(script: T): T {
-  return exportScript(script);
 }
 
 /** What one master renders for delivery: its applied Deep script, else its settings. */

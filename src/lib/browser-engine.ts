@@ -1,4 +1,4 @@
-import { engineParams, exportParams } from "./engine-params";
+import { exportParams } from "./engine-params";
 export { engineParams } from "./engine-params";
 import { deviceAudioRequest, usesBrowserAudio, type JobPriority } from "./browser-jobs";
 import type { ScriptV2 } from "./deep-mastering";
@@ -9,65 +9,6 @@ export interface StereoPCM {
   right: Float32Array<ArrayBuffer>;
   sampleRate: number;
 }
-interface GoRuntime {
-  importObject: WebAssembly.Imports;
-  run(instance: WebAssembly.Instance): Promise<void>;
-}
-declare global {
-  interface Window {
-    Go?: new () => GoRuntime;
-    aurialisDSPReady?: boolean;
-    aurialisDSPInit?: (rate: number) => boolean;
-    aurialisDSPReset?: () => boolean;
-    aurialisDSPSetParams?: (params: string) => boolean;
-    aurialisDSPProcessBlock?: (
-      left: Float32Array,
-      right: Float32Array,
-      outLeft: Float32Array,
-      outRight: Float32Array,
-    ) => number;
-  }
-}
-let loading: Promise<void> | undefined;
-async function loadEngine(): Promise<void> {
-  if (window.aurialisDSPReady) return;
-  loading ??= (async () => {
-    if (!window.Go)
-      await new Promise<void>((resolve, reject) => {
-        const script = document.createElement("script");
-        script.src = "/wasm/wasm_exec.js";
-        script.onload = () => {
-          resolve();
-        };
-        script.onerror = () => {
-          reject(
-            new Error("The audio engine could not load. Reload to retry."),
-          );
-        };
-        document.head.append(script);
-      });
-    if (!window.Go) throw new Error("Go audio runtime unavailable.");
-    const go = new window.Go();
-    const response = await fetch("/wasm/aurialis-dsp.wasm");
-    if (!response.ok)
-      throw new Error("The shared audio engine is unavailable.");
-    const result = await WebAssembly.instantiate(
-      await response.arrayBuffer(),
-      go.importObject,
-    );
-    void go.run(result.instance).catch(() => {
-      loading = undefined;
-    });
-    if (!window.aurialisDSPReady)
-      throw new Error("The shared audio engine failed to initialize.");
-  })().catch((error: unknown) => {
-    loading = undefined;
-    throw error;
-  });
-  return loading;
-}
-let engineQueue: Promise<unknown> = Promise.resolve();
-
 async function audioRequest(
   data: FormData,
   signal?: AbortSignal,
@@ -123,48 +64,6 @@ async function readAudioResponse<T>(read: () => Promise<T>, signal?: AbortSignal
   }
 }
 
-export function processPreview(
-  source: StereoPCM,
-  advanced: AdvancedParams,
-  signal?: AbortSignal,
-): Promise<StereoPCM> {
-  const run = async () => {
-    const checkCancellation = () => {
-      if (signal?.aborted) throw new Error("Preview was cancelled.");
-    };
-    checkCancellation();
-    await loadEngine();
-    checkCancellation();
-    if (
-      !window.aurialisDSPInit?.(source.sampleRate) ||
-      !window.aurialisDSPSetParams?.(JSON.stringify(engineParams(advanced))) ||
-      !window.aurialisDSPReset?.()
-    )
-      throw new Error("The engine rejected these settings.");
-    const left = new Float32Array(source.left.length),
-      right = new Float32Array(source.right.length);
-    for (let offset = 0; offset < left.length; offset += 4096) {
-      checkCancellation();
-      const end = Math.min(left.length, offset + 4096);
-      const count = window.aurialisDSPProcessBlock?.(
-        source.left.subarray(offset, end),
-        source.right.subarray(offset, end),
-        left.subarray(offset, end),
-        right.subarray(offset, end),
-      );
-      if (count !== end - offset)
-        throw new Error("The engine returned incomplete audio.");
-      if (offset % 16384 === 0)
-        await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    }
-    checkCancellation();
-    return { left, right, sampleRate: source.sampleRate };
-  };
-  const result = engineQueue.then(run, run);
-  // Serialize work without retaining the last completed song-length PCM.
-  engineQueue = result.then(() => undefined, () => undefined);
-  return result;
-}
 function appendDelivery(data: FormData, delivery: ExportDelivery | undefined): void {
   if (delivery?.sampleRate !== undefined) data.append("sampleRate", String(delivery.sampleRate));
   if (delivery?.dither !== undefined) data.append("dither", delivery.dither);
@@ -200,10 +99,6 @@ export async function serverRender(
 ): Promise<Blob> {
   signal?.throwIfAborted();
   return (await renderWAV(renderForm(file, "params", params, bitDepth), RENDER_FAILURE, signal)).blob;
-}
-export async function serverRenderScript(file: Blob, script: ScriptV2, bitDepth: 16 | 24 | 32, signal?: AbortSignal): Promise<Blob> {
-  signal?.throwIfAborted();
-  return (await renderWAV(renderForm(file, "script", script, bitDepth), SCRIPT_FAILURE, signal)).blob;
 }
 /** A delivery export: the WAV plus its delivered true peak when the engine reports one. */
 export async function renderDelivery(file: Blob, render: { params: object } | { script: ScriptV2 }, bitDepth: 16 | 24 | 32, delivery: ExportDelivery, signal?: AbortSignal): Promise<DeliveredWAV> {
@@ -263,32 +158,6 @@ export async function readCanonicalWAV(blob: Blob): Promise<StereoPCM> {
     right[i] = data.getFloat32(start + i * 8 + 4, true);
   }
   return { left, right, sampleRate };
-}
-export function previewWAV(pcm: StereoPCM): Blob {
-  const data = new ArrayBuffer(44 + pcm.left.length * 8),
-    view = new DataView(data);
-  const text = (offset: number, value: string) => {
-    for (let i = 0; i < value.length; i++)
-      view.setUint8(offset + i, value.charCodeAt(i));
-  };
-  text(0, "RIFF");
-  view.setUint32(4, data.byteLength - 8, true);
-  text(8, "WAVE");
-  text(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 3, true);
-  view.setUint16(22, 2, true);
-  view.setUint32(24, pcm.sampleRate, true);
-  view.setUint32(28, pcm.sampleRate * 8, true);
-  view.setUint16(32, 8, true);
-  view.setUint16(34, 32, true);
-  text(36, "data");
-  view.setUint32(40, pcm.left.length * 8, true);
-  for (let i = 0; i < pcm.left.length; i++) {
-    view.setFloat32(44 + i * 8, pcm.left.at(i) ?? 0, true);
-    view.setFloat32(48 + i * 8, pcm.right.at(i) ?? 0, true);
-  }
-  return new Blob([data], { type: "audio/wav" });
 }
 export function sourcePeaks(pcm: StereoPCM): number[] {
   const count = Math.min(2048, pcm.left.length);
@@ -436,10 +305,12 @@ function signedDb(value: number): string {
 }
 
 /** Report the accepted export level. Live playback renders the export
- * algorithm (V1-10); the offline preview still runs algorithm 1, whose
- * sample-peak limiter can read higher than the true-peak export. */
-export function exportLevelSummary(metrics: MeasuredAudioMetrics): string {
-  return `Export measures ${signedDb(metrics.integratedLufs)} LUFS, ${signedDb(metrics.truePeakDbtp)} dBTP. Live playback uses the same limiter; the offline preview uses the preview limiter and can read higher.`;
+ * chain (V1-10), so it is the preview; at the source rate it matches the
+ * export, and resampled (a rate the browser cannot open) it can differ slightly. */
+export function exportLevelSummary(metrics: MeasuredAudioMetrics, liveResampled = false): string {
+  return `Export measures ${signedDb(metrics.integratedLufs)} LUFS, ${signedDb(metrics.truePeakDbtp)} dBTP. ${liveResampled
+    ? "Live playback runs the same chain, resampled on this device, so it may differ slightly."
+    : "Live playback runs the same chain at the source rate."}`;
 }
 
 // Explicit Simple-mode automatic gain. Advanced rendering never calls this.

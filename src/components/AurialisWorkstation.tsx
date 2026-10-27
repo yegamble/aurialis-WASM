@@ -21,7 +21,9 @@ import { EQBandControls, LimiterReleaseControl } from "./shared/EQBandControls";
 import { RealTransport } from "./shared/RealTransport";
 import { useLoudnessMatch } from "@/lib/use-loudness-match";
 import { ReleaseReview } from "./shared/ReleaseReview";
+import { AuditionExport } from "./shared/AuditionExport";
 import { liveRateNote, liveRateStatus } from "@/lib/live-rate";
+import { OVERLOAD_MESSAGE } from "@/lib/live-overload";
 import { createLivePlayback, type LiveMeter, type LivePlaybackController, type LivePlaybackState, type LiveSpectrum } from "@/lib/live-playback";
 import { usePathname } from "next/navigation";
 import { navigateWorkspace, useWorkspacePath, workspaceRoute, type WorkstationRoute } from "@/lib/workspace-navigation";
@@ -1025,13 +1027,15 @@ function MasterView({ trackId }: { trackId: string }) {
             handover={handover}
           />
           {liveNote && <p className="disclosure" role="status">{liveNote}</p>}
+          {(liveRate.kind === "capped" || liveRate.kind === "resampled") && <AuditionExport key={track.id} track={track} sourceBlob={sourceBlob} delivery={delivery}
+            livePlaying={playback?.playing ?? false} onStart={() => { stopScrub(false); live.current?.pause(); }} />}
           {track.mode === "deep" && track.deepMastering && <DeepTimeline script={track.deepMastering.proposal} selectedId={deepMoveId} onSelect={selectDeepMove} playheadRatio={playheadRatio} />}
           <LiveSpectrumChart frame={spectrum} playing={playback?.playing ?? false} />
           {sourceError && <div className="flex flex-wrap items-center gap-3" role="alert">
             <p className="disclosure">{sourceError}</p>
             <Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry source</Button><Button variant="secondary" onClick={() => { setRestoreOpen(true); }}>Restore source</Button>
           </div>}
-          {liveError && <div className="flex flex-wrap items-center gap-3" role="alert"><p className="disclosure">{liveError}</p><Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry playback</Button><Button variant="secondary" onClick={() => { setRestoreOpen(true); }}>Restore source</Button></div>}
+          {liveError && <div className="flex flex-wrap items-center gap-3" role="alert"><p className="disclosure">{liveError}</p><Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry playback</Button>{liveError !== OVERLOAD_MESSAGE && <Button variant="secondary" onClick={() => { setRestoreOpen(true); }}>Restore source</Button>}</div>}
           <div className="render-actions">
             <span className="disclosure">
               {track.deepMastering?.applied

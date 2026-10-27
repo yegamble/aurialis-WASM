@@ -15,8 +15,8 @@ describe("live playback rate (V1-10)", () => {
     expect(liveRateNote({ kind: "source" })).toBeNull();
   });
   it("blames the CPU budget for a cap and the device only for a refusal", () => {
-    expect(liveRateNote(liveRateStatus(88200, 44100))).toBe("Aurialis plays this 88.2 kHz source at 44.1 kHz to stay within its live CPU budget; the export keeps the source's 88.2 kHz.");
-    expect(liveRateNote(liveRateStatus(48000, 44100))).toBe("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export.");
-    expect(liveRateNote(liveRateStatus(96000, 44100))).toBe("This device plays A at 44.1 kHz, not 48 kHz, so live A is resampled before processing and may differ slightly from the export.");
+    expect(liveRateNote(liveRateStatus(88200, 44100))).toBe("Aurialis plays this 88.2 kHz source live at 44.1 kHz to stay within its live CPU budget, so live A may differ slightly from the export (about 0.2 LU). Use Audition export for an exact listen; the export keeps the source's 88.2 kHz.");
+    expect(liveRateNote(liveRateStatus(48000, 44100))).toBe("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export. Use Audition export for an exact listen.");
+    expect(liveRateNote(liveRateStatus(96000, 44100))).toBe("This device plays A at 44.1 kHz, not 48 kHz, so live A is resampled before processing and may differ slightly from the export. Use Audition export for an exact listen.");
   });
 });

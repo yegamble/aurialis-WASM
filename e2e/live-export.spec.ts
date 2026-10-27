@@ -20,15 +20,26 @@ const SOAK_SECONDS = Number(process.env.AURIALIS_LIVE_SOAK_SECONDS ?? "30");
  * 0 slow kernel calls) also fail it: rerun those. */
 const DRIFT_MS_PER_AUDIO_SECOND = 5, DRIFT_MS_MAX = 250;
 
-type Timing = { clock: string; resolutionMs: number; quanta: number; totalMs: number; maxMs: number; slow: number; maybeSlow: number; ringUnderruns: number; wallMs: number; audioMs: number; sampleRate: number };
+type Timing = { clock: string; resolutionMs: number; quanta: number; totalMs: number; maxMs: number; slow: number; maybeSlow: number; ringUnderruns: number; wallMs: number; audioMs: number; sampleRate: number;
+  /** Largest and smallest audio-clock lag over a 2 s window: callback jitter, the deadline watch's noise floor. */
+  windowLagMaxMs: number; windowLagMinMs: number };
 type TimingWindow = Window & { qaTiming?: Timing };
 
 /** Run the AudioContext at the 48 kHz source rate so live and export process the same samples. */
 async function pinDeviceRate(page: Page): Promise<void> {
   await page.addInitScript((rate) => {
     const NativeContext = AudioContext;
-    window.AudioContext = class extends NativeContext { constructor(options?: AudioContextOptions) { super({ ...options, sampleRate: rate }); } };
+    window.AudioContext = class extends NativeContext { constructor(options?: AudioContextOptions) { super({ ...options, sampleRate: rate }); (window as StatsWindow).qaContext = this; } };
   }, RATE);
+}
+type StatsWindow = Window & { qaContext?: AudioContext };
+/** Chromium's device underrun counter for the live context, or null elsewhere. */
+function underrunEvents(page: Page): Promise<number | null> {
+  return page.evaluate(() => {
+    const stats: unknown = (window as StatsWindow).qaContext ? Reflect.get((window as StatsWindow).qaContext as object, "playbackStats") : undefined;
+    const events: unknown = typeof stats === "object" && stats !== null ? Reflect.get(stats, "underrunEvents") : undefined;
+    return typeof events === "number" ? events : null;
+  });
 }
 
 // Worklet-scope timing tap. Every 375 quanta it posts the kernel time, the
@@ -44,15 +55,22 @@ const qaClock = typeof performance === "object" && typeof performance.now === "f
 const qaNow = qaClock === "performance" ? () => performance.now() : () => Date.now();
 const qaResolution = qaClock === "performance" ? 0.1 : 1;
 let qaQuanta = 0, qaTotal = 0, qaMax = 0, qaSlow = 0, qaMaybeSlow = 0, qaWallStart = 0, qaFrameStart = 0;
+let qaWindowWall = 0, qaWindowFrame = 0, qaWindows = 0, qaWindowLagMax = -Infinity, qaWindowLagMin = Infinity;
 function qaTiming(processor, elapsed) {
-  if (qaQuanta === 0) { qaWallStart = Date.now(); qaFrameStart = currentFrame; }
+  if (qaQuanta === 0) { qaWallStart = qaWindowWall = Date.now(); qaFrameStart = qaWindowFrame = currentFrame; }
+  // Audio-clock lag over each 2 s window, the deadline watch's measure (first window skipped as warm-up).
+  if (currentFrame - qaWindowFrame >= 2 * sampleRate) {
+    const lag = Date.now() - qaWindowWall - (currentFrame - qaWindowFrame) * 1000 / sampleRate;
+    if (++qaWindows > 1) { qaWindowLagMax = Math.max(qaWindowLagMax, lag); qaWindowLagMin = Math.min(qaWindowLagMin, lag); }
+    qaWindowWall = Date.now(); qaWindowFrame = currentFrame;
+  }
   const deadline = 1000 * QUANTUM / sampleRate;
   qaQuanta++; qaTotal += elapsed; qaMax = Math.max(qaMax, elapsed);
   if (elapsed - qaResolution > deadline) qaSlow++;
   if (elapsed + qaResolution > deadline) qaMaybeSlow++;
   if (qaQuanta % 375 === 0) processor.port.postMessage({ type: "qa-timing", clock: qaClock, resolutionMs: qaResolution, quanta: qaQuanta, totalMs: qaTotal, maxMs: qaMax,
     slow: qaSlow, maybeSlow: qaMaybeSlow, ringUnderruns: Atomics.load(processor.header, UNDERRUNS), wallMs: Date.now() - qaWallStart,
-    audioMs: (currentFrame + QUANTUM - qaFrameStart) * 1000 / sampleRate, sampleRate });
+    audioMs: (currentFrame + QUANTUM - qaFrameStart) * 1000 / sampleRate, sampleRate, windowLagMaxMs: qaWindowLagMax, windowLagMinMs: qaWindowLagMin });
 }`;
 
 /** Test-only: load the real worklet with its Go kernel call timed. No DSP is
@@ -211,11 +229,11 @@ for (const [sourceRate, deviceRate] of [[48000, 44100], [44100, 48000]] as const
 
 // Above 48 kHz live playback is capped at an integer ratio to stay inside the
 // real-worklet CPU budget (mean load ≤ 0.5; V1-10 Round E 2), even on an
-// interface at the source's rate;
-// the export keeps the source rate. Measured (two runs each, heaviest chain):
-// 96→48 kHz ΔLU +0.174, live TP −1.2 against the export's −1.08 dBTP; 88.2→44.1
-// kHz ΔLU +0.139, −1.0 against −1.24. The note says live may differ; these
-// bounds only catch a regression beyond that.
+// interface at the source's rate; the export keeps the source rate. Measured
+// (heaviest chain): 96→48 kHz ΔLU +0.17, live TP −1.2 against the export's
+// −1.08 dBTP; 88.2→44.1 kHz ΔLU +0.14, −1.0 against −1.24. Owner ruling
+// (2026-10-27): capped live is disclosed (ΔLU ≤ 0.25, TP ≤ ceiling + 0.1), and
+// Audition export plays the exact export (e2e/audition-export.spec.ts).
 for (const [sourceRate, liveRate] of [[96000, 48000], [88200, 44100]] as const) {
   test(`a ${String(sourceRate / 1000)} kHz source plays live at ${String(liveRate / 1000)} kHz and says why`, async ({ page }, info) => {
     test.setTimeout(180_000);
@@ -226,7 +244,9 @@ for (const [sourceRate, liveRate] of [[96000, 48000], [88200, 44100]] as const) 
     const evidence = await liveAgainstExport(page, info, sourceRate, { lu: 0.25, tp: 0.35 });
     expect(evidence.contextRate, JSON.stringify(evidence)).toBe(liveRate);
     expect(evidence.resampledNote, JSON.stringify(evidence)).toBe(0);
-    await expect(page.getByText(`Aurialis plays this ${String(sourceRate / 1000)} kHz source at ${String(liveRate / 1000)} kHz to stay within its live CPU budget; the export keeps the source's ${String(sourceRate / 1000)} kHz.`, { exact: true })).toBeVisible();
+    expect(evidence.liveTruePeakMeterDbtp, JSON.stringify(evidence)).toBeLessThanOrEqual(CEILING_DBTP + 0.1);
+    await expect(page.getByText(`Aurialis plays this ${String(sourceRate / 1000)} kHz source live at ${String(liveRate / 1000)} kHz to stay within its live CPU budget, so live A may differ slightly from the export (about 0.2 LU). Use Audition export for an exact listen; the export keeps the source's ${String(sourceRate / 1000)} kHz.`, { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Audition export", exact: true })).toBeVisible();
   });
 }
 
@@ -247,36 +267,93 @@ test("a rejected source rate falls back to the device rate with a visible resamp
   await observeOutputEnergy(page);
   await uploadProject(page, "live-fallback.wav");
   await expect(page.getByText(/so live A is resampled/u)).toHaveCount(0);
+  // The 1 s source would end before a loaded host reaches Pause; loop it.
+  await page.getByRole("button", { name: "Repeat track", exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
   expect(await outputEnergyRate(page)).toBe(44100);
-  await expect(page.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export.", { exact: true })).toBeVisible();
+  await expect(page.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export. Use Audition export for an exact listen.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Audition export", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Pause", exact: true }).click();
 });
 
-// Real overload (V1-10 Round E 2), with no test hook in the worklet: forcing the
-// context to 192 kHz makes the unmodified heaviest chain cost about four times
-// its 48 kHz load (0.4–0.5 here), so the render thread cannot keep up and the
-// deadline watch must stop playback with a message naming the cause, not a
-// buffer fault. DevTools Emulation.setCPUThrottlingRate cannot do this: at 20x
-// the worklet's kernel load stayed 0.47 with no clock lag, because it throttles
-// the renderer's main thread, not the AudioWorklet thread.
 const OVERLOAD = "Playback can't keep up on this device with the current processing. Turn off some processing modules, or close other busy apps or tabs, then press Play.";
-test("an overloaded render thread stops playback with the can't-keep-up message", async ({ page }) => {
-  test.setTimeout(180_000);
-  await page.addInitScript(() => {
-    const NativeContext = AudioContext;
-    window.AudioContext = class extends NativeContext { constructor(options?: AudioContextOptions) { super({ ...options, sampleRate: 192000 }); } };
-  });
+
+// Load outside the kernel (V1-10 Round 4): a test-only "burner" AudioWorkletNode
+// in the same context busy-waits on the same render thread, while the app's
+// worklet and kernel are untouched. A share spins a calibrated fraction of every
+// 128-frame quantum (calibrated twice against Date.now, the second after JIT
+// warm-up); a negative share instead spins until Date.now has moved that many
+// milliseconds, which overloads any CPU. (A forced 192 kHz context was dropped:
+// whether it overloads depends on the runner, and CI's did not.)
+const BURNER = `class QaBurner extends AudioWorkletProcessor {
+  constructor(options) {
+    super(); this.share = options.processorOptions.share;
+    let sink = 0;
+    for (let pass = 0; pass < 2; pass++) {
+      let iterations = 0; const start = Date.now();
+      while (Date.now() - start < 100) { for (let i = 0; i < 1000; i++) sink += Math.sqrt(i + sink % 7); iterations += 1000; }
+      this.perMs = iterations / (Date.now() - start);
+    }
+    this.sink = sink;
+  }
+  process() {
+    if (this.share < 0) { const start = Date.now(); while (Date.now() - start < -this.share) {} return true; }
+    const count = this.share * 1000 * 128 / sampleRate * this.perMs;
+    let sink = this.sink; for (let i = 0; i < count; i++) sink += Math.sqrt(i + sink % 7);
+    this.sink = sink; return true;
+  }
+}
+registerProcessor("qa-burner", QaBurner);`;
+async function burn(page: Page, share: number): Promise<void> {
+  await page.addInitScript(({ source, extra }) => {
+    const nativeConnect = AudioNode.prototype.connect;
+    const burning = new WeakSet<BaseAudioContext>();
+    function connect(this: AudioNode, destination: AudioNode, output?: number, input?: number): AudioNode;
+    function connect(this: AudioNode, destination: AudioParam, output?: number): void;
+    function connect(this: AudioNode, destination: AudioNode | AudioParam, ...ports: (number | undefined)[]): AudioNode | void {
+      const result: unknown = Reflect.apply(nativeConnect, this, [destination, ...ports]);
+      const context = this.context;
+      if (destination instanceof AudioDestinationNode && !burning.has(context)) {
+        burning.add(context);
+        const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+        void context.audioWorklet.addModule(url).finally(() => { URL.revokeObjectURL(url); }).then(() => {
+          const burner = new AudioWorkletNode(context, "qa-burner", { numberOfInputs: 0, numberOfOutputs: 1, processorOptions: { share: extra } });
+          const silent = context.createGain(); silent.gain.value = 0;
+          Reflect.apply(nativeConnect, burner, [silent]); Reflect.apply(nativeConnect, silent, [context.destination]);
+        });
+      }
+      return result instanceof AudioNode ? result : undefined;
+    }
+    AudioNode.prototype.connect = connect;
+  }, { source: BURNER, extra: share });
+}
+async function playHeaviest(page: Page, name: string): Promise<void> {
+  await pinDeviceRate(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await uploadProject(page, "live-overload.wav", LOOP_SECONDS, "dense");
+  await uploadProject(page, name, LOOP_SECONDS, "dense");
   await heaviestChain(page);
   await page.getByRole("button", { name: "Repeat track", exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
-  const transport = page.locator(".transport");
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
+}
+
+test("load outside the kernel past real time (a burner spinning 2–3 ms of each 2.67 ms quantum) fires the can't-keep-up message at 48 kHz", async ({ page }) => {
+  test.setTimeout(150_000);
+  await burn(page, -3);
+  await playHeaviest(page, "live-burner-hot.wav");
   await expect(page.getByText(OVERLOAD, { exact: true })).toBeVisible({ timeout: 60_000 });
-  await expect(transport).toHaveAttribute("data-playing", "false");
-  await expect(page.getByText(/buffer fault/u)).toHaveCount(0);
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
+});
+
+test("a burner at +0.3 of each quantum stays under real time and plays 30 s with no message", async ({ page }) => {
+  test.setTimeout(150_000);
+  await burn(page, 0.3);
+  await playHeaviest(page, "live-burner-warm.wav");
+  await page.waitForTimeout(30_000);
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
+  await expect(page.getByText(OVERLOAD, { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
 });
 
 test.describe("sustained live playback", () => {
@@ -290,23 +367,29 @@ test(`the export algorithm keeps up live for ${String(SOAK_SECONDS)} s with ever
   await page.getByRole("button", { name: "Play", exact: true }).click();
   const transport = page.locator(".transport");
   await expect(transport).toHaveAttribute("data-playing", "true");
+  // Warm-up: Chromium records 12–19 underrun events while the stream starts.
+  await expect.poll(() => page.evaluate(() => (window as TimingWindow).qaTiming?.audioMs ?? 0), { intervals: [500], timeout: 60_000 }).toBeGreaterThanOrEqual(2000);
+  const warmUnderruns = await underrunEvents(page);
   await expect.poll(() => page.evaluate(() => (window as TimingWindow).qaTiming?.audioMs ?? 0), { intervals: [1000], timeout: SOAK_SECONDS * 1000 + 60_000 })
     .toBeGreaterThanOrEqual(SOAK_SECONDS * 1000);
   await expect(transport).toHaveAttribute("data-playing", "true");
   const timing = await page.evaluate(() => (window as TimingWindow).qaTiming);
+  const endUnderruns = await underrunEvents(page);
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   if (!timing) throw new Error("Missing worklet timing");
   const quantumMs = 1000 * 128 / timing.sampleRate;
   const evidence = { ...timing, meanKernelMs: timing.totalMs / timing.quanta, meanLoad: timing.totalMs / timing.quanta / quantumMs, quantumMs,
-    clockDriftMs: timing.wallMs - timing.audioMs, driftLimitMs: Math.min(DRIFT_MS_MAX, DRIFT_MS_PER_AUDIO_SECOND * timing.audioMs / 1000) };
+    clockDriftMs: timing.wallMs - timing.audioMs, driftLimitMs: Math.min(DRIFT_MS_MAX, DRIFT_MS_PER_AUDIO_SECOND * timing.audioMs / 1000),
+    deviceUnderrunsAfterWarmUp: warmUnderruns === null || endUnderruns === null ? null : endUnderruns - warmUnderruns };
   await writeFile(info.outputPath("live-soak-evidence.json"), JSON.stringify(evidence, null, 2));
   await info.attach("live-soak-evidence", { body: JSON.stringify(evidence), contentType: "application/json" });
   expect(timing.sampleRate).toBe(RATE);
-  // No kernel call certainly over its 2.67 ms deadline, and the audio clock kept
-  // pace with the wall clock (a render thread that falls behind makes it lag).
-  // ringUnderruns stays in the evidence but is not a CPU gauge: the kernel runs
-  // inside process(), so the ring cannot run dry from load (it is always 0 here).
-  expect(timing.slow, JSON.stringify(evidence)).toBe(0);
+  // No device underrun after warm-up (Chromium's playbackStats), and the audio
+  // clock kept pace with the wall clock (a render thread that falls behind makes
+  // it lag). `slow` (kernel calls over 2.67 ms by Date.now) is informational: the
+  // ~10.6 ms output buffer absorbs a 4–8 ms call. ringUnderruns is not a CPU
+  // gauge: the kernel runs inside process(), so the ring cannot run dry from load.
+  expect(evidence.deviceUnderrunsAfterWarmUp, JSON.stringify(evidence)).toBe(0);
   expect(Math.abs(evidence.clockDriftMs), JSON.stringify(evidence)).toBeLessThanOrEqual(evidence.driftLimitMs);
   // The budget gate is mean load ≤ 0.5 on a quiet machine (docs/tasks.md V1-10). Shared CI
   // and agent hosts swing 2x, so this only catches gross regressions.

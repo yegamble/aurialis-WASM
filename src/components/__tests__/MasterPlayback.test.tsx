@@ -7,6 +7,7 @@ import { clampAdvancedToSampleRate, createDefaultAdvancedParams, mapSimpleToDSP 
 import type { AdvancedParams } from "@/lib/types";
 import type { LiveMeter, LivePlaybackController, LivePlaybackState, LiveSpectrum } from "@/lib/live-playback";
 import { StoreProvider } from "@/lib/store";
+import { OVERLOAD_MESSAGE } from "@/lib/live-overload";
 import { canonicalWAV, testStore } from "@/lib/__tests__/fixtures";
 import { AurialisWorkstation } from "../AurialisWorkstation";
 
@@ -253,24 +254,41 @@ describe("master live playback lifecycle", () => {
     mount(); await ready();
     const instance = latest();
     expect(screen.queryByText(/resampled/u)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Audition export" })).toBeNull();
     expect(screen.getByText("Playback responds to your controls immediately and runs the export chain.")).toBeTruthy();
     act(() => { instance.state = { ...instance.state, liveSampleRate: 48000 }; instance.callbacks.onState?.(instance.state); });
     expect(screen.queryByText(/resampled/u)).toBeNull();
     expect(screen.getByText("Playback responds to your controls immediately and runs the export chain, so what you hear is what you export.")).toBeTruthy();
     act(() => { instance.state = { ...instance.state, liveSampleRate: 44100 }; instance.callbacks.onState?.(instance.state); });
-    expect(screen.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export.")).toBeTruthy();
+    expect(screen.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export. Use Audition export for an exact listen.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Audition export" })).toBeTruthy();
     vi.spyOn(engine, "normalizeSimpleAudio").mockImplementation((_blob, advanced) => Promise.resolve({ advanced, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } }));
     fireEvent.click(screen.getByRole("tab", { name: "simple" }));
     fireEvent.click(screen.getByRole("button", { name: "Set target loudness" }));
     expect(await screen.findByText("Target set. Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain, resampled on this device, so it may differ slightly.")).toBeTruthy();
   }, 30000);
 
+  it("shows the overload message without a Restore source action, which cannot help (V1-10)", async () => {
+    mount(); await ready();
+    const instance = latest();
+    act(() => { instance.callbacks.onError?.(new Error(OVERLOAD_MESSAGE)); });
+    const alert = screen.getByText(OVERLOAD_MESSAGE).closest("[role=alert]");
+    if (!(alert instanceof HTMLElement)) throw new Error("Missing overload alert");
+    expect(within(alert).getByRole("button", { name: "Retry playback" })).toBeTruthy();
+    expect(within(alert).queryByRole("button", { name: "Restore source" })).toBeNull();
+    act(() => { instance.callbacks.onError?.(new Error("Live playback lost its processed audio.")); });
+    const fault = screen.getByText("Live playback lost its processed audio.").closest("[role=alert]");
+    if (!(fault instanceof HTMLElement)) throw new Error("Missing fault alert");
+    expect(within(fault).getByRole("button", { name: "Restore source" })).toBeTruthy();
+  }, 30000);
+
   it("states the 48 kHz live cap for a 96 kHz source before Play, without blaming the device (V1-10)", async () => {
     localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1).map((track) => ({ ...track, sampleRate: 96000 })) }));
     mocks.getAudio.mockResolvedValue(canonicalWAV({ ...pcm, sampleRate: 96000 }));
     mount(); await ready();
-    const note = "Aurialis plays this 96 kHz source at 48 kHz to stay within its live CPU budget; the export keeps the source's 96 kHz.";
+    const note = "Aurialis plays this 96 kHz source live at 48 kHz to stay within its live CPU budget, so live A may differ slightly from the export (about 0.2 LU). Use Audition export for an exact listen; the export keeps the source's 96 kHz.";
     expect(screen.getByText(note)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Audition export" })).toBeTruthy();
     const instance = latest();
     act(() => { instance.state = { ...instance.state, liveSampleRate: 48000 }; instance.callbacks.onState?.(instance.state); });
     expect(screen.getByText(note)).toBeTruthy();

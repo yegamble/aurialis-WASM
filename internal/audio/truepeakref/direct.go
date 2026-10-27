@@ -9,7 +9,7 @@ const DirectHalfTaps = 1024
 // Kaiser-windowed sinc (beta 12) on a 32x grid, evaluated over the whole
 // zero-extended signal, from DirectHalfTaps frames before the first frame to
 // DirectHalfTaps frames after the last. It shares no code with PeakDBTP or
-// the shipped meters, so edge behaviour (a file that starts or ends on a
+// the shipped meters, so edge behavior (a file that starts or ends on a
 // crest) is checked against a different algorithm. It is slow (about
 // n·32·2048 multiply-adds per channel): use it on short fixtures.
 func DirectPeakDBTP(channels [][]float32) float64 {

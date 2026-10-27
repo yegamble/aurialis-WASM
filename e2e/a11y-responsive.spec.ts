@@ -208,6 +208,15 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
         .analyze()
       expect(results.violations, `WCAG 2.2 AA on the album level panel at ${vp.width}px: ${JSON.stringify(results.violations)}`).toEqual([])
     }
+    // A blocked level explains itself beside the offset sliders, readable at 320 px.
+    await page.setViewportSize({ width: 320, height: 720 })
+    await page.getByRole("button", { name: "−9 LUFS", exact: true }).click()
+    await page.getByRole("slider", { name: "qa album level layout album offset", exact: true }).fill("5")
+    const reason = page.locator(".consistency").getByRole("status")
+    await expect(reason).toContainText("would need −4 LUFS")
+    const box = await reason.boundingBox()
+    expect((box?.x ?? 0) + (box?.width ?? 0), "album level reason clipped at 320px").toBeLessThanOrEqual(320)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
   })
 
   for (const vp of VIEWPORTS) {

@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import * as engine from "@/lib/browser-engine";
 import * as memory from "@/lib/browser-jobs";
@@ -160,6 +160,17 @@ it("replaces the render success notice with the stale notice once the level or s
   await screen.findByRole("button", { name: "Download all as ZIP" });
   fireEvent.click(screen.getByRole("button", { name: "Remove Album source 2 from album" }));
   expect(await screen.findByText(/Saved masters no longer match/u)).toBeDefined();
+});
+
+it("announces why a normalize level cannot render next to the offset controls", async () => {
+  seed({ mode: "normalize", targetLufs: -9, offsets: [] });
+  mount();
+  const panel = await screen.findByRole("region", { name: "Album level" });
+  const status = within(panel).getByRole("status");
+  expect(status.textContent).toBe("");
+  fireEvent.change(within(panel).getByRole("slider", { name: "Album source 1 album offset" }), { target: { value: "5" } });
+  expect(status.textContent).toMatch(/“Album source 1” would need −4 LUFS/u);
+  expect(screen.getByRole("button", { name: "Render album masters" }).hasAttribute("disabled")).toBe(true);
 });
 
 it("keeps each master's single-export level by default and never writes into the projects", async () => {

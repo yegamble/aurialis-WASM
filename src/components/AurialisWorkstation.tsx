@@ -2012,6 +2012,8 @@ function AlbumView({ albumId }: { albumId: string }) {
                 return <SliderField key={track.id} label={track.title} ariaLabel={`${track.title} album offset`} value={offset} defaultValue={0} min={-ALBUM_OFFSET_LIMIT_DB} max={ALBUM_OFFSET_LIMIT_DB} step={0.5} unit="LU" note={`Renders at ${requested < 0 ? "−" : ""}${String(Math.abs(requested))} LUFS`} onChange={(next) => { updateLevel(withAlbumOffset(level, track.id, next)); }} />;
               })}
             </>}
+            {/* Mirrors the hero's blocking reason beside the controls that cause it; always mounted so changes are announced. */}
+            <p className="disclosure mt-2 font-semibold empty:mt-0" role="status">{plan.ok ? "" : plan.error}</p>
           </fieldset>
           {measuredMasters.length > 0 && measuredMasters.length === artifacts.length && <AlbumLevelChart masters={measuredMasters} />}
         </section>

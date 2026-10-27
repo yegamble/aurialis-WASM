@@ -63,6 +63,8 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 **Wave 3 Round E — 2026-10-27.** V1-06 (#52), V1-04 (#53) and V1-11 (#54) verified and merged. V1-11's match measures what live playback plays (algorithm 1) until V1-10 converges preview and export; native foreground audio jobs take priority over the background measurement.
 
 **New findings from wave 3 (P2):**
+- Smart Split on Linux and Windows (owner, 2026-10-27): native splitting now runs only on macOS builds with Accelerate; plain-Go builds report it unavailable because one 20 s window did not finish in 30 minutes (> 13 h per song). Bringing it to Linux/Windows needs a fast inference backend (an optimized linear-algebra library via cgo, or a GPU path), measured per platform, with the same cached/estimate/unavailable states.
+- `MasterPlayback.test.tsx` Equal-loudness A/B assertion ("expected last call … processedDb: +0") failed once in CI on PR #56 while `main` passed; make it deterministic.
 - At exactly −1 dBTP, Spotify/SoundCloud compare strictly while Apple Music/YouTube use ≤ (QA, pre-existing).
 - No end-to-end case for Equal-loudness A/B with an applied Deep script (unit-tested only).
 - Library Preview has no Equal-loudness A/B toggle.

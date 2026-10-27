@@ -162,48 +162,61 @@ func hasFinding(findings []Finding, id string) bool {
 // (algorithm 2 true-peak limiter) and any loudness rise above 1 LU or crest
 // cut above 4 dB carries a visible finding.
 func TestDeepProfilesPredictExportLevelsAndExplainLargeChanges(t *testing.T) {
-	ctx := context.Background()
-	for _, fixture := range []struct {
+	t.Parallel()
+	fixtures := []struct {
 		name string
 		buf  *audio.Buffer
-	}{{"dynamic", referenceMix(6, false)}, {"dense", referenceMix(6, true)}} {
+	}{{"dynamic", referenceMix(6, false)}, {"dense", referenceMix(6, true)}}
+	for _, fixture := range fixtures {
 		for _, profile := range allProfiles {
-			script, prediction, err := AnalyzeDeepV2Context(ctx, fixture.buf, profile, nil)
-			if err != nil {
-				t.Fatal(fixture.name, profile, err)
-			}
-			if prediction == nil {
-				t.Fatal("missing prediction", fixture.name, profile)
-			}
-			if script.ChainParams.Compressor.MakeupDB != 0 || script.ChainParams.Limiter.CeilingDBTP > MaxStartingCeilingDBTP {
-				t.Fatalf("%s/%s proposal baseline adds makeup or exceeds -1 dBTP", fixture.name, profile)
-			}
-			exported := script.Clone()
-			exported.ChainParams.AlgorithmVersion = dsp.TruePeakAlgorithmVersion
-			exported.ChainParams.Limiter.TruePeak = true
-			_, _, measured, err := RenderScriptV2Context(ctx, fixture.buf, exported)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if measured.IntegratedLUFS != prediction.AfterMetrics.IntegratedLUFS || measured.TruePeakDBTP != prediction.AfterMetrics.TruePeakDBTP || measured.DynamicRangeDB != prediction.AfterMetrics.DynamicRangeDB {
-				t.Fatalf("%s/%s prediction is not the export render: %+v vs %+v", fixture.name, profile, prediction.AfterMetrics, measured)
-			}
-			if prediction.AfterMetrics.TruePeakDBTP > script.ChainParams.Limiter.CeilingDBTP {
-				t.Fatalf("%s/%s export true peak %.2f above ceiling", fixture.name, profile, prediction.AfterMetrics.TruePeakDBTP)
-			}
-			rise := prediction.AfterMetrics.IntegratedLUFS - script.BeforeMetrics.IntegratedLUFS
-			cut := script.BeforeMetrics.DynamicRangeDB - prediction.AfterMetrics.DynamicRangeDB
-			if (rise > MaxUnexplainedLoudnessRiseLU) != hasFinding(script.Findings, "predicted-loudness-increase") || (cut > MaxUnexplainedCrestCutDB) != hasFinding(script.Findings, "predicted-crest-reduction") {
-				t.Fatalf("%s/%s rise %.2f LU cut %.2f dB findings %+v", fixture.name, profile, rise, cut, script.Findings)
-			}
-			for _, move := range script.Moves {
-				if capped := CapSectionMove(script.ChainParams, move); !sameMovePoints(capped, move) {
-					t.Fatalf("%s/%s move %s exceeds MUB-5 caps", fixture.name, profile, move.ID)
-				}
-			}
-			t.Logf("%-7s %-17s Δ LUFS %+5.2f LU  Δ crest %+5.2f dB  TP %6.2f dBTP  findings %d", fixture.name, profile, rise, -cut, prediction.AfterMetrics.TruePeakDBTP, len(script.Findings))
+			// Read-only shared sources; each render is independent.
+			t.Run(fixture.name+"/"+string(profile), func(t *testing.T) {
+				t.Parallel()
+				verifyProfilePrediction(t, fixture.name, fixture.buf, profile)
+			})
 		}
 	}
+}
+
+func verifyProfilePrediction(t *testing.T, name string, buf *audio.Buffer, profile ProfileID) {
+	t.Helper()
+	ctx := context.Background()
+	script, prediction, err := AnalyzeDeepV2Context(ctx, buf, profile, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prediction == nil {
+		t.Fatal("missing prediction")
+	}
+	if script.ChainParams.Compressor.MakeupDB != 0 || script.ChainParams.Limiter.CeilingDBTP > MaxStartingCeilingDBTP {
+		t.Fatal("proposal baseline adds makeup or exceeds -1 dBTP")
+	}
+	exported := script.Clone()
+	exported.ChainParams.AlgorithmVersion = dsp.TruePeakAlgorithmVersion
+	exported.ChainParams.Limiter.TruePeak = true
+	_, _, measured, err := RenderScriptV2Context(ctx, buf, exported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if measured.IntegratedLUFS != prediction.AfterMetrics.IntegratedLUFS || measured.TruePeakDBTP != prediction.AfterMetrics.TruePeakDBTP || measured.DynamicRangeDB != prediction.AfterMetrics.DynamicRangeDB {
+		t.Fatalf("prediction is not the export render: %+v vs %+v", prediction.AfterMetrics, measured)
+	}
+	if prediction.AfterMetrics.TruePeakDBTP > script.ChainParams.Limiter.CeilingDBTP {
+		t.Fatalf("export true peak %.2f above ceiling", prediction.AfterMetrics.TruePeakDBTP)
+	}
+	rise := prediction.AfterMetrics.IntegratedLUFS - script.BeforeMetrics.IntegratedLUFS
+	cut := script.BeforeMetrics.DynamicRangeDB - prediction.AfterMetrics.DynamicRangeDB
+	if (rise > MaxUnexplainedLoudnessRiseLU) != hasFinding(script.Findings, "predicted-loudness-increase") ||
+		(-rise > MaxUnexplainedLoudnessRiseLU) != hasFinding(script.Findings, "predicted-loudness-decrease") ||
+		(cut > MaxUnexplainedCrestCutDB) != hasFinding(script.Findings, "predicted-crest-reduction") {
+		t.Fatalf("rise %.2f LU cut %.2f dB findings %+v", rise, cut, script.Findings)
+	}
+	for _, move := range script.Moves {
+		if capped := CapSectionMove(script.ChainParams, move); !sameMovePoints(capped, move) {
+			t.Fatalf("move %s exceeds MUB-5 caps", move.ID)
+		}
+	}
+	t.Logf("%-7s %-17s Δ LUFS %+5.2f LU  Δ crest %+5.2f dB  TP %6.2f dBTP  findings %d", name, profile, rise, -cut, prediction.AfterMetrics.TruePeakDBTP, len(script.Findings))
 }
 
 func sameMovePoints(a, b automation.Move) bool {

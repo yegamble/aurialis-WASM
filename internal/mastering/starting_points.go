@@ -90,9 +90,9 @@ func driveScale(character dsp.SatCharacter) float64 {
 
 // CapSectionMove limits the boosts a generated section move may apply above
 // its baseline (MUB-5): +0.8 dB EQ, +8 width points and +0.5 dB drive.
-// Cuts and other targets pass unchanged. The input move is not modified.
+// Cuts and other targets pass unchanged; the argument is not mutated.
 func CapSectionMove(base dsp.Params, move automation.Move) automation.Move {
-	baseline, limit := 0.0, math.Inf(1)
+	var baseline, limit float64
 	switch {
 	case strings.HasPrefix(move.Target, "eq.") && strings.HasSuffix(move.Target, ".gainDb"):
 		index, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(move.Target, "eq."), ".gainDb"))

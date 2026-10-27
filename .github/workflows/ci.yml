@@ -128,6 +128,9 @@ jobs:
       - name: Verify full-length Deep profile predictions without the race detector
         timeout-minutes: 5
         run: go test -run '^TestDeepProfilesPredictExportLevelsAndExplainLargeChanges$' -count=1 -v ./internal/mastering
+      - name: Verify full-length live/export parity without the race detector
+        timeout-minutes: 5
+        run: go test -run '^TestLive(Playback|DeepScript)RendersTheExport$' -count=1 -v ./wasm/dsp
       - name: Install FFmpeg for independent meter verification
         timeout-minutes: 5
         run: |

@@ -574,6 +574,13 @@ function TrackCard({ track, index = 0 }: { track: Track; index?: number }) {
 }
 
 
+type TrackToolRoute = "release-check" | "reference" | "split";
+
+/** One track's tool route, so Master and Tools never open a tool for another track. */
+function trackToolHref(route: TrackToolRoute, trackId: string): string {
+  return `/${route}/${encodeURIComponent(trackId)}`;
+}
+
 function masteringSettingsKey(settings: AdvancedParams) {
   return JSON.stringify({ ...engineParams(settings), requestedTargetLufs: settings.limiter.targetLufs });
 }
@@ -581,6 +588,7 @@ function masteringSettingsKey(settings: AdvancedParams) {
 
 function MasterView({ trackId }: { trackId: string }) {
   const { state, dispatch } = useStore();
+  const browser = useBrowserBuild();
   const track = state.tracks.find((item) => item.id === trackId);
   // Match the unfiltered Library order; editing a project does not reorder this queue.
   const queueIndex = state.tracks.findIndex((item) => item.id === trackId);
@@ -957,6 +965,13 @@ function MasterView({ trackId }: { trackId: string }) {
             Export
           </Button>
         </div>
+        <nav className="col-span-full flex basis-full flex-wrap items-center gap-2" aria-label={`Tools for ${track.title || "Untitled track"}`}>
+          <Link className={buttonClassName("secondary")} href={trackToolHref("release-check", track.id)}><Icon name="check" />Release check</Link>
+          <Link className={buttonClassName("secondary")} href={trackToolHref("reference", track.id)}><Icon name="refresh-cw" />Reference match</Link>
+          {browser
+            ? <p className="disclosure basis-full">{stemSplitAvailability(true)}</p>
+            : <Link className={buttonClassName("secondary")} href={trackToolHref("split", track.id)}><Icon name="scissors" />Smart split</Link>}
+        </nav>
       </header>
       <div className="workspace-layout">
         <section className="workspace-canvas">

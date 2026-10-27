@@ -1,0 +1,47 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { createUnderrunWatch, OVERLOAD_MESSAGE, readPlaybackStats } from "../live-overload";
+
+/** Feed one-second playbackStats samples with `underrunMs` of underrun in each. */
+function run(underrunMs: number[], startupEvents = 15) {
+  const watch = createUnderrunWatch();
+  let total = 0, underrun = startupEvents * 0.002, events = startupEvents;
+  const fired: number[] = [];
+  expect(watch.sample({ totalDuration: total, underrunDuration: underrun, underrunEvents: events })).toBe(false);
+  underrunMs.forEach((ms, second) => {
+    total += 1; underrun += ms / 1000; events += ms > 0 ? 1 : 0;
+    if (watch.sample({ totalDuration: total, underrunDuration: underrun, underrunEvents: events })) fired.push(second + 1);
+  });
+  return fired;
+}
+
+describe("playbackStats underrun watch (V1-10 Round 4)", () => {
+  it("fires after two consecutive seconds over 1% underrun, after a warm-up second", () => {
+    expect(run([60, 60, 60, 60])).toEqual([3, 4]);
+    // 4 ms every quantum: the device misses most of each second.
+    expect(run([500, 500, 500])[0]).toBe(3);
+  });
+  it("ignores startup underruns, a clean device and one isolated dropout", () => {
+    expect(run([200, 0, 0, 0, 0, 0])).toEqual([]);
+    expect(run(Array.from({ length: 30 }, () => 0))).toEqual([]);
+    expect(run([0, 0, 80, 0, 0, 80, 0])).toEqual([]);
+    expect(run([0, 9, 9, 9, 9])).toEqual([]);
+  });
+  it("restarts after reset and when the context's duration restarts", () => {
+    const watch = createUnderrunWatch();
+    const sample = (total: number, under: number) => watch.sample({ totalDuration: total, underrunDuration: under, underrunEvents: 0 });
+    sample(0, 0); sample(1, 0); sample(2, 0.1);
+    watch.reset();
+    expect(sample(2, 0.1)).toBe(false); expect(sample(3, 0.2)).toBe(false); expect(sample(4, 0.3)).toBe(false);
+    expect(sample(0, 0)).toBe(false);
+  });
+  it("reads Chromium's playbackStats and nothing else", () => {
+    expect(readPlaybackStats({ playbackStats: { underrunDuration: 0.1, underrunEvents: 3, totalDuration: 5 } } as unknown as BaseAudioContext))
+      .toEqual({ underrunDuration: 0.1, underrunEvents: 3, totalDuration: 5 });
+    expect(readPlaybackStats({} as BaseAudioContext)).toBeNull();
+    expect(readPlaybackStats({ playbackStats: { underrunDuration: "0" } } as unknown as BaseAudioContext)).toBeNull();
+  });
+  it("posts the same overload text from the worklet", () => {
+    expect(readFileSync("public/worklets/aurialis-live-worklet.js", "utf8")).toContain(`const OVERLOAD_MESSAGE = ${JSON.stringify(OVERLOAD_MESSAGE)};`);
+  });
+});

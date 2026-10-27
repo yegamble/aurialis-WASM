@@ -3,6 +3,7 @@ import type { StereoPCM } from "./browser-engine";
 import { exportParams } from "./engine-params";
 import { usesBrowserAudio } from "./browser-jobs";
 import { liveContextRate } from "./live-rate";
+import { createUnderrunWatch, OVERLOAD_MESSAGE, readPlaybackStats } from "./live-overload";
 import { prepareLiveAutomation, verifiedSourceVector } from "./live-automation";
 import { sameSource } from "./library";
 import type { ScriptV2 } from "./deep-mastering";
@@ -29,6 +30,17 @@ export type LivePlaybackState = {
    * of the source, or the device rate if the browser refuses that. */
   liveSampleRate?: number;
 };
+
+/** Fallback overload rule for browsers without playbackStats: the worklet
+ * counts a missed deadline only when a callback overruns (or a gap between
+ * callbacks exceeds) the audio the output already holds. Null where
+ * playbackStats reports real underruns instead. */
+function watchSlackMs(context: AudioContext): number | null {
+  if (readPlaybackStats(context)) return null;
+  const output = Number.isFinite(context.outputLatency) ? context.outputLatency : 0;
+  const base = Number.isFinite(context.baseLatency) ? context.baseLatency : 0;
+  return 1000 * Math.max(output, 2 * base, 0.01);
+}
 
 /** Open the context at liveContextRate so live DSP processes the samples the
  * export processes (or an integer-ratio rate above 48 kHz). A browser that
@@ -168,6 +180,24 @@ export function createLivePlayback(
   let merger: ChannelMergerNode | undefined;
   let initialization: Promise<void> | undefined;
   let unwatchDevice: (() => void) | undefined;
+  // Primary overload signal where the browser reports it (Chromium's
+  // playbackStats): sustained device underruns, sampled once a second.
+  const underruns = createUnderrunWatch();
+  let underrunTimer: ReturnType<typeof setInterval> | undefined;
+  function stopUnderrunWatch(): void {
+    if (underrunTimer !== undefined) clearInterval(underrunTimer);
+    underrunTimer = undefined;
+  }
+  function startUnderrunWatch(): void {
+    stopUnderrunWatch(); underruns.reset();
+    const context = audio;
+    if (!context || !readPlaybackStats(context)) return;
+    underrunTimer = setInterval(() => {
+      if (disposed || audio !== context || !state.playing) return;
+      const stats = readPlaybackStats(context);
+      if (stats && underruns.sample(stats)) fail(new Error(OVERLOAD_MESSAGE));
+    }, 1000);
+  }
   let rejectInitialization: ((reason: Error) => void) | undefined;
   let bootTimeout: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
@@ -255,6 +285,7 @@ export function createLivePlayback(
     leftAnalyser = undefined; rightAnalyser = undefined;
     initialization = undefined;
     unwatchDevice?.(); unwatchDevice = undefined;
+    stopUnderrunWatch();
   }
   function fail(error: unknown): void {
     if (disposed) return;
@@ -290,7 +321,7 @@ export function createLivePlayback(
     playTicket++; sourceTicket++; wantsPlayback = false; automaticRepeat = false;
     for (const arm of arms.values()) arm.reject(new DOMException("Playback paused.", "AbortError")); arms.clear();
     const position = positionAt();
-    stopSource();
+    stopSource(); stopUnderrunWatch();
     worklet?.port.postMessage({ type: "hold" });
     state = { ...state, position, playing: false, loading: false };
     cancelAnimationFrame(spectrumFrame);
@@ -330,6 +361,7 @@ export function createLivePlayback(
     setSourceEndFrame(looping ? Infinity : source.left.length);
     state = { ...state, position: sourceOffset, playing: true, loading: false, error: null };
     cancelAnimationFrame(spectrumFrame); spectrumFrame = requestAnimationFrame(spectrum);
+    startUnderrunWatch();
   }
   function spectrum(time: number): void {
     if (disposed || !state.playing || !audio || !leftAnalyser || !rightAnalyser) return;
@@ -404,7 +436,7 @@ export function createLivePlayback(
     audio = context;
     // A device switch or a context interruption stalls callbacks that are not
     // this graph's load: restart the worklet's deadline watch with a warm-up.
-    const rewatch = () => { if (audio === context) worklet?.port.postMessage({ type: "rewatch" }); };
+    const rewatch = () => { if (audio !== context) return; underruns.reset(); worklet?.port.postMessage({ type: "rewatch" }); };
     const devices = (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
     context.addEventListener("statechange", rewatch);
     devices?.addEventListener("devicechange", rewatch);
@@ -444,7 +476,7 @@ export function createLivePlayback(
         channelCount: 2, channelCountMode: "explicit", outputChannelCount: [2],
         processorOptions: { header: sharedHeader, stream: sharedStream, tags: sharedTags, samples: sharedSamples, delayBlocks,
           module: compiledModule, controls: sharedControls, controlAbiVersion: 2, entropy: crypto.getRandomValues(new Uint8Array(256)),
-          clockOriginMs: Math.max(1, performance.now()) } });
+          clockOriginMs: Math.max(1, performance.now()), watchSlackMs: watchSlackMs(context) } });
       worklet = node;
       node.port.onmessage = (event: MessageEvent<unknown>) => {
         if (disposed || worklet !== node || !isRecord(event.data)) return;

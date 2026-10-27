@@ -14,7 +14,7 @@ type Processor = {
 
 // This VM kernel only tests protocol/lifecycle behavior. Compiled Go signal
 // parity is covered independently by the native/WASI verification script.
-function workletFixture(initialOdd = false, abiVersion: number | null = 1, capability: "count" | "algorithm" | "latency" | "missing" | null = null, sharedEpoch = false, latency = 0, clock?: () => number) {
+function workletFixture(initialOdd = false, abiVersion: number | null = 1, capability: "count" | "algorithm" | "latency" | "missing" | null = null, sharedEpoch = false, latency = 0, clock?: () => number, watchSlackMs?: number) {
   let Constructor: (new (options: unknown) => Processor) | undefined;
   const header = new Int32Array(new SharedArrayBuffer(8 * 4));
   const tags = new Int32Array(new SharedArrayBuffer(256 * 5 * 4));
@@ -87,7 +87,7 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
   if (!Constructor) throw new Error("Audio worklet was not installed");
   const processor = new Constructor({ processorOptions: { header: header.buffer, tags: tags.buffer,
     ...(sharedEpoch ? { stream: epoch } : {}), samples: samples.buffer, controls: controlHeader.buffer, delayBlocks: 1, module: {},
-    entropy: new Uint8Array(256), clockOriginMs: 1, controlAbiVersion: abiVersion } });
+    entropy: new Uint8Array(256), clockOriginMs: 1, controlAbiVersion: abiVersion, ...(watchSlackMs === undefined ? {} : { watchSlackMs }) } });
   const message = (data: unknown) => { processor.port.onmessage({ data }); };
   const render = (left = 0.25, right = 0.5) => {
     const output = [new Float32Array(128), new Float32Array(128)];
@@ -463,13 +463,35 @@ describe("direct Go worklet lifecycle", () => {
       play(f, 8, quantumMs, quantumMs * 0.95, clock);
       expect(fired(f)).toBe(true);
     });
-    it("fires on a short hitch every second that averages out of the lag and load", () => {
-      const { f, clock } = watched();
-      const quanta = 375; // one second at 48 kHz
-      let index = 0;
-      f.kernel.aurialis_live_process.mockImplementation(() => { clock.now += index++ % quanta === 100 ? 60 : 1; return f.processGo(); });
-      for (let block = 0; block < 8 * quanta && !f.processor.failed; block++) { f.render(); clock.now += quantumMs - 1; }
-      expect(fired(f)).toBe(true);
+    /** Once a second a `hitchMs` stall, inside the kernel or before a callback;
+     * afterwards the render thread catches up (as Chromium does), so the audio
+     * clock shows no lasting lag. Only the fallback slack rule can see it. */
+    function hitches(slackMs: number | undefined, hitchMs: number, where: "kernel" | "gap", seconds = 8) {
+      const clock = { now: 1000 };
+      const f = workletFixture(false, 1, null, false, 0, undefined, slackMs);
+      Reflect.set(f.context, "Date", { now: () => clock.now });
+      f.message({ type: "reset", generation: 1 });
+      let index = 0, debt = 0;
+      f.kernel.aurialis_live_process.mockImplementation(() => { clock.now += where === "kernel" && index % 375 === 100 ? hitchMs : 0.5; return f.processGo(); });
+      for (let block = 0; block < seconds * 375 && !f.processor.failed; block++, index++) {
+        if (where === "gap" && index % 375 === 100) clock.now += hitchMs;
+        f.render();
+        if (index % 375 === 100) debt += hitchMs;
+        const pay = Math.min(debt, quantumMs - 0.5); debt -= pay; clock.now += quantumMs - 0.5 - pay;
+      }
+      return f;
+    }
+    it.each(["kernel", "gap"] as const)("fallback: fires on a 60 ms hitch every second (%s) that the clock lag never shows", (where) => {
+      expect(fired(hitches(10.6, 60, where))).toBe(true);
+    });
+    it("fallback: an 8 ms call once a second fits the 10.6 ms output slack and is not a miss", () => {
+      const f = hitches(10.6, 8, "kernel");
+      expect(f.processor.port.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
+    });
+    it("leaves short hitches to the main thread's playbackStats watch where it exists (no slack given)", () => {
+      const f = hitches(undefined, 60, "kernel");
+      expect(Reflect.get(f.processor, "slackMs")).toBeNull();
+      expect(f.processor.port.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
     });
     it("stays quiet at 2% lag, after one host stall, one slow call and a pause gap", () => {
       const { f, clock } = watched();
@@ -504,12 +526,12 @@ describe("direct Go worklet lifecycle", () => {
       play(f, 6, quantumMs, quantumMs * 0.4, clock);
       expect(f.processor.failed).toBe(false);
     });
-    it("widens the lag bound and drops the per-call rule on a coarse 100 ms clock", () => {
+    it("widens the lag bound and drops the slack rule on a coarse 100 ms clock", () => {
       let t = 0;
       const coarse = () => { t += 0.01; return Math.floor(t / 100) * 100; };
-      const f = workletFixture(false, 1, null, false, 0, coarse);
+      const f = workletFixture(false, 1, null, false, 0, coarse, 10.6);
       expect(Reflect.get(f.processor, "clockStep")).toBe(100);
-      expect(Reflect.get(f.processor, "missRule")).toBe(false);
+      expect(Reflect.get(f.processor, "slackMs")).toBeNull();
       f.message({ type: "reset", generation: 1 });
       f.kernel.aurialis_live_process.mockImplementation(() => f.processGo());
       // 2.5% real lag (under the 3% bound) read through 100 ms steps: windows can read 0 or 100+ ms.

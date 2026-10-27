@@ -12,11 +12,12 @@ const METER_VALUES = 7, NO_READING = -200;
 // Deadline watch. The kernel runs inside process(), so the processed ring can
 // never run dry from CPU load; overload shows instead as an audio clock that
 // falls behind the wall clock, and as kernel time close to the audio rendered.
-// Each WATCH_SECONDS window after the first (warm-up) is bad when the audio
-// clock lost more than WATCH_LAG of it (60 ms per 2 s), when the kernel took
-// more than WATCH_LOAD of it, or when any kernel call certainly overran its
-// quantum (longer than the quantum plus one clock step): a short hitch every
-// second averages out of the first two but is a missed deadline each time.
+// The main thread's playbackStats watch (Chromium) is the primary signal; it
+// sees real device underruns. Here, each WATCH_SECONDS window after the first
+// (warm-up) is bad when the audio clock lost more than WATCH_LAG of it (60 ms
+// per 2 s) or the kernel took more than WATCH_LOAD of it; where playbackStats
+// is missing, also when a callback or the gap before it overran the output's
+// slack (see process()): a short hitch the buffer absorbs is not a miss.
 // The lag rule sees load outside the kernel too (other nodes on the render
 // thread). Measured 2 s window lag in headless Chromium was 0 ms in every
 // window; real devices render in bursts of one output buffer (about 10–40 ms),
@@ -83,10 +84,13 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.controlVersion = 0;
     this.failed = false;
     this.missing = 0;
-    // A coarse clock widens the lag bound to two steps and turns off the
-    // per-call miss rule, which needs steps under half a quantum.
+    // A coarse clock widens the lag bound to two steps.
     this.clockStep = measureClockStep();
-    this.missRule = this.clockStep <= 500 * QUANTUM / sampleRate;
+    // Fallback missed-deadline rule (browsers without playbackStats): the
+    // output's slack in ms, or null where the main thread watches real
+    // underruns instead, or the clock is too coarse to time against it.
+    const slack = config.watchSlackMs;
+    this.slackMs = typeof slack === "number" && Number.isFinite(slack) && slack > 0 && this.clockStep < slack / 2 ? slack : null;
     this.resetWatch();
     this.sum = 0;
     this.peak = 0;
@@ -199,7 +203,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     }
   }
   resetWatch() {
-    this.watchWall = null; this.watchFrame = 0; this.watchKernel = 0; this.watchMisses = 0; this.watchWindows = 0; this.watchStrikes = 0;
+    this.watchWall = null; this.watchFrame = 0; this.watchKernel = 0; this.watchMisses = 0; this.watchWindows = 0; this.watchStrikes = 0; this.watchLastStart = null;
   }
   /** Close a watch window after each processed quantum; true once overload is confirmed. */
   watchDeadline() {
@@ -370,7 +374,21 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.ready = true;
     this.port.postMessage({ type: "ready" });
   }
+  /** Fallback missed deadlines: a whole callback, or the gap since the previous
+   * one, overrunning the quantum by more than the output's slack (plus one
+   * clock step). A shorter overrun is absorbed by the output buffer. */
   process(inputs, outputs) {
+    if (this.slackMs === null) return this.renderQuantum(inputs, outputs);
+    const start = wallNow();
+    const result = this.renderQuantum(inputs, outputs);
+    if (this.active && !this.failed && this.watchWall !== null) {
+      const quantumMs = 1000 * QUANTUM / sampleRate, bound = this.slackMs + this.clockStep;
+      if (wallNow() - start - quantumMs > bound || (this.watchLastStart !== null && start - this.watchLastStart - quantumMs > bound)) this.watchMisses++;
+      this.watchLastStart = start;
+    } else this.watchLastStart = null;
+    return result;
+  }
+  renderQuantum(inputs, outputs) {
     const output = outputs[0];
     if (!output || output.length < 2) return true;
     const outL = output[0], outR = output[1];
@@ -414,7 +432,6 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         throw new Error("The live audio engine rejected an audio block.");
       const kernelMs = wallNow() - kernelStart;
       this.watchKernel += kernelMs;
-      if (this.missRule && kernelMs - this.clockStep > 1000 * QUANTUM / sampleRate) this.watchMisses++;
       this.refreshBuffers();
       if (this.generation !== Atomics.load(this.header, GENERATION)) {
         outL.fill(0); outR.fill(0); return true;

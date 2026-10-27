@@ -9,9 +9,12 @@ const MEASURE_DELAY_MS = 400;
 const RETRY_DELAY_MS = 1500;
 
 /**
- * The opt-in static A/B loudness match for one track (V1-11). While the stored
- * reading belongs to other settings it reports re-measuring and applies unity,
- * never a stale offset. The preference is per browser, not per project.
+ * The opt-in static A/B loudness match for one track (V1-11). While edited
+ * settings are re-measured it keeps applying the previous static offset for the
+ * same track and source ("Re-measuring (holding …)"); a reading from another
+ * track or source is never applied, so that case plays at unity. The background
+ * measurement yields to Export, Deep and other user jobs and retries later.
+ * The preference is per browser, not per project.
  */
 export function useLoudnessMatch(track: Track | undefined, source: Blob | null) {
   const [enabled, setEnabledState] = useState(false);

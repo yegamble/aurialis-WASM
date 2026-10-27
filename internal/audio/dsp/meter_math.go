@@ -81,19 +81,21 @@ const (
 	peakKaiser   = 7.0
 )
 
-// peakFIR holds phases 1..3; phase 0 lands on a sample and is the sample.
+// peakFIR holds phases 1..3 in window order (index 0 is the oldest of the 2K
+// samples); phase 0 lands on a sample and is the sample.
 var peakFIR = func() [peakPhases - 1][2 * peakHalfTaps]float64 {
 	var coefficients [peakPhases - 1][2 * peakHalfTaps]float64
 	for phase := range coefficients {
-		for tap := range coefficients[phase] {
-			// Tap 0 is the newest sample j; phase p+1 evaluates t = j-K+1-(p+1)/M.
-			distance := float64(peakHalfTaps-1-tap) + float64(phase+1)/peakPhases
+		for i := range coefficients[phase] {
+			// Window index i holds sample j-2K+1+i; phase p+1 evaluates
+			// t = j-K+1-(p+1)/M.
+			distance := float64(i-peakHalfTaps) + float64(phase+1)/peakPhases
 			w := distance / peakHalfTaps
 			window := 0.0
 			if math.Abs(w) < 1 {
 				window = besselI0(peakKaiser*math.Sqrt(1-w*w)) / besselI0(peakKaiser)
 			}
-			coefficients[phase][tap] = math.Sin(math.Pi*distance) / (math.Pi * distance) * window
+			coefficients[phase][i] = math.Sin(math.Pi*distance) / (math.Pi * distance) * window
 		}
 	}
 	return coefficients
@@ -114,24 +116,23 @@ func (p *peakInterpolator) sample(left, right float64) float64 {
 	const taps = 2 * peakHalfTaps
 	p.history[0][p.cursor], p.history[1][p.cursor] = left, right
 	p.history[0][p.cursor+taps], p.history[1][p.cursor+taps] = left, right
-	windows := [2]*[taps]float64{
-		(*[taps]float64)(p.history[0][p.cursor+1 : p.cursor+1+taps]),
-		(*[taps]float64)(p.history[1][p.cursor+1 : p.cursor+1+taps]),
-	}
+	windowL := (*[taps]float64)(p.history[0][p.cursor+1 : p.cursor+1+taps])
+	windowR := (*[taps]float64)(p.history[1][p.cursor+1 : p.cursor+1+taps])
 	p.cursor = (p.cursor + 1) % taps
-	peak := 0.0
-	for channel, window := range windows {
-		// Grid values in time order: t = j-K+1-3/4, -2/4, -1/4, then the sample.
-		var values [peakPhases]float64
-		for phase := range peakFIR {
-			coefficients := &peakFIR[phase]
-			v := 0.0
-			for tap, coefficient := range coefficients {
-				v += coefficient * window[taps-1-tap]
-			}
-			values[peakPhases-2-phase] = v
+	// Grid values in time order: t = j-K+1-3/4, -2/4, -1/4, then the sample.
+	var valuesL, valuesR [peakPhases]float64
+	for phase := range peakFIR {
+		coefficients := &peakFIR[phase]
+		var l, r float64
+		for i, coefficient := range coefficients {
+			l += coefficient * windowL[i]
+			r += coefficient * windowR[i]
 		}
-		values[peakPhases-1] = window[peakHalfTaps]
+		valuesL[peakPhases-2-phase], valuesR[peakPhases-2-phase] = l, r
+	}
+	valuesL[peakPhases-1], valuesR[peakPhases-1] = windowL[peakHalfTaps], windowR[peakHalfTaps]
+	peak := 0.0
+	for channel, values := range [2]*[peakPhases]float64{&valuesL, &valuesR} {
 		grid := &p.grid[channel]
 		for _, value := range values {
 			peak = math.Max(peak, refinePeak(grid[0], grid[1], value))

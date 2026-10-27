@@ -231,8 +231,10 @@ export function advancedMatchesScript(advanced: AdvancedParams, script: ScriptV2
   return sameJSON(engineParams(advanced), engineParams(advancedFromScript(script)));
 }
 
-/** Immutable accepted revisions make cache identity independent of schedule size. */
+/** Immutable accepted revisions make cache identity independent of schedule size.
+ * The effective chain is included because loading can lower an applied ceiling
+ * (V1-09 migration) without changing the revision. */
 export function appliedRevisionKey(track: Track): string | null {
   const script = track.deepMastering?.applied;
-  return script ? ["script", track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0, script.source.pcmHash, script.revision].join(":") : null;
+  return script ? ["script", track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0, script.source.pcmHash, script.revision, JSON.stringify(script.chainParams)].join(":") : null;
 }

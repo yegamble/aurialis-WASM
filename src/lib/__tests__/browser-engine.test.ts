@@ -93,7 +93,7 @@ describe("shared engine browser boundary", () => {
     const source = new Blob(["source"]);
     const first = await measureAudio(source, { inputGainDb: 1 });
     const second = await measureAudio(source, { inputGainDb: 2 });
-    const sent = (call: number) => (fetch.mock.calls[call]?.[1] as { body: FormData }).body.get("measure");
+    const sent = (call: number) => (fetch.mock.calls.at(call)?.[1] as { body: FormData }).body.get("measure");
     expect(sent(0)).toBeNull();
     expect(sent(1)).toBe("render");
     expect(second.beforeMetrics).toEqual(first.beforeMetrics);

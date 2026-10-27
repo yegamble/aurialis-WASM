@@ -40,7 +40,7 @@ func WasmScheduleBegin(revision float64, count uint32, deviceRate uint32) uint32
 		return 0
 	}
 	source, ok := scheduleSource.binding()
-	if !ok || versionedControls[liveControlValues] != 1 {
+	if !ok || !liveAlgorithm(versionedControls[liveControlValues]) {
 		return 0
 	}
 	var legacy liveControlVector
@@ -49,7 +49,8 @@ func WasmScheduleBegin(revision float64, count uint32, deviceRate uint32) uint32
 	if !ok {
 		return 0
 	}
-	baseline.AlgorithmVersion = 1
+	// Applied scripts play on the export algorithm (V1-10) like static settings.
+	baseline.AlgorithmVersion = uint32(versionedControls[liveControlValues])
 	if runtimeBridge().beginSchedule(source, uint64(revision), int(count), baseline) {
 		return 1
 	}

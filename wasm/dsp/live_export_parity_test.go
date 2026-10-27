@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"math"
 	"testing"
 
+	"github.com/yegamble/Aurialis-WASM/internal/audio"
+	"github.com/yegamble/Aurialis-WASM/internal/audio/automation"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
+	"github.com/yegamble/Aurialis-WASM/internal/mastering"
 )
 
 // liveVector packs params into the ABI 2 control vector the worklet sends
@@ -143,6 +147,73 @@ func TestLivePlaybackRendersTheExport(t *testing.T) {
 				t.Errorf("%.0f Hz %s: live TP meter %.3f dBTP over ceiling %.1f", rate, name, meter.TruePeakDBTP, ceiling)
 			}
 		}
+	}
+}
+
+// An applied Deep script plays live through the schedule bridge on the
+// export algorithm (src/lib/engine-params.ts exportScript) and must equal the
+// script export render once the worklet's read-ahead compensates the latency.
+func TestLiveDeepScriptRendersTheExport(t *testing.T) {
+	const rate = 48000
+	ctx := context.Background()
+	left, right := denseMix(rate, 8)
+	buf := &audio.Buffer{SampleRate: rate, Channels: 2, Frames: len(left), Duration: float64(len(left)) / rate, Left: left, Right: right}
+	script, _, err := mastering.AnalyzeDeepV2Context(ctx, buf, mastering.ProfilePunchyCommercial, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	script.ChainParams.AlgorithmVersion, script.ChainParams.Limiter.TruePeak, script.ChainParams.DitherBits = dsp.TruePeakAlgorithmVersion, true, 0
+	script.ChainParams.Limiter.Enabled, script.ChainParams.Limiter.CeilingDBTP = true, -1
+	// Drive the limiter and widen across the first section so the schedule
+	// moves into and out of heavy true-peak limiting.
+	if len(script.Sections) == 0 {
+		t.Fatal("analysis returned no sections")
+	}
+	section := script.Sections[0]
+	first, last := section.StartFrame, section.EndFrame-1
+	middle := first + (last-first)/2
+	script.Moves = append(script.Moves,
+		automation.Move{ID: "lift", SectionID: section.ID, Reason: "V1-10 parity", Target: "inputGainDb", Operation: "absolute", Points: []automation.Point{{Frame: first, Value: 0}, {Frame: middle, Value: 8}, {Frame: last, Value: 2}}},
+		automation.Move{ID: "spread", SectionID: section.ID, Reason: "V1-10 parity", Target: "stereo.widthPct", Operation: "absolute", Points: []automation.Point{{Frame: first, Value: 100}, {Frame: last, Value: 160}}},
+	)
+	exportL, exportR, exported, err := mastering.RenderScriptV2Context(ctx, buf, script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schedule, err := mastering.ValidateScriptV2Context(ctx, script, rate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := sourceBinding{rate: rate, frames: int64(len(left)), hash: [8]uint32{1, 2, 3, 4, 5, 6, 7, 8}}
+	bridge := NewBridge(rate)
+	if !bridge.bindSource(source) {
+		t.Fatal("bind failed")
+	}
+	install(t, bridge, source, script.ChainParams, schedule, 1)
+	latency := bridge.LatencyFrames()
+	if latency == 0 {
+		t.Fatal("applied script is not on the export algorithm")
+	}
+	var inL, inR, outL, outR [liveBlockFrames]float32
+	heard := [2][]float32{}
+	for start := 0; len(heard[0]) < len(left)+latency; start += liveBlockFrames {
+		for i := range inL {
+			inL[i], inR[i] = 0, 0
+			if start+i < len(left) {
+				inL[i], inR[i] = left[start+i], right[start+i]
+			}
+		}
+		if !bridge.ProcessBlock(inL[:], inR[:], outL[:], outR[:]) {
+			t.Fatal("schedule quantum rejected")
+		}
+		heard[0], heard[1] = append(heard[0], outL[:]...), append(heard[1], outR[:]...)
+	}
+	heard[0], heard[1] = heard[0][latency:latency+len(left)], heard[1][latency:latency+len(left)]
+	residual := residualDB(heard, [2][]float32{exportL, exportR})
+	deltaLUFS := dsp.MeasureStereo(heard[0], heard[1], rate).IntegratedLUFS - exported.IntegratedLUFS
+	t.Logf("applied script: residual %.1f dB, ΔLUFS %.4f, %d moves", residual, deltaLUFS, len(schedule.NumericMoves()))
+	if residual > -60 || math.Abs(deltaLUFS) > 0.1 {
+		t.Fatalf("live script vs export: residual %.1f dB, ΔLUFS %.3f", residual, deltaLUFS)
 	}
 }
 

@@ -14,7 +14,7 @@ type Processor = {
 
 // This VM kernel only tests protocol/lifecycle behavior. Compiled Go signal
 // parity is covered independently by the native/WASI verification script.
-function workletFixture(initialOdd = false, abiVersion: number | null = 1, capability: "count" | "algorithm" | "latency" | "missing" | null = null, sharedEpoch = false) {
+function workletFixture(initialOdd = false, abiVersion: number | null = 1, capability: "count" | "algorithm" | "latency" | "missing" | null = null, sharedEpoch = false, latency = 0) {
   let Constructor: (new (options: unknown) => Processor) | undefined;
   const header = new Int32Array(new SharedArrayBuffer(8 * 4));
   const tags = new Int32Array(new SharedArrayBuffer(256 * 5 * 4));
@@ -28,12 +28,21 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
   const memory = new WebAssembly.Memory({ initial: 1, maximum: 4 });
   let gain = 1;
   let revision = 0, pendingRevision = 0, pendingGain = 1;
+  // Like the export algorithm's lookahead, processed audio leaves `latency` frames late.
+  const pipeline = [new Float32Array(latency), new Float32Array(latency)];
+  let pipelineAt = 0;
   const processGo = () => {
     const left = new Float32Array(memory.buffer, 512, 128), right = new Float32Array(memory.buffer, 1024, 128);
     const outLeft = new Float32Array(memory.buffer, 1536, 128), outRight = new Float32Array(memory.buffer, 2048, 128);
     for (let index = 0; index < 128; index++) {
-      outLeft.set([(left.at(index) ?? 0) * gain], index);
-      outRight.set([(right.at(index) ?? 0) * gain], index);
+      let l = (left.at(index) ?? 0) * gain, r = (right.at(index) ?? 0) * gain;
+      if (latency > 0) {
+        const delayedL = pipeline[0]?.at(pipelineAt) ?? 0, delayedR = pipeline[1]?.at(pipelineAt) ?? 0;
+        pipeline[0]?.set([l], pipelineAt); pipeline[1]?.set([r], pipelineAt);
+        pipelineAt = (pipelineAt + 1) % latency; l = delayedL; r = delayedR;
+      }
+      outLeft.set([l], index);
+      outRight.set([r], index);
     }
     return 128;
   };
@@ -52,8 +61,9 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
     aurialis_control_buffer: vi.fn(() => 2560), aurialis_set_controls: vi.fn(applyGo),
     aurialis_live_process: vi.fn(processGo), aurialis_live_reset: vi.fn(() => 1),
     aurialis_control_count: capability === "missing" ? undefined : vi.fn((abi: number) => capability === "count" ? 99 : abi === 1 ? 81 : abi === 2 ? 82 : 0),
-    aurialis_algorithm_supported: vi.fn((version: number) => capability === "algorithm" ? 0 : Number(version === 1)),
-    aurialis_latency_frames: vi.fn(() => capability === "latency" ? 96 : 0),
+    aurialis_algorithm_supported: vi.fn((version: number) => capability === "algorithm" ? 0 : Number(version === 1 || version === 2)),
+    // One delay block lets A be read at most 128 frames ahead of B.
+    aurialis_latency_frames: vi.fn(() => capability === "latency" ? 129 : latency),
     aurialis_live_drain: vi.fn(() => 0),
     aurialis_control_buffer_v2: vi.fn(() => 2560),
     aurialis_set_controls_v2: vi.fn((count: number) => count === 82 ? applyGo() : 0),
@@ -223,7 +233,15 @@ describe("direct Go worklet lifecycle", () => {
     f.render();
     expect(f.render()[0]?.every(value => value === .5)).toBe(true);
   });
-  it.each(["count", "algorithm", "latency", "missing"] as const)("rejects %s capability mismatch before warming or producing audio", (capability) => {
+  it("rejects a settings latency it cannot read ahead before warming or producing audio", () => {
+    const f = workletFixture(false, 2, "latency");
+    expect(f.processor.failed).toBe(true);
+    expect(f.processor.ready).toBe(false);
+    expect(f.kernel.aurialis_live_process).not.toHaveBeenCalled();
+    expect(silent(f.render())).toBe(true);
+    expect(f.processor.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "error", message: "The live audio engine reported an unsupported latency." }));
+  });
+  it.each(["count", "algorithm", "missing"] as const)("rejects %s capability mismatch before warming or producing audio", (capability) => {
     const f = workletFixture(false, 1, capability);
     expect(f.processor.failed).toBe(true);
     expect(f.processor.ready).toBe(false);
@@ -231,6 +249,21 @@ describe("direct Go worklet lifecycle", () => {
     expect(f.host.beginRender).not.toHaveBeenCalled();
     expect(silent(f.render())).toBe(true);
     expect(f.processor.port.postMessage).toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
+  });
+  it("reads A the engine latency ahead of B, so A, B and the playhead share one source clock (V1-10)", () => {
+    const f = workletFixture(false, 2, null, false, 40);
+    expect(f.kernel.aurialis_latency_frames).toHaveBeenCalled();
+    f.message({ type: "reset", generation: 1 });
+    // Each source quantum has its own level, so a misaligned read would mix
+    // the previous quantum's level into the first 40 frames of A.
+    const levels = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6];
+    const heard = levels.map(level => f.render(level, -level)[0]);
+    for (let quantum = 1; quantum < levels.length; quantum++)
+      expect(heard[quantum]?.every(value => value === Math.fround(2 * (levels[quantum - 1] ?? 0)))).toBe(true);
+    expect(f.header[6]).toBe(0);
+    f.message({ type: "original", value: true });
+    for (let block = 0; block < 4; block++) f.render(0.7);
+    expect(f.render(0.8)[0]?.every(value => value === Math.fround(0.7))).toBe(true);
   });
   it("warms and resets before ready, then stays dormant without erasing cumulative misses", () => {
     const f = workletFixture();

@@ -23,6 +23,9 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.tags = new Int32Array(config.tags);
     this.samples = new Float32Array(config.samples);
     this.delay = config.delayBlocks;
+    // Frames the engine delays processed audio (the export algorithm's true-peak
+    // lookahead). A is read this far ahead of B so both play the same source frame.
+    this.latency = 0;
     this.generation = Atomics.load(this.header, GENERATION);
     this.sequence = 0;
     this.startTime = 0;
@@ -138,10 +141,8 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       if (exports.aurialis_control_count(this.controlAbiVersion) !== this.controlCount
         || exports.aurialis_algorithm_supported(1) !== 1)
         throw new Error("The live audio engine and settings capabilities do not match.");
-      if (exports.aurialis_latency_frames() !== 0)
-        throw new Error("The live audio engine requires unsupported latency compensation.");
       if (this.controlAbiVersion === 2 && (typeof exports.aurialis_control_buffer_v2 !== "function"
-        || typeof exports.aurialis_set_controls_v2 !== "function"))
+        || typeof exports.aurialis_set_controls_v2 !== "function" || exports.aurialis_algorithm_supported(2) !== 1))
         throw new Error("The live audio engine is missing its versioned settings interface.");
       this.numericSchedule = typeof exports.aurialis_schedule_abi === "function" && exports.aurialis_schedule_abi() === 1
         && ["aurialis_schedule_source_buffer", "aurialis_schedule_bind_source", "aurialis_schedule_begin", "aurialis_schedule_move_buffer", "aurialis_schedule_stage_move", "aurialis_schedule_commit", "aurialis_schedule_revision", "aurialis_schedule_seek", "aurialis_schedule_detach", "aurialis_schedule_set_looping"].every(name => typeof exports[name] === "function");
@@ -213,8 +214,20 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       ? this.kernel.aurialis_set_controls_v2(this.controlCount) : this.kernel.aurialis_set_controls();
     if (accepted !== 1) throw new Error("The live audio engine rejected these settings.");
     this.refreshBuffers();
+    this.readLatency();
     this.controlVersion = version;
     return true;
+  }
+  readLatency() {
+    // The processed ring can only be read ahead within what is already rendered.
+    const latency = this.kernel.aurialis_latency_frames();
+    if (!Number.isInteger(latency) || latency < 0 || latency > this.delay * QUANTUM)
+      throw new Error("The live audio engine reported an unsupported latency.");
+    this.latency = latency;
+  }
+  slotRendered(sequence) {
+    const slot = (sequence - 1) % SLOTS;
+    return Atomics.load(this.tags, 2 * SLOTS + slot) === sequence && Atomics.load(this.tags, 3 * SLOTS + slot) === this.generation;
   }
   synchronizeStart() {
     if (!this.streamHeader) return;
@@ -239,6 +252,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       this.refreshBuffers(); this.controls.set(detach.controls);
       const accepted = this.controlAbiVersion === 2 ? this.kernel.aurialis_set_controls_v2(this.controlCount) : this.kernel.aurialis_set_controls();
       if (accepted !== 1) throw new Error("The static baseline could not be restored.");
+      this.readLatency();
       this.controlVersion = detach.version;
       this.port.postMessage({ type: "automation-ack", token: detach.token, revision: 0 });
     }
@@ -267,7 +281,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         pending.commitStarted = true;
         if (this.kernel.aurialis_schedule_commit() !== 1 || this.kernel.aurialis_schedule_revision() !== pending.revision) throw new Error("The audio engine did not acknowledge the complete schedule.");
         this.scheduleAttached = true;
-        this.refreshBuffers(); this.controlVersion = pending.version;
+        this.refreshBuffers(); this.readLatency(); this.controlVersion = pending.version;
         this.pendingSchedule = null;
         this.port.postMessage({ type: "automation-ack", token: pending.token, revision: pending.revision });
       }
@@ -349,10 +363,15 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       this.fail(error);
       outL.fill(0); outR.fill(0); return true;
     }
+    // B (dry) for this quantum is stream frame (expected - 1) * QUANTUM onward.
+    // The engine renders A for that source frame `latency` frames later, so A
+    // is read that far ahead in the processed ring: A and B, the playhead and
+    // the meters then share one clock and switching is never offset.
     const expected = sequence - this.delay;
     const outputSlot = (expected - 1 + SLOTS) % SLOTS, outputOffset = outputSlot * QUANTUM;
-    const available = expected > 0 && Atomics.load(this.tags, 2 * SLOTS + outputSlot) === expected
-      && Atomics.load(this.tags, 3 * SLOTS + outputSlot) === this.generation;
+    const wetStart = (expected - 1) * QUANTUM + this.latency;
+    const wetFirst = Math.floor(wetStart / QUANTUM) + 1, wetLast = Math.floor((wetStart + QUANTUM - 1) / QUANTUM) + 1;
+    const available = expected > 0 && this.slotRendered(wetFirst) && this.slotRendered(wetLast);
     if (expected > 0 && !available) {
       Atomics.add(this.header, UNDERRUNS, 1);
       if (++this.missing > Math.ceil(sampleRate * 0.2 / QUANTUM)) {
@@ -360,7 +379,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         this.port.postMessage({ type: "error", message: "Live processing stalled. Pause and restart playback." });
       }
     } else this.missing = 0;
-    if (available) Atomics.store(this.header, APPLIED, Atomics.load(this.tags, 4 * SLOTS + outputSlot));
+    if (available) Atomics.store(this.header, APPLIED, Atomics.load(this.tags, 4 * SLOTS + (wetFirst - 1) % SLOTS));
     const targetMix = this.original ? 1 : 0;
     const step = 1 / (sampleRate * 0.008);
     const volumeStep = 1 / (sampleRate * 0.01);
@@ -373,8 +392,9 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       this.matchOriginal += Math.max(-volumeStep, Math.min(volumeStep, this.targetMatchOriginal - this.matchOriginal));
       const dryL = expected > 0 ? this.samples[outputOffset + i] : 0;
       const dryR = expected > 0 ? this.samples[FRAMES + outputOffset + i] : 0;
-      const wetL = available ? this.samples[2 * FRAMES + outputOffset + i] : 0;
-      const wetR = available ? this.samples[3 * FRAMES + outputOffset + i] : 0;
+      const wetIndex = (wetStart + i) % FRAMES;
+      const wetL = available ? this.samples[2 * FRAMES + wetIndex] : 0;
+      const wetR = available ? this.samples[3 * FRAMES + wetIndex] : 0;
       const audible = blockFrame + i < endFrame;
       const wet = 1 - this.mix, dry = this.mix;
       // Meters read the selected A or B at monitor volume, before the static

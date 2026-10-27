@@ -75,8 +75,9 @@ export function exportParams(advanced: AdvancedParams) {
   return withExportLimiter(engineParams(advanced));
 }
 
-/** Copy of an applied script whose render uses the export algorithm. */
-export function exportScript<T extends { chainParams: { limiter: object } }>(script: T): T {
+/** Copy of an applied script whose render uses the export algorithm. Dither
+ * is left to the export's bit depth, as the Go prediction (exportScriptV2) renders. */
+export function exportScript<T extends { chainParams: { limiter: object; ditherBits: number } }>(script: T): T {
   const copy = structuredClone(script);
-  return { ...copy, chainParams: withExportLimiter(copy.chainParams) };
+  return { ...copy, chainParams: { ...withExportLimiter(copy.chainParams), ditherBits: 0 } };
 }

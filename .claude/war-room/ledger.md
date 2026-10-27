@@ -60,13 +60,13 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 - Warm Analog's +1.1 dB at 250 Hz may read boxy on dense rock/metal; 150–200 Hz is warmer (taste, Grammy veteran).
 - Loud at −9 LUFS keeps −1 dBTP; a −2 dBTP default or Release Check warning stays with the release-check work (V1-04). V1-04 adds the warning: Apple Music and YouTube now review loud masters (> −14 LUFS) above −2 dBTP as Aurialis lossy-streaming guidance, matching Spotify and SoundCloud. The Loud preset ceiling is unchanged.
 
-**Wave 3 Round E — 2026-10-27.** V1-06 (#52), V1-04 (#53) and V1-11 (#54) verified and merged. V1-11's match measures what live playback plays (algorithm 1) until V1-10 converges preview and export; native foreground audio jobs pre-empt the background measurement.
+**Wave 3 Round E — 2026-10-27.** V1-06 (#52), V1-04 (#53) and V1-11 (#54) verified and merged. V1-11's match measures what live playback plays (algorithm 1) until V1-10 converges preview and export; native foreground audio jobs take priority over the background measurement.
 
 **New findings from wave 3 (P2):**
 - At exactly −1 dBTP, Spotify/SoundCloud compare strictly while Apple Music/YouTube use ≤ (QA, pre-existing).
 - No end-to-end case for Equal-loudness A/B with an applied Deep script (unit-tested only).
 - Library Preview has no Equal-loudness A/B toggle.
-- Smart Split estimate on Intel Macs is untimed (copy carries the caveat); no `-allow-plain-go` override.
+- Smart Split estimate on Intel Macs has not been timed (copy carries the caveat); no `-allow-plain-go` override.
 - On wide screens the album delivery panel sits under the sequence rather than beside the level panel (designer).
 - `scripts/build-e2e.sh` refuses to run after a killed run leaves `internal/webui/embedded/__qa/actual-output-tap.js`; the Playwright webServer 30 s timeout is short for a cold build.
 

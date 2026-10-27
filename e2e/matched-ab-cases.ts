@@ -39,7 +39,7 @@ async function sideLoudness(page: Page, side: "A Processed" | "B Original", loop
   return meanOutputLevel(page, loopFrames, "k");
 }
 
-export type LimitedEvidence = { matchedDeltaLu: number; unmatchedDeltaLu: number; offsetDb: number };
+type LimitedEvidence = { matchedDeltaLu: number; unmatchedDeltaLu: number; offsetDb: number };
 
 /**
  * Round E REQUIRED-1: a heavily limited master (+14 dB into the −1 dBTP
@@ -75,7 +75,7 @@ export async function verifyLimitedMatchedAB(page: Page): Promise<LimitedEvidenc
   return evidence;
 }
 
-export type MatchedABEvidence = { matchedDeltaDb: number; unmatchedDeltaDb: number; offsetDb: number; exportHash: string };
+type MatchedABEvidence = { matchedDeltaDb: number; unmatchedDeltaDb: number; offsetDb: number; exportHash: string };
 
 /**
  * V1-11 acceptance through the real live path. A −6 dB input gain on a 1 kHz

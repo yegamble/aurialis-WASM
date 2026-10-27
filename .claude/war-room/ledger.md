@@ -80,6 +80,9 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 - `scripts/build-e2e.sh` refuses to run after a killed run leaves `internal/webui/embedded/__qa/actual-output-tap.js`; the Playwright webServer 30 s timeout is short for a cold build.
 
 **P2 (after v1 P0/P1):**
+- V1-13 Round E 2: turning the limiter, true peak or bypass off under gain reduction jumps the gain instantly (older, also on `c03ed1e`); it needs a gain crossfade like the guard's.
+- V1-13 Round E 2: consolidate the three production radix-2 FFTs (`internal/audio/dsp/truepeak_offline.go`, `internal/audio/steminfer/spectrum.go`, `internal/mastering/features.go`) into one.
+- `MasterPlayback.test.tsx` 20 s per-test timeouts flake at load average above 100 (predates V1-13).
 - V1-13 Round E S4: when the proposal alone already needs more than 2 dB of export limiting (a hot clipped source), Deep shows "+0.0 dB Level match"; the finding should say the source itself needs heavy limiting.
 - Bounded float headroom in CDR, and FLAC sample range (security-4).
 - FLAC preallocation (security-5).

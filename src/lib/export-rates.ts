@@ -1,9 +1,10 @@
 import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import { EXPORT_SAMPLE_RATES, type ExportSampleRate } from "./types";
 
-type ExportRateChoice = {
+export type ExportRateChoice = {
   /** "source" sends no sampleRate, so the export keeps every source frame. */
   value: ExportSampleRate | "source";
+  /** Hz of this choice; 0 for an album's "each source rate", which has no single rate. */
   hz: number;
   /** Why Go would refuse this conversion for the current track. */
   unavailable?: "too-long" | "unsupported";
@@ -58,4 +59,21 @@ export function unavailableRateNote(choices: readonly ExportRateChoice[], source
   if (long.length > 0) notes.push(`${list(long)} ${long.length > 1 ? "are" : "is"} unavailable: this track would exceed the ${MAX_SOURCE_FRAMES.toLocaleString("en-US")}-frame limit for a converted export.`);
   if (unsupported.length > 0) notes.push(`${list(unsupported)} ${unsupported.length > 1 ? "are" : "is"} unavailable: ${formatRate(sourceRate)} cannot be converted to ${unsupported.length > 1 ? "them" : "it"} exactly.`);
   return notes.join(" ");
+}
+
+/**
+ * Delivery rates for an album with one or more sources: each source's own rate
+ * first, then every export rate, unavailable when any track cannot reach it.
+ */
+export function albumRateChoices(sources: readonly { sampleRate: number; frames: number }[]): ExportRateChoice[] {
+  const reachable = (rate: ExportSampleRate) => sources.every((source) =>
+    source.sampleRate === rate || exportRateChoices(source.sampleRate, source.frames).some((choice) => choice.value === rate && choice.unavailable === undefined));
+  return [{ value: "source", hz: 0 }, ...EXPORT_SAMPLE_RATES.map((rate): ExportRateChoice => reachable(rate) ? { value: rate, hz: rate } : { value: rate, hz: rate, unavailable: "unsupported" })];
+}
+
+/** Visible explanation for album rates some track cannot reach, or "". */
+export function albumRateNote(choices: readonly ExportRateChoice[]): string {
+  const rates = choices.filter((choice) => choice.unavailable !== undefined).map((choice) => formatRate(choice.hz));
+  if (rates.length === 0) return "";
+  return `${list(rates)} ${rates.length > 1 ? "are" : "is"} unavailable: at least one track cannot be converted to ${rates.length > 1 ? "them" : "it"} exactly or would exceed the converted-length limit.`;
 }

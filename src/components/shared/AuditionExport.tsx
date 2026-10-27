@@ -35,15 +35,35 @@ type Phase =
   | { kind: "error"; message: string };
 
 /**
+ * Set the element's volume; where it does not stick (iOS Safari ignores
+ * HTMLMediaElement.volume), route the element through one GainNode instead.
+ * Other browsers never get a second Web Audio path.
+ */
+function applyVolume(element: HTMLAudioElement | null, volume: number, fallback: { current: { context: AudioContext; gain: GainNode } | null }): void {
+  if (!element) return;
+  const level = Math.max(0, Math.min(1, Number.isFinite(volume) ? volume : 1));
+  if (fallback.current) { fallback.current.gain.gain.value = level; return; }
+  element.volume = level;
+  if (Math.abs(element.volume - level) < 0.001 || typeof AudioContext === "undefined") return;
+  const context = new AudioContext();
+  const gain = context.createGain();
+  gain.gain.value = level;
+  context.createMediaElementSource(element).connect(gain).connect(context.destination);
+  fallback.current = { context, gain };
+}
+
+/**
  * Plays the exact file Export writes (V1-10 owner ruling): rendered by the
  * Export path at the source rate and played from its WAV Blob by one media
  * element. Only the Blob is held, never a decoded AudioBuffer; the memory
  * admission charges it once it exists, as for an Export download.
  */
-export function AuditionExport({ track, sourceBlob, delivery, livePlaying, onStart, onHeld, onHandle, onPlayingChange }: {
+export function AuditionExport({ track, sourceBlob, delivery, volume, livePlaying, onStart, onHeld, onHandle, onPlayingChange }: {
   track: Track;
   sourceBlob: Blob | null;
   delivery: DeliveryFormat;
+  /** The transport's Playback volume (0–1), a monitor control like live's. */
+  volume: number;
   /** Live playback is running; the audition pauses so only one plays. */
   livePlaying: boolean;
   /** Called as the audition starts so live playback can pause. */
@@ -54,6 +74,8 @@ export function AuditionExport({ track, sourceBlob, delivery, livePlaying, onSta
   onPlayingChange?: (playing: boolean) => void;
 }) {
   const audio = useRef<HTMLAudioElement | null>(null);
+  // Only where the element ignores .volume (iOS Safari): element → gain → speakers.
+  const fallbackGain = useRef<{ context: AudioContext; gain: GainNode } | null>(null);
   const held = useRef<Held | null>(null);
   const pending = useRef<AbortController | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "idle", message: "" });
@@ -64,8 +86,8 @@ export function AuditionExport({ track, sourceBlob, delivery, livePlaying, onSta
   const stale = phase.kind === "ready" && heldKey !== key;
   const format = deliverySummary(delivery, track.sampleRate);
   // What is true now, for a render that completes later (Round 5 R-1).
-  const latest = useRef({ key, livePlaying, onHeld, onPlayingChange });
-  latest.current = { key, livePlaying, onHeld, onPlayingChange };
+  const latest = useRef({ key, livePlaying, volume, onHeld, onPlayingChange });
+  latest.current = { key, livePlaying, volume, onHeld, onPlayingChange };
 
   function release() {
     audio.current?.pause();
@@ -84,6 +106,7 @@ export function AuditionExport({ track, sourceBlob, delivery, livePlaying, onSta
     const element = audio.current;
     if (!element || !held.current || held.current.key !== latest.current.key) return;
     onStart();
+    applyVolume(element, latest.current.volume, fallbackGain);
     try { await element.play(); }
     catch (cause) { setPhase({ kind: "error", message: cause instanceof Error ? `The audition could not play: ${cause.message}` : "The audition could not play. Try again." }); }
   }
@@ -99,6 +122,9 @@ export function AuditionExport({ track, sourceBlob, delivery, livePlaying, onSta
     onHandle?.(handle.current);
     return () => { onHandle?.(null); pending.current?.abort(); pending.current = null; release(); };
   }, []);
+  // Follow the Playback volume like live does, on start and on every move.
+  useEffect(() => { applyVolume(audio.current, volume, fallbackGain); }, [volume]);
+  useEffect(() => () => { void fallbackGain.current?.context.close().catch(() => undefined); fallbackGain.current = null; }, []);
   // Never let stale audio keep playing after an edit.
   useEffect(() => { if (stale) audio.current?.pause(); }, [stale]);
   useEffect(() => { if (livePlaying) audio.current?.pause(); }, [livePlaying]);

@@ -4,7 +4,6 @@ import { WorkspaceLink as Link } from "./shared/WorkspaceLink";
 import {
   engineParams,
   measureAudio,
-  trackMetrics,
   normalizeSimpleAudio,
   exportLevelSummary,
   processPreview,
@@ -87,6 +86,8 @@ import { SimpleControls } from "./shared/SimpleControls";
 import { DeepProposalPanel } from "./shared/DeepProposalPanel";
 import { useDeepPlayback } from "@/lib/use-deep-playback";
 import { appliedRevisionKey } from "@/lib/deep-mastering";
+import { ALBUM_OFFSET_LIMIT_DB, ALBUM_TARGETS, albumLevelSummary, albumMastersKey, albumOffset, DEFAULT_ALBUM_LEVEL, planAlbumLevels, renderAlbumTrack, withAlbumOffset, type AlbumLevel, type AlbumMasterLevel, type AlbumRenderEngine } from "@/lib/album-levels";
+import { AlbumLevelChart, type MeasuredAlbumMaster } from "./shared/AlbumLevelChart";
 import type { ScriptV2 } from "@/lib/deep-mastering";
 import { DeepTimeline } from "./shared/DeepTimeline";
 import { StemSplitPanel } from "./shared/StemSplitPanel";
@@ -1587,7 +1588,7 @@ function AlbumsView() {
       id: `album-${String(Date.now())}`,
       title: `Untitled sequence ${String(state.albums.length + 1)}`,
       artist: "",
-      target: "−14 LUFS",
+      level: DEFAULT_ALBUM_LEVEL,
       trackIds: [],
       mastered: false,
     };
@@ -1635,11 +1636,7 @@ function AlbumsView() {
               </div>
               <span className="eyebrow">{album.trackIds.length} tracks</span>
               <h2>{album.title}</h2>
-              <p>Target {album.target}</p>
-              <div className="album-score">
-                <span>Consistency</span>
-                <strong>—</strong>
-              </div>
+              <p>{albumLevelSummary(album.level)}</p>
             </Link>
           ))}
         </div>
@@ -1648,7 +1645,15 @@ function AlbumsView() {
   );
 }
 
-type AlbumMasterFile = { id: string; title: string; blob: () => Promise<Blob | undefined>; durable: boolean };
+type AlbumMasterFile = { id: string; title: string; blob: () => Promise<Blob | undefined>; durable: boolean; measured?: AlbumMasterLevel };
+type RenderedAlbumFile = { id: string; title: string; blob: Blob; measured: AlbumMasterLevel };
+// Resolved at call time, so the engine binding in use renders each master.
+const albumEngine: AlbumRenderEngine = {
+  normalize: (file, settings, target, signal) => normalizeSimpleAudio(file, settings, target, signal),
+  render: (file, params, bitDepth, signal) => serverRender(file, params, bitDepth, signal),
+  renderScript: (file, script, bitDepth, signal) => serverRenderScript(file, script, bitDepth, signal),
+  measure: (file, params, signal) => measureAudio(file, params, signal),
+};
 
 function AlbumView({ albumId }: { albumId: string }) {
   const { state, dispatch } = useStore();
@@ -1657,9 +1662,10 @@ function AlbumView({ albumId }: { albumId: string }) {
   const cacheMemory = useRef<ReturnType<typeof reserveBrowserAudioMemory> | null>(null);
   useEffect(() => () => { operation.current?.abort(); cacheMemory.current?.dispose(); cacheMemory.current = null; }, []);
   const [message, setMessage] = useState("");
-  const [rendered, setRendered] = useState<{ key: string; files: { id: string; title: string; blob: Blob }[]; memory: ReturnType<typeof reserveBrowserAudioMemory> } | null>(null);
+  const [rendered, setRendered] = useState<{ key: string; files: RenderedAlbumFile[]; memory: ReturnType<typeof reserveBrowserAudioMemory> } | null>(null);
   const [saved, setSaved] = useState<SavedAlbumMasters | undefined>();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const planErrorId = useId();
   useEffect(() => () => { rendered?.memory.dispose(); }, [rendered]);
   useEffect(() => {
     let current = true;
@@ -1672,7 +1678,9 @@ function AlbumView({ albumId }: { albumId: string }) {
   const albumTracks = (album?.trackIds ?? [])
     .map((id) => state.tracks.find((track) => track.id === id))
     .filter((track): track is Track => track !== undefined);
-  const artifactKey = JSON.stringify(albumTracks.map((track) => [track.id, track.sourceRevision, appliedRevisionKey(track) ?? engineParams(track.advanced)]));
+  const level = album?.level ?? DEFAULT_ALBUM_LEVEL;
+  const plan = planAlbumLevels(level, albumTracks);
+  const artifactKey = albumMastersKey(albumTracks, level);
   useEffect(() => {
     if (rendered && rendered.key !== artifactKey) {
       if (cacheMemory.current === rendered.memory) cacheMemory.current = null;
@@ -1698,10 +1706,19 @@ function AlbumView({ albumId }: { albumId: string }) {
   }
 
   const artifacts: AlbumMasterFile[] = rendered?.key === artifactKey
-    ? rendered.files.map((file) => ({ id: file.id, title: file.title, blob: () => Promise.resolve(file.blob), durable: false }))
+    ? rendered.files.map((file) => ({ id: file.id, title: file.title, blob: () => Promise.resolve(file.blob), durable: false, measured: file.measured }))
     : saved?.key === artifactKey
-      ? saved.files.map((file) => ({ id: file.trackId, title: file.title, blob: () => getAudio(file.audioId), durable: true }))
+      ? saved.files.map((file) => ({ id: file.trackId, title: file.title, blob: () => getAudio(file.audioId), durable: true, ...(file.measured ? { measured: file.measured } : {}) }))
       : [];
+  // Chart only levels measured from these rendered files; otherwise no chart.
+  const measuredMasters = artifacts.flatMap((file, index): MeasuredAlbumMaster[] => {
+    const step = plan.ok ? plan.tracks.at(index) : undefined;
+    return file.measured ? [{ id: file.id, title: file.title, measured: file.measured, requestedLufs: step?.mode === "normalize" ? step.requestedLufs : null }] : [];
+  });
+  // A sequence or level change outdates the last render notice, so the status
+  // line can say whether saved masters still match.
+  const changeSequence = (patch: Partial<Pick<Album, "level" | "trackIds">>) => { setMessage(""); dispatch({ type: "UPDATE_ALBUM", id: album.id, patch }); };
+  const updateLevel = (next: AlbumLevel) => { changeSequence({ level: next }); };
   const staleSaved = artifacts.length === 0 && saved !== undefined;
   const download = (run: () => Promise<void>) => { void run().catch((error: unknown) => { setMessage(error instanceof Error ? error.message : "The album master could not be downloaded. Try again."); }); };
 
@@ -1739,22 +1756,25 @@ function AlbumView({ albumId }: { albumId: string }) {
               });
             }}
           />
-          {albumTracks.some((track) => track.deepMastering?.applied) && <p className="disclosure">Detach Deep automation in each master before applying album normalization. Individual live playback and export keep the applied script.</p>}
+          {!plan.ok && <p className="disclosure" id={planErrorId}>{plan.error}</p>}
           <div className="album-meta">
             <span>{albumTracks.length} tracks</span>
-            <span>{album.target}</span>
+            <span>{albumLevelSummary(level)}</span>
             <span>{artifacts.length > 0 ? "Masters ready to download" : "In progress"}</span>
           </div>
         </div>
         <Button
           icon={<Icon name="sparkles" />}
-          disabled={working || albumTracks.length === 0 || albumTracks.some((track) => track.deepMastering?.applied)}
+          disabled={working || albumTracks.length === 0 || !plan.ok}
+          {...(plan.ok ? {} : { "aria-describedby": planErrorId })}
           onClick={() => void (async () => {
+            if (!plan.ok) return;
+            const steps = plan.tracks, key = artifactKey;
             const controller = new AbortController();
             operation.current?.abort();
             operation.current = controller;
             setWorking(true);
-            setMessage("Measuring and rendering each track in sequence…");
+            setMessage(level.mode === "keep" ? "Rendering and measuring each master at its own level…" : `${albumLevelSummary(level)} plus each track’s album offset, then measures each master…`);
             setRendered(null);
             const memory = reserveBrowserAudioMemory();
             cacheMemory.current = memory;
@@ -1767,27 +1787,30 @@ function AlbumView({ albumId }: { albumId: string }) {
             try {
               const expectedTotal = albumTracks.reduce((total, track) => total + (track.sourceIdentity?.frames ?? Math.ceil(track.duration * track.sampleRate)) * 6 + 44, 0);
               await ensureStorageFor(expectedTotal);
-              const prepared: { track: Track; advanced: AdvancedParams; measurement: Awaited<ReturnType<typeof measureAudio>> }[] = [];
-              const files: { id: string; title: string; blob: Blob }[] = [];
+              const files: RenderedAlbumFile[] = [];
               let totalBytes = 0;
-              for (const track of albumTracks) {
-                if (track.deepMastering?.applied) throw new Error("Detach Deep automation in the master before applying album normalization. Your applied script is preserved.");
+              for (const [index, track] of albumTracks.entries()) {
+                const step = steps.at(index);
+                if (step?.trackId !== track.id) throw new Error("The album sequence changed. Render again.");
                 const file = await getAudio(audioKey(track));
                 if (!file) throw new Error(`The source for “${track.title}” is missing. Import it again.`);
-                const { advanced, measurement } = await normalizeSimpleAudio(file, track.advanced, -14, controller.signal);
-                const expectedBytes = totalBytes + measurement.frames * 6 + 44;
+                const expectedBytes = totalBytes + (track.sourceIdentity?.frames ?? Math.ceil(track.duration * track.sampleRate)) * 6 + 44;
                 if (durable === false && expectedBytes > 128 * 1024 * 1024) throw new Error("Browser storage is unavailable and the rendered album exceeds the 128 MiB in-memory cache. Allow site storage, or render a smaller sequence.");
                 // Claim the final retained allocation before rendering; no gap while
                 // the worker result becomes its downloadable Blob.
                 memory.update(expectedBytes);
-                const blob = await serverRender(file, exportParams(advanced), 24, controller.signal);
+                // The project is read, never written: the album level lives on the album.
+                const { blob, measured } = await renderAlbumTrack(track, file, step, albumEngine, controller.signal).catch((cause: unknown) => {
+                  // In a long album the user must know which song failed.
+                  throw new Error(`“${track.title}” could not be rendered: ${cause instanceof Error ? cause.message : "the render failed."}`, { cause });
+                });
                 if (controller.signal.aborted) return;
                 if (durable !== false) {
                   const audioId = newAudioAssetId("master");
                   try {
                     await saveAudio(audioId, blob, false);
                     durable = true;
-                    stored.push({ trackId: track.id, title: track.title, audioId, bytes: blob.size });
+                    stored.push({ trackId: track.id, title: track.title, audioId, bytes: blob.size, measured });
                   } catch (cause) {
                     if (durable) throw new Error("Browser storage filled while saving album masters. Free space and render again.", { cause });
                     durable = false;
@@ -1795,32 +1818,22 @@ function AlbumView({ albumId }: { albumId: string }) {
                 }
                 if (!durable) {
                   totalBytes += blob.size;
-                  files.push({ id: track.id, title: track.title, blob });
+                  files.push({ id: track.id, title: track.title, blob, measured });
                 }
                 memory.update(totalBytes);
-                prepared.push({ track, advanced, measurement });
               }
               if (controller.signal.aborted) return;
-              for (const item of prepared) {
-                dispatch({ type: "UPDATE_TRACK", id: item.track.id, patch: {
-                  advanced: item.advanced,
-                  metrics: trackMetrics(item.measurement.afterMetrics),
-                  measurements: item.measurement.afterMetrics,
-                  measurementKind: "album-render",
-                } });
-              }
               dispatch({ type: "UPDATE_ALBUM", id: album.id, patch: { mastered: true } });
-              const key = JSON.stringify(prepared.map((item) => [item.track.id, item.track.sourceRevision, engineParams(item.advanced)]));
               if (durable) {
                 const record: SavedAlbumMasters = { key, createdAt: new Date().toISOString(), files: [...stored] };
                 await saveAlbumMasters(album.id, record);
                 stored.length = 0;
                 setSaved(record);
-                setMessage("Rendered 24-bit WAV masters are saved in this browser. Download them individually or as one ZIP. Original source files are preserved.");
+                setMessage("Rendered 24-bit WAV masters are saved in this browser. Download them individually or as one ZIP. Your projects and their sources are unchanged.");
               } else {
                 setRendered({ key, files, memory });
                 retained = true;
-                setMessage("Rendered 24-bit WAV masters are ready below. Browser storage is unavailable, so they last until settings change or you leave this page. Original source files are preserved.");
+                setMessage("Rendered 24-bit WAV masters are ready below. Browser storage is unavailable, so they last until settings change or you leave this page. Your projects and their sources are unchanged.");
               }
             } catch (error) {
               if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "The sequence could not be prepared.");
@@ -1890,11 +1903,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                       const curr = nextIds.at(index);
                       if (prev !== undefined && curr !== undefined) {
                         nextIds.splice(index - 1, 2, curr, prev);
-                        dispatch({
-                          type: "UPDATE_ALBUM",
-                          id: album.id,
-                          patch: { trackIds: nextIds },
-                        });
+                        changeSequence({ trackIds: nextIds });
                       }
                     }}
                   >
@@ -1911,11 +1920,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                       const curr = nextIds.at(index);
                       if (next !== undefined && curr !== undefined) {
                         nextIds.splice(index, 2, next, curr);
-                        dispatch({
-                          type: "UPDATE_ALBUM",
-                          id: album.id,
-                          patch: { trackIds: nextIds },
-                        });
+                        changeSequence({ trackIds: nextIds });
                       }
                     }}
                   >
@@ -1927,15 +1932,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                     disabled={working}
                     aria-label={`Remove ${track.title} from album`}
                     onClick={() => {
-                      dispatch({
-                        type: "UPDATE_ALBUM",
-                        id: album.id,
-                        patch: {
-                          trackIds: album.trackIds.filter(
-                            (id) => id !== track.id,
-                          ),
-                        },
-                      });
+                      changeSequence({ trackIds: album.trackIds.filter((id) => id !== track.id) });
                     }}
                   >
                     <Icon name="x" />
@@ -1954,11 +1951,7 @@ function AlbumView({ albumId }: { albumId: string }) {
                   key={track.id}
                   disabled={working}
                   onClick={() => {
-                    dispatch({
-                      type: "UPDATE_ALBUM",
-                      id: album.id,
-                      patch: { trackIds: [...album.trackIds, track.id] },
-                    });
+                    changeSequence({ trackIds: [...album.trackIds, track.id] });
                   }}
                 >
                   <Icon name="plus" />
@@ -1967,38 +1960,31 @@ function AlbumView({ albumId }: { albumId: string }) {
               ))}
           </div>
         </section>
-        <section className="paper-panel consistency">
+        <section className="paper-panel consistency" aria-labelledby={`${planErrorId}-level`}>
           <div className="section-heading">
             <div>
               <span className="eyebrow">Across the album</span>
-              <h2>Saved loudness measurements</h2>
+              <h2 id={`${planErrorId}-level`}>Album level</h2>
             </div>
-            <strong>Target {album.target}</strong>
+            <strong>{albumLevelSummary(level)}</strong>
           </div>
-          <div
-            className="consistency-chart"
-            role="img"
-            aria-label="Album loudness contour across sequenced tracks"
-          >
-            {albumTracks.length > 0 ? (
-              albumTracks.map((track, index) => (
-                <div key={track.id}>
-                  <span
-                    style={{
-                      height: `${String(Math.max(15, Math.min(95, 55 + (track.metrics.lufs + 18) * 8)))}%`,
-                    }}
-                  >
-                    <i>
-                      {track.measurements ? track.metrics.lufs.toFixed(1) : "Unmeasured"}
-                    </i>
-                  </span>
-                  <small>{index + 1}</small>
-                </div>
-              ))
-            ) : (
-              <p>Add tracks to see how the sequence moves.</p>
-            )}
-          </div>
+          <fieldset className="m-0 min-w-0 border-0 p-0" disabled={working}>
+            <legend className="sr-only">Album level settings</legend>
+            <ChoiceGroup label="Level" value={level.mode} className="choice-grid--pairs" options={[{ value: "keep", label: "Keep each master’s level" }, { value: "normalize", label: "Normalize to a target" }]} onChange={(mode) => { updateLevel({ ...level, mode }); }} />
+            <p className="disclosure mt-2">{level.mode === "keep"
+              ? "Each WAV matches that master’s own export. Album rendering never changes a project."
+              : "Each track is rendered to the target plus its album offset. Offsets and target are saved on this album, not in the projects."}</p>
+            {level.mode === "normalize" && <>
+              <ChoiceGroup label="Target loudness" value={level.targetLufs} options={ALBUM_TARGETS.map((value) => ({ value, label: `−${String(Math.abs(value))} LUFS` }))} onChange={(targetLufs) => { updateLevel({ ...level, targetLufs }); }} />
+              {albumTracks.map((track) => {
+                const offset = albumOffset(level, track.id), requested = level.targetLufs + offset;
+                return <SliderField key={track.id} label={track.title} ariaLabel={`${track.title} album offset`} value={offset} defaultValue={0} min={-ALBUM_OFFSET_LIMIT_DB} max={ALBUM_OFFSET_LIMIT_DB} step={0.5} unit="LU" note={`Renders at ${requested < 0 ? "−" : ""}${String(Math.abs(requested))} LUFS`} onChange={(next) => { updateLevel(withAlbumOffset(level, track.id, next)); }} />;
+              })}
+            </>}
+            {/* Mirrors the hero's blocking reason beside the controls that cause it; always mounted so changes are announced. */}
+            <p className="disclosure mt-2 font-semibold empty:mt-0" role="status">{plan.ok ? "" : plan.error}</p>
+          </fieldset>
+          {measuredMasters.length > 0 && measuredMasters.length === artifacts.length && <AlbumLevelChart masters={measuredMasters} />}
         </section>
       </div>
     </div>

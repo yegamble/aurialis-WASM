@@ -1,3 +1,4 @@
+import type { AlbumLevel } from "./album-levels";
 import type { DeepMasteringState } from "./deep-mastering";
 import type { ReleaseReport } from "./release-review";
 
@@ -213,7 +214,8 @@ export type Album = {
   id: string;
   title: string;
   artist: string;
-  target: string;
+  /** The album's own loudness choice; rendering never writes it into a project. */
+  level: AlbumLevel;
   trackIds: string[];
   mastered: boolean;
 };

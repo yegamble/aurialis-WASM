@@ -2043,8 +2043,11 @@ function AlbumView({ albumId }: { albumId: string }) {
 function ToolsView() {
   const { state } = useStore();
   const browser = useBrowserBuild();
-  const first = state.tracks[0];
-  const targetId = first?.id ?? "placeholder";
+  const chooserId = useId();
+  const [chosenId, setChosenId] = useState("");
+  // A deleted choice falls back to the newest import, as before the chooser existed.
+  const target = state.tracks.find((item) => item.id === chosenId) ?? state.tracks[0];
+  const href = (route: TrackToolRoute) => target ? trackToolHref(route, target.id) : undefined;
   return (
     <div className="page">
       <PageTitle
@@ -2052,29 +2055,51 @@ function ToolsView() {
         title="Tools"
         copy="Focused tools for your local audio projects."
       />
-      <div className="tools-grid">
+      {target ? (
+        <div className="mb-8 max-w-md">
+          <ControlGroup label="Track" htmlFor={chooserId}>
+            <div className="select-wrap">
+              <select id={chooserId} value={target.id} onChange={(event) => { setChosenId(event.target.value); }}>
+                {state.tracks.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {`${item.title || "Untitled track"} · ${formatTime(item.duration)} · ${item.format}`}
+                  </option>
+                ))}
+              </select>
+              <Icon name="chevron-down" />
+            </div>
+          </ControlGroup>
+        </div>
+      ) : (
+        <div className="mb-8 flex flex-wrap items-center gap-3">
+          <p className="disclosure">Import a track to open these tools on it.</p>
+          <Link className={buttonClassName("primary")} href="/">Import a track</Link>
+        </div>
+      )}
+      <ul className="tools-grid" aria-label={target ? `Tools for ${target.title || "Untitled track"}` : "Tools"}>
         <ToolCard
           icon="scissors"
           eyebrow="Separation"
           title="Smart stem splitter"
           copy={`${STEM_SPLIT_PITCH} ${stemSplitAvailability(browser)}`}
-          href={`/split/${targetId}`}
+          // The browser build cannot split, so the card states that instead of linking.
+          href={browser ? undefined : href("split")}
         />
         <ToolCard
           icon="refresh-cw"
           eyebrow="Direction"
           title="Reference match"
           copy="Measure your starting chain against reference audio, then review bounded EQ and optional width changes."
-          href={`/reference/${targetId}`}
+          href={href("reference")}
         />
         <ToolCard
           icon="check"
           eyebrow="Delivery"
           title="Release check"
           copy="Measure rendered loudness, peak estimates, crest factor and stereo correlation."
-          href={`/release-check/${targetId}`}
+          href={href("release-check")}
         />
-      </div>
+      </ul>
     </div>
   );
 }
@@ -2090,19 +2115,30 @@ function ToolCard({
   eyebrow: string;
   title: string;
   copy: string;
-  href: string;
+  href: string | undefined;
 }) {
-  return (
-    <Link className="tool-card" href={href}>
+  const body = (
+    <>
       <div>
         <Icon name={icon} />
       </div>
       <span className="eyebrow">{eyebrow}</span>
       <h2>{title}</h2>
       <p>{copy}</p>
-      <span className="text-link">
-        Open tool <Icon name="arrow-right" />
-      </span>
-    </Link>
+    </>
+  );
+  return (
+    <li className="min-w-0">
+      {href === undefined ? (
+        <div className="tool-card h-full">{body}</div>
+      ) : (
+        <Link className="tool-card block h-full" href={href}>
+          {body}
+          <span className="text-link">
+            Open tool <Icon name="arrow-right" />
+          </span>
+        </Link>
+      )}
+    </li>
   );
 }

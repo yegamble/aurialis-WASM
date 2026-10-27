@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StoreProvider } from "@/lib/store";
 import { stemSplitAvailability } from "@/lib/stem-split-copy";
@@ -52,5 +52,34 @@ describe("per-track tools from Master", () => {
     const tools = await screen.findByRole("navigation", { name: "Tools for Alpha mix" });
     expect(hrefs(tools)).toEqual(["/release-check/track-a", "/reference/track-a"]);
     expect(tools.textContent).toContain(stemSplitAvailability(true));
+  });
+});
+
+describe("Tools track chooser", () => {
+  it("defaults to the newest import and repoints every tool to the chosen track", async () => {
+    mount("tools", "/tools");
+    const chooser = await screen.findByRole<HTMLSelectElement>("combobox", { name: "Track" });
+    expect(within(chooser).getAllByRole("option").map((option) => option.textContent)).toEqual([expect.stringContaining("Bravo mix"), expect.stringContaining("Alpha mix")]);
+    expect(hrefs(screen.getByRole("list", { name: "Tools for Bravo mix" }))).toEqual(["/split/track-b", "/reference/track-b", "/release-check/track-b"]);
+    fireEvent.change(chooser, { target: { value: "track-a" } });
+    expect(chooser.value).toBe("track-a");
+    expect(hrefs(screen.getByRole("list", { name: "Tools for Alpha mix" }))).toEqual(["/split/track-a", "/reference/track-a", "/release-check/track-a"]);
+  });
+
+  it("keeps the Smart Split card as availability copy, not a link, in the browser build", async () => {
+    vi.stubEnv("NEXT_PUBLIC_AURIALIS_EXECUTION", "browser");
+    mount("tools", "/tools");
+    await screen.findByRole("combobox", { name: "Track" });
+    const grid = screen.getByRole("list", { name: "Tools for Bravo mix" });
+    expect(hrefs(grid)).toEqual(["/reference/track-b", "/release-check/track-b"]);
+    expect(grid.textContent).toContain(stemSplitAvailability(true));
+  });
+
+  it("asks for an import instead of linking tools to a missing track", async () => {
+    seed([]);
+    mount("tools", "/tools");
+    expect(await screen.findByRole("link", { name: "Import a track" })).toHaveProperty("pathname", "/");
+    expect(screen.queryByRole("combobox", { name: "Track" })).toBeNull();
+    expect(hrefs(screen.getByRole("list", { name: "Tools" }))).toEqual([]);
   });
 });

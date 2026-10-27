@@ -243,7 +243,7 @@ func signedDB(value float64) string {
 
 // calibrateCompressorThreshold sets the threshold that gives the target
 // average reduction on this source. Reduction falls as the threshold rises,
-// so a bracketed Illinois (modified regula falsi) search converges in a few
+// so a bracketed Illinois (modified false-position) search converges in a few
 // EQ-and-compressor renders.
 func calibrateCompressorThreshold(ctx context.Context, buf *audio.Buffer, params dsp.Params, targetDB, peakDBFS float64) (dsp.Params, error) {
 	eval := func(threshold float64) (float64, error) {

@@ -58,8 +58,11 @@ test("Deep offers one profile control and lists every changed field with predict
   await page.getByRole("button", { name: "Analyze Deep proposal", exact: true }).click();
   await expect(page.getByText("Measured proposal ready. Your applied processing has not changed.", { exact: true })).toBeVisible({ timeout: 120000 });
   const proposed = await project(page), proposal = proposed.deepMastering?.proposal; if (!proposal) throw new Error("Missing measured proposal");
-  expect(proposal.chainParams.compressor.makeupDb).toBe(0); expect(proposal.chainParams.inputGainDb).toBeLessThanOrEqual(0); expect(proposal.chainParams.limiter.ceilingDbtp).toBeLessThanOrEqual(-1);
+  // V1-09 chair ruling: the only loudness change is the one listed, measured Level match.
+  const match = proposed.deepMastering?.prediction?.levelMatch; if (!match) throw new Error("Missing Level match");
+  expect(proposal.chainParams.compressor.makeupDb).toBe(match.gainDb); expect(proposal.chainParams.inputGainDb).toBeLessThanOrEqual(0); expect(proposal.chainParams.limiter.ceilingDbtp).toBeLessThanOrEqual(-1);
   expect(proposed.deepMastering?.prediction?.revision).toBe(proposal.revision);
+  await expect(page.getByRole("group", { name: "Predicted loudness", exact: true })).toContainText("Level match " + (match.gainDb > 0 ? "+" : "") + match.gainDb.toFixed(1).replace("-", "−") + " dB (compressor makeup)");
   const expected = proposalChanges(before, proposal); expect(expected.length).toBeGreaterThan(0);
   const items = page.getByRole("list", { name: "Changed settings", exact: true }).getByRole("listitem");
   await expect(items).toHaveCount(expected.length);
@@ -68,7 +71,7 @@ test("Deep offers one profile control and lists every changed field with predict
   const lufs = decimal(/Predicted loudness(−?\d+\.\d) LUFS/u.exec(levels)?.[1]), peak = decimal(/Predicted true peak(−?\d+\.\d{2}) dBTP/u.exec(levels)?.[1]), crest = decimal(/Predicted crest(\d+\.\d) dB/u.exec(levels)?.[1]);
   expect([lufs, peak, crest].every(Number.isFinite)).toBe(true);
   const drop = proposal.beforeMetrics.integratedLufs - lufs;
-  if (drop > 1) await expect(page.getByText(/^Proposal lowers loudness by \d+\.\d LU$/u)).toBeVisible();
+  if (drop > 1) { expect(match.ceilingLimited).toBe(true); await expect(page.getByText(/^Proposal lowers loudness by \d+\.\d LU$/u)).toBeVisible(); }
   if (-drop > 1) await expect(page.getByText(/^Proposal raises loudness by \d+\.\d LU$/u)).toBeVisible();
   if (proposal.beforeMetrics.dynamicRangeDb - crest > 4) await expect(page.getByText(/^Proposal reduces crest factor by/u)).toBeVisible();
   for (const width of [320, 1440]) {

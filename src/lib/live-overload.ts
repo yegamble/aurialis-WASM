@@ -16,13 +16,17 @@ export function readPlaybackStats(context: BaseAudioContext): PlaybackStatsLike 
  * bad: 1% (10 ms per second). A 60 ms dropout per second is 6%; one 5–8 ms
  * kernel call per second is absorbed by the output buffer and adds nothing. */
 const UNDERRUN_SHARE = 0.01;
-const WINDOW_SECONDS = 0.9, STRIKES = 2;
+// Three bad seconds in a row: one host stall that straddles a second boundary
+// (measured: 41 ms then 12 ms, at load average 40) is two bad seconds and must
+// not stop playback; a sustained 60 ms-per-second dropout is bad every second.
+const WINDOW_SECONDS = 0.9, STRIKES = 3;
 
 /**
  * Judge sustained device underruns from successive playbackStats samples
  * (about one per second). The first window after (re)start is a warm-up:
- * Chromium records 12–19 underrun events while the stream starts. Two bad
- * windows in a row are an overload; one host stall is not.
+ * Chromium records 12–19 underrun events while the stream starts. Three bad
+ * windows in a row are an overload; one host stall, even across a second
+ * boundary, is not.
  */
 export function createUnderrunWatch() {
   let previous: PlaybackStatsLike | null = null, windows = 0, strikes = 0;

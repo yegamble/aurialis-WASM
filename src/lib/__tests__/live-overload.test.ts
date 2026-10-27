@@ -16,10 +16,13 @@ function run(underrunMs: number[], startupEvents = 15) {
 }
 
 describe("playbackStats underrun watch (V1-10 Round 4)", () => {
-  it("fires after two consecutive seconds over 1% underrun, after a warm-up second", () => {
-    expect(run([60, 60, 60, 60])).toEqual([3, 4]);
+  it("fires after three consecutive seconds over 1% underrun, after a warm-up second", () => {
+    expect(run([60, 60, 60, 60, 60])).toEqual([4, 5]);
     // 4 ms every quantum: the device misses most of each second.
-    expect(run([500, 500, 500])[0]).toBe(3);
+    expect(run([500, 500, 500, 500])[0]).toBe(4);
+  });
+  it("ignores one host stall that straddles a second boundary (measured 41 ms then 12 ms)", () => {
+    expect(run([0, 0, 41, 12, 0, 0, 41, 12, 0])).toEqual([]);
   });
   it("ignores startup underruns, a clean device and one isolated dropout", () => {
     expect(run([200, 0, 0, 0, 0, 0])).toEqual([]);

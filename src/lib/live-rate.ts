@@ -36,7 +36,7 @@ export function liveRateNote(status: LiveRateStatus): string | null {
   if (status.kind === "capped")
     return `Aurialis plays this ${formatRate(status.sourceRate)} source live at ${formatRate(status.liveRate)} to stay within its live CPU budget, so live A may differ slightly from the export (about 0.2 LU). Use Audition export for an exact listen; the export keeps the source's ${formatRate(status.sourceRate)}.`;
   if (status.kind === "resampled")
-    return `This device plays A at ${formatRate(status.liveRate)}, not ${status.targetRate === status.sourceRate ? "the source's " : ""}${formatRate(status.targetRate)}, so live A is resampled before processing and may differ slightly from the export. Use Audition export for an exact listen.`;
+    return `This device plays A at ${formatRate(status.liveRate)}, not ${status.targetRate === status.sourceRate ? "the source's " : ""}${formatRate(status.targetRate)}, so live A is resampled before processing and may differ slightly from the export (about 0.2 LU). Use Audition export for an exact listen.`;
   return null;
 }
 

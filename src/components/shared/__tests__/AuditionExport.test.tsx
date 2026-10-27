@@ -1,11 +1,12 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import * as engine from "@/lib/browser-engine";
+import * as jobs from "@/lib/browser-jobs";
 import { DEFAULT_DELIVERY, deliveryRequest } from "@/lib/delivery-format";
 import { exportRender } from "@/lib/engine-params";
 import { testStore } from "@/lib/__tests__/fixtures";
 import type { Track } from "@/lib/types";
-import { AuditionExport } from "../AuditionExport";
+import { AuditionExport, auditionKey } from "../AuditionExport";
 
 function base(): Track {
   const track = testStore.tracks[0];
@@ -16,6 +17,7 @@ const wav = new Blob([new Uint8Array(64)], { type: "audio/wav" });
 const source = new Blob([new Uint8Array(44 + 96000 * 8)]);
 const urls = { create: vi.fn(() => "blob:audition"), revoke: vi.fn() };
 let pause: MockInstance<() => void>;
+let playSpy: MockInstance<() => Promise<void>>;
 
 function mount(track = base(), livePlaying = false, onStart = vi.fn()) {
   const view = render(<AuditionExport track={track} sourceBlob={source} delivery={DEFAULT_DELIVERY} livePlaying={livePlaying} onStart={onStart} />);
@@ -27,7 +29,7 @@ beforeEach(() => {
   urls.create.mockClear(); urls.revoke.mockClear();
   Object.defineProperty(URL, "createObjectURL", { configurable: true, value: urls.create });
   Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: urls.revoke });
-  vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("play")); return Promise.resolve(); });
+  playSpy = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("play")); return Promise.resolve(); });
   pause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("pause")); });
   vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
 });
@@ -81,6 +83,46 @@ describe("Audition export (V1-10 owner ruling)", () => {
     expect(await screen.findByText("Audition render canceled.")).toBeTruthy();
     expect(urls.create).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Audition export" })).toBeTruthy();
+  });
+
+  /** A render the test completes by hand, after it has changed things. */
+  function heldRender() {
+    let finish: (() => void) | undefined;
+    vi.spyOn(engine, "renderDelivery").mockImplementation(() => new Promise((resolve) => { finish = () => { resolve({ blob: wav, truePeakDbtp: -1.2 }); }; }));
+    return async () => { await act(async () => { finish?.(); await Promise.resolve(); await Promise.resolve(); }); };
+  }
+  it("charges memory for the file once it exists and hands it to Export", async () => {
+    const reserve = vi.spyOn(jobs, "reserveBrowserAudioMemory");
+    const complete = heldRender();
+    const onHeld = vi.fn();
+    render(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} livePlaying={false} onStart={vi.fn()} onHeld={onHeld} />);
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    expect(reserve).not.toHaveBeenCalled();
+    await complete();
+    expect(reserve).toHaveBeenCalledExactlyOnceWith(wav.size);
+    expect(onHeld).toHaveBeenLastCalledWith({ key: auditionKey(base(), DEFAULT_DELIVERY), blob: wav, truePeakDbtp: -1.2 });
+  });
+  it("an edit during the render leaves the result stale: it neither plays nor pauses live (R-1)", async () => {
+    const complete = heldRender();
+    const view = mount();
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    const edited = { ...base(), advanced: { ...base().advanced, input: 3 } };
+    view.rerender(<AuditionExport track={edited} sourceBlob={source} delivery={DEFAULT_DELIVERY} livePlaying={false} onStart={view.onStart} />);
+    await complete();
+    expect(screen.getByText("Settings changed after this audition was rendered, so it no longer matches the export. Re-render to hear the current export.")).toBeTruthy();
+    expect(playSpy).not.toHaveBeenCalled();
+    expect(view.onStart).not.toHaveBeenCalled();
+  });
+  it("live Play during the render keeps the transport: the audition waits, ready (R-1)", async () => {
+    const complete = heldRender();
+    const view = mount();
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    view.rerender(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} livePlaying onStart={view.onStart} />);
+    await complete();
+    expect(screen.getByText("Ready: the exact export file (96 kHz (source) · 24-bit PCM · TPDF dither).")).toBeTruthy();
+    expect(playSpy).not.toHaveBeenCalled();
+    expect(view.onStart).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Play audition" })).toBeTruthy();
   });
 
   it("pauses when live playback starts and revokes its Blob URL on unmount", async () => {

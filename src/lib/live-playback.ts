@@ -442,7 +442,7 @@ export function createLivePlayback(
     audio = context;
     // A device switch or a context interruption stalls callbacks that are not
     // this graph's load: restart the worklet's deadline watch with a warm-up.
-    const rewatch = () => { if (audio !== context) return; underruns.reset(); worklet?.port.postMessage({ type: "rewatch" }); };
+    const rewatch = () => { if (audio !== context) return; underruns.reset(); worklet?.port.postMessage({ type: "rewatch", slackMs: watchSlackMs(context) }); };
     const devices = (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
     context.addEventListener("statechange", rewatch);
     devices?.addEventListener("devicechange", rewatch);

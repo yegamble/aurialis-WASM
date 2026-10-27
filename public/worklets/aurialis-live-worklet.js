@@ -97,8 +97,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     // Fallback missed-deadline rule (browsers without playbackStats): the
     // output's slack in ms, or null where the main thread watches real
     // underruns instead, or the clock is too coarse to time against it.
-    const slack = config.watchSlackMs;
-    this.slackMs = typeof slack === "number" && Number.isFinite(slack) && slack > 0 && this.clockStep < slack / 2 ? slack : null;
+    this.setSlack(config.watchSlackMs);
     this.resetWatch();
     this.sum = 0;
     this.peak = 0;
@@ -130,7 +129,9 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         this.active = false;
         this.resetWatch();
       } else if (message.type === "rewatch") {
-        // The device or context changed: its first callbacks are not this graph's load.
+        // The device or context changed: its first callbacks are not this graph's
+        // load, and a new device brings its own output latency (the slack).
+        if ("slackMs" in message) this.setSlack(message.slackMs);
         this.resetWatch();
       } else if (message.type === "bind-source") {
         if (this.active || this.scheduleAttached || !this.numericSchedule || !(message.source instanceof Float64Array) || message.source.length !== 11) throw new Error("The source cannot be bound to this audio graph.");
@@ -211,6 +212,9 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     } catch (error) {
       this.fail(error);
     }
+  }
+  setSlack(slack) {
+    this.slackMs = typeof slack === "number" && Number.isFinite(slack) && slack > 0 && this.clockStep < slack / 2 ? slack : null;
   }
   resetWatch() {
     this.watchWall = null; this.watchFrame = 0; this.watchKernel = 0; this.watchMisses = 0; this.watchWindows = 0; this.watchStrikes = 0; this.watchLastStart = null;

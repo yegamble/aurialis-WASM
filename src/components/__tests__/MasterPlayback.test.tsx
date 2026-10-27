@@ -260,7 +260,7 @@ describe("master live playback lifecycle", () => {
     expect(screen.queryByText(/resampled/u)).toBeNull();
     expect(screen.getByText("Playback responds to your controls immediately and runs the export chain, so what you hear is what you export.")).toBeTruthy();
     act(() => { instance.state = { ...instance.state, liveSampleRate: 44100 }; instance.callbacks.onState?.(instance.state); });
-    expect(screen.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export. Use Audition export for an exact listen.")).toBeTruthy();
+    expect(screen.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export (about 0.2 LU). Use Audition export for an exact listen.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Audition export" })).toBeTruthy();
     vi.spyOn(engine, "normalizeSimpleAudio").mockImplementation((_blob, advanced) => Promise.resolve({ advanced, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } }));
     fireEvent.click(screen.getByRole("tab", { name: "simple" }));
@@ -294,6 +294,40 @@ describe("master live playback lifecycle", () => {
     expect(screen.getByText(note)).toBeTruthy();
     expect(screen.queryByText(/This device plays/u)).toBeNull();
     expect(screen.queryByText(/what you hear is what you export/u)).toBeNull();
+  }, 30000);
+
+  it("Export hands over the held audition file, and the play/pause key drives the audition (V1-10 S-3, S-4)", async () => {
+    localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1).map((track) => ({ ...track, sampleRate: 96000 })) }));
+    mocks.getAudio.mockResolvedValue(canonicalWAV({ ...pcm, sampleRate: 96000 }));
+    const originals = (["createObjectURL", "revokeObjectURL"] as const).map((key) => [key, Object.getOwnPropertyDescriptor(URL, key)] as const);
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: () => "blob:held" });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: () => undefined });
+    onTestFinished(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(URL, key, descriptor); else Reflect.deleteProperty(URL, key); }
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("play")); return Promise.resolve(); });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("pause")); });
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    const rendered = canonicalWAV({ ...pcm, sampleRate: 96000 });
+    const delivery = vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: rendered, truePeakDbtp: -1.1 });
+    mount(); await ready();
+    const instance = latest();
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    await screen.findByRole("button", { name: "Pause audition" });
+    expect(instance.controller.pause).toHaveBeenCalled();
+    // The page's play/pause key pauses the audition, not live, and resumes it.
+    fireEvent.keyDown(document.body, { key: " ", code: "Space" });
+    expect(screen.getByRole("button", { name: "Play audition" })).toBeTruthy();
+    fireEvent.keyDown(document.body, { key: " ", code: "Space" });
+    expect(await screen.findByRole("button", { name: "Pause audition" })).toBeTruthy();
+    expect(instance.controller.play).not.toHaveBeenCalled();
+    // Export downloads the same held file instead of rendering it again.
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));
+    await within(screen.getByRole("dialog")).findByText(/^Exported 24-bit PCM WAV/u);
+    expect(delivery).toHaveBeenCalledOnce();
   }, 30000);
 
   it("lowers a saved ceiling above −1 dBTP with a visible, dismissible note", async () => {

@@ -272,7 +272,7 @@ test("a rejected source rate falls back to the device rate with a visible resamp
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
   expect(await outputEnergyRate(page)).toBe(44100);
-  await expect(page.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export. Use Audition export for an exact listen.", { exact: true })).toBeVisible();
+  await expect(page.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export (about 0.2 LU). Use Audition export for an exact listen.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Audition export", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Pause", exact: true }).click();
 });
@@ -342,6 +342,17 @@ test("load outside the kernel past real time (a burner spinning 2–3 ms of each
   test.setTimeout(150_000);
   await burn(page, -3);
   await playHeaviest(page, "live-burner-hot.wav");
+  await expect(page.getByText(OVERLOAD, { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
+});
+
+// S-6 (Round 5): the same marginal overload where playbackStats is missing
+// (Firefox, Safari) must be caught by the worklet's own lag and slack rules.
+test("without playbackStats, the same burner still fires the can't-keep-up message", async ({ page }) => {
+  test.setTimeout(150_000);
+  await page.addInitScript(() => { Object.defineProperty(AudioContext.prototype, "playbackStats", { configurable: true, get: () => undefined }); });
+  await burn(page, -3);
+  await playHeaviest(page, "live-burner-fallback.wav");
   await expect(page.getByText(OVERLOAD, { exact: true })).toBeVisible({ timeout: 60_000 });
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
 });

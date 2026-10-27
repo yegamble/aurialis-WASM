@@ -37,8 +37,9 @@ export async function upload96(page: Page): Promise<void> {
   await expect(page.getByText(/^Aurialis plays this 96 kHz source live at 48 kHz/u)).toBeVisible();
 }
 
-/** Audition export plays, and its Blob is byte-identical to the Export download. */
-export async function verifyAuditionMatchesExport(page: Page): Promise<{ digest: string; size: number }> {
+/** Audition export plays, and its Blob is byte-identical to the Export download.
+ * Natively Export also sends no second render: it hands over the held file. */
+export async function verifyAuditionMatchesExport(page: Page, native = false): Promise<{ digest: string; size: number }> {
   await countDecodes(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await upload96(page);
@@ -57,6 +58,8 @@ export async function verifyAuditionMatchesExport(page: Page): Promise<{ digest:
   expect(audition.decodes).toBe(0);
   await page.getByRole("button", { name: "Pause audition", exact: true }).click();
 
+  let renders = 0;
+  page.on("request", (request) => { if (request.method() === "POST" && request.url().endsWith("/api/master/render")) renders++; });
   await page.getByRole("button", { name: "Export", exact: true }).click();
   const dialog = page.getByRole("dialog");
   const pending = page.waitForEvent("download");
@@ -69,5 +72,6 @@ export async function verifyAuditionMatchesExport(page: Page): Promise<{ digest:
   expect(exported.length).toBe(44 + SECONDS * RATE * 6);
   expect(audition.size).toBe(exported.length);
   expect(audition.digest).toBe(createHash("sha256").update(exported).digest("hex"));
+  if (native) expect(renders, "Export reused the held audition file").toBe(0);
   return { digest: audition.digest, size: audition.size };
 }

@@ -21,7 +21,7 @@ import { EQBandControls, LimiterReleaseControl } from "./shared/EQBandControls";
 import { RealTransport } from "./shared/RealTransport";
 import { useLoudnessMatch } from "@/lib/use-loudness-match";
 import { ReleaseReview } from "./shared/ReleaseReview";
-import { AuditionExport } from "./shared/AuditionExport";
+import { AuditionExport, auditionKey, type AuditionHandle, type HeldAudition } from "./shared/AuditionExport";
 import { liveRateNote, liveRateStatus } from "@/lib/live-rate";
 import { OVERLOAD_MESSAGE } from "@/lib/live-overload";
 import { createLivePlayback, type LiveMeter, type LivePlaybackController, type LivePlaybackState, type LiveSpectrum } from "@/lib/live-playback";
@@ -599,6 +599,10 @@ function MasterView({ trackId }: { trackId: string }) {
   const [processing, setProcessing] = useState(false);
   const [source, setSource] = useState<StereoPCM | null>(null);
   const live = useRef<LivePlaybackController | null>(null);
+  // Audition export (capped or resampled live): its held file and its player.
+  const audition = useRef<AuditionHandle | null>(null);
+  const auditionHeld = useRef<HeldAudition | null>(null);
+  const lastPlayed = useRef<"live" | "audition">("live");
   const deepPlayback = useDeepPlayback(track, live);
   const playbackControls = useRef<ReturnType<typeof bindPlaybackControls> | null>(null);
   const { session: scrub, stopScrub, onScrub } = useTransportScrub(live, { available: () => !handoverActive.current, resume: () => { void play(); }, advance: (next) => { playbackControls.current?.update(next, true); } });
@@ -674,7 +678,7 @@ function MasterView({ trackId }: { trackId: string }) {
         onState: (next) => {
           if (!active) return;
           setPlayback(next);
-          controls?.update(next);
+          controls?.update(mediaState(controller));
           if (!next.playing) { setMeter(null); setSpectrum(null); }
         },
         onMeter: (next) => { if (active && live.current?.getState().playing) setMeter(next); },
@@ -686,11 +690,12 @@ function MasterView({ trackId }: { trackId: string }) {
       setPlayback(controller.getState());
       setLiveError("");
       controls = bindPlaybackControls(track?.title || "Untitled track", {
-        getState: controller.getState,
+        getState: () => mediaState(controller),
         available: () => active && live.current === controller && !handoverActive.current,
-        play: () => { stopScrub(false); return controller.play(); },
-        pause: () => { stopScrub(false); controller.pause(); },
-        seek: (seconds) => { stopScrub(false); controller.seek(seconds); },
+        // Media keys drive whichever player the listener last started (S-4).
+        play: () => { stopScrub(false); if (lastPlayed.current === "audition" && audition.current?.canPlay()) return audition.current.play(); lastPlayed.current = "live"; return controller.play(); },
+        pause: () => { stopScrub(false); if (audition.current?.playing()) audition.current.pause(); else controller.pause(); },
+        seek: (seconds) => { stopScrub(false); if (!audition.current?.playing()) controller.seek(seconds); },
         restart: () => { stopScrub(false); controller.seek(0); },
         forward: () => { forwardAction.current(); },
         onError: (error) => { if (active) setLiveError(error instanceof Error ? error.message : "Playback could not start."); },
@@ -717,9 +722,15 @@ function MasterView({ trackId }: { trackId: string }) {
     catch (error) { setLiveError(error instanceof Error ? error.message : "The audio settings could not be applied."); }
   }, [liveSettings, track?.deepMastering?.applied]);
 
+  /** The Media Session's view: the audition while it plays, else live playback. */
+  function mediaState(controller: LivePlaybackController): LivePlaybackState {
+    const state = controller.getState();
+    return audition.current?.playing() ? { ...state, ...audition.current.position(), playing: true } : state;
+  }
   async function play() {
     const controller = live.current;
     if (!controller) return;
+    lastPlayed.current = "live";
     setLiveError("");
     stopScrub(false);
     try { await controller.play(); }
@@ -837,7 +848,9 @@ function MasterView({ trackId }: { trackId: string }) {
     setMessage("Rendering WAV from the imported source…");
     try {
       const { bitDepth, dither } = delivery, outputRate = deliveredRate(delivery, track.sampleRate);
-      const { blob, truePeakDbtp } = await renderDelivery(
+      // A fresh audition already holds this exact file: hand it over (S-3).
+      const auditioned = auditionHeld.current?.key === auditionKey(track, delivery) ? auditionHeld.current : null;
+      const { blob, truePeakDbtp } = auditioned ?? await renderDelivery(
         sourceBlob,
         exportRender(track),
         bitDepth,
@@ -1028,7 +1041,9 @@ function MasterView({ trackId }: { trackId: string }) {
           />
           {liveNote && <p className="disclosure" role="status">{liveNote}</p>}
           {(liveRate.kind === "capped" || liveRate.kind === "resampled") && <AuditionExport key={track.id} track={track} sourceBlob={sourceBlob} delivery={delivery}
-            livePlaying={playback?.playing ?? false} onStart={() => { stopScrub(false); live.current?.pause(); }} />}
+            livePlaying={playback?.playing ?? false} onStart={() => { lastPlayed.current = "audition"; stopScrub(false); live.current?.pause(); }}
+            onHeld={(held) => { auditionHeld.current = held; }} onHandle={(handle) => { audition.current = handle; }}
+            onPlayingChange={() => { const controller = live.current; if (controller) playbackControls.current?.update(mediaState(controller), true); }} />}
           {track.mode === "deep" && track.deepMastering && <DeepTimeline script={track.deepMastering.proposal} selectedId={deepMoveId} onSelect={selectDeepMove} playheadRatio={playheadRatio} />}
           <LiveSpectrumChart frame={spectrum} playing={playback?.playing ?? false} />
           {sourceError && <div className="flex flex-wrap items-center gap-3" role="alert">

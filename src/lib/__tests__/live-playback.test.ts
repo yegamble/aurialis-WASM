@@ -502,7 +502,7 @@ describe("per-track live audio lifecycle", () => {
     const node = nodes[0]; if (!contexts[0] || !node) throw new Error("Missing graph");
     // The worklet's fallback slack rule is off: playbackStats sees real underruns.
     expect(node.options.processorOptions.watchSlackMs).toBeNull();
-    for (let second = 0; second < 4 && !errors.mock.calls.length; second++) { stats.totalDuration += 1; stats.underrunDuration += 0.06; vi.advanceTimersByTime(1000); }
+    for (let second = 0; second < 5 && !errors.mock.calls.length; second++) { stats.totalDuration += 1; stats.underrunDuration += 0.06; vi.advanceTimersByTime(1000); }
     expect(errors).toHaveBeenCalledWith(new Error(OVERLOAD_MESSAGE));
     expect(controller.getState()).toMatchObject({ playing: false, error: OVERLOAD_MESSAGE });
     controller.dispose();
@@ -524,6 +524,8 @@ describe("per-track live audio lifecycle", () => {
     context.listeners.get("statechange")?.();
     devices.dispatchEvent(new Event("devicechange"));
     expect(node.port.postMessage.mock.calls.filter(([message]) => message.type === "rewatch")).toHaveLength(2);
+    // The new device's latency is re-read for the fallback slack rule (S-1).
+    expect(node.port.postMessage).toHaveBeenCalledWith({ type: "rewatch", slackMs: 10 });
     controller.dispose();
     expect(context.removeEventListener).toHaveBeenCalledWith("statechange", expect.any(Function));
     node.port.postMessage.mockClear();

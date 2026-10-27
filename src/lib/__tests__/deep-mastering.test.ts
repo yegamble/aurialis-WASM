@@ -59,11 +59,18 @@ describe("source-bound Deep DTO and jobs", () => {
     await expect(pending).rejects.toMatchObject({ name: "AbortError" }); expect(fetch.mock.calls[1]?.[0]).toBe("/api/jobs/deep-job-1"); expect(fetch.mock.calls[1]?.[1]).toMatchObject({ method: "DELETE" });
     const body = (fetch.mock.calls[0]?.[1] as { body: FormData }).body; expect(body.get("scriptVersion")).toBe("2.0"); expect(body.get("profile")).toBe("Warm Analog");
   });
+  it("rejects a completed proposal without its export prediction", async () => {
+    for (const prediction of [undefined, {}, { afterMetrics: { integratedLufs: -14 } }]) {
+      const fetch = vi.fn().mockResolvedValueOnce(json({ ...queued, status: "done", scriptV2: script(), prediction }, 202)).mockResolvedValueOnce(json({})); vi.stubGlobal("fetch", fetch);
+      await expect(analyzeDeep(new Blob(), "Warm Analog", identity, new AbortController().signal, vi.fn())).rejects.toThrow("script");
+    }
+  });
   it("validates the completed source identity and releases retained successful or rejected jobs", async () => {
     for (const source of [identity, { ...identity, frames: 1 }]) {
-      const fetch = vi.fn().mockResolvedValueOnce(json({ ...queued, status: "done", scriptV2: { ...script(), source } }, 202)).mockResolvedValueOnce(json({})); vi.stubGlobal("fetch", fetch);
+      const prediction = { afterMetrics: script().beforeMetrics };
+      const fetch = vi.fn().mockResolvedValueOnce(json({ ...queued, status: "done", scriptV2: { ...script(), source }, prediction }, 202)).mockResolvedValueOnce(json({})); vi.stubGlobal("fetch", fetch);
       const pending = analyzeDeep(new Blob(), "Warm Analog", identity, new AbortController().signal, vi.fn());
-      if (source === identity) expect(await pending).toEqual(script()); else await expect(pending).rejects.toThrow("script");
+      if (source === identity) expect(await pending).toEqual({ proposal: script(), prediction }); else await expect(pending).rejects.toThrow("script");
       expect(fetch.mock.calls[1]?.[1]).toMatchObject({ method: "DELETE" });
     }
   });

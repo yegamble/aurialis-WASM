@@ -85,7 +85,7 @@ type StoreAction =
   | { type: "ADD_ALBUM"; album: Album }
   | { type: "UPDATE_ALBUM"; id: string; patch: Partial<Album> }
   | { type: "DELETE_ALBUM"; id: string }
-  | { type: "SAVE_DEEP_PROPOSAL"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedProposalRevision: number | null; expectedAdvanced?: AdvancedParams; deep: Pick<DeepMasteringState, "sourceRevision" | "proposal" | "targets"> }
+  | { type: "SAVE_DEEP_PROPOSAL"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedProposalRevision: number | null; expectedAdvanced?: AdvancedParams; deep: Pick<DeepMasteringState, "sourceRevision" | "proposal" | "targets" | "prediction"> }
   | { type: "COMMIT_DEEP_APPLIED"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedAppliedRevision: number | null; expectedAdvanced: AdvancedParams; script: ScriptV2; advanced: AdvancedParams; before: DeepSettingsSnapshot }
   | { type: "DETACH_DEEP_APPLIED"; id: string; expectedSourceRevision: number; expectedAudioKey: string; expectedAppliedRevision: number; expectedAdvanced: AdvancedParams; snapshot: DeepSettingsSnapshot }
   | { type: "HYDRATE_STATE"; state: StoreState }
@@ -138,7 +138,8 @@ export function reduceStoreState(
     case "SAVE_DEEP_PROPOSAL":
       return { ...state, tracks: updateTrackInList(state.tracks, action.id, (track) => {
         if (action.deep.sourceRevision !== action.expectedSourceRevision || !deepSourceMatches(track, action.deep.proposal, action.expectedSourceRevision) || (track.sourceAudioId ?? track.id) !== action.expectedAudioKey || (track.deepMastering?.proposal.revision ?? null) !== action.expectedProposalRevision || (action.expectedAdvanced && track.advanced !== action.expectedAdvanced)) return track;
-        return { ...track, deepMastering: { ...track.deepMastering, sourceRevision: action.deep.sourceRevision, proposal: action.deep.proposal, targets: action.deep.targets }, updatedAt: new Date().toISOString() };
+        // A new analysis replaces the prediction; draft edits keep it, marked by its revision.
+        return { ...track, deepMastering: { ...track.deepMastering, sourceRevision: action.deep.sourceRevision, proposal: action.deep.proposal, targets: action.deep.targets, ...(action.deep.prediction ? { prediction: action.deep.prediction } : {}) }, updatedAt: new Date().toISOString() };
       }) };
 
     case "COMMIT_DEEP_APPLIED":

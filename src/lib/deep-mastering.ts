@@ -40,7 +40,10 @@ interface CompiledScript {
   sourceVerified: false;
 }
 export type DeepSettingsSnapshot = { advanced: AdvancedParams; profile: ProfileId; genre: string; tone: string; intensity: number; target: string; simpleCustom: boolean; shortcutUndo: ShortcutUndo };
-export interface DeepMasteringState { sourceRevision: number; proposal: ScriptV2; targets: TargetMetadata[]; applied?: ScriptV2; before?: DeepSettingsSnapshot }
+/** Levels measured by rendering a draft revision through the export algorithm. */
+export interface DeepPrediction { revision: number; afterMetrics: MeasuredAudioMetrics }
+export interface MeasuredProposal { proposal: ScriptV2; prediction: Omit<DeepPrediction, "revision"> }
+export interface DeepMasteringState { sourceRevision: number; proposal: ScriptV2; targets: TargetMetadata[]; prediction?: DeepPrediction; applied?: ScriptV2; before?: DeepSettingsSnapshot }
 
 const failure = () => new Error("Invalid or unsupported mastering script.");
 function object(value: unknown, names?: readonly string[]): Record<string, unknown> {
@@ -120,9 +123,14 @@ export function readScriptV2(value: unknown, expectedSource?: SourceIdentity): S
   return { version: "2.0", source: identity, revision: number(data.revision, 1, Number.MAX_SAFE_INTEGER, true), profile: data.profile as DeepProfile, summary: text(data.summary, 4096), chainParams: params(data.chainParams), sections, moves, findings, beforeMetrics: typedShape(metricsTemplate, data.beforeMetrics) };
 }
 
-export function analyzeDeep(blob: Blob, profile: DeepProfile, identity: SourceIdentity, signal: AbortSignal, onProgress: (progress: number, stage: string) => void): Promise<ScriptV2> {
+function predictedMetrics(value: unknown): MeasuredAudioMetrics {
+  return typedShape(metricsTemplate, object(value, ["afterMetrics"]).afterMetrics);
+}
+
+/** Analyze a source; the prediction is Go's export-algorithm render of the returned proposal. */
+export function analyzeDeep(blob: Blob, profile: DeepProfile, identity: SourceIdentity, signal: AbortSignal, onProgress: (progress: number, stage: string) => void): Promise<MeasuredProposal> {
   const body = new FormData(); body.append("file", blob, "source.wav"); body.append("scriptVersion", "2.0"); body.append("profile", profile);
-  return runAudioJob("/api/analyze/deep", body, signal, onProgress, (job) => { if (job.kind !== "analyze_deep_v2") throw failure(); return readScriptV2(job.scriptV2, identity); });
+  return runAudioJob("/api/analyze/deep", body, signal, onProgress, (job) => { if (job.kind !== "analyze_deep_v2") throw failure(); return { proposal: readScriptV2(job.scriptV2, identity), prediction: { afterMetrics: predictedMetrics(job.prediction) } }; });
 }
 
 function targetMetadata(value: unknown): TargetMetadata[] {
@@ -165,10 +173,14 @@ export async function compileScript(script: ScriptV2, deviceRate: number, signal
 /** Hydration never applies a saved script; the live controller validates it before publication. */
 export function readDeepMasteringState(value: unknown, identity: SourceIdentity | undefined, sourceRevision: number): DeepMasteringState {
   if (!identity) throw failure();
-  const data = object(value); const allowed = ["sourceRevision", "proposal", "targets", "applied", "before"];
+  const data = object(value); const allowed = ["sourceRevision", "proposal", "targets", "prediction", "applied", "before"];
   if (Object.keys(data).some((key) => !allowed.includes(key)) || data.sourceRevision !== sourceRevision) throw failure();
   const proposal = readScriptV2(data.proposal, identity); const targets = targetMetadata(data.targets);
   const state: DeepMasteringState = { sourceRevision, proposal, targets };
+  if (data.prediction !== undefined) {
+    const prediction = object(data.prediction, ["revision", "afterMetrics"]);
+    state.prediction = { revision: number(prediction.revision, 1, Number.MAX_SAFE_INTEGER, true), afterMetrics: typedShape(metricsTemplate, prediction.afterMetrics) };
+  }
   if (data.applied !== undefined) state.applied = readScriptV2(data.applied, identity);
   if (data.before !== undefined) {
     const before = object(data.before, ["advanced", "profile", "genre", "tone", "intensity", "target", "simpleCustom", "shortcutUndo"]);

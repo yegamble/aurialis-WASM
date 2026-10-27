@@ -14,7 +14,7 @@ type Processor = {
 
 // This VM kernel only tests protocol/lifecycle behavior. Compiled Go signal
 // parity is covered independently by the native/WASI verification script.
-function workletFixture(initialOdd = false, abiVersion: number | null = 1, capability: "count" | "algorithm" | "latency" | "missing" | null = null, sharedEpoch = false, latency = 0) {
+function workletFixture(initialOdd = false, abiVersion: number | null = 1, capability: "count" | "algorithm" | "latency" | "missing" | null = null, sharedEpoch = false, latency = 0, clock?: () => number) {
   let Constructor: (new (options: unknown) => Processor) | undefined;
   const header = new Int32Array(new SharedArrayBuffer(8 * 4));
   const tags = new Int32Array(new SharedArrayBuffer(256 * 5 * 4));
@@ -80,6 +80,7 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
     createAurialisWasiHost: vi.fn(() => host),
     AudioWorkletProcessor: class { port = { onmessage: undefined, postMessage: vi.fn() }; },
     registerProcessor: (_name: string, value: new (options: unknown) => Processor) => { Constructor = value; },
+    ...(clock ? { Date: { now: clock } } : {}),
   };
   const code = readFileSync("public/worklets/aurialis-live-worklet.js", "utf8").replace(/^import .*;$/m, "");
   runInNewContext(code, context);
@@ -435,7 +436,7 @@ describe("direct Go worklet lifecycle", () => {
     expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "error", message: FAULT });
   });
   // Thousands of rendered quanta: allow for a loaded host.
-  describe("deadline watch (CPU overload)", { timeout: 60_000 }, () => {
+  describe("deadline watch (CPU overload)", { timeout: 120_000 }, () => {
     /** Play `seconds` of active audio with a fake wall clock: each quantum takes
      * `wallMs` of wall time, of which the kernel call takes `kernelMs`. */
     function play(f: ReturnType<typeof workletFixture>, seconds: number, wallMs: number, kernelMs: number, clock: { now: number }) {
@@ -450,39 +451,84 @@ describe("direct Go worklet lifecycle", () => {
       return { f, clock };
     }
     const quantumMs = 1000 * 128 / 48000;
-    it("fires the overload message when the audio clock keeps falling behind the wall clock", () => {
+    const fired = (f: ReturnType<typeof workletFixture>) => f.processor.port.postMessage.mock.calls.some(([message]) => (message as { message?: string }).message === OVERLOAD);
+    it("fires when load outside the kernel makes the audio clock lose 5%, with the kernel itself at 0.45", () => {
       const { f, clock } = watched();
-      play(f, 5, quantumMs * 1.2, 1, clock);
-      expect(f.processor.failed).toBe(true);
-      expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "error", message: OVERLOAD });
+      play(f, 8, quantumMs * 1.05, quantumMs * 0.45, clock);
+      expect(fired(f)).toBe(true);
       expect(f.processor.port.postMessage).not.toHaveBeenCalledWith({ type: "error", message: FAULT });
     });
     it("fires when the kernel uses more than 90% of the audio it renders, even before the clock lags", () => {
       const { f, clock } = watched();
-      play(f, 5, quantumMs, quantumMs * 0.95, clock);
-      expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "error", message: OVERLOAD });
+      play(f, 8, quantumMs, quantumMs * 0.95, clock);
+      expect(fired(f)).toBe(true);
     });
     it("fires on a short hitch every second that averages out of the lag and load", () => {
       const { f, clock } = watched();
       const quanta = 375; // one second at 48 kHz
       let index = 0;
       f.kernel.aurialis_live_process.mockImplementation(() => { clock.now += index++ % quanta === 100 ? 60 : 1; return f.processGo(); });
-      for (let block = 0; block < 5 * quanta && !f.processor.failed; block++) { f.render(); clock.now += quantumMs - 1; }
-      expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "error", message: OVERLOAD });
+      for (let block = 0; block < 8 * quanta && !f.processor.failed; block++) { f.render(); clock.now += quantumMs - 1; }
+      expect(fired(f)).toBe(true);
     });
-    it("stays quiet for a kernel within budget, one host stall, one slow call and a pause gap", () => {
+    it("stays quiet at 2% lag, after one host stall, one slow call and a pause gap", () => {
       const { f, clock } = watched();
-      play(f, 2.5, quantumMs, quantumMs * 0.5, clock);
+      play(f, 5, quantumMs * 1.02, quantumMs * 0.5, clock);
       clock.now += 900; // one stalled callback: a single late window, not two in a row
-      play(f, 2.5, quantumMs, quantumMs * 0.5, clock);
+      play(f, 5, quantumMs, quantumMs * 0.5, clock);
       play(f, 128 / 48000, 6, 6, clock); // one 6 ms kernel call: a single missed window
-      play(f, 2.5, quantumMs, quantumMs * 0.5, clock);
+      play(f, 5, quantumMs, quantumMs * 0.5, clock);
       f.message({ type: "hold" }); clock.now += 60_000;
       f.message({ type: "reset", generation: 1 });
-      play(f, 2.5, quantumMs, quantumMs * 0.5, clock);
+      play(f, 5, quantumMs, quantumMs * 0.5, clock);
       expect(f.processor.failed).toBe(false);
       expect(f.processor.port.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
     });
+    it("restarts on new settings: a module switched on mid-play is not judged on its first windows, but sustained overload still fires", () => {
+      const { f, clock } = watched();
+      play(f, 5, quantumMs, quantumMs * 0.4, clock);
+      // New settings arrive, then the chain settles over about 2 s with a few slow calls.
+      f.values[3] = 9; Atomics.store(f.controlHeader, 1, 2); Atomics.store(f.controlHeader, 0, 4);
+      for (let burst = 0; burst < 4; burst++) { play(f, 128 / 48000, 6, 6, clock); play(f, 0.45, quantumMs, quantumMs * 0.4, clock); }
+      play(f, 6, quantumMs, quantumMs * 0.4, clock);
+      expect(f.processor.failed).toBe(false);
+      play(f, 8, quantumMs, quantumMs * 0.95, clock);
+      expect(fired(f)).toBe(true);
+    });
+    it("rewatches after a device or context change instead of counting its gap", () => {
+      const { f, clock } = watched();
+      play(f, 3, quantumMs, quantumMs * 0.4, clock);
+      play(f, 2, quantumMs * 1.2, quantumMs * 0.4, clock); // the device change: one late window
+      f.message({ type: "rewatch" });
+      play(f, 1.5, quantumMs * 1.2, quantumMs * 0.4, clock); // its tail falls in the new warm-up window
+      play(f, 6, quantumMs, quantumMs * 0.4, clock);
+      expect(f.processor.failed).toBe(false);
+    });
+    it("widens the lag bound and drops the per-call rule on a coarse 100 ms clock", () => {
+      let t = 0;
+      const coarse = () => { t += 0.01; return Math.floor(t / 100) * 100; };
+      const f = workletFixture(false, 1, null, false, 0, coarse);
+      expect(Reflect.get(f.processor, "clockStep")).toBe(100);
+      expect(Reflect.get(f.processor, "missRule")).toBe(false);
+      f.message({ type: "reset", generation: 1 });
+      f.kernel.aurialis_live_process.mockImplementation(() => f.processGo());
+      // 2.5% real lag (under the 3% bound) read through 100 ms steps: windows can read 0 or 100+ ms.
+      for (let block = 0; block < 12 * 375 && !f.processor.failed; block++) { f.render(); t += quantumMs * 1.025; }
+      expect(f.processor.port.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
+    });
+  });
+  it("reports a ring overrun as the buffer fault, but not when a seek changed the generation meanwhile", () => {
+    for (const race of [false, true]) {
+      const f = workletFixture();
+      f.message({ type: "reset", generation: 1 });
+      f.load.mockImplementation((array, index) => {
+        if (array.buffer === f.header.buffer && index === 1 && f.processor.sequence >= 256) { if (race) f.header[2] = 2; return 0; }
+        return Atomics.load(array, index);
+      });
+      for (let block = 0; block < 260 && !f.processor.failed; block++) f.render();
+      const faulted = f.processor.port.postMessage.mock.calls.some(([message]) => (message as { message?: string }).message === FAULT);
+      expect(faulted, race ? "seek race" : "overrun").toBe(!race);
+    }
   });
   it("applies one static attenuate-only match gain to A or B, ramped once, without changing crest or contrast (V1-11)", () => {
     const f = workletFixture();

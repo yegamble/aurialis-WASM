@@ -197,7 +197,7 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
       await expect(table).toBeVisible()
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
       expect(overflow, `Album level panel overflowed at ${vp.width}px`).toBeLessThanOrEqual(0)
-      for (const target of await page.locator(".consistency .choice, .consistency input[type=range]").all()) {
+      for (const target of await page.locator(".consistency .choice, .consistency input[type=range], .album-delivery .choice").all()) {
         const box = await target.boundingBox()
         expect(box?.height, `album level target height at ${vp.width}px`).toBeGreaterThanOrEqual(44)
         expect(box?.width, `album level target width at ${vp.width}px`).toBeGreaterThanOrEqual(44)

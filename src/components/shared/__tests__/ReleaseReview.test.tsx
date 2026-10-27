@@ -1,14 +1,15 @@
 import "@testing-library/jest-dom/vitest";
 import { Blob as NativeBlob } from "node:buffer";
 import { webcrypto } from "node:crypto";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as browserMemory from "@/lib/browser-jobs";
 import { getAudio } from "@/lib/db";
 import { audioKey } from "@/lib/library";
 import * as reviewModule from "@/lib/release-review";
 import { collectReleaseReview, releaseBindingHash, type ReleaseReport } from "@/lib/release-review";
-import type { OutputBits, ReleasePlatform } from "@/lib/release-policy";
+import type { ReleasePlatform } from "@/lib/release-policy";
+import { CD_DELIVERY, DEFAULT_DELIVERY, deliveredFrames, deliveredRate, type DeliveryFormat } from "@/lib/delivery-format";
 import { StoreProvider, useStore, normalizeHydratedState } from "@/lib/store";
 import { testStore } from "@/lib/__tests__/fixtures";
 import type { Track } from "@/lib/types";
@@ -49,12 +50,14 @@ const metrics = { integratedLufs: -14, shortTermLufs: -14, truePeakDbtp: -3, sam
 function initial() {
   return { ...structuredClone(testStore), tracks: testStore.tracks.map((track) => ({ ...structuredClone(track), sourceIdentity: identity, sourceRevision: 4, duration: 1 / 48000 })) };
 }
-async function result(owner: Track, bits: OutputBits, platform: ReleasePlatform = "Spotify", hash = "b".repeat(64)): Promise<ReviewResult> {
+async function result(owner: Track, format: DeliveryFormat, platform: ReleasePlatform = "Spotify", hash = "b".repeat(64)): Promise<ReviewResult> {
+  const bits = format.bitDepth, frames = deliveredFrames(format, identity.sampleRate, identity.frames);
   // Opaque controller fixture only; core/native tests establish encoded PCM correctness.
-  const wav = new Blob([new Uint8Array(44 + identity.frames * 2 * bits / 8)], { type: "audio/wav" });
+  const wav = new Blob([new Uint8Array(44 + frames * 2 * bits / 8)], { type: "audio/wav" });
   const report: ReleaseReport = { version: 1, createdAt: "2026-10-23T00:00:00Z", title: owner.title, platform,
-    bindingHash: await releaseBindingHash(owner, bits, new AbortController().signal), processingHash: "c".repeat(64), scriptRevision: null,
-    source: identity, sourceRevision: 4, output: { sampleRate: identity.sampleRate, frames: identity.frames, channels: 2, bitDepth: bits, fullScaleFrames: 0,
+    bindingHash: await releaseBindingHash(owner, format, new AbortController().signal), processingHash: "c".repeat(64), scriptRevision: null,
+    source: identity, sourceRevision: 4, dither: format.dither && bits !== 32 ? "tpdf" : "none",
+    output: { sampleRate: deliveredRate(format, identity.sampleRate), frames, channels: 2, bitDepth: bits, fullScaleFrames: 0,
       leadingSilenceFrames: 0, trailingSilenceFrames: 0, silenceThresholdDbfs: -60, sha256: hash, bytes: wav.size }, metrics };
   return { report, wav, dispose: vi.fn() };
 }
@@ -108,7 +111,7 @@ beforeEach(() => {
     const owner = { update: vi.fn(memory.update), dispose: vi.fn(memory.dispose) };
     owners.push(owner); return owner;
   });
-  vi.mocked(collectReleaseReview).mockImplementation((_blob, owner, bits, platform, _signal, memory) => deliver(result(owner, bits, platform), memory));
+  vi.mocked(collectReleaseReview).mockImplementation((_blob, owner, format, platform, _signal, memory) => deliver(result(owner, format, platform), memory));
 });
 afterEach(async () => {
   cleanup(); await settleBindings(); for (const memory of owners) memory.dispose(); current = undefined; vi.useRealTimers(); vi.resetAllMocks(); vi.restoreAllMocks(); vi.unstubAllGlobals();
@@ -117,7 +120,7 @@ afterEach(async () => {
 describe("release review controller", () => {
   it("cancels immediately and rejects an old result after a successful retry", async () => {
     const old = deferred<ReviewResult>(); vi.mocked(collectReleaseReview).mockImplementationOnce((...args) => deliver(old.promise, args[5]));
-    await open(); const previous = await result(source(), 24, "Spotify", "d".repeat(64));
+    await open(); const previous = await result(source(), DEFAULT_DELIVERY, "Spotify", "d".repeat(64));
     fireEvent.click(screen.getByRole("button", { name: "Run release check" }));
     await waitFor(() => { expect(collectReleaseReview).toHaveBeenCalledTimes(1); });
     const signal = vi.mocked(collectReleaseReview).mock.calls[0]?.[4];
@@ -133,7 +136,7 @@ describe("release review controller", () => {
 
   it.each(["source", "settings"] as const)("rejects a late result after the %s changes", async (change) => {
     const held = deferred<ReviewResult>(); vi.mocked(collectReleaseReview).mockImplementationOnce((...args) => deliver(held.promise, args[5]));
-    await open(); const owner = source(), stale = await result(owner, 24);
+    await open(); const owner = source(), stale = await result(owner, DEFAULT_DELIVERY);
     fireEvent.click(screen.getByRole("button", { name: "Run release check" }));
     await waitFor(() => { expect(collectReleaseReview).toHaveBeenCalledOnce(); });
     const signal = vi.mocked(collectReleaseReview).mock.calls[0]?.[4];
@@ -153,17 +156,34 @@ describe("release review controller", () => {
 
   it("invalidates an in-flight encoding and requires a fresh result for the new bit depth", async () => {
     const held = deferred<ReviewResult>(); vi.mocked(collectReleaseReview).mockImplementationOnce((...args) => deliver(held.promise, args[5]));
-    await open(); const stale = await result(source(), 24);
+    await open(); const stale = await result(source(), DEFAULT_DELIVERY);
     fireEvent.click(screen.getByRole("button", { name: "Run release check" }));
     await waitFor(() => { expect(collectReleaseReview).toHaveBeenCalledOnce(); });
     const signal = vi.mocked(collectReleaseReview).mock.calls[0]?.[4];
-    fireEvent.change(screen.getByRole("combobox", { name: "Review encoding" }), { target: { value: "16" } });
+    fireEvent.click(within(screen.getByRole("group", { name: "Bit depth" })).getByRole("button", { name: "16-bit PCM" }));
     expect(signal?.aborted).toBe(true);
     await settleBindings();
     await act(async () => { held.resolve(stale); await Promise.resolve(); });
     expect(screen.queryByRole("region", { name: "Encoded audio review" })).not.toBeInTheDocument();
-    await run(); expect(vi.mocked(collectReleaseReview).mock.calls.at(-1)?.[2]).toBe(16);
+    await run(); expect(vi.mocked(collectReleaseReview).mock.calls.at(-1)?.[2]).toEqual({ ...DEFAULT_DELIVERY, bitDepth: 16 });
     expect(screen.getByText("48 kHz · 16-bit PCM · stereo")).toBeVisible();
+  });
+
+  it("checks a 48 kHz source at CD format through the Export delivery format and passes the format check", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: "CD" }));
+    expect(screen.getByText("Checks 48 kHz (source) · 24-bit PCM · TPDF dither, the same file Export renders at this format.")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Use CD format: 44.1 kHz, 16-bit" }));
+    expect(within(screen.getByRole("group", { name: "Sample rate" })).getByRole("button", { name: "44.1 kHz" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("button", { name: "Use CD format: 44.1 kHz, 16-bit" })).not.toBeInTheDocument();
+    await settleBindings(); await run();
+    expect(vi.mocked(collectReleaseReview).mock.calls.at(-1)?.[2]).toEqual(CD_DELIVERY);
+    expect(screen.getByText("44.1 kHz · 16-bit PCM · stereo")).toBeVisible();
+    expect(screen.getByText("Output format (Within guidance)")).toBeVisible();
+    // Dither off is a different delivered file and needs its own check.
+    fireEvent.click(within(screen.getByRole("group", { name: "Dither" })).getByRole("button", { name: "Off" }));
+    await settleBindings();
+    expect(screen.queryByRole("region", { name: "Encoded audio review" })).not.toBeInTheDocument();
   });
 
   it("offers recovery when cached audio is missing and retries without changing mastering settings", async () => {
@@ -177,7 +197,7 @@ describe("release review controller", () => {
 
   it("aborts on unmount and never saves a result delivered afterward", async () => {
     const held = deferred<ReviewResult>(); vi.mocked(collectReleaseReview).mockImplementationOnce((...args) => deliver(held.promise, args[5]));
-    const view = await open(), stale = await result(source(), 24);
+    const view = await open(), stale = await result(source(), DEFAULT_DELIVERY);
     fireEvent.click(screen.getByRole("button", { name: "Run release check" }));
     await waitFor(() => { expect(collectReleaseReview).toHaveBeenCalledOnce(); });
     const signal = vi.mocked(collectReleaseReview).mock.calls[0]?.[4];
@@ -189,7 +209,7 @@ describe("release review controller", () => {
   });
 
   it("downloads the retained Blob without another render and saves to the exact current track", async () => {
-    await open(); const owner = source(), measured = await result(owner, 24);
+    await open(); const owner = source(), measured = await result(owner, DEFAULT_DELIVERY);
     vi.mocked(collectReleaseReview).mockImplementationOnce((...args) => deliver(measured, args[5]));
     await run(); download("Download measured WAV"); download("Download measured WAV");
     expect(createObjectURL).toHaveBeenCalledTimes(2);
@@ -214,7 +234,7 @@ describe("release review controller", () => {
     if (!(encoded instanceof Blob)) throw new Error("Missing JSON download");
     const report: unknown = JSON.parse(await encoded.text());
     expect(report).toMatchObject({ measurementBasis: "decoded final encoded WAV", output: { sha256: "b".repeat(64) } });
-    const fresh = await result(source(), 24, "Spotify", "f".repeat(64));
+    const fresh = await result(source(), DEFAULT_DELIVERY, "Spotify", "f".repeat(64));
     vi.mocked(collectReleaseReview).mockImplementationOnce((...args) => deliver(fresh, args[5])); await run();
     await waitFor(() => { expect(screen.getByRole("button", { name: "Download measured WAV" })).toBeEnabled(); });
     download("Download measured WAV"); expect(createObjectURL.mock.calls.at(-1)?.[0]).toBe(fresh.wav);
@@ -250,7 +270,7 @@ describe("release review controller", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run release check" }));
     await waitFor(() => { expect(collectReleaseReview).toHaveBeenCalledTimes(2); });
     expect(owners).toHaveLength(2); expect(first.dispose).not.toHaveBeenCalled();
-    const next = await result(source(), 24, "Spotify", "f".repeat(64));
+    const next = await result(source(), DEFAULT_DELIVERY, "Spotify", "f".repeat(64));
     await act(async () => { held.resolve(next); await Promise.resolve(); });
     await waitFor(() => { expect(screen.getByText(`Encoded WAV SHA-256: ${"f".repeat(64)}`)).toBeVisible(); });
     expect(first.dispose).toHaveBeenCalledOnce(); expect(owners[1]?.dispose).not.toHaveBeenCalled();

@@ -1,4 +1,5 @@
-import type { AdvancedParams } from "./types";
+import type { ScriptV2 } from "./deep-mastering";
+import type { AdvancedParams, Track } from "./types";
 
 export function engineParams(advanced: AdvancedParams) {
   if (advanced.limiter.enabled && advanced.limiter.truePeak)
@@ -79,4 +80,10 @@ export function exportParams(advanced: AdvancedParams) {
 export function exportScript<T extends { chainParams: { limiter: object; ditherBits: number } }>(script: T): T {
   const copy = structuredClone(script);
   return { ...copy, chainParams: { ...withExportLimiter(copy.chainParams), ditherBits: 0 } };
+}
+
+/** What one master renders for delivery: its applied Deep script, else its settings. */
+export function exportRender(track: Pick<Track, "advanced" | "deepMastering">): { params: ReturnType<typeof exportParams> } | { script: ScriptV2 } {
+  const applied = track.deepMastering?.applied;
+  return applied ? { script: exportScript(applied) } : { params: exportParams(track.advanced) };
 }

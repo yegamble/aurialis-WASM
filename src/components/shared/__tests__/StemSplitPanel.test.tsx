@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { stemSplitAvailability } from "@/lib/stem-split-copy";
+import { STEM_MODEL_PLAIN_GO, stemSplitAvailability } from "@/lib/stem-split-copy";
 import { StemSplitPanel } from "../StemSplitPanel";
 
 const mocks = vi.hoisted(() => ({ download: vi.fn() }));
@@ -17,6 +17,31 @@ describe("Smart Split panel", () => {
     expect(await screen.findByText("Smart Split is turned off in this Aurialis server: it was started with the separation model disabled.")).toBeTruthy();
     expect(screen.getByText(stemSplitAvailability(false))).toBeTruthy();
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Split Song into 4 stems" }).disabled).toBe(true);
+  });
+
+  it("marks Split unavailable on a plain-Go build, with no estimate", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ available: false, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688, state: "cached", accelerated: false, backend: "portable-go" }))));
+    const { container } = render(<StemSplitPanel audioId="a" title="Song" duration={225} />);
+    expect(await screen.findByText(STEM_MODEL_PLAIN_GO)).toBeTruthy();
+    expect(container.textContent).not.toMatch(/Estimated split time/u);
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Split Song into 4 stems" }).disabled).toBe(true);
+  });
+
+  it("says a verified cached model loads on the first split and estimates this song's time", async () => {
+    const speed = { windowSeconds: 20, hopSeconds: 10, idleSecondsPerWindow: 32, busySecondsPerWindow: 173 };
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ available: true, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688, state: "cached", accelerated: true, backend: "apple-accelerate", arch: "arm64", speed }))));
+    const { container } = render(<StemSplitPanel audioId="a" title="Song" duration={225} />);
+    expect(await screen.findByText("The separation model is saved on this computer and verified. The first split loads it; nothing to download.")).toBeTruthy();
+    expect(container.textContent).not.toMatch(/downloads the 176 MB/u);
+    expect(screen.getByText(/^Estimated split time for this 3:45 song: about 13 minutes/u)).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Split Song into 4 stems" }).disabled).toBe(false);
+  });
+
+  it("leads with the busy estimate on an Intel Mac build, which was never timed", async () => {
+    const speed = { windowSeconds: 20, hopSeconds: 10, idleSecondsPerWindow: 32, busySecondsPerWindow: 173 };
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ available: true, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688, state: "cached", accelerated: true, backend: "apple-accelerate", arch: "amd64", speed }))));
+    render(<StemSplitPanel audioId="a" title="Song" duration={225} />);
+    expect(await screen.findByText(/^Estimated split time for this 3:45 song: Intel Macs have not been timed, so plan for the slow case\. At the 173 s per window/u)).toBeTruthy();
   });
 
   it("states browser-build availability once, without a model note or network request", async () => {

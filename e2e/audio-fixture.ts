@@ -1,8 +1,7 @@
 import { Buffer } from 'node:buffer';
 
 /** Independently generated exact-bin stereo signal; never uses application DSP. */
-export function fixture(frequency = 1000, seconds = 1): Buffer {
-  const rate = 48000;
+export function fixture(frequency = 1000, seconds = 1, rate = 48000): Buffer {
   const frames = rate * seconds;
   const wav = Buffer.alloc(44 + frames * 4);
   wav.write('RIFF'); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8);

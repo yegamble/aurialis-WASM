@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { albumLevelSummary, albumMastersKey, albumOffset, DEFAULT_ALBUM_LEVEL, planAlbumLevels, readAlbumLevel, renderAlbumTrack, withAlbumOffset, type AlbumLevel, type AlbumRenderEngine } from "../album-levels";
-import { exportParams, exportScript } from "../engine-params";
+import { engineParams, exportParams, exportRender, exportScript } from "../engine-params";
+import { CD_DELIVERY, DEFAULT_DELIVERY } from "../delivery-format";
 import type { ScriptV2 } from "../deep-mastering";
 import type { MeasuredAudioMetrics, Track } from "../types";
 import { normalizeHydratedState, reduceStoreState } from "../store";
@@ -21,7 +22,6 @@ function engine(): AlbumRenderEngine & { [K in keyof AlbumRenderEngine]: ReturnT
   return {
     normalize: vi.fn((_file: Blob, settings: Track["advanced"]) => Promise.resolve({ advanced: { ...structuredClone(settings), input: 4.5 } })),
     render: vi.fn(() => Promise.resolve(rendered)),
-    renderScript: vi.fn(() => Promise.resolve(rendered)),
     measure: vi.fn(() => Promise.resolve({ beforeMetrics: metrics(-15.96, -1.2), afterMetrics: metrics(-15.96, -1.2) })),
   };
 }
@@ -74,36 +74,58 @@ describe("album level plan", () => {
   });
 
   it("invalidates saved masters when the used level changes", () => {
-    const keep = albumMastersKey([first, second], DEFAULT_ALBUM_LEVEL);
-    expect(albumMastersKey([first, second], { ...DEFAULT_ALBUM_LEVEL, targetLufs: -16 })).toBe(keep);
-    const normalized = albumMastersKey([first, second], normalize());
+    const keep = albumMastersKey([first, second], DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY);
+    expect(albumMastersKey([first, second], { ...DEFAULT_ALBUM_LEVEL, targetLufs: -16 }, DEFAULT_DELIVERY)).toBe(keep);
+    const normalized = albumMastersKey([first, second], normalize(), DEFAULT_DELIVERY);
     expect(normalized).not.toBe(keep);
-    expect(albumMastersKey([first, second], normalize([{ trackId: second.id, offsetDb: 1 }]))).not.toBe(normalized);
-    expect(albumMastersKey([second, first], DEFAULT_ALBUM_LEVEL)).not.toBe(keep);
+    expect(albumMastersKey([first, second], normalize([{ trackId: second.id, offsetDb: 1 }]), DEFAULT_DELIVERY)).not.toBe(normalized);
+    expect(albumMastersKey([second, first], DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY)).not.toBe(keep);
+  });
+
+  it("invalidates saved masters when the delivery format changes, dither included", () => {
+    const keep = albumMastersKey([first, second], DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY);
+    const cd = albumMastersKey([first, second], DEFAULT_ALBUM_LEVEL, CD_DELIVERY);
+    expect(cd).not.toBe(keep);
+    expect(albumMastersKey([first, second], DEFAULT_ALBUM_LEVEL, { ...CD_DELIVERY, dither: false })).not.toBe(cd);
+    expect(albumMastersKey([first, second], normalize(), CD_DELIVERY)).not.toBe(albumMastersKey([first, second], normalize(), DEFAULT_DELIVERY));
+    // 32-bit float carries no dither, so that choice names the same masters.
+    expect(albumMastersKey([first], DEFAULT_ALBUM_LEVEL, { bitDepth: 32, sampleRate: 44100, dither: false })).toBe(albumMastersKey([first], DEFAULT_ALBUM_LEVEL, { bitDepth: 32, sampleRate: 44100, dither: true }));
+  });
+
+  it("keeps masters saved before the format was selectable current at the default format", () => {
+    // Earlier masters rendered each source rate at 24-bit with TPDF dither and keyed only the level and sequence.
+    const sequence = (requested: (track: Track) => number | "keep") => [first, second].map((track) => [track.id, track.sourceRevision, engineParams(track.advanced), requested(track)]);
+    expect(albumMastersKey([first, second], DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY)).toBe(JSON.stringify(sequence(() => "keep")));
+    const level = normalize(), plan = planAlbumLevels(level, [first, second]);
+    if (!plan.ok) throw new Error("Expected a normalize plan");
+    const requested = (track: Track) => { const step = plan.tracks.find((item) => item.trackId === track.id); return step?.mode === "normalize" ? step.requestedLufs : "keep"; };
+    expect(albumMastersKey([first, second], level, DEFAULT_DELIVERY)).toBe(JSON.stringify({ mode: "normalize", targetLufs: level.targetLufs, offsets: [0, 0], blocked: false, sequence: sequence(requested) }));
+    // Any other format still names different masters.
+    expect(albumMastersKey([first, second], DEFAULT_ALBUM_LEVEL, { ...DEFAULT_DELIVERY, dither: false })).not.toBe(albumMastersKey([first, second], DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY));
   });
 
   it("invalidates a Deep master when loading lowers its applied ceiling at the same revision", () => {
     const applied = (ceilingDbtp: number): Track => ({ ...deep, deepMastering: { sourceRevision: 0, applied: { ...script, chainParams: { limiter: { enabled: true, ceilingDbtp } } } } as NonNullable<Track["deepMastering"]> });
-    expect(albumMastersKey([first, applied(-1)], DEFAULT_ALBUM_LEVEL)).not.toBe(albumMastersKey([first, applied(-0.2)], DEFAULT_ALBUM_LEVEL));
-    expect(albumMastersKey([first, applied(-1)], DEFAULT_ALBUM_LEVEL)).toBe(albumMastersKey([first, applied(-1)], DEFAULT_ALBUM_LEVEL));
+    expect(albumMastersKey([first, applied(-1)], DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY)).not.toBe(albumMastersKey([first, applied(-0.2)], DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY));
+    expect(albumMastersKey([first, applied(-1)], DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY)).toBe(albumMastersKey([first, applied(-1)], DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY));
   });
 
   it("never lets a blocked normalize plan reuse the masters kept at each level", () => {
-    const keep = albumMastersKey([first], DEFAULT_ALBUM_LEVEL);
-    const blocked = albumMastersKey([first], { mode: "normalize", targetLufs: -9, offsets: [{ trackId: first.id, offsetDb: 5 }] });
+    const keep = albumMastersKey([first], DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY);
+    const blocked = albumMastersKey([first], { mode: "normalize", targetLufs: -9, offsets: [{ trackId: first.id, offsetDb: 5 }] }, DEFAULT_DELIVERY);
     expect(blocked).not.toBe(keep);
-    expect(albumMastersKey([first, deep], normalize())).not.toBe(albumMastersKey([first, deep], DEFAULT_ALBUM_LEVEL));
+    expect(albumMastersKey([first, deep], normalize(), DEFAULT_DELIVERY)).not.toBe(albumMastersKey([first, deep], DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY));
     // Each blocked normalize choice is its own key, never another level's.
-    expect(albumMastersKey([first], { mode: "normalize", targetLufs: -9, offsets: [{ trackId: first.id, offsetDb: 6 }] })).not.toBe(blocked);
+    expect(albumMastersKey([first], { mode: "normalize", targetLufs: -9, offsets: [{ trackId: first.id, offsetDb: 6 }] }, DEFAULT_DELIVERY)).not.toBe(blocked);
   });
 });
 
 describe("album track render", () => {
   it("keeps a master's level by rendering exactly its single-export parameters, then measures the rendered file", async () => {
     const owned = engine(), track = deepFreeze(structuredClone(first)), file = new Blob(["source"]);
-    const result = await renderAlbumTrack(track, file, { trackId: track.id, mode: "keep" }, owned);
+    const result = await renderAlbumTrack(track, file, { trackId: track.id, mode: "keep" }, DEFAULT_DELIVERY, owned);
     expect(owned.normalize).not.toHaveBeenCalled();
-    expect(owned.render).toHaveBeenCalledWith(file, exportParams(first.advanced), 24, undefined);
+    expect(owned.render).toHaveBeenCalledWith(file, exportRender(first), DEFAULT_DELIVERY, undefined);
     expect(owned.measure).toHaveBeenCalledWith(await owned.render.mock.results[0]?.value, { bypass: true }, undefined);
     expect(result.measured).toEqual({ integratedLufs: -15.96, truePeakDbtp: -1.2 });
     expect(track.advanced).toEqual(first.advanced);
@@ -111,16 +133,15 @@ describe("album track render", () => {
 
   it("keeps an applied Deep master on its script, like its single export", async () => {
     const owned = engine(), track = deepFreeze(structuredClone(deep));
-    await renderAlbumTrack(track, new Blob(["source"]), { trackId: track.id, mode: "keep" }, owned);
-    expect(owned.render).not.toHaveBeenCalled();
-    expect(owned.renderScript).toHaveBeenCalledWith(expect.any(Blob), exportScript(script), 24, undefined);
+    await renderAlbumTrack(track, new Blob(["source"]), { trackId: track.id, mode: "keep" }, CD_DELIVERY, owned);
+    expect(owned.render).toHaveBeenCalledWith(expect.any(Blob), { script: exportScript(script) }, CD_DELIVERY, undefined);
   });
 
   it("normalizes a copy of the project's settings and never writes the album level into the project", async () => {
     const owned = engine(), track = deepFreeze(structuredClone(first)), controller = new AbortController();
-    await renderAlbumTrack(track, new Blob(["source"]), { trackId: track.id, mode: "normalize", targetLufs: -14, offsetDb: -2, requestedLufs: -16 }, owned, controller.signal);
+    await renderAlbumTrack(track, new Blob(["source"]), { trackId: track.id, mode: "normalize", targetLufs: -14, offsetDb: -2, requestedLufs: -16 }, CD_DELIVERY, owned, controller.signal);
     expect(owned.normalize).toHaveBeenCalledWith(expect.any(Blob), first.advanced, -16, controller.signal);
-    expect(owned.render).toHaveBeenCalledWith(expect.any(Blob), exportParams({ ...first.advanced, input: 4.5 }), 24, controller.signal);
+    expect(owned.render).toHaveBeenCalledWith(expect.any(Blob), { params: exportParams({ ...first.advanced, input: 4.5 }) }, CD_DELIVERY, controller.signal);
     expect(track.advanced).toEqual(first.advanced);
     expect(track.advanced.input).toBe(first.advanced.input);
   });
@@ -131,8 +152,10 @@ describe("album level persistence", () => {
     const legacy = { id: "legacy", title: "Old", artist: "", target: "−14 LUFS", trackIds: [first.id], mastered: true };
     const saved = { id: "saved", title: "New", artist: "", level: { mode: "normalize", targetLufs: -16, offsets: [{ trackId: first.id, offsetDb: -1 }] }, trackIds: [first.id], mastered: false };
     const state = normalizeHydratedState({ tracks: [first], albums: [legacy, saved] });
-    expect(state?.albums[0]).toEqual({ id: "legacy", title: "Old", artist: "", level: DEFAULT_ALBUM_LEVEL, trackIds: [first.id], mastered: false });
+    expect(state?.albums[0]).toEqual({ id: "legacy", title: "Old", artist: "", level: DEFAULT_ALBUM_LEVEL, delivery: DEFAULT_DELIVERY, trackIds: [first.id], mastered: false });
     expect(state?.albums[1]?.level).toEqual(saved.level);
+    const cd = normalizeHydratedState({ tracks: [first], albums: [{ ...saved, delivery: CD_DELIVERY }, { ...saved, id: "corrupt", delivery: { bitDepth: 8 } }] });
+    expect(cd?.albums.map((album) => album.delivery)).toEqual([CD_DELIVERY, DEFAULT_DELIVERY]);
   });
 
   it("drops offsets for tracks that are no longer on the album", () => {

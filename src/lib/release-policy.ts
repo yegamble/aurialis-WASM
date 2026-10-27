@@ -20,14 +20,23 @@ export type EncodedInspection = {
 type ReleaseCheck = { name: string; reading: string; status: "pass" | "review" | "info"; guidance: string };
 const sourceRates = [44100, 48000, 88200, 96000, 176400, 192000];
 
-export function releaseChecks(platform: ReleasePlatform, metrics: MeasuredAudioMetrics, output: EncodedInspection): ReleaseCheck[] {
+/** Checks the delivered file; `sourceRate` is the stored source's rate, so an upsampled delivery can be named. */
+export function releaseChecks(platform: ReleasePlatform, metrics: MeasuredAudioMetrics, output: EncodedInspection, sourceRate: number): ReleaseCheck[] {
   const profile = releaseProfiles.find((item) => item.name === platform);
   if (!profile) throw new Error("Choose a supported delivery profile.");
   const target = "loudness" in profile ? profile.loudness : null;
-  const peakLimit = (platform === "Spotify" || platform === "SoundCloud") && metrics.integratedLufs > -14 ? -2 : -1;
+  // Spotify and SoundCloud publish −2 dBTP for loud masters. Apple Music and YouTube are
+  // lossy streaming too, so Aurialis asks for the same headroom without citing them.
+  const lossyStreaming = platform === "Spotify" || platform === "SoundCloud" || platform === "Apple Music" || platform === "YouTube";
+  const peakLimit = lossyStreaming && metrics.integratedLufs > -14 ? -2 : -1;
   const publishedPeak = target !== null;
+  // Spotify and SoundCloud ask for peaks below their figure; the −2 dBTP lossy rule borrowed
+  // for Apple Music and YouTube keeps that same strict boundary. Other limits allow equality.
+  const strictPeak = platform === "Spotify" || platform === "SoundCloud" || peakLimit === -2;
+  // Apple's Digital Masters guidance discourages upsampling, so a rate above the source needs review.
+  const upsampled = platform === "Apple Music" && output.sampleRate > sourceRate;
   const format = platform === "CD" ? output.sampleRate === 44100 && output.bitDepth === 16
-    : platform === "Apple Music" || platform === "Podcast" ? sourceRates.includes(output.sampleRate) && output.bitDepth !== 32
+    : platform === "Apple Music" || platform === "Podcast" ? sourceRates.includes(output.sampleRate) && output.bitDepth !== 32 && !upsampled
     : platform === "YouTube" ? output.sampleRate >= 48000 && output.bitDepth !== 32 : null;
   const leading = output.leadingSilenceFrames / output.sampleRate, trailing = output.trailingSilenceFrames / output.sampleRate;
   return [
@@ -36,15 +45,16 @@ export function releaseChecks(platform: ReleasePlatform, metrics: MeasuredAudioM
       guidance: target === null ? "No stereo LUFS requirement is asserted from this profile's source. Choose loudness by listening."
         : `Published working guidance: ${String(target)} LUFS${platform === "Podcast" ? " ±1 LU" : "; the ±1 LU review band is an Aurialis preference"}. No gain is applied by this check.` },
     { name: "Reconstructed peak estimate", reading: `${metrics.truePeakDbtp.toFixed(2)} dBTP`,
-      status: ((platform === "Spotify" || platform === "SoundCloud") ? metrics.truePeakDbtp < peakLimit : metrics.truePeakDbtp <= peakLimit) ? "pass" : "review",
-      guidance: `${publishedPeak ? "Published guidance" : "Aurialis working headroom"}: ${String(peakLimit)} dBTP${peakLimit === -2 ? " for a master louder than −14 LUFS" : ""}. The finite 4× FIR estimate does not certify codec or converter peaks.` },
+      status: (strictPeak ? metrics.truePeakDbtp < peakLimit : metrics.truePeakDbtp <= peakLimit) ? "pass" : "review",
+      guidance: `${publishedPeak ? "Published guidance" : "Aurialis working headroom"}: ${strictPeak ? "below " : ""}${String(peakLimit).replace("-", "−")} dBTP${peakLimit === -2 ? " for a master louder than −14 LUFS" : ""}.${peakLimit === -2 && !publishedPeak ? " Lossy streaming encodes of loud masters can overshoot the source peak; this is not a published requirement of this destination." : ""} The finite 4× FIR estimate does not certify codec or converter peaks.` },
     { name: "Encoded full-scale frames", reading: String(output.fullScaleFrames), status: output.fullScaleFrames === 0 ? "pass" : "review",
       guidance: `Sample peak ${metrics.samplePeakDbfs.toFixed(2)} dBFS. Counted from the exact encoded samples; full scale does not establish how or when clipping happened.` },
-    { name: "Output format", reading: `${String(output.sampleRate / 1000)} kHz · ${String(output.bitDepth)}-bit ${output.bitDepth === 32 ? "float" : "PCM"} · stereo`,
+    { name: "Output format", reading: `${String(output.sampleRate / 1000)} kHz · ${String(output.bitDepth)}-bit ${output.bitDepth === 32 ? "float" : "PCM"} · stereo${upsampled ? ` · upsampled from ${String(sourceRate / 1000)} kHz` : ""}`,
       status: format === null ? "info" : format ? "pass" : "review",
-      guidance: platform === "CD" ? "CD PCM requires 44.1 kHz / 16-bit stereo. This check never resamples or changes resolution."
+      guidance: platform === "CD" ? "CD PCM requires 44.1 kHz / 16-bit stereo. Choose 44.1 kHz and 16-bit PCM in Delivery format; the check then measures that converted, dithered file, the same one Export delivers."
         : platform === "YouTube" ? "The cited partner guidance recommends 48 kHz stereo / 24-bit; higher rates and 16-bit are accepted. Video/container validation remains separate."
         : format === null ? "Confirm the distributor's supported source format. No unverified format requirement is inferred."
+        : upsampled ? `Apple discourages upsampled masters: a higher rate adds no detail the ${String(sourceRate / 1000)} kHz source lacks. Choose the source rate or lower in Delivery format unless a higher-rate original master exists.`
         : "Published stereo PCM rates: 44.1, 48, 88.2, 96, 176.4 or 192 kHz, with 16 or 24 bits. Source provenance and codec approval need separate review." },
     { name: "Stereo correlation", reading: metrics.correlation.toFixed(2), status: metrics.correlation >= 0 ? "pass" : "review",
       guidance: "Aurialis diagnostic: negative correlation can indicate mono cancellation. Listen in mono; correlation alone cannot establish compatibility." },

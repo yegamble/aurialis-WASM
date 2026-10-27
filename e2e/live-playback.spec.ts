@@ -115,7 +115,8 @@ test("leave, reopen, reload and switch tracks without losing playable saved audi
   await page.getByRole("link", { name: "Library", exact: true }).first().click();
   await expect(page).toHaveURL(/\/library$/);
   const api: string[] = [];
-  await page.route("**/api/**", async (route) => { api.push(route.request().url()); await route.abort("failed"); });
+  // Every native request still fails; only the Smart Split availability probe is not source preparation.
+  await page.route("**/api/**", async (route) => { if (!route.request().url().endsWith("/api/stems/model")) api.push(route.request().url()); await route.abort("failed"); });
   await page.getByRole("link", { name: /qa return first/ }).click();
   await expect(page.getByRole("slider", { name: "Input gain", exact: true })).toHaveValue("6");
   await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");

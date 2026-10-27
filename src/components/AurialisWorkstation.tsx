@@ -9,14 +9,13 @@ import {
   processPreview,
   previewWAV,
   renderDelivery,
-  serverRender,
   serverRenderScript,
   readCanonicalWAV,
   sourcePeaks,
   type StereoPCM,
 } from "@/lib/browser-engine";
 import { reserveBrowserAudioMemory } from "@/lib/browser-jobs";
-import { exportParams, exportScript } from "@/lib/engine-params";
+import { exportRender } from "@/lib/engine-params";
 import { downloadLocalBlob } from "@/lib/download";
 import { clearNextPlaybackHandoff, reconcileNextPlaybackHandoff, stageNextPlaybackHandoff, takeNextPlaybackHandoff } from "@/lib/playback-handoff";
 import { bindPlaybackControls } from "@/lib/media-session";
@@ -50,13 +49,12 @@ import type {
   Album,
   AdvancedParams,
   EQBandId,
-  ExportBitDepth,
-  ExportDelivery,
-  ExportSampleRate,
   SaturationCharacter,
   Track,
 } from "@/lib/types";
-import { exportRateChoices, formatRate, unavailableRateNote } from "@/lib/export-rates";
+import { albumRateChoices, albumRateNote, exportRateChoices, formatRate, unavailableRateNote } from "@/lib/export-rates";
+import { availableDelivery, CD_DELIVERY, DEFAULT_DELIVERY, deliveredBytes, deliveredRate, deliveryRequest, deliverySummary, type DeliveryFormat } from "@/lib/delivery-format";
+import { DeliveryFormatControls } from "./shared/DeliveryFormatControls";
 import { MAX_SOURCE_FRAMES } from "@/lib/audio-limits";
 import { Icon, type IconName } from "./shared/Icon";
 import {
@@ -94,6 +92,7 @@ import { DeepTimeline } from "./shared/DeepTimeline";
 import { StemSplitPanel } from "./shared/StemSplitPanel";
 import { processingCopy, useBrowserBuild } from "@/lib/build-mode";
 import { STEM_SPLIT_PITCH, stemSplitAvailability } from "@/lib/stem-split-copy";
+import { useSplitUnavailable } from "@/lib/use-split-offer";
 import { timeConstantMs } from "@/lib/control-conventions";
 
 
@@ -590,6 +589,7 @@ function masteringSettingsKey(settings: AdvancedParams) {
 function MasterView({ trackId }: { trackId: string }) {
   const { state, dispatch } = useStore();
   const browser = useBrowserBuild();
+  const splitUnavailable = useSplitUnavailable(browser);
   const track = state.tracks.find((item) => item.id === trackId);
   // Match the unfiltered Library order; editing a project does not reorder this queue.
   const queueIndex = state.tracks.findIndex((item) => item.id === trackId);
@@ -621,10 +621,7 @@ function MasterView({ trackId }: { trackId: string }) {
   const [deepEditorOpen, setDeepEditorOpen] = useState(false);
   const selectDeepMove = useCallback((id: string) => { setDeepMoveId(id); setDeepEditorOpen(Boolean(id)); }, []);
   const closeDeepEditor = useCallback(() => { setDeepEditorOpen(false); }, []);
-  const [bitDepth, setBitDepth] = useState<ExportBitDepth>(24);
-  const [exportRate, setExportRate] = useState<ExportSampleRate | "source">("source");
-  const [dither, setDither] = useState(true);
-  const rateNoteId = useId();
+  const [exportFormat, setExportFormat] = useState<DeliveryFormat>(DEFAULT_DELIVERY);
   const [message, setMessage] = useState("");
   const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
   const renderAbort = useRef<AbortController | null>(null);
@@ -641,7 +638,7 @@ function MasterView({ trackId }: { trackId: string }) {
   const fresh = renderedKey === settingsKey && preview !== null;
   const rateChoices = track ? exportRateChoices(track.sampleRate, source?.left.length ?? track.sourceIdentity?.frames ?? Math.round(track.duration * track.sampleRate)) : [];
   // A choice that is unavailable for this track falls back to the source rate.
-  const deliveryRate = rateChoices.some((choice) => choice.value === exportRate && choice.unavailable === undefined) ? exportRate : "source";
+  const delivery = availableDelivery(exportFormat, rateChoices);
   useEffect(() => {
     if (renderAbort.current && !renderAbort.current.signal.aborted && renderSettings.current !== settingsKey) {
       renderAbort.current.abort();
@@ -873,16 +870,12 @@ function MasterView({ trackId }: { trackId: string }) {
     renderSettings.current = settingsKey;
     setMessage("Rendering WAV from the imported source…");
     try {
-      const outputRate = deliveryRate === "source" ? track.sampleRate : deliveryRate;
-      const delivery: ExportDelivery = {
-        ...(deliveryRate !== "source" ? { sampleRate: deliveryRate } : {}),
-        ...(bitDepth !== 32 && !dither ? { dither: "none" as const } : {}),
-      };
+      const { bitDepth, dither } = delivery, outputRate = deliveredRate(delivery, track.sampleRate);
       const { blob, truePeakDbtp } = await renderDelivery(
         sourceBlob,
-        track.deepMastering?.applied ? { script: exportScript(track.deepMastering.applied) } : { params: exportParams(track.advanced) },
+        exportRender(track),
         bitDepth,
-        delivery,
+        deliveryRequest(delivery),
         controller.signal,
       );
       if (controller.signal.aborted || renderAbort.current !== controller) return;
@@ -977,8 +970,8 @@ function MasterView({ trackId }: { trackId: string }) {
         <nav className="col-span-full flex basis-full flex-wrap items-center gap-2" aria-label={`Tools for ${track.title || "Untitled track"}`}>
           <Link className={buttonClassName("secondary")} href={trackToolHref("release-check", track.id)}><Icon name="check" />Release check</Link>
           <Link className={buttonClassName("secondary")} href={trackToolHref("reference", track.id)}><Icon name="refresh-cw" />Reference match</Link>
-          {browser
-            ? <p className="disclosure basis-full">{stemSplitAvailability(true)}</p>
+          {splitUnavailable !== null
+            ? <p className="disclosure basis-full">{splitUnavailable}</p>
             : <Link className={buttonClassName("secondary")} href={trackToolHref("split", track.id)}><Icon name="scissors" />Smart split</Link>}
         </nav>
       </header>
@@ -1167,40 +1160,12 @@ function MasterView({ trackId }: { trackId: string }) {
           </>
         }
       >
-        <ChoiceGroup
-          label="Bit depth"
-          value={bitDepth}
-          options={([16, 24, 32] as const).map((depth) => ({ value: depth, label: depth === 32 ? "32-bit Float" : `${String(depth)}-bit PCM` }))}
-          onChange={setBitDepth}
+        <DeliveryFormatControls
+          value={delivery}
+          rateChoices={rateChoices}
+          rateNote={unavailableRateNote(rateChoices, track.sampleRate)}
+          onChange={setExportFormat}
         />
-        <ChoiceGroup
-          label="Sample rate"
-          className="choice-grid--pairs"
-          value={deliveryRate}
-          options={rateChoices.map((choice) => ({
-            value: choice.value,
-            label: choice.value === "source" ? `${formatRate(choice.hz)} (source)` : formatRate(choice.hz),
-            // An unlisted source rate sits on its own row above the even set.
-            wide: choice.value === "source" && rateChoices.length % 2 === 1,
-            disabled: choice.unavailable !== undefined,
-            ...(choice.unavailable ? { describedBy: rateNoteId } : {}),
-          }))}
-          onChange={setExportRate}
-        />
-        {unavailableRateNote(rateChoices, track.sampleRate) && (
-          <p id={rateNoteId} className="disclosure">
-            {unavailableRateNote(rateChoices, track.sampleRate)}
-          </p>
-        )}
-        {bitDepth !== 32 && (
-          <ChoiceGroup
-            label="Dither"
-            className="choice-grid--pairs"
-            value={dither}
-            options={[{ value: true, label: "TPDF" }, { value: false, label: "Off" }]}
-            onChange={setDither}
-          />
-        )}
         <p className="disclosure">
           Source sample rate: {formatRate(track.sampleRate)}. The source rate
           keeps every frame. A converted rate keeps the duration, so the frame
@@ -1586,7 +1551,7 @@ function SplitView({ trackId }: { trackId: string }) {
         action={<Link className={buttonClassName("secondary")} href={track ? `/master/${track.id}` : "/"}>
           {track ? "Back to master" : "Import a track"}
         </Link>} />
-      <StemSplitPanel key={track?.id ?? "none"} audioId={track ? audioKey(track) : null} title={track?.title ?? "track"} />
+      <StemSplitPanel key={track?.id ?? "none"} audioId={track ? audioKey(track) : null} title={track?.title ?? "track"} duration={track?.duration ?? 0} />
     </div>
   );
 }
@@ -1599,6 +1564,7 @@ function AlbumsView() {
       title: `Untitled sequence ${String(state.albums.length + 1)}`,
       artist: "",
       level: DEFAULT_ALBUM_LEVEL,
+      delivery: DEFAULT_DELIVERY,
       trackIds: [],
       mastered: false,
     };
@@ -1660,8 +1626,8 @@ type RenderedAlbumFile = { id: string; title: string; blob: Blob; measured: Albu
 // Resolved at call time, so the engine binding in use renders each master.
 const albumEngine: AlbumRenderEngine = {
   normalize: (file, settings, target, signal) => normalizeSimpleAudio(file, settings, target, signal),
-  render: (file, params, bitDepth, signal) => serverRender(file, params, bitDepth, signal),
-  renderScript: (file, script, bitDepth, signal) => serverRenderScript(file, script, bitDepth, signal),
+  // The same request Export sends, so a kept master is the single export at this format.
+  render: async (file, render, format, signal) => (await renderDelivery(file, render, format.bitDepth, deliveryRequest(format), signal)).blob,
   measure: (file, params, signal) => measureAudio(file, params, signal),
 };
 
@@ -1690,7 +1656,19 @@ function AlbumView({ albumId }: { albumId: string }) {
     .filter((track): track is Track => track !== undefined);
   const level = album?.level ?? DEFAULT_ALBUM_LEVEL;
   const plan = planAlbumLevels(level, albumTracks);
-  const artifactKey = albumMastersKey(albumTracks, level);
+  const sourceFrames = (track: Track) => track.sourceIdentity?.frames ?? Math.ceil(track.duration * track.sampleRate);
+  const rateChoices = albumRateChoices(albumTracks.map((track) => ({ sampleRate: track.sampleRate, frames: sourceFrames(track) })));
+  // A rate some track cannot reach renders each source rate, as Export falls back.
+  const chosen = album?.delivery ?? DEFAULT_DELIVERY, format = availableDelivery(chosen, rateChoices);
+  const sourceRates = [...new Set(albumTracks.map((track) => track.sampleRate))].sort((a, b) => a - b);
+  // Name the tracks that cannot reach the saved rate, so the fallback is never silent.
+  const unreachable = chosen.sampleRate === "source" || format.sampleRate !== "source" ? [] : albumTracks.filter((track) =>
+    availableDelivery(chosen, albumRateChoices([{ sampleRate: track.sampleRate, frames: sourceFrames(track) }])).sampleRate === "source");
+  const fallbackNote = chosen.sampleRate === "source" || unreachable.length === 0 ? ""
+    : `${unreachable.map((track) => `“${track.title}”`).join(", ")} cannot be delivered at ${formatRate(chosen.sampleRate)}, so masters render at each source rate (${deliverySummary(format)}). Remove ${unreachable.length > 1 ? "those tracks" : "that track"} or choose another sample rate.`;
+  const offerCd = sourceRates.length > 1 && !(format.sampleRate === CD_DELIVERY.sampleRate && format.bitDepth === CD_DELIVERY.bitDepth)
+    && rateChoices.some((choice) => choice.value === CD_DELIVERY.sampleRate && choice.unavailable === undefined);
+  const artifactKey = albumMastersKey(albumTracks, level, format);
   useEffect(() => {
     if (rendered && rendered.key !== artifactKey) {
       if (cacheMemory.current === rendered.memory) cacheMemory.current = null;
@@ -1727,7 +1705,7 @@ function AlbumView({ albumId }: { albumId: string }) {
   });
   // A sequence or level change outdates the last render notice, so the status
   // line can say whether saved masters still match.
-  const changeSequence = (patch: Partial<Pick<Album, "level" | "trackIds">>) => { setMessage(""); dispatch({ type: "UPDATE_ALBUM", id: album.id, patch }); };
+  const changeSequence = (patch: Partial<Pick<Album, "level" | "trackIds" | "delivery">>) => { setMessage(""); dispatch({ type: "UPDATE_ALBUM", id: album.id, patch }); };
   const updateLevel = (next: AlbumLevel) => { changeSequence({ level: next }); };
   const staleSaved = artifacts.length === 0 && saved !== undefined;
   const download = (run: () => Promise<void>) => { void run().catch((error: unknown) => { setMessage(error instanceof Error ? error.message : "The album master could not be downloaded. Try again."); }); };
@@ -1770,6 +1748,7 @@ function AlbumView({ albumId }: { albumId: string }) {
           <div className="album-meta">
             <span>{albumTracks.length} tracks</span>
             <span>{albumLevelSummary(level)}</span>
+            <span>{deliverySummary(format)}</span>
             <span>{artifacts.length > 0 ? "Masters ready to download" : "In progress"}</span>
           </div>
         </div>
@@ -1779,7 +1758,7 @@ function AlbumView({ albumId }: { albumId: string }) {
           {...(plan.ok ? {} : { "aria-describedby": planErrorId })}
           onClick={() => void (async () => {
             if (!plan.ok) return;
-            const steps = plan.tracks, key = artifactKey;
+            const steps = plan.tracks, key = artifactKey, delivery = format;
             const controller = new AbortController();
             operation.current?.abort();
             operation.current = controller;
@@ -1795,7 +1774,7 @@ function AlbumView({ albumId }: { albumId: string }) {
             let durable: boolean | undefined;
             const stored: SavedAlbumMasters["files"] = [];
             try {
-              const expectedTotal = albumTracks.reduce((total, track) => total + (track.sourceIdentity?.frames ?? Math.ceil(track.duration * track.sampleRate)) * 6 + 44, 0);
+              const expectedTotal = albumTracks.reduce((total, track) => total + deliveredBytes(delivery, track.sampleRate, sourceFrames(track)), 0);
               await ensureStorageFor(expectedTotal);
               const files: RenderedAlbumFile[] = [];
               let totalBytes = 0;
@@ -1804,13 +1783,13 @@ function AlbumView({ albumId }: { albumId: string }) {
                 if (step?.trackId !== track.id) throw new Error("The album sequence changed. Render again.");
                 const file = await getAudio(audioKey(track));
                 if (!file) throw new Error(`The source for “${track.title}” is missing. Import it again.`);
-                const expectedBytes = totalBytes + (track.sourceIdentity?.frames ?? Math.ceil(track.duration * track.sampleRate)) * 6 + 44;
+                const expectedBytes = totalBytes + deliveredBytes(delivery, track.sampleRate, sourceFrames(track));
                 if (durable === false && expectedBytes > 128 * 1024 * 1024) throw new Error("Browser storage is unavailable and the rendered album exceeds the 128 MiB in-memory cache. Allow site storage, or render a smaller sequence.");
                 // Claim the final retained allocation before rendering; no gap while
                 // the worker result becomes its downloadable Blob.
                 memory.update(expectedBytes);
                 // The project is read, never written: the album level lives on the album.
-                const { blob, measured } = await renderAlbumTrack(track, file, step, albumEngine, controller.signal).catch((cause: unknown) => {
+                const { blob, measured } = await renderAlbumTrack(track, file, step, delivery, albumEngine, controller.signal).catch((cause: unknown) => {
                   // In a long album the user must know which song failed.
                   throw new Error(`“${track.title}” could not be rendered: ${cause instanceof Error ? cause.message : "the render failed."}`, { cause });
                 });
@@ -1839,11 +1818,11 @@ function AlbumView({ albumId }: { albumId: string }) {
                 await saveAlbumMasters(album.id, record);
                 stored.length = 0;
                 setSaved(record);
-                setMessage("Rendered 24-bit WAV masters are saved in this browser. Download them individually or as one ZIP. Your projects and their sources are unchanged.");
+                setMessage(`Rendered WAV masters are saved in this browser (${deliverySummary(delivery)}). Download them individually or as one ZIP. Your projects and their sources are unchanged.`);
               } else {
                 setRendered({ key, files, memory });
                 retained = true;
-                setMessage("Rendered 24-bit WAV masters are ready below. Browser storage is unavailable, so they last until settings change or you leave this page. Your projects and their sources are unchanged.");
+                setMessage(`Rendered WAV masters are ready below (${deliverySummary(delivery)}). Browser storage is unavailable, so they last until settings change or you leave this page. Your projects and their sources are unchanged.`);
               }
             } catch (error) {
               if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "The sequence could not be prepared.");
@@ -1857,7 +1836,7 @@ function AlbumView({ albumId }: { albumId: string }) {
           {working ? "Rendering sequence…" : "Render album masters"}
         </Button>
       </section>
-      <p className="disclosure" role="status">{message || (staleSaved ? "Saved masters no longer match this sequence or its settings. Render again to replace them." : "Render a measured master for each song, then download the WAV files individually or as one ZIP.")}</p>
+      <p className="disclosure" role="status">{[fallbackNote, message || (staleSaved ? "Saved masters no longer match this sequence or its settings. Render again to replace them." : "Render a measured master for each song, then download the WAV files individually or as one ZIP.")].filter(Boolean).join(" ")}</p>
       {artifacts.length > 0 && <section className="paper-panel" aria-label="Rendered album downloads">
         <h2>Your album masters</h2>
         <Button icon={<Icon name="arrow-down-to-line" />} disabled={working} onClick={() => { download(async () => {
@@ -1996,6 +1975,22 @@ function AlbumView({ albumId }: { albumId: string }) {
           </fieldset>
           {measuredMasters.length > 0 && measuredMasters.length === artifacts.length && <AlbumLevelChart masters={measuredMasters} />}
         </section>
+        <section className="paper-panel album-delivery" aria-labelledby={`${planErrorId}-delivery`}>
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">Every master</span>
+              <h2 id={`${planErrorId}-delivery`}>Album delivery format</h2>
+            </div>
+          </div>
+          <fieldset className="m-0 min-w-0 border-0 p-0" disabled={working}>
+            <legend className="sr-only">Album delivery format settings</legend>
+            <DeliveryFormatControls value={format} rateChoices={rateChoices} rateNote={albumRateNote(rateChoices)} sourceLabel="Each source rate" onChange={(delivery) => { changeSequence({ delivery }); }} />
+            <p className="disclosure mt-2">{format.sampleRate === "source" && sourceRates.length > 1
+              ? `These sources use ${sourceRates.map(formatRate).join(" and ")}. Choose one sample rate for a uniform album.`
+              : "Each master is the file Export delivers at this format, converted and dithered once at the new rate."}</p>
+            {offerCd && <Button variant="secondary" onClick={() => { changeSequence({ delivery: CD_DELIVERY }); }}>Use CD format: 44.1 kHz, 16-bit</Button>}
+          </fieldset>
+        </section>
       </div>
     </div>
   );
@@ -2016,6 +2011,7 @@ function rememberToolsTrack(id: string) {
 function ToolsView() {
   const { state } = useStore();
   const browser = useBrowserBuild();
+  const splitUnavailable = useSplitUnavailable(browser);
   const chooserId = useId();
   const [chosenId, setChosenId] = useState("");
   // Read after mount so the static prerender and the first client render agree.
@@ -2056,9 +2052,9 @@ function ToolsView() {
           icon="scissors"
           eyebrow="Separation"
           title="Smart stem splitter"
-          copy={`${STEM_SPLIT_PITCH} ${stemSplitAvailability(browser)}`}
-          // The browser build cannot split, so the card states that instead of linking.
-          href={browser ? undefined : href("split")}
+          copy={`${STEM_SPLIT_PITCH} ${splitUnavailable ?? stemSplitAvailability(false)}`}
+          // A build or server that cannot split states why instead of linking.
+          href={splitUnavailable === null ? href("split") : undefined}
         />
         <ToolCard
           icon="refresh-cw"

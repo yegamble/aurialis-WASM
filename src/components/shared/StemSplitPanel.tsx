@@ -5,10 +5,10 @@ import { useBrowserBuild } from "@/lib/build-mode";
 import { getAudio } from "@/lib/db";
 import { downloadLocalBlob } from "@/lib/download";
 import {
-  fetchStemAudio, runStemSplit, stemDownloadName, STEM_MODEL_DISABLED, StemSplitError, stemSplitFailureKind, stemSplitFailureMessage, stemModelStatus,
+  canSplit, fetchStemAudio, runStemSplit, stemDownloadName, StemSplitError, stemSplitFailureKind, stemSplitFailureMessage, stemModelStatus,
   type SplitStem, type StemModelStatus, type StemSplit, type StemSplitFailure,
 } from "@/lib/stem-split";
-import { stemSplitAvailability } from "@/lib/stem-split-copy";
+import { stemModelNote, stemSplitAvailability, stemSplitEstimate } from "@/lib/stem-split-copy";
 import { Button } from "./Primitives";
 
 const stemLayouts = new Map<number, string[]>([
@@ -19,24 +19,9 @@ const stemLayouts = new Map<number, string[]>([
   [6, ["Vocals", "Drums", "Bass", "Guitar", "Piano", "Other"]],
 ]);
 
-function megabytes(bytes: number): string {
-  return `${String(Math.round(bytes / 1_000_000))} MB`;
-}
-
 /** The browser build's availability sentence already explains why nothing can run, so it has no model note. */
 /** How often the panel re-checks a local server that stopped answering. */
 const RECHECK_MS = 3000;
-
-function modelNote(status: StemModelStatus | null, lastFailure: StemSplitFailure | null): string {
-  if (!status) return "Checking the separation model…";
-  if (!status.reachable) return "Aurialis can't reach its local server to check the separation model. Checking again every few seconds; Split comes back when the server answers.";
-  if (!status.available) return STEM_MODEL_DISABLED;
-  if (status.downloading) return `Downloading the separation model: ${megabytes(status.downloadedBytes)} of ${megabytes(status.totalBytes)}.`;
-  if (status.ready) return "The separation model is ready.";
-  if (lastFailure === "model") return `The ${megabytes(status.totalBytes)} separation model could not be downloaded or verified. The next split retries the download.`;
-  if (lastFailure === "model_cache") return `The ${megabytes(status.totalBytes)} separation model could not be saved to or loaded from its cache folder. The next split tries again.`;
-  return `The first split downloads the ${megabytes(status.totalBytes)} separation model once.`;
-}
 
 function StemRow({ stem, title }: { stem: SplitStem; title: string }) {
   const [saving, setSaving] = useState(false);
@@ -72,7 +57,8 @@ function StemRow({ stem, title }: { stem: SplitStem; title: string }) {
   );
 }
 
-export function StemSplitPanel({ audioId, title }: { audioId: string | null; title: string }) {
+/** duration is the track length in seconds, used for the split-time estimate; 0 when unknown. */
+export function StemSplitPanel({ audioId, title, duration = 0 }: { audioId: string | null; title: string; duration?: number }) {
   const browser = useBrowserBuild();
   const operation = useRef<AbortController | null>(null);
   const [count, setCount] = useState(4);
@@ -148,7 +134,8 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
     setStage("");
   }
 
-  const available = !browser && status?.available === true;
+  const enabled = canSplit(browser, status, audioId);
+  const estimate = !browser && status?.available === true ? stemSplitEstimate(status.speed, duration, status.arch) : null;
   return (
     <section className="split-intro paper-panel" aria-label="Smart Split">
       <div>
@@ -165,11 +152,12 @@ export function StemSplitPanel({ audioId, title }: { audioId: string | null; tit
         ))}
       </div>
       <div className="stem-preview">{(stemLayouts.get(count) ?? []).map((name) => <span key={name}>{name}</span>)}</div>
-      {!browser && <p className="disclosure" role="status">{modelNote(status, lastFailure)}</p>}
+      {!browser && <p className="disclosure" role="status">{stemModelNote(status, lastFailure)}</p>}
+      {estimate && <p className="disclosure">{estimate}</p>}
       <div className="flex flex-wrap gap-2">
         {busy
           ? <Button variant="secondary" onClick={cancel}>Cancel split</Button>
-          : <Button disabled={!available || !audioId} onClick={() => { void start(); }}>{split ? "Split again" : `Split ${title} into ${String(count)} stems`}</Button>}
+          : <Button disabled={!enabled} onClick={() => { void start(); }}>{split ? "Split again" : `Split ${title} into ${String(count)} stems`}</Button>}
       </div>
       {!audioId && <p className="disclosure">Import a track to split it.</p>}
       {busy && <div className="space-y-1"><progress className="w-full" max={100} value={progress} aria-label="Smart Split progress" /><p className="text-xs text-[var(--ink-soft)]">{stage}</p></div>}

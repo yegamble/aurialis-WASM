@@ -168,10 +168,62 @@ test("Release retains native-equivalent final 16/24/32-bit WAVs and exact encode
   const advanced = await settings(page, id);
   await page.goto(`/release-check/${id}`);
   for (const bitDepth of [16, 24, 32]) {
-    await page.getByRole("combobox", { name: "Review encoding", exact: true }).selectOption(String(bitDepth));
+    await page.getByRole("group", { name: "Bit depth", exact: true }).getByRole("button", { name: bitDepth === 32 ? "32-bit Float" : `${String(bitDepth)}-bit PCM`, exact: true }).click();
     const native = await nativeRender(info, source, advanced, bitDepth);
     await reviewEncoded(page, info, native.audio, String(bitDepth));
   }
+  await assertPrivate(info, requests);
+});
+
+// V1-04: the browser build checks the same converted CD file the native engine delivers.
+test("Release checks a 48 kHz source at CD format against the native 44.1 kHz/16-bit delivered WAV with no upload", async ({ page, context }, info) => {
+  const requests = observeNetwork(context);
+  const source = fixture(997, 1), id = await upload(page, source, "private-cd-source.wav");
+  const advanced = await settings(page, id);
+  await page.goto(`/release-check/${id}`);
+  await page.getByRole("group", { name: "Delivery profile", exact: true }).getByRole("button", { name: "CD", exact: true }).click();
+  await page.getByRole("button", { name: "Use CD format: 44.1 kHz, 16-bit", exact: true }).click();
+  const native = await nativeRender(info, source, advanced, 16, undefined, false, { sampleRate: 44100 });
+  expect([native.metadata.sampleRate, native.metadata.frames]).toEqual([44100, 44100]);
+  const report = await reviewEncoded(page, info, native.audio, "cd-44100-16");
+  expect([native.audio.readUInt32LE(24), native.audio.readUInt16LE(34)]).toEqual([44100, 16]);
+  expect(report.output).toMatchObject({ sampleRate: 44100, bitDepth: 16, frames: 44100 });
+  expect(report.dither).toBe("tpdf");
+  await expect(page.getByText("Output format (Within guidance)", { exact: true })).toBeVisible();
+  await assertPrivate(info, requests);
+});
+
+test("a mixed 48 kHz / 44.1 kHz browser-local album renders every master at 44.1 kHz/16-bit, each the native single export", async ({ page, context }, info) => {
+  test.setTimeout(180_000);
+  const requests = observeNetwork(context);
+  const tracks = [{ title: "private mixed 48k", source: fixture(997, 1) }, { title: "private mixed 44k", source: fixture(1000, 1, 44100) }];
+  const singles: Buffer[] = [];
+  for (const track of tracks) {
+    const id = await upload(page, track.source, `${track.title.replaceAll(" ", "-")}.wav`);
+    singles.push((await nativeRender(info, track.source, await settings(page, id), 16, undefined, false, { sampleRate: 44100 })).audio);
+  }
+  await page.goto("/albums");
+  await page.getByRole("button", { name: "New album", exact: true }).click();
+  await page.getByRole("link", { name: /Untitled sequence 1/u }).click();
+  for (const track of tracks) await page.getByRole("button", { name: track.title, exact: true }).click();
+  const panel = page.getByRole("region", { name: "Album delivery format", exact: true });
+  await panel.getByRole("group", { name: "Sample rate", exact: true }).getByRole("button", { name: "44.1 kHz", exact: true }).click();
+  await panel.getByRole("group", { name: "Bit depth", exact: true }).getByRole("button", { name: "16-bit PCM", exact: true }).click();
+  await page.getByRole("button", { name: "Render album masters", exact: true }).click();
+  const evidence: { title: string; rate: number; bits: number; frames: number; albumLufs: number; singleLufs: number }[] = [];
+  for (const [index, track] of tracks.entries()) {
+    const ready = page.getByRole("button", { name: `Download ${track.title}`, exact: true });
+    await expect(ready).toBeVisible({ timeout: 120_000 });
+    const downloading = page.waitForEvent("download");
+    await ready.click();
+    const wav = await readFile(await (await downloading).path()), single = singles.at(index) ?? Buffer.alloc(0), pcm = decode(wav);
+    expect([wav.readUInt32LE(24), wav.readUInt16LE(34), pcm.rate, pcm.bits, pcm.left.length]).toEqual([44100, 16, 44100, 16, 44100]);
+    expect(wav).toEqual(single);
+    const [album, alone] = [await nativeLevel(info, wav, `mixed-album-${String(index + 1)}`), await nativeLevel(info, single, `mixed-single-${String(index + 1)}`)];
+    expect(Math.abs(album.integratedLufs - alone.integratedLufs)).toBeLessThanOrEqual(0.1);
+    evidence.push({ title: track.title, rate: pcm.rate, bits: pcm.bits, frames: pcm.left.length, albumLufs: album.integratedLufs, singleLufs: alone.integratedLufs });
+  }
+  await info.attach("mixed-rate-browser-album", { body: JSON.stringify(evidence, null, 2), contentType: "application/json" });
   await assertPrivate(info, requests);
 });
 

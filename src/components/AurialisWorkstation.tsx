@@ -52,7 +52,7 @@ import type {
   Track,
 } from "@/lib/types";
 import { albumRateChoices, albumRateNote, exportRateChoices, formatRate, unavailableRateNote } from "@/lib/export-rates";
-import { availableDelivery, DEFAULT_DELIVERY, deliveredBytes, deliveredRate, deliveryRequest, deliverySummary, type DeliveryFormat } from "@/lib/delivery-format";
+import { availableDelivery, CD_DELIVERY, DEFAULT_DELIVERY, deliveredBytes, deliveredRate, deliveryRequest, deliverySummary, type DeliveryFormat } from "@/lib/delivery-format";
 import { DeliveryFormatControls } from "./shared/DeliveryFormatControls";
 import { MAX_SOURCE_FRAMES } from "@/lib/audio-limits";
 import { Icon, type IconName } from "./shared/Icon";
@@ -1647,8 +1647,15 @@ function AlbumView({ albumId }: { albumId: string }) {
   const sourceFrames = (track: Track) => track.sourceIdentity?.frames ?? Math.ceil(track.duration * track.sampleRate);
   const rateChoices = albumRateChoices(albumTracks.map((track) => ({ sampleRate: track.sampleRate, frames: sourceFrames(track) })));
   // A rate some track cannot reach renders each source rate, as Export falls back.
-  const format = availableDelivery(album?.delivery ?? DEFAULT_DELIVERY, rateChoices);
+  const chosen = album?.delivery ?? DEFAULT_DELIVERY, format = availableDelivery(chosen, rateChoices);
   const sourceRates = [...new Set(albumTracks.map((track) => track.sampleRate))].sort((a, b) => a - b);
+  // Name the tracks that cannot reach the saved rate, so the fallback is never silent.
+  const unreachable = chosen.sampleRate === "source" || format.sampleRate !== "source" ? [] : albumTracks.filter((track) =>
+    availableDelivery(chosen, albumRateChoices([{ sampleRate: track.sampleRate, frames: sourceFrames(track) }])).sampleRate === "source");
+  const fallbackNote = chosen.sampleRate === "source" || unreachable.length === 0 ? ""
+    : `${unreachable.map((track) => `“${track.title}”`).join(", ")} cannot be delivered at ${formatRate(chosen.sampleRate)}, so masters render at each source rate (${deliverySummary(format)}). Remove ${unreachable.length > 1 ? "those tracks" : "that track"} or choose another sample rate.`;
+  const offerCd = sourceRates.length > 1 && !(format.sampleRate === CD_DELIVERY.sampleRate && format.bitDepth === CD_DELIVERY.bitDepth)
+    && rateChoices.some((choice) => choice.value === CD_DELIVERY.sampleRate && choice.unavailable === undefined);
   const artifactKey = albumMastersKey(albumTracks, level, format);
   useEffect(() => {
     if (rendered && rendered.key !== artifactKey) {
@@ -1817,7 +1824,7 @@ function AlbumView({ albumId }: { albumId: string }) {
           {working ? "Rendering sequence…" : "Render album masters"}
         </Button>
       </section>
-      <p className="disclosure" role="status">{message || (staleSaved ? "Saved masters no longer match this sequence or its settings. Render again to replace them." : "Render a measured master for each song, then download the WAV files individually or as one ZIP.")}</p>
+      <p className="disclosure" role="status">{[fallbackNote, message || (staleSaved ? "Saved masters no longer match this sequence or its settings. Render again to replace them." : "Render a measured master for each song, then download the WAV files individually or as one ZIP.")].filter(Boolean).join(" ")}</p>
       {artifacts.length > 0 && <section className="paper-panel" aria-label="Rendered album downloads">
         <h2>Your album masters</h2>
         <Button icon={<Icon name="arrow-down-to-line" />} disabled={working} onClick={() => { download(async () => {
@@ -1954,14 +1961,23 @@ function AlbumView({ albumId }: { albumId: string }) {
             {/* Mirrors the hero's blocking reason beside the controls that cause it; always mounted so changes are announced. */}
             <p className="disclosure mt-2 font-semibold empty:mt-0" role="status">{plan.ok ? "" : plan.error}</p>
           </fieldset>
-          <fieldset className="m-0 mt-6 min-w-0 border-0 p-0" disabled={working}>
-            <legend className="eyebrow">Delivery format</legend>
+          {measuredMasters.length > 0 && measuredMasters.length === artifacts.length && <AlbumLevelChart masters={measuredMasters} />}
+        </section>
+        <section className="paper-panel album-delivery" aria-labelledby={`${planErrorId}-delivery`}>
+          <div className="section-heading">
+            <div>
+              <span className="eyebrow">Every master</span>
+              <h2 id={`${planErrorId}-delivery`}>Album delivery format</h2>
+            </div>
+          </div>
+          <fieldset className="m-0 min-w-0 border-0 p-0" disabled={working}>
+            <legend className="sr-only">Album delivery format settings</legend>
             <DeliveryFormatControls value={format} rateChoices={rateChoices} rateNote={albumRateNote(rateChoices)} sourceLabel="Each source rate" onChange={(delivery) => { changeSequence({ delivery }); }} />
             <p className="disclosure mt-2">{format.sampleRate === "source" && sourceRates.length > 1
               ? `These sources use ${sourceRates.map(formatRate).join(" and ")}. Choose one sample rate for a uniform album.`
               : "Each master is the file Export delivers at this format, converted and dithered once at the new rate."}</p>
+            {offerCd && <Button variant="secondary" onClick={() => { changeSequence({ delivery: CD_DELIVERY }); }}>Use CD format: 44.1 kHz, 16-bit</Button>}
           </fieldset>
-          {measuredMasters.length > 0 && measuredMasters.length === artifacts.length && <AlbumLevelChart masters={measuredMasters} />}
         </section>
       </div>
     </div>

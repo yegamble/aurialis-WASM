@@ -229,10 +229,12 @@ test("a mixed 48 kHz / 44.1 kHz album renders every master at 44.1 kHz/16-bit, e
   await page.getByRole("button", { name: "New album", exact: true }).click();
   await page.getByRole("link", { name: /Untitled sequence 1/ }).click();
   for (const track of tracks) await page.getByRole("button", { name: track.title, exact: true }).click();
-  const panel = page.getByRole("region", { name: "Album level", exact: true });
+  const panel = page.getByRole("region", { name: "Album delivery format", exact: true });
   await expect(panel.getByText("These sources use 44.1 kHz and 48 kHz. Choose one sample rate for a uniform album.", { exact: true })).toBeVisible();
-  await panel.getByRole("group", { name: "Sample rate", exact: true }).getByRole("button", { name: "44.1 kHz", exact: true }).click();
-  await panel.getByRole("group", { name: "Bit depth", exact: true }).getByRole("button", { name: "16-bit PCM", exact: true }).click();
+  // Mixed source rates offer one tap to Red Book CD PCM.
+  await panel.getByRole("button", { name: "Use CD format: 44.1 kHz, 16-bit", exact: true }).click();
+  await expect(panel.getByRole("group", { name: "Sample rate", exact: true }).getByRole("button", { name: "44.1 kHz", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(panel.getByRole("group", { name: "Bit depth", exact: true }).getByRole("button", { name: "16-bit PCM", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator(".album-meta")).toContainText("44.1 kHz · 16-bit PCM · TPDF dither");
   await page.getByRole("button", { name: "Render album masters", exact: true }).click();
   const evidence: { title: string; rate: number; bits: number; frames: number; albumLufs: number; singleLufs: number; identical: boolean }[] = [];

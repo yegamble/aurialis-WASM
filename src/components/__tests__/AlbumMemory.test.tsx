@@ -231,7 +231,9 @@ it("renders a mixed-rate album at one chosen delivery format, the same request a
   tracks = [{ ...tracks[0], sampleRate: 48000 } as Track, { ...tracks[1], sampleRate: 44100, duration: 1, sourceIdentity: { pcmHash: "f".repeat(64), sampleRate: 44100, frames: 44100 } } as Track];
   seed({ mode: "keep", targetLufs: -14, offsets: [] });
   mount();
-  const panel = await screen.findByRole("region", { name: "Album level" });
+  const panel = await screen.findByRole("region", { name: "Album delivery format" });
+  // The format is its own region, never part of the album level controls.
+  expect(within(screen.getByRole("region", { name: "Album level" })).queryByRole("group", { name: "Sample rate" })).toBeNull();
   expect(within(panel).getByText("These sources use 44.1 kHz and 48 kHz. Choose one sample rate for a uniform album.")).toBeDefined();
   fireEvent.click(within(within(panel).getByRole("group", { name: "Sample rate" })).getByRole("button", { name: "44.1 kHz" }));
   fireEvent.click(within(within(panel).getByRole("group", { name: "Bit depth" })).getByRole("button", { name: "16-bit PCM" }));
@@ -246,4 +248,31 @@ it("renders a mixed-rate album at one chosen delivery format, the same request a
   // Masters rendered at one format are never offered for another.
   fireEvent.click(within(within(panel).getByRole("group", { name: "Dither" })).getByRole("button", { name: "Off" }));
   await waitFor(() => { expect(screen.queryByRole("region", { name: "Rendered album downloads" })).toBeNull(); });
+});
+
+it("offers one tap to CD format when the album mixes source rates", async () => {
+  tracks = [{ ...tracks[0], sampleRate: 48000 } as Track, { ...tracks[1], sampleRate: 44100, duration: 1, sourceIdentity: { pcmHash: "f".repeat(64), sampleRate: 44100, frames: 44100 } } as Track];
+  seed({ mode: "keep", targetLufs: -14, offsets: [] });
+  mount();
+  const panel = await screen.findByRole("region", { name: "Album delivery format" });
+  fireEvent.click(within(panel).getByRole("button", { name: "Use CD format: 44.1 kHz, 16-bit" }));
+  expect(saved().albums[0]?.delivery).toEqual(CD_DELIVERY);
+  expect(within(panel).queryByRole("button", { name: "Use CD format: 44.1 kHz, 16-bit" })).toBeNull();
+});
+
+it("hides the CD shortcut for an album at one source rate", async () => {
+  mount();
+  const panel = await screen.findByRole("region", { name: "Album delivery format" });
+  expect(within(panel).queryByRole("button", { name: "Use CD format: 44.1 kHz, 16-bit" })).toBeNull();
+});
+
+it("says in the album status when a track cannot reach the saved rate and masters fall back to each source rate", async () => {
+  // 8017 Hz has no exact polyphase ratio to 44.1 kHz, so the saved CD rate is unavailable.
+  tracks = [tracks[0] as Track, { ...tracks[1], sampleRate: 8017, duration: 1, sourceIdentity: { pcmHash: "f".repeat(64), sampleRate: 8017, frames: 8017 } } as Track];
+  seed({ mode: "keep", targetLufs: -14, offsets: [] }, CD_DELIVERY);
+  mount();
+  const status = await screen.findByText(/“Album source 2” cannot be delivered at 44\.1 kHz/u);
+  expect(status.getAttribute("role")).toBe("status");
+  expect(status.textContent).toContain("each source rate");
+  expect(saved().albums[0]?.delivery).toEqual(CD_DELIVERY);
 });

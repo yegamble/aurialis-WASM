@@ -1,4 +1,5 @@
 import type { AlbumLevel } from "./album-levels";
+import type { DeliveryFormat } from "./delivery-format";
 import type { DeepMasteringState } from "./deep-mastering";
 import type { ReleaseReport } from "./release-review";
 
@@ -216,6 +217,8 @@ export type Album = {
   artist: string;
   /** The album's own loudness choice; rendering never writes it into a project. */
   level: AlbumLevel;
+  /** Bit depth, sample rate and dither of every rendered master; one rate makes a mixed-rate album uniform. */
+  delivery: DeliveryFormat;
   trackIds: string[];
   mastered: boolean;
 };

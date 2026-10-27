@@ -18,6 +18,7 @@ import { restoredSimpleDirection, type SimpleChange } from "./simple-directions"
 import { hasAppliedDeep } from "./reference-matching";
 import { readReleaseReport } from "./release-review";
 import { pruneAlbumOffsets, readAlbumLevel } from "./album-levels";
+import { readDeliveryFormat } from "./delivery-format";
 import { deepSourceMatches, loweredDeepCeilings, readDeepMasteringState, type DeepMasteringState, type DeepSettingsSnapshot, type ScriptV2 } from "./deep-mastering";
 import type {
   Album,
@@ -478,7 +479,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
         multiband?: Omit<Partial<MultibandParams>, "bands"> & { bands?: Partial<MultibandBandParams>[] };
       };
     })[];
-    albums?: (Omit<Album, "level"> & { level?: unknown; target?: unknown })[];
+    albums?: (Omit<Album, "level" | "delivery"> & { level?: unknown; delivery?: unknown; target?: unknown })[];
     stems?: unknown;
   };
   if (!Array.isArray(candidate.tracks)) return null;
@@ -542,7 +543,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
     tracks,
     albums: Array.isArray(candidate.albums) ? candidate.albums.map(({ target: _legacyTarget, ...album }) => {
       const trackIds = album.trackIds.filter((id) => tracks.some((track) => track.id === id));
-      return { ...album, level: pruneAlbumOffsets(readAlbumLevel(album.level), trackIds), mastered: false, trackIds };
+      return { ...album, level: pruneAlbumOffsets(readAlbumLevel(album.level), trackIds), delivery: readDeliveryFormat(album.delivery), mastered: false, trackIds };
     }) : [],
     stems: [],
   };

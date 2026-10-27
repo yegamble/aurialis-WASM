@@ -17,6 +17,9 @@ async function download(page: Page, label: string): Promise<Buffer> {
   const path = await (await pending).path(); if (!path) throw new Error("Missing downloaded artifact"); return readFile(path);
 }
 async function report(page: Page): Promise<ReleaseReport> { return JSON.parse((await download(page, "Download JSON report")).toString()) as ReleaseReport; }
+async function chooseBits(page: Page, bits: number) {
+  await page.getByRole("group", { name: "Bit depth", exact: true }).getByRole("button", { name: bits === 32 ? "32-bit Float" : `${String(bits)}-bit PCM`, exact: true }).click();
+}
 async function run(page: Page) {
   await page.getByRole("button", { name: "Run release check", exact: true }).click();
   await expect(page.getByRole("region", { name: "Encoded audio review", exact: true })).toBeVisible({ timeout: 30_000 });
@@ -28,7 +31,7 @@ test("16/24/32-bit release reviews measure, hash and repeatedly download the sam
   await page.goto(`/release-check/${id}`);
   let audioRequests = 0; page.on("request", (item) => { if (item.method() === "POST" && item.url().endsWith("/api/master/render")) audioRequests++; });
   for (const bits of [16, 24, 32]) {
-    await page.getByRole("combobox", { name: "Review encoding", exact: true }).selectOption(String(bits)); await run(page);
+    await chooseBits(page, bits); await run(page);
     const beforeDownloads = audioRequests, receipt = await report(page), wav = await download(page, "Download measured WAV");
     expect(await download(page, "Download measured WAV")).toEqual(wav); expect(audioRequests).toBe(beforeDownloads);
     const pcm = decode(wav); expect(pcm.bits).toBe(bits); expect(pcm.rate).toBe(48000); expect(pcm.left).toHaveLength(48000);
@@ -64,7 +67,7 @@ test("saved release receipts survive reload, invalidate on edits and recover vis
   await expect.poll(async () => (await project(page)).releaseReview?.output.sha256).toBe(original.output.sha256);
   await page.reload(); await expect(page.getByRole("region", { name: "Encoded audio review", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Download measured WAV", exact: true })).toBeDisabled(); expect((await report(page)).output).toEqual(original.output);
-  await page.getByRole("combobox", { name: "Review encoding", exact: true }).selectOption("16"); await expect(page.getByRole("region", { name: "Encoded audio review", exact: true })).toHaveCount(0);
+  await chooseBits(page, 16); await expect(page.getByRole("region", { name: "Encoded audio review", exact: true })).toHaveCount(0);
   await page.goto(`/master/${id}`); await page.getByRole("slider", { name: "Input gain", exact: true }).fill("6"); await page.goto(`/release-check/${id}`);
   await expect(page.getByRole("region", { name: "Encoded audio review", exact: true })).toHaveCount(0);
   const track = await project(page);
@@ -99,10 +102,44 @@ test("cancel and encoding changes reject a late real rendered artifact", async (
     try {
       await page.getByRole("button", { name: "Run release check", exact: true }).click(); await expect.poll(() => received).toBe(true);
       if (action === "cancel") await page.getByRole("button", { name: "Cancel release check", exact: true }).click();
-      else await page.getByRole("combobox", { name: "Review encoding", exact: true }).selectOption("16");
+      else await chooseBits(page, 16);
       release?.(); await expect(page.getByRole("button", { name: "Run release check", exact: true })).toBeEnabled();
       await expect(page.getByRole("region", { name: "Encoded audio review", exact: true })).toHaveCount(0); expect((await project(page)).releaseReview).toBeUndefined();
     } finally { release?.(); await page.unroute("**/api/master/render"); }
   }
   await run(page); await expect(page.getByRole("button", { name: "Download measured WAV", exact: true })).toBeEnabled();
+});
+
+// V1-04: a 48 kHz source checked for CD measures the 44.1 kHz / 16-bit file Export delivers.
+test("a 48 kHz source checked at CD format measures the delivered 44.1 kHz/16-bit WAV that Export renders", async ({ page, request }, info) => {
+  const id = await uploadProject(page, "release-cd.wav");
+  await page.getByRole("slider", { name: "Input gain", exact: true }).fill("3");
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByRole("group", { name: "Bit depth", exact: true }).getByRole("button", { name: "16-bit PCM", exact: true }).click();
+  await dialog.getByRole("group", { name: "Sample rate", exact: true }).getByRole("button", { name: "44.1 kHz", exact: true }).click();
+  const exporting = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Render & download WAV", exact: true }).click();
+  const exportedPath = await (await exporting).path(); await page.keyboard.press("Escape");
+  const exported = await readFile(exportedPath);
+  await page.goto(`/release-check/${id}`);
+  await page.getByRole("group", { name: "Delivery profile", exact: true }).getByRole("button", { name: "CD", exact: true }).click();
+  await page.getByRole("button", { name: "Use CD format: 44.1 kHz, 16-bit", exact: true }).click();
+  await expect(page.getByText("Checks 44.1 kHz · 16-bit PCM · TPDF dither, the same file Export renders at this format.", { exact: true })).toBeVisible();
+  await run(page);
+  await expect(page.getByText("Output format (Within guidance)", { exact: true })).toBeVisible();
+  await expect(page.getByText("44.1 kHz · 16-bit PCM · stereo", { exact: true })).toBeVisible();
+  const receipt = await report(page), wav = await download(page, "Download measured WAV");
+  // The WAV header itself says 44.1 kHz, 16-bit stereo PCM.
+  expect([wav.toString("ascii", 0, 4), wav.readUInt16LE(20), wav.readUInt16LE(22), wav.readUInt32LE(24), wav.readUInt16LE(34)]).toEqual(["RIFF", 1, 2, 44100, 16]);
+  const pcm = decode(wav); expect([pcm.rate, pcm.bits, pcm.left.length]).toEqual([44100, 16, 44100]);
+  expect(receipt.output).toMatchObject({ sampleRate: 44100, bitDepth: 16, frames: 44100, bytes: wav.length, sha256: createHash("sha256").update(wav).digest("hex") });
+  expect(receipt.dither).toBe("tpdf"); expect(receipt.source.sampleRate).toBe(48000);
+  // The measured file is the delivered file, and it measures exactly as reported.
+  expect(wav).toEqual(exported);
+  const measured = await request.post("/api/master/render", { multipart: { file: { name: "encoded.wav", mimeType: "audio/wav", buffer: wav }, params: JSON.stringify({ bypass: true }), format: "json" } });
+  expect(measured.ok()).toBe(true);
+  const reading = await measured.json() as { sampleRate: number; afterMetrics: unknown };
+  expect(reading.sampleRate).toBe(44100); expect(reading.afterMetrics).toEqual(receipt.metrics);
+  await info.attach("release-cd.json", { body: JSON.stringify(receipt, null, 2), contentType: "application/json" });
 });

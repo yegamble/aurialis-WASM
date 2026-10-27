@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -110,11 +111,76 @@ func TestStoreDownloadsOnceAndReplacesCorruptCache(t *testing.T) {
 	if requests != 1 || models[0] == nil || models[1] != models[0] || models[3] != models[0] {
 		t.Fatalf("requests %d; models shared %v", requests, models[1] == models[0])
 	}
-	if ready, downloading, written := store.Status(); !ready || downloading || written != ModelBytes {
-		t.Fatalf("status ready %v downloading %v written %d", ready, downloading, written)
+	if status := store.Status(); status.State != ModelLoaded {
+		t.Fatalf("status %+v", status)
 	}
 	again := &Store{Dir: store.Dir, URL: server.URL}
+	// A restart reports the verified cache without hashing or loading it.
+	if status := again.Status(); status.State != ModelCached || again.verifications != 0 {
+		t.Fatalf("restart status %+v after %d hashes", status, again.verifications)
+	}
+	// Without the marker (a cache from an older build) it hashes once.
+	if err := os.Remove(again.markerPath()); err != nil {
+		t.Fatal(err)
+	}
+	unmarked := &Store{Dir: store.Dir, URL: server.URL}
+	if status := unmarked.Status(); status.State != ModelCached || unmarked.verifications != 1 {
+		t.Fatalf("unmarked status %+v after %d hashes", status, unmarked.verifications)
+	}
 	if _, err := again.Model(context.Background()); err != nil || requests != 1 {
 		t.Fatalf("cached model re-downloaded: %v, %d requests", err, requests)
+	}
+}
+
+// A symlinked cache entry is refused, not followed: the model cache only ever
+// holds a plain file this server wrote.
+func TestLoadModelRefusesASymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "elsewhere.safetensors")
+	file, err := os.Create(target) // #nosec G304 -- the test's own temp directory.
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The right size, so only the link itself can be the reason to refuse.
+	if err := file.Truncate(modelBytes); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, modelFile)
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, err := LoadModel(context.Background(), link); !errors.Is(err, errNotRegularModel) {
+		t.Fatalf("symlinked model: %v", err)
+	}
+}
+
+func TestStoreReplacesASymlinkedCacheWithoutTouchingItsTarget(t *testing.T) {
+	body := []byte("pretend separation model")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+	defer server.Close()
+	sum := sha256.Sum256(body)
+	store := &Store{Dir: t.TempDir(), URL: server.URL, size: int64(len(body)), digest: hex.EncodeToString(sum[:])}
+	target := filepath.Join(t.TempDir(), "someone-elses-file")
+	if err := os.WriteFile(target, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, store.Path()); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if got := store.Status(); got.State != ModelInvalid {
+		t.Fatalf("symlinked cache status %+v", got)
+	}
+	// The stand-in bytes never load as a model; the point is what is on disk after.
+	_, _ = store.Model(context.Background())
+	info, err := os.Lstat(store.Path())
+	if err != nil || !info.Mode().IsRegular() {
+		t.Fatalf("cache entry after the split: %v %v", info, err)
+	}
+	// #nosec G304 -- the test's own temp directory.
+	if kept, err := os.ReadFile(target); err != nil || string(kept) != string(body) {
+		t.Fatalf("link target changed: %q %v", kept, err)
 	}
 }

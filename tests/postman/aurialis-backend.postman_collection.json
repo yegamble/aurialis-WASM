@@ -170,6 +170,14 @@
               "  const body = pm.response.json();",
               "  pm.expect(body.available).to.eql(false);",
               "  pm.expect(body.ready).to.eql(false);",
+              "});",
+              "pm.test('Started without a model URL reports disabled, with no backend, arch or speed', function () {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.state).to.eql('disabled');",
+              "  pm.expect(body.accelerated).to.eql(false);",
+              "  pm.expect(body.backend).to.eql('');",
+              "  pm.expect(body).to.not.have.property('speed');",
+              "  pm.expect(body).to.not.have.property('arch');",
               "});"
             ]
           }

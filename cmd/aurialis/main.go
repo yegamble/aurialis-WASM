@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -153,16 +154,31 @@ func configureStems(cfg *server.Config, url, dir string) error {
 		dir = filepath.Join(cache, "Aurialis", "models")
 	}
 	store := &steminfer.Store{Dir: dir, URL: url, Client: &http.Client{Timeout: 30 * time.Minute}}
-	cfg.Separator = func(ctx context.Context, rate, stems int, left, right []float32, sink func(int, int, []float32, []float32) error, progress func(float64)) error {
-		model, err := store.Model(ctx)
-		if err != nil {
-			return fmt.Errorf("load separation model: %w", err)
+	speed, accelerated := steminfer.RecordedSpeed()
+	// Plain Go did not finish one 20-second window in 30 minutes, so a song
+	// cannot finish inside the 90-minute job limit: Smart Split stays
+	// unavailable on builds without Apple Accelerate.
+	if accelerated {
+		cfg.Separator = func(ctx context.Context, rate, stems int, left, right []float32, sink func(int, int, []float32, []float32) error, progress func(float64)) error {
+			model, err := store.Model(ctx)
+			if err != nil {
+				return fmt.Errorf("load separation model: %w", err)
+			}
+			return model.Separate(ctx, rate, stems, left, right, sink, progress)
 		}
-		return model.Separate(ctx, rate, stems, left, right, sink, progress)
 	}
 	cfg.StemModelStatus = func() server.StemModelStatus {
-		ready, downloading, written := store.Status()
-		return server.StemModelStatus{Ready: ready, Downloading: downloading, Downloaded: written, Total: steminfer.ModelBytes}
+		status := store.Status()
+		report := server.StemModelStatus{
+			Ready: status.State == steminfer.ModelLoaded, Downloading: status.State == steminfer.ModelDownloading,
+			Downloaded: status.Written, Total: steminfer.ModelBytes, State: string(status.State),
+			Accelerated: accelerated, Backend: steminfer.Backend(), Arch: runtime.GOARCH,
+		}
+		if accelerated {
+			report.Speed = &server.StemSpeed{WindowSeconds: speed.WindowSeconds, HopSeconds: speed.HopSeconds,
+				IdleSecondsPerWindow: speed.IdleSecondsPerWindow, BusySecondsPerWindow: speed.BusySecondsPerWindow}
+		}
+		return report
 	}
 	return nil
 }

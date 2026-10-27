@@ -1,6 +1,17 @@
 import { usesBrowserAudio } from "./browser-jobs";
 import { safeFileBaseName } from "./zip";
 
+/** The server's model state (GET /api/stems/model `state`). */
+export type StemModelState = "disabled" | "absent" | "downloading" | "loading" | "cached" | "invalid" | "loaded";
+
+/** Window geometry and recorded seconds per window; only accelerated builds report one. */
+export interface StemSpeed {
+  windowSeconds: number;
+  hopSeconds: number;
+  idleSecondsPerWindow: number;
+  busySecondsPerWindow: number;
+}
+
 export interface StemModelStatus {
   /** False when the local server did not answer; only a reachable server with available: false means disabled. */
   reachable: boolean;
@@ -9,6 +20,14 @@ export interface StemModelStatus {
   downloading: boolean;
   downloadedBytes: number;
   totalBytes: number;
+  state: StemModelState;
+  /** True when inference uses Apple Accelerate; plain-Go builds report false and are unavailable. */
+  accelerated: boolean;
+  /** "apple-accelerate", "portable-go", or "" when the server was started without the model. */
+  backend: string;
+  /** The server's GOARCH; the recorded speed was timed on "arm64" (Apple silicon) only. */
+  arch: string;
+  speed: StemSpeed | null;
 }
 
 export interface SplitStem {
@@ -82,7 +101,7 @@ export function stemDownloadName(title: string, stem: string): string {
   return track ? `${track} - ${part}.wav` : `${part}.wav`;
 }
 
-const unavailable: StemModelStatus = { reachable: true, available: false, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 0 };
+const unavailable: StemModelStatus = { reachable: true, available: false, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 0, state: "disabled", accelerated: false, backend: "", arch: "", speed: null };
 const unreachable: StemModelStatus = { ...unavailable, reachable: false };
 
 function record(value: unknown): Record<string, unknown> {
@@ -94,6 +113,30 @@ function count(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
 }
 
+const states = new Set<string>(["disabled", "absent", "downloading", "loading", "cached", "invalid", "loaded"]);
+
+function modelState(body: Record<string, unknown>): StemModelState {
+  if (typeof body.state === "string" && states.has(body.state)) return body.state as StemModelState;
+  if (body.ready === true) return "loaded";
+  return body.downloading === true ? "downloading" : "absent";
+}
+
+function positive(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0;
+}
+
+function readSpeed(value: unknown): StemSpeed | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { windowSeconds, hopSeconds, idleSecondsPerWindow, busySecondsPerWindow } = value as Record<string, unknown>;
+  if (!positive(windowSeconds) || !positive(hopSeconds) || !positive(idleSecondsPerWindow) || !positive(busySecondsPerWindow)) return null;
+  return { windowSeconds, hopSeconds, idleSecondsPerWindow, busySecondsPerWindow };
+}
+
+/** Split runs only from the native build, against a reachable server whose model is available, with a track loaded. */
+export function canSplit(browser: boolean, status: StemModelStatus | null, audioId: string | null): boolean {
+  return !browser && status?.reachable === true && status.available && audioId !== null;
+}
+
 /** Smart Split needs the native build's local server; the browser build has no model. */
 export async function stemModelStatus(signal?: AbortSignal): Promise<StemModelStatus> {
   if (usesBrowserAudio()) return unavailable;
@@ -101,7 +144,12 @@ export async function stemModelStatus(signal?: AbortSignal): Promise<StemModelSt
     const response = await fetch("/api/stems/model", { signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5000)]) : AbortSignal.timeout(5000) });
     if (!response.ok) return unreachable;
     const body = record(await response.json());
-    return { reachable: true, available: body.available === true, ready: body.ready === true, downloading: body.downloading === true, downloadedBytes: count(body.downloadedBytes), totalBytes: count(body.totalBytes) };
+    return {
+      reachable: true, available: body.available === true, ready: body.ready === true, downloading: body.downloading === true,
+      downloadedBytes: count(body.downloadedBytes), totalBytes: count(body.totalBytes), state: modelState(body),
+      accelerated: body.accelerated === true, backend: typeof body.backend === "string" ? body.backend.slice(0, 40) : "",
+      arch: typeof body.arch === "string" ? body.arch.slice(0, 20) : "", speed: readSpeed(body.speed),
+    };
   } catch (error) {
     if (signal?.aborted) throw error;
     return unreachable;

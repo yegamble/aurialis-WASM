@@ -1,7 +1,7 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StoreProvider } from "@/lib/store";
-import { stemSplitAvailability } from "@/lib/stem-split-copy";
+import { STEM_MODEL_PLAIN_GO, stemSplitAvailability } from "@/lib/stem-split-copy";
 import { testStore } from "@/lib/__tests__/fixtures";
 import type { WorkstationRoute } from "@/lib/workspace-navigation";
 import { AurialisWorkstation } from "../AurialisWorkstation";
@@ -102,5 +102,30 @@ describe("Tools track chooser", () => {
     expect(await screen.findByRole("link", { name: "Import a track" })).toHaveProperty("pathname", "/");
     expect(screen.queryByRole("combobox", { name: "Track" })).toBeNull();
     expect(linkTargets(screen.getByRole("list", { name: "Tools" }))).toEqual([]);
+  });
+});
+
+describe("Smart Split on a native server that cannot split", () => {
+  // A plain-Go build answers the model check with available: false; every
+  // other request still fails as in the rest of this file.
+  beforeEach(() => {
+    const plainGo = { available: false, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688, state: "cached", accelerated: false, backend: "portable-go", arch: "amd64" };
+    vi.stubGlobal("fetch", vi.fn((input: string) => input.endsWith("/api/stems/model")
+      ? Promise.resolve(new Response(JSON.stringify(plainGo), { headers: { "Content-Type": "application/json" } }))
+      : Promise.reject(new TypeError("Network unavailable"))));
+  });
+
+  it("states why on Master instead of linking to Smart split", async () => {
+    mount("master", "/master/track-a", "track-a");
+    const tools = await screen.findByRole("navigation", { name: "Tools for Alpha mix" });
+    await waitFor(() => { expect(tools.textContent).toContain(STEM_MODEL_PLAIN_GO); });
+    expect(linkTargets(tools)).toEqual(["/release-check/track-a", "/reference/track-a"]);
+  });
+
+  it("keeps the Tools card as the unavailable copy, not a link", async () => {
+    mount("tools", "/tools");
+    const grid = await screen.findByRole("list", { name: "Tools for Bravo mix" });
+    await waitFor(() => { expect(grid.textContent).toContain(STEM_MODEL_PLAIN_GO); });
+    expect(linkTargets(grid)).toEqual(["/reference/track-b", "/release-check/track-b"]);
   });
 });

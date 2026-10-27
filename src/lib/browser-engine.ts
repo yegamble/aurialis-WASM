@@ -247,6 +247,12 @@ export async function measureAudio(
   return measureRender(file, { params }, signal);
 }
 
+// The source's own measurement, per immutable source Blob. Simple-mode
+// normalization, Set target loudness and Equal-loudness A/B re-render one
+// source many times; after the first, measure=render skips re-measuring it
+// (the export meter reconstructs every frame, so each pass is costly).
+const sourceMetrics = new WeakMap<Blob, MeasuredAudioMetrics>();
+
 /** Measure the source and one export render (static parameters or a script) without downloading audio. */
 export async function measureRender(file: Blob, render: { params: object } | { script: ScriptV2 }, signal?: AbortSignal, priority: JobPriority = "foreground"): Promise<AudioMeasurement> {
   const form = new FormData();
@@ -254,10 +260,17 @@ export async function measureRender(file: Blob, render: { params: object } | { s
   if ("script" in render) form.append("script", JSON.stringify(render.script));
   else form.append("params", JSON.stringify(render.params));
   form.append("format", "json");
+  const cached = sourceMetrics.get(file);
+  if (cached) form.append("measure", "render");
   const response = await audioRequest(form, signal, true, priority);
   if (!response.ok) throw await audioError(response, "Audio measurement failed.");
   const body: unknown = await readAudioResponse(() => response.json() as Promise<unknown>, signal);
-  return audioMeasurement(body);
+  // A bypass render still measures the source; otherwise fill in the cache.
+  if (cached && typeof body === "object" && body !== null && "beforeMetrics" in body && body.beforeMetrics === null)
+    body.beforeMetrics = cached;
+  const measured = audioMeasurement(body);
+  sourceMetrics.set(file, measured.beforeMetrics);
+  return measured;
 }
 
 function audioMeasurement(body: unknown): AudioMeasurement {

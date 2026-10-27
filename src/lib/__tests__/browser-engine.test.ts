@@ -85,6 +85,20 @@ describe("shared engine browser boundary", () => {
     expect([script.has("script"), script.has("params"), script.has("sampleRate"), script.has("dither")]).toEqual([true, false, false, false]);
     expect((await renderDelivery(new Blob(["source"]), { params: {} }, 32, {})).truePeakDbtp).toBeNull();
   });
+  it("measures a source once and then asks for the render only (V1-13)", async () => {
+    const metrics = (lufs: number) => ({ integratedLufs: lufs, shortTermLufs: lufs, truePeakDbtp: -1, samplePeakDbfs: -1, dynamicRangeDb: 8, correlation: 1, lowBassCorrelation: 1, dcLeftDbfs: -120, dcRightDbfs: -120, clippingSamples: 0, gainReductionDb: 0 });
+    const reply = (before: unknown, after: number) => ({ ok: true, status: 200, json: () => Promise.resolve({ sampleRate: 48000, frames: 48000, duration: 1, beforeMetrics: before, afterMetrics: metrics(after) }) });
+    const fetch = vi.fn().mockResolvedValueOnce(reply(metrics(-20), -14)).mockResolvedValueOnce(reply(null, -13));
+    vi.stubGlobal("fetch", fetch);
+    const source = new Blob(["source"]);
+    const first = await measureAudio(source, { inputGainDb: 1 });
+    const second = await measureAudio(source, { inputGainDb: 2 });
+    const sent = (call: number) => (fetch.mock.calls[call]?.[1] as { body: FormData }).body.get("measure");
+    expect(sent(0)).toBeNull();
+    expect(sent(1)).toBe("render");
+    expect(second.beforeMetrics).toEqual(first.beforeMetrics);
+    expect(second.afterMetrics.integratedLufs).toBe(-13);
+  });
   it("preserves every uploaded frame and both channels in a float WAV roundtrip", async () => {
     vi.stubGlobal("Blob", NodeBlob);
     const source = {

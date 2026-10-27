@@ -9,6 +9,8 @@ const RETAINED_NATIVE_HINT = "Download or discard finished audio in this tab, su
 
 interface JobRequest {
   operation: "render" | "features" | "deep" | "reference" | "compile";
+  /** "render" skips the source measurement a client already cached (V1-13). */
+  measure?: "render";
   params?: string;
   script?: string;
   profile?: string;
@@ -232,7 +234,7 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
   let request: JobRequest;
   let allowed: string[];
   switch (path) {
-    case "/api/master/render": request = { operation: "render" }; allowed = ["file", "params", "script", "profile", "bitDepth", "sampleRate", "dither", "format"]; break;
+    case "/api/master/render": request = { operation: "render" }; allowed = ["file", "params", "script", "profile", "bitDepth", "sampleRate", "dither", "format", "measure"]; break;
     case "/api/analyze/features": request = { operation: "features" }; allowed = ["file"]; break;
     case "/api/analyze/deep": request = { operation: "deep" }; allowed = ["file", "profile", "scriptVersion"]; break;
     case "/api/analyze/reference": request = { operation: "reference" }; allowed = ["source", "reference", "params", "options"]; break;
@@ -259,6 +261,11 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
   if (dither !== undefined) {
     if (dither !== "tpdf" && dither !== "none") throw new Error("Invalid local audio dither.");
     request.dither = dither;
+  }
+  const measure = text("measure");
+  if (measure !== undefined) {
+    if (measure !== "render") throw new Error("Invalid local audio measurement.");
+    request.measure = measure;
   }
   const source = fields.get(request.operation === "reference" ? "source" : "file"), reference = fields.get("reference");
   if (!(source instanceof Blob) || (reference !== undefined && !(reference instanceof Blob))) throw new Error("Missing local audio source.");

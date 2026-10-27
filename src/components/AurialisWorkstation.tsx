@@ -607,6 +607,9 @@ function MasterView({ trackId }: { trackId: string }) {
   const [sourceLoading, setSourceLoading] = useState(true);
   const [sourceAttempt, setSourceAttempt] = useState(0);
   const ab = playback?.original ? "B" : "A";
+  // Live DSP runs at the source rate unless this browser cannot open it (V1-10).
+  const liveRate = playback?.liveSampleRate;
+  const liveResampled = source !== null && liveRate !== undefined && liveRate !== source.sampleRate;
   const playheadRatio = playback?.duration ? playback.position / playback.duration : 0;
   const [activeBandId, setActiveBandId] = useState<EQBandId>("low");
   const [exportOpen, setExportOpen] = useState(false);
@@ -812,7 +815,8 @@ function MasterView({ trackId }: { trackId: string }) {
       dispatch({ type: "APPLY_NORMALIZED_GAIN", id: track.id, expected, input: next.input });
       // Live playback is the preview: it already plays the export chain, so no second WAV is rendered.
       dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { status: "mastered" } });
-      setMessage(`Target set. ${exportLevelSummary(measurement.afterMetrics)}`);
+      const rate = live.current?.getState().liveSampleRate;
+      setMessage(`Target set. ${exportLevelSummary(measurement.afterMetrics, rate !== undefined && rate !== source?.sampleRate)}`);
     } catch (error) {
       if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Could not prepare this master.");
     } finally {
@@ -1017,6 +1021,7 @@ function MasterView({ trackId }: { trackId: string }) {
             {...(nextTrack ? { nextTrackTitle: nextTrack.title || "Untitled track" } : {})}
             handover={handover}
           />
+          {liveResampled && <p className="disclosure" role="status">This device plays A at {formatRate(liveRate)}, not the source&apos;s {formatRate(source.sampleRate)}, so live A is resampled before processing and may differ slightly from the export.</p>}
           {track.mode === "deep" && track.deepMastering && <DeepTimeline script={track.deepMastering.proposal} selectedId={deepMoveId} onSelect={selectDeepMove} playheadRatio={playheadRatio} />}
           <LiveSpectrumChart frame={spectrum} playing={playback?.playing ?? false} />
           {sourceError && <div className="flex flex-wrap items-center gap-3" role="alert">
@@ -1030,7 +1035,9 @@ function MasterView({ trackId }: { trackId: string }) {
                 ? "Playback and export use the acknowledged applied revision. Draft edits wait for Apply; pending baseline edits wait for acknowledgment."
                 : track.mode === "simple"
                   ? "Simple and Advanced share these settings. Set target loudness to measure the requested level; export uses the current settings."
-                  : "Playback responds to your controls immediately and runs the export chain, so what you hear is what you export."}
+                  : liveResampled
+                    ? "Playback responds to your controls immediately and runs the export chain."
+                    : "Playback responds to your controls immediately and runs the export chain, so what you hear is what you export."}
             </span>
           </div>
           <p className="disclosure" role="status">

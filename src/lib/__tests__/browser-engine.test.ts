@@ -283,7 +283,9 @@ describe("actual audio measurement and explicit Simple normalization", () => {
   });
   it("summarizes the export-measured level and that live playback runs the same chain", () => {
     expect(exportLevelSummary({ ...measured, integratedLufs: -9.0143, truePeakDbtp: -0.3006 }))
-      .toBe("Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain.");
+      .toBe("Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain at the source rate.");
+    expect(exportLevelSummary({ ...measured, integratedLufs: -9.0143, truePeakDbtp: -0.3006 }, true))
+      .toBe("Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain, resampled on this device, so it may differ slightly.");
     expect(exportLevelSummary({ ...measured, integratedLufs: -14.004, truePeakDbtp: 0.004 })).toMatch(/^Export measures −14\.00 LUFS, 0\.00 dBTP\./u);
   });
   it("gates the measured export true peak strictly at the ceiling", async () => {

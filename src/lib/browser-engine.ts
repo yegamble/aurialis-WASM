@@ -305,9 +305,12 @@ function signedDb(value: number): string {
 }
 
 /** Report the accepted export level. Live playback renders the export
- * chain (V1-10), so it is the preview. */
-export function exportLevelSummary(metrics: MeasuredAudioMetrics): string {
-  return `Export measures ${signedDb(metrics.integratedLufs)} LUFS, ${signedDb(metrics.truePeakDbtp)} dBTP. Live playback runs the same chain.`;
+ * chain (V1-10), so it is the preview; at the source rate it matches the
+ * export, and resampled (a rate the browser cannot open) it can differ slightly. */
+export function exportLevelSummary(metrics: MeasuredAudioMetrics, liveResampled = false): string {
+  return `Export measures ${signedDb(metrics.integratedLufs)} LUFS, ${signedDb(metrics.truePeakDbtp)} dBTP. ${liveResampled
+    ? "Live playback runs the same chain, resampled on this device, so it may differ slightly."
+    : "Live playback runs the same chain at the source rate."}`;
 }
 
 // Explicit Simple-mode automatic gain. Advanced rendering never calls this.

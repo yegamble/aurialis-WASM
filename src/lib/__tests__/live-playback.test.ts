@@ -8,7 +8,10 @@ import type { ScriptV2 } from "../deep-mastering";
 const source = () => ({ sampleRate: 48000, left: new Float32Array(48000), right: new Float32Array(48000) });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
-function graphHarness(autoReady = true, autoArm = true, autoAutomation = false) {
+/** How the stub browser answers a requested AudioContext rate: ignore it and
+ * run at the 48 kHz device rate, honour it, or reject it like an unsupported rate. */
+type RatePolicy = "device" | "honor" | "reject";
+function graphHarness(autoReady = true, autoArm = true, autoAutomation = false, rates: RatePolicy = "device") {
   const contexts: Context[] = [];
   const nodes: Node[] = [];
   const worker = vi.fn();
@@ -61,7 +64,11 @@ function graphHarness(autoReady = true, autoArm = true, autoAutomation = false) 
     createAnalyser = () => ({ ...endpoint(), fftSize: 4096, smoothingTimeConstant: 0, minDecibels: -120, maxDecibels: 0 });
     createBuffer = () => ({ copyToChannel: vi.fn() });
     createBufferSource = vi.fn(() => ({ ...endpoint(), buffer: null, loop: false, onended: null, start: vi.fn(), stop: vi.fn() }));
-    constructor() { contexts.push(this); }
+    constructor(readonly options: AudioContextOptions = {}) {
+      if (options.sampleRate !== undefined && rates === "reject") throw new DOMException("The sample rate is not supported.", "NotSupportedError");
+      if (options.sampleRate !== undefined && rates === "honor") this.sampleRate = options.sampleRate;
+      contexts.push(this);
+    }
   }
   vi.stubGlobal("crossOriginIsolated", true);
   vi.stubGlobal("AudioContext", Context);
@@ -450,6 +457,32 @@ describe("per-track live audio lifecycle", () => {
     expect(controller.getState().error).toContain("cross-origin isolation");
     expect(meters).toHaveBeenLastCalledWith(expect.objectContaining({ peakDbfs: -120, rmsDbfs: -120 }));
     expect(errors).toHaveBeenCalledTimes(1);
+    controller.dispose();
+  });
+  it("runs the live engine at the source rate, so A is processed at the export's rate (V1-10)", async () => {
+    const { contexts } = graphHarness(true, true, false, "honor");
+    const controller = createLivePlayback({ sampleRate: 44100, left: new Float32Array(44100), right: new Float32Array(44100) }, createDefaultAdvancedParams());
+    await controller.play();
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]?.options).toMatchObject({ sampleRate: 44100, latencyHint: "interactive" });
+    expect(controller.getState().liveSampleRate).toBe(44100);
+    controller.dispose();
+  });
+  it("falls back to the device rate when the browser rejects the source rate and reports it", async () => {
+    const { contexts } = graphHarness(true, true, false, "reject");
+    const controller = createLivePlayback({ sampleRate: 88200, left: new Float32Array(8820), right: new Float32Array(8820) }, createDefaultAdvancedParams());
+    await controller.play();
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]?.options.sampleRate).toBeUndefined();
+    expect(controller.getState()).toMatchObject({ playing: true, liveSampleRate: 48000 });
+    controller.dispose();
+  });
+  it("leaves sources above 96 kHz at the device rate to stay inside the measured CPU budget", async () => {
+    const { contexts } = graphHarness(true, true, false, "honor");
+    const controller = createLivePlayback({ sampleRate: 192000, left: new Float32Array(1920), right: new Float32Array(1920) }, createDefaultAdvancedParams());
+    await controller.play();
+    expect(contexts[0]?.options.sampleRate).toBeUndefined();
+    expect(controller.getState().liveSampleRate).toBe(48000);
     controller.dispose();
   });
   it("rejects unsupported source layouts and leaves settings immutable", () => {

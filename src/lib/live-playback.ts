@@ -24,7 +24,28 @@ export type LivePlaybackState = {
   parameterVersion: number;
   appliedVersion: number;
   error: string | null;
+  /** Rate the live engine runs at once its context exists. It equals the
+   * source rate unless the browser cannot open that rate (or the source is
+   * above LIVE_MAX_SAMPLE_RATE); then A is resampled before processing. */
+  liveSampleRate?: number;
 };
+
+/** Highest source rate the live engine runs natively. 96 kHz with every module
+ * on measured 2.7–2.9× headroom (docs/tasks.md V1-10); higher rates would leave
+ * too little, so they play at the device rate instead. */
+const LIVE_MAX_SAMPLE_RATE = 96000;
+
+/** Open the context at the source rate so live DSP processes the samples the
+ * export processes. A browser that rejects the rate gets its device rate. */
+function openLiveContext(sourceRate: number): AudioContext {
+  if (sourceRate <= LIVE_MAX_SAMPLE_RATE) {
+    // Browsers reject unsupported rates differently (NotSupportedError, SyntaxError);
+    // any real fault recurs below and propagates.
+    try { return new AudioContext({ latencyHint: "interactive", sampleRate: sourceRate }); }
+    catch { /* Fall back to the device rate. */ }
+  }
+  return new AudioContext({ latencyHint: "interactive" });
+}
 
 /** One static, attenuate-only A/B monitor gain pair in dB (V1-11). Never part of export. */
 export type LoudnessMatchGains = { processedDb: number; originalDb: number };
@@ -384,8 +405,9 @@ export function createLivePlayback(
         : "Live playback requires cross-origin isolation. Restart the Aurialis server and reload.");
     // Called synchronously from play(), before its first await, preserving the
     // user's activation for AudioContext creation/resume in Brave and Safari.
-    const context = new AudioContext({ latencyHint: "interactive" });
+    const context = openLiveContext(source.sampleRate);
     audio = context;
+    state = { ...state, liveSampleRate: context.sampleRate };
     const resumed = context.resume();
     const sharedHeader = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 8);
     const sharedStream = new SharedArrayBuffer(24);

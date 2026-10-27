@@ -211,7 +211,7 @@ describe("master live playback lifecycle", () => {
     await act(async () => { resolveMeasured?.({ advanced: { ...expected, input: 4, stereo: { ...expected.stereo, width: 199 } }, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } }); await Promise.resolve(); });
     const prepared = { ...expected, input: 4 };
     // The export is what was measured; live playback is the preview, so no second WAV is rendered.
-    expect(await screen.findByText("Target set. Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain.")).toBeTruthy();
+    expect(await screen.findByText("Target set. Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain at the source rate.")).toBeTruthy();
     expect(savedTrack().advanced).toEqual(prepared);
     expect(savedTrack().status).toBe("mastered");
     expect(instance.controller.setParams).toHaveBeenLastCalledWith(prepared);
@@ -245,6 +245,20 @@ describe("master live playback lifecycle", () => {
     const normalize = vi.spyOn(engine, "normalizeSimpleAudio").mockResolvedValue({ advanced: custom, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } });
     fireEvent.click(screen.getByRole("button", { name: "Set target loudness" }));
     await waitFor(() => { expect(normalize).toHaveBeenCalledWith(expect.any(Blob), custom, -12, expect.any(AbortSignal)); });
+  }, 30000);
+
+  it("says plainly when this device resamples live A, and conditions the export claim (V1-10)", async () => {
+    mount(); await ready();
+    const instance = latest();
+    expect(screen.queryByText(/resampled/u)).toBeNull();
+    act(() => { instance.state = { ...instance.state, liveSampleRate: 48000 }; instance.callbacks.onState?.(instance.state); });
+    expect(screen.queryByText(/resampled/u)).toBeNull();
+    act(() => { instance.state = { ...instance.state, liveSampleRate: 44100 }; instance.callbacks.onState?.(instance.state); });
+    expect(screen.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export.")).toBeTruthy();
+    vi.spyOn(engine, "normalizeSimpleAudio").mockImplementation((_blob, advanced) => Promise.resolve({ advanced, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } }));
+    fireEvent.click(screen.getByRole("tab", { name: "simple" }));
+    fireEvent.click(screen.getByRole("button", { name: "Set target loudness" }));
+    expect(await screen.findByText("Target set. Export measures −9.01 LUFS, −0.30 dBTP. Live playback runs the same chain, resampled on this device, so it may differ slightly.")).toBeTruthy();
   }, 30000);
 
   it("lowers a saved ceiling above −1 dBTP with a visible, dismissible note", async () => {

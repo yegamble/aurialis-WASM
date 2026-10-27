@@ -150,14 +150,13 @@ describe("device-local browser audio transport", () => {
     expect(TestWorker.all).toHaveLength(2);
     TestWorker.all[1]?.reply();
     expect((await exported).status).toBe(200);
-    // A background request waits behind a foreground job instead of preempting it.
+    // A background request never starts while user work is running or has just ended.
     const foreground = deviceAudioRequest("/api/master/render", { method: "POST", body: render(source()) });
     await waitFor(() => { expect(TestWorker.all[2]?.message).toBeDefined(); });
-    const later = deviceAudioRequest("/api/master/render", { method: "POST", body: render(source()) }, undefined, "background");
+    await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: render(source()) }, undefined, "background")).rejects.toMatchObject({ name: "AbortError" });
     TestWorker.all[2]?.reply(); await foreground;
-    expect(TestWorker.all[2]?.terminated).toBe(true);
-    await waitFor(() => { expect(TestWorker.all[3]?.message).toBeDefined(); });
-    TestWorker.all[3]?.reply(); await later;
+    await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: render(source()) }, undefined, "background")).rejects.toMatchObject({ name: "AbortError" });
+    expect(TestWorker.all).toHaveLength(3);
   });
 
   it("rejects unsafe browser memory before creating a worker or reading the full file", async () => {
@@ -297,6 +296,75 @@ describe("device-local browser audio transport", () => {
     expect(usesBrowserAudio()).toBe(true);
     await expect(deviceAudioRequest("https://evil.example/api/master/render", { method: "POST", body: body() })).rejects.toThrow("stay on this device");
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  describe("native one-slot server (V1-11 Round E REQUIRED-2)", () => {
+    // Emulates server.go: one audio POST at a time, immediate 503 + Retry-After
+    // otherwise; an aborted upload releases the slot a little after the client gives up.
+    function oneSlotServer(renderMs = 40, releaseMs = 30) {
+      let busy = false; const statuses: number[] = [];
+      vi.mocked(fetch).mockImplementation((_input, init) => new Promise<Response>((resolve, reject) => {
+        if (init?.method !== "POST") { resolve(new Response("{}")); return; }
+        if (busy) { statuses.push(503); resolve(new Response(JSON.stringify({ error: "busy" }), { status: 503, headers: { "Retry-After": "1" } })); return; }
+        busy = true;
+        const release = () => { setTimeout(() => { busy = false; }, releaseMs); };
+        const done = setTimeout(() => { release(); statuses.push(200); resolve(new Response("{}")); }, renderMs);
+        init.signal?.addEventListener("abort", () => { clearTimeout(done); release(); reject(new DOMException("The request was aborted.", "AbortError")); }, { once: true });
+      }));
+      return statuses;
+    }
+    beforeEach(() => {
+      vi.stubEnv("NEXT_PUBLIC_AURIALIS_EXECUTION", "native");
+      vi.stubGlobal("location", { hostname: "127.0.0.1", origin: "http://127.0.0.1:8080" });
+    });
+    const post = () => ({ method: "POST", body: body() });
+
+    it("aborts an in-flight background measurement and waits for the slot so Export never fails busy", async () => {
+      const statuses = oneSlotServer();
+      const { deviceAudioRequest } = await import("../browser-jobs");
+      const measuring = deviceAudioRequest("/api/master/render", post(), undefined, "background").then(() => undefined, (error: unknown) => error);
+      await waitFor(() => { expect(fetch).toHaveBeenCalledTimes(1); });
+      const exported = await deviceAudioRequest("/api/master/render", post());
+      expect(exported.status).toBe(200);
+      expect(await measuring).toMatchObject({ name: "AbortError" });
+      expect(statuses.at(-1)).toBe(200);
+    });
+
+    it("never starts a background measurement while a foreground job holds the slot or just released it", async () => {
+      oneSlotServer();
+      const { deviceAudioRequest, withForegroundAudio } = await import("../browser-jobs");
+      let inside: unknown;
+      await withForegroundAudio(async () => {
+        inside = await deviceAudioRequest("/api/master/render", post(), undefined, "background").then(() => undefined, (error: unknown) => error);
+      });
+      expect(inside).toMatchObject({ name: "AbortError" });
+      // Multi-stage work (Deep analysis then compile) keeps priority across its short gaps.
+      const between = await deviceAudioRequest("/api/master/render", post(), undefined, "background").then(() => undefined, (error: unknown) => error);
+      expect(between).toMatchObject({ name: "AbortError" });
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("keeps priority through a whole native Deep analysis job, including its polling", async () => {
+      const { deviceAudioRequest } = await import("../browser-jobs");
+      const { runAudioJob } = await import("../audio-jobs");
+      let duringPoll: unknown;
+      vi.mocked(fetch).mockImplementation(async (input, init) => {
+        if (init?.method === "POST") return new Response(JSON.stringify({ jobId: "job-1", status: "queued", progress: 0, stage: "Queued" }));
+        if (init?.method === "DELETE") return new Response("{}");
+        duringPoll = await deviceAudioRequest("/api/master/render", { method: "POST", body: body() }, undefined, "background").then(() => undefined, (error: unknown) => error);
+        expect(String(input)).toContain("/api/jobs/job-1");
+        return new Response(JSON.stringify({ jobId: "job-1", status: "done" }));
+      });
+      await runAudioJob("/api/analyze/deep", new FormData(), new AbortController().signal, () => undefined, (job) => job.status);
+      expect(duringPoll).toMatchObject({ name: "AbortError" });
+      expect(vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+    });
+
+    it("reports a native 503 to a background measurement as a retryable preemption, not a failure", async () => {
+      vi.mocked(fetch).mockResolvedValue(new Response("{}", { status: 503, headers: { "Retry-After": "1" } }));
+      const { deviceAudioRequest } = await import("../browser-jobs");
+      await expect(deviceAudioRequest("/api/master/render", post(), undefined, "background")).rejects.toMatchObject({ name: "AbortError" });
+    });
   });
 
   it("keeps the native HTTP transport solely on exact device-loopback origins", async () => {

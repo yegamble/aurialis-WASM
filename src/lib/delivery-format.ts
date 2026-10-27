@@ -32,7 +32,7 @@ export function deliveredBytes(format: DeliveryFormat, sourceRate: number, frame
 }
 
 export function deliverySummary(format: DeliveryFormat, sourceRate?: number): string {
-  const rate = format.sampleRate !== "source" ? formatRate(format.sampleRate) : sourceRate === undefined ? "Source rate" : `${formatRate(sourceRate)} (source)`;
+  const rate = format.sampleRate !== "source" ? formatRate(format.sampleRate) : sourceRate === undefined ? "Each source rate" : `${formatRate(sourceRate)} (source)`;
   const depth = format.bitDepth === 32 ? "32-bit float" : `${String(format.bitDepth)}-bit PCM · ${format.dither ? "TPDF dither" : "no dither"}`;
   return `${rate} · ${depth}`;
 }

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { deleteAudio } from "@/lib/db";
 import { audioKey, duplicateProject, sortedTracks, type LibrarySort } from "@/lib/library";
 import { DEFAULT_ALBUM_LEVEL } from "@/lib/album-levels";
+import { DEFAULT_DELIVERY } from "@/lib/delivery-format";
 import { useStore } from "@/lib/store";
 import type { Track } from "@/lib/types";
 import { Artwork, BottomSheet, Button, buttonClassName, formatTime, Modal, PageTitle, StatusBadge, statusLabel } from "./Primitives";
@@ -95,7 +96,7 @@ export function LibraryView() {
     {preview && <LibraryPreview track={preview} onClose={() => { setPreview(null); }} />}
     {restore && <SourceRelink track={state.tracks.find((track) => track.id === restore.id) ?? restore} open onClose={() => { setRestore(null); setStorageRevision((value) => value + 1); }} />}
     <Modal open={!!albumTrack} title="Add project to album" onClose={() => { setAlbumTrack(null); }}>
-      <div className="grid gap-2">{state.albums.map((album) => <Button key={album.id} variant="secondary" onClick={() => { addToAlbum(album.id); }}>{album.title}</Button>)}<Button onClick={() => { if (!albumTrack) return; dispatch({ type: "ADD_ALBUM", album: { id: `album-${crypto.randomUUID()}`, title: `Untitled sequence ${String(state.albums.length + 1)}`, artist: "", level: DEFAULT_ALBUM_LEVEL, trackIds: [albumTrack.id], mastered: false } }); setAlbumTrack(null); setMessage("Album created with this project."); }}>New album with this project</Button></div>
+      <div className="grid gap-2">{state.albums.map((album) => <Button key={album.id} variant="secondary" onClick={() => { addToAlbum(album.id); }}>{album.title}</Button>)}<Button onClick={() => { if (!albumTrack) return; dispatch({ type: "ADD_ALBUM", album: { id: `album-${crypto.randomUUID()}`, title: `Untitled sequence ${String(state.albums.length + 1)}`, artist: "", level: DEFAULT_ALBUM_LEVEL, delivery: DEFAULT_DELIVERY, trackIds: [albumTrack.id], mastered: false } }); setAlbumTrack(null); setMessage("Album created with this project."); }}>New album with this project</Button></div>
     </Modal>
     <Modal open={!!pendingDelete} eyebrow="Confirm removal" title={pendingDelete ? `Delete “${pendingDelete.title}”?` : "Delete project"} onClose={() => { if (!busy) setPendingDelete(null); }} actions={<><Button variant="secondary" disabled={busy} onClick={() => { setPendingDelete(null); }}>Cancel</Button><Button variant="danger" disabled={busy} onClick={() => { if (pendingDelete) void remove(pendingDelete); }}>{busy ? "Removing audio…" : "Delete project"}</Button></>}>
       <p>This removes the project, its album links and its unshared source and recovery audio after storage confirms deletion.</p>

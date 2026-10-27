@@ -1,5 +1,6 @@
 import { appliedRevisionKey, type ScriptV2 } from "./deep-mastering";
-import { engineParams, exportParams, exportScript } from "./engine-params";
+import { deliveryRequest, type DeliveryFormat } from "./delivery-format";
+import { engineParams, exportParams, exportRender } from "./engine-params";
 import type { AdvancedParams, MeasuredAudioMetrics, Track } from "./types";
 
 /** Selectable album loudness targets, in LUFS. */
@@ -79,36 +80,38 @@ export function planAlbumLevels(level: AlbumLevel, tracks: readonly Pick<Track, 
   return { ok: true, tracks: plans };
 }
 
-/** Identifies rendered masters: the sequence, each project's settings and the used level.
+/** Identifies rendered masters: the sequence, each project's settings, the used level
+ * and the delivery format (bit depth plus the rate and dither sent with the render).
  * A normalize choice always names its target and offsets, blocked or not, so it can
  * never match masters kept at each level. */
-export function albumMastersKey(tracks: readonly Track[], level: AlbumLevel): string {
+export function albumMastersKey(tracks: readonly Track[], level: AlbumLevel, format: DeliveryFormat): string {
   const plan = planAlbumLevels(level, tracks);
   const sequence = tracks.map((track, index) => {
     const step = plan.ok ? plan.tracks.at(index) : undefined;
     return [track.id, track.sourceRevision, appliedRevisionKey(track) ?? engineParams(track.advanced), step?.mode === "normalize" ? step.requestedLufs : "keep"];
   });
-  if (level.mode === "keep") return JSON.stringify(sequence);
+  const delivery = { bitDepth: format.bitDepth, ...deliveryRequest(format) };
+  if (level.mode === "keep") return JSON.stringify({ delivery, sequence });
   const offsets = tracks.map((track) => albumOffset(level, track.id));
-  return JSON.stringify({ mode: "normalize", targetLufs: level.targetLufs, offsets, blocked: !plan.ok, sequence });
+  return JSON.stringify({ mode: "normalize", targetLufs: level.targetLufs, offsets, blocked: !plan.ok, delivery, sequence });
 }
 
 export type AlbumRenderEngine = {
   normalize: (file: Blob, settings: AdvancedParams, targetLufs: number, signal?: AbortSignal) => Promise<{ advanced: AdvancedParams }>;
-  render: (file: Blob, params: object, bitDepth: 24, signal?: AbortSignal) => Promise<Blob>;
-  renderScript: (file: Blob, script: ScriptV2, bitDepth: 24, signal?: AbortSignal) => Promise<Blob>;
+  /** Renders exactly what Export delivers for this request and format. */
+  render: (file: Blob, render: { params: object } | { script: ScriptV2 }, format: DeliveryFormat, signal?: AbortSignal) => Promise<Blob>;
   measure: (file: Blob, params: object, signal?: AbortSignal) => Promise<{ beforeMetrics: MeasuredAudioMetrics }>;
 };
 
-/** Render one 24-bit album master from a read-only project, then measure the rendered file. */
-export async function renderAlbumTrack(track: Pick<Track, "advanced" | "deepMastering">, file: Blob, plan: AlbumTrackPlan, engine: AlbumRenderEngine, signal?: AbortSignal): Promise<{ blob: Blob; measured: AlbumMasterLevel }> {
+/** Render one album master at the album's delivery format from a read-only project,
+ * then measure the rendered file. Keep renders exactly the single export at that format. */
+export async function renderAlbumTrack(track: Pick<Track, "advanced" | "deepMastering">, file: Blob, plan: AlbumTrackPlan, format: DeliveryFormat, engine: AlbumRenderEngine, signal?: AbortSignal): Promise<{ blob: Blob; measured: AlbumMasterLevel }> {
   let blob: Blob;
   if (plan.mode === "keep") {
-    const script = track.deepMastering?.applied;
-    blob = script ? await engine.renderScript(file, exportScript(script), 24, signal) : await engine.render(file, exportParams(track.advanced), 24, signal);
+    blob = await engine.render(file, exportRender(track), format, signal);
   } else {
     const { advanced } = await engine.normalize(file, track.advanced, plan.requestedLufs, signal);
-    blob = await engine.render(file, exportParams(advanced), 24, signal);
+    blob = await engine.render(file, { params: exportParams(advanced) }, format, signal);
   }
   const { beforeMetrics } = await engine.measure(blob, { bypass: true }, signal);
   return { blob, measured: { integratedLufs: beforeMetrics.integratedLufs, truePeakDbtp: beforeMetrics.truePeakDbtp } };

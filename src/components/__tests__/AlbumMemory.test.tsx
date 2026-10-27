@@ -5,6 +5,7 @@ import * as memory from "@/lib/browser-jobs";
 import { StoreProvider } from "@/lib/store";
 import { testStore } from "@/lib/__tests__/fixtures";
 import { albumMastersKey, DEFAULT_ALBUM_LEVEL } from "@/lib/album-levels";
+import { CD_DELIVERY, DEFAULT_DELIVERY } from "@/lib/delivery-format";
 import { exportParams } from "@/lib/engine-params";
 import type { Track } from "@/lib/types";
 import { AurialisWorkstation } from "../AurialisWorkstation";
@@ -17,13 +18,14 @@ const reserve = memory.reserveBrowserAudioMemory;
 const owners: { update: ReturnType<typeof vi.fn<(bytes: number) => void>>; dispose: ReturnType<typeof vi.fn<() => void>> }[] = [];
 const metrics = { integratedLufs: -14, shortTermLufs: -14, truePeakDbtp: -6, samplePeakDbfs: -6, dynamicRangeDb: 8, correlation: 1, lowBassCorrelation: 1, dcLeftDbfs: -120, dcRightDbfs: -120, clippingSamples: 0, gainReductionDb: 0 };
 const wav = new Blob([new Uint8Array(44 + 48000 * 6)]);
+const delivered = { blob: wav, truePeakDbtp: null };
 let storage = new Map<string, string>();
 let tracks: Track[] = [];
-function seed(level?: unknown) {
-  const album = { id: "memory-album", title: "Memory album", artist: "", ...(level === undefined ? { target: "−14 LUFS" } : { level }), trackIds: tracks.map((track) => track.id), mastered: false };
+function seed(level?: unknown, delivery?: unknown) {
+  const album = { id: "memory-album", title: "Memory album", artist: "", ...(level === undefined ? { target: "−14 LUFS" } : { level }), ...(delivery === undefined ? {} : { delivery }), trackIds: tracks.map((track) => track.id), mastered: false };
   storage.set("aurialis-state-v1", JSON.stringify({ tracks, albums: [album], stems: [] }));
 }
-function saved() { return JSON.parse(storage.get("aurialis-state-v1") ?? "{}") as { tracks: Track[]; albums: { level: unknown }[] }; }
+function saved() { return JSON.parse(storage.get("aurialis-state-v1") ?? "{}") as { tracks: Track[]; albums: { level: unknown; delivery: unknown }[] }; }
 function mount() { return render(<StoreProvider><AurialisWorkstation route="album" paramId="memory-album" /></StoreProvider>); }
 async function start() { fireEvent.click(await screen.findByRole("button", { name: "Render album masters" })); }
 
@@ -49,15 +51,15 @@ beforeEach(() => {
     expect(file).toBe(wav);
     return Promise.resolve({ sampleRate: 48000, frames: 48000, duration: 1, beforeMetrics: { ...metrics, integratedLufs: -15.96, truePeakDbtp: -1.24 }, afterMetrics: metrics });
   });
-  vi.spyOn(engine, "serverRender").mockResolvedValue(wav);
+  vi.spyOn(engine, "renderDelivery").mockResolvedValue(delivered);
 });
 afterEach(() => { cleanup(); for (const owner of owners) owner.dispose(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 it("owns the growing download cache before each render and releases it when its order is invalidated", async () => {
   mount();
-  vi.mocked(engine.serverRender).mockImplementation(() => {
-    expect(owners[0]?.update).toHaveBeenLastCalledWith((vi.mocked(engine.serverRender).mock.calls.length) * wav.size);
-    return Promise.resolve(wav);
+  vi.mocked(engine.renderDelivery).mockImplementation(() => {
+    expect(owners[0]?.update).toHaveBeenLastCalledWith((vi.mocked(engine.renderDelivery).mock.calls.length) * wav.size);
+    return Promise.resolve(delivered);
   });
   await start();
   await screen.findByRole("button", { name: "Download Album source 2" });
@@ -69,7 +71,7 @@ it("owns the growing download cache before each render and releases it when its 
 });
 
 it("releases completed prefix bytes when a later render fails", async () => {
-  mount(); vi.mocked(engine.serverRender).mockResolvedValueOnce(wav).mockRejectedValueOnce(new Error("Controlled second-render failure"));
+  mount(); vi.mocked(engine.renderDelivery).mockResolvedValueOnce(delivered).mockRejectedValueOnce(new Error("Controlled second-render failure"));
   await start();
   await screen.findByText(`“${tracks[1]?.title ?? ""}” could not be rendered: Controlled second-render failure`);
   expect(owners[0]?.update).toHaveBeenCalledWith(2 * wav.size);
@@ -79,12 +81,12 @@ it("releases completed prefix bytes when a later render fails", async () => {
 
 it("releases a pending reservation on unmount and never retains its late rendered WAV", async () => {
   const mounted = mount();
-  let finish: ((value: Blob) => void) | undefined;
-  vi.mocked(engine.serverRender).mockImplementation(() => new Promise<Blob>((resolve) => { finish = resolve; }));
+  let finish: ((value: typeof delivered) => void) | undefined;
+  vi.mocked(engine.renderDelivery).mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
   await start(); await waitFor(() => { expect(finish).toBeTypeOf("function"); });
   expect(owners[0]?.update).toHaveBeenCalledWith(wav.size);
   mounted.unmount(); expect(owners[0]?.dispose).toHaveBeenCalledOnce();
-  await act(async () => { finish?.(wav); await Promise.resolve(); });
+  await act(async () => { finish?.(delivered); await Promise.resolve(); });
   expect(owners[0]?.dispose).toHaveBeenCalledTimes(2);
 });
 
@@ -114,7 +116,7 @@ it("saves masters to browser storage as they render, holding only the current tr
 
 it("deletes partially saved masters when a later render fails", async () => {
   mocks.saveAudio.mockResolvedValue({ durable: true });
-  mount(); vi.mocked(engine.serverRender).mockResolvedValueOnce(wav).mockRejectedValueOnce(new Error("Controlled second-render failure"));
+  mount(); vi.mocked(engine.renderDelivery).mockResolvedValueOnce(delivered).mockRejectedValueOnce(new Error("Controlled second-render failure"));
   await start();
   await screen.findByText(`“${tracks[1]?.title ?? ""}” could not be rendered: Controlled second-render failure`);
   const saved = mocks.saveAudio.mock.calls[0]?.[0] as string;
@@ -123,7 +125,7 @@ it("deletes partially saved masters when a later render fails", async () => {
 });
 
 it("offers saved masters after a reload when the sequence and settings still match", async () => {
-  const key = albumMastersKey(tracks, DEFAULT_ALBUM_LEVEL);
+  const key = albumMastersKey(tracks, DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY);
   mocks.loadAlbumMasters.mockResolvedValue({ key, createdAt: "2026-10-26T00:00:00Z", files: tracks.map((track, index) => ({ trackId: track.id, title: "Album source " + String(index + 1), audioId: "master-" + String(index), bytes: 10 })) });
   mount();
   expect(await screen.findByRole("button", { name: "Download Album source 2" })).toBeDefined();
@@ -139,7 +141,7 @@ it("explains that saved masters are stale once the sequence changes", async () =
 
 it("never offers masters kept at each level while a blocked normalize level is chosen", async () => {
   seed({ mode: "normalize", targetLufs: -9, offsets: [{ trackId: tracks[0]?.id, offsetDb: 5 }] });
-  const key = albumMastersKey(tracks, DEFAULT_ALBUM_LEVEL);
+  const key = albumMastersKey(tracks, DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY);
   mocks.loadAlbumMasters.mockResolvedValue({ key, createdAt: "2026-10-26T00:00:00Z", files: tracks.map((track, index) => ({ trackId: track.id, title: track.title, audioId: "master-" + String(index), bytes: 10 })) });
   mount();
   expect(await screen.findByText(/Saved masters no longer match/u)).toBeDefined();
@@ -182,7 +184,7 @@ it("keeps each master's single-export level by default and never writes into the
   await start();
   await screen.findByRole("button", { name: "Download Album source 2" });
   expect(engine.normalizeSimpleAudio).not.toHaveBeenCalled();
-  expect(vi.mocked(engine.serverRender).mock.calls.map((call) => call[1])).toEqual(tracks.map((track) => exportParams(track.advanced)));
+  expect(vi.mocked(engine.renderDelivery).mock.calls.map((call) => call.slice(1, 4))).toEqual(tracks.map((track) => [{ params: exportParams(track.advanced) }, 24, {}]));
   expect(saved().tracks).toEqual(before);
   expect(saved().tracks.map((track) => track.measurementKind)).toEqual(["source", "source"]);
 });
@@ -223,4 +225,25 @@ it("names the track whose normalize render failed", async () => {
   mount(); await start();
   await screen.findByText(`“${tracks[1]?.title ?? ""}” could not be rendered: The source is too quiet to normalize reliably.`);
   expect(screen.queryByRole("region", { name: "Rendered album downloads" })).toBeNull();
+});
+
+it("renders a mixed-rate album at one chosen delivery format, the same request a single export sends", async () => {
+  tracks = [{ ...tracks[0], sampleRate: 48000 } as Track, { ...tracks[1], sampleRate: 44100, duration: 1, sourceIdentity: { pcmHash: "f".repeat(64), sampleRate: 44100, frames: 44100 } } as Track];
+  seed({ mode: "keep", targetLufs: -14, offsets: [] });
+  mount();
+  const panel = await screen.findByRole("region", { name: "Album level" });
+  expect(within(panel).getByText("These sources use 44.1 kHz and 48 kHz. Choose one sample rate for a uniform album.")).toBeDefined();
+  fireEvent.click(within(within(panel).getByRole("group", { name: "Sample rate" })).getByRole("button", { name: "44.1 kHz" }));
+  fireEvent.click(within(within(panel).getByRole("group", { name: "Bit depth" })).getByRole("button", { name: "16-bit PCM" }));
+  expect(saved().albums[0]?.delivery).toEqual(CD_DELIVERY);
+  expect(screen.getAllByText("44.1 kHz · 16-bit PCM · TPDF dither").length).toBeGreaterThan(0);
+  await start();
+  await screen.findByRole("button", { name: "Download Album source 2" });
+  expect(vi.mocked(engine.renderDelivery).mock.calls.map((call) => call.slice(1, 4))).toEqual(tracks.map((track) => [{ params: exportParams(track.advanced) }, 16, { sampleRate: 44100 }]));
+  // Each master's reservation is its 44.1 kHz 16-bit length, not its source layout.
+  expect(owners[0]?.update).toHaveBeenCalledWith(44 + 44100 * 4);
+  expect(screen.getByText(/Rendered WAV masters are ready below \(44\.1 kHz · 16-bit PCM · TPDF dither\)/u)).toBeDefined();
+  // Masters rendered at one format are never offered for another.
+  fireEvent.click(within(within(panel).getByRole("group", { name: "Dither" })).getByRole("button", { name: "Off" }));
+  await waitFor(() => { expect(screen.queryByRole("region", { name: "Rendered album downloads" })).toBeNull(); });
 });

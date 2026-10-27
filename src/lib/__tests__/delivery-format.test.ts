@@ -25,7 +25,7 @@ describe("delivery format", () => {
     expect(deliverySummary(CD_DELIVERY)).toBe("44.1 kHz · 16-bit PCM · TPDF dither");
     expect(deliverySummary({ bitDepth: 24, sampleRate: 48000, dither: false })).toBe("48 kHz · 24-bit PCM · no dither");
     expect(deliverySummary({ bitDepth: 32, sampleRate: "source", dither: true }, 48000)).toBe("48 kHz (source) · 32-bit float");
-    expect(deliverySummary(DEFAULT_DELIVERY)).toBe("Source rate · 24-bit PCM · TPDF dither");
+    expect(deliverySummary(DEFAULT_DELIVERY)).toBe("Each source rate · 24-bit PCM · TPDF dither");
   });
 
   it("falls back to the source rate when the chosen rate is unavailable for the track", () => {

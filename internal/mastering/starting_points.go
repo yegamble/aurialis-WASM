@@ -14,7 +14,7 @@ import (
 
 const (
 	// MaxStartingCeilingDBTP is the highest limiter ceiling any target or profile starts from.
-	MaxStartingCeilingDBTP = -1.0
+	MaxStartingCeilingDBTP = dsp.MaxCeilingDBTP
 	// SectionMoveMaxEQBoostDB caps a generated section move's EQ boost above its baseline (MUB-5).
 	SectionMoveMaxEQBoostDB = 0.8
 	// SectionMoveMaxWidthBoostPct caps a generated section move's width increase in percentage points.
@@ -36,26 +36,38 @@ type ProposalPrediction struct {
 
 type proposalRecipe struct {
 	eq                         [dsp.NumEQBands]float64
+	freq                       [dsp.NumEQBands]float64 // 0 keeps the default band frequency
 	threshold, ratio           float64
 	attack, release, sidechain float64
+	topology                   dsp.CompTopology
 	character                  dsp.SatCharacter
 	drive, width               float64
 	monoBass                   bool
-	targetLUFS                 float64
+	// averageGR is the average compressor reduction (dB) the measured
+	// threshold aims for; threshold is only the unmeasured fallback.
+	averageGR float64
 }
 
 // Conservative Deep starting points on the same scale as the Simple presets in
-// docs/mastering-controls-research.md. They add no makeup or input gain; the
-// loudness target is metadata that Set target loudness measures explicitly.
+// docs/mastering-controls-research.md. Each has one signature EQ move of at
+// least 1 dB that matches its name. They add no makeup or input gain: the
+// measured Level match gain is the only loudness change (V1-09 chair ruling).
 var proposalRecipes = map[ProfileID]proposalRecipe{
-	ProfileWarmAnalog:       {eq: [5]float64{0.5, 0.4, 0, -0.5, 0.2}, threshold: -16, ratio: 1.7, attack: 30, release: 250, sidechain: 90, character: dsp.SatTube, drive: 8, width: 100, targetLUFS: -14},
-	ProfilePunchyCommercial: {eq: [5]float64{0.4, -0.5, 0, 0.5, 0.5}, threshold: -16, ratio: 2, attack: 30, release: 150, sidechain: 90, character: dsp.SatTransformer, drive: 4, width: 104, monoBass: true, targetLUFS: -9},
-	ProfileDynamicOpen:      {eq: [5]float64{0.2, -0.3, 0, 0.2, 0.6}, threshold: -14, ratio: 1.4, attack: 40, release: 300, sidechain: 60, character: dsp.SatClean, drive: 0, width: 104, targetLUFS: -16},
-	ProfileVocalForward:     {eq: [5]float64{0, -0.6, 0.3, 0.6, 0.3}, threshold: -17, ratio: 1.7, attack: 30, release: 200, sidechain: 100, character: dsp.SatTube, drive: 3, width: 100, monoBass: true, targetLUFS: -14},
-	ProfileBassHeavy:        {eq: [5]float64{0.8, -0.4, 0, 0.2, 0.2}, threshold: -16, ratio: 1.8, attack: 30, release: 200, sidechain: 120, character: dsp.SatTape, drive: 4, width: 102, monoBass: true, targetLUFS: -14},
+	// Low-mid body (250 Hz +1.1) with a softened top and tube color.
+	ProfileWarmAnalog: {eq: [5]float64{0.5, 1.1, 0, -0.4, -0.8}, threshold: -16, ratio: 1.7, attack: 30, release: 250, sidechain: 90, topology: dsp.CompOptical, character: dsp.SatTube, drive: 8, width: 100, averageGR: 1.5},
+	// Attack and presence (4 kHz +1.2) over a cleared 250 Hz; VCA control.
+	ProfilePunchyCommercial: {eq: [5]float64{0.6, -0.8, 0, 1.2, 0.5}, threshold: -16, ratio: 2, attack: 30, release: 150, sidechain: 90, topology: dsp.CompVCA, character: dsp.SatTransformer, drive: 4, width: 104, monoBass: true, averageGR: 1.5},
+	// Air (12 kHz shelf +1.2) and the lightest compression.
+	ProfileDynamicOpen: {eq: [5]float64{0.2, -0.3, 0, 0.2, 1.2}, threshold: -14, ratio: 1.4, attack: 40, release: 300, sidechain: 60, topology: dsp.CompOptical, character: dsp.SatClean, drive: 0, width: 104, averageGR: 0.75},
+	// Vocal intelligibility (2 kHz +1.2) with a 250 Hz masking cut.
+	ProfileVocalForward: {eq: [5]float64{0, -0.6, 1.2, 0.3, 0.3}, freq: [5]float64{2: 2000}, threshold: -17, ratio: 1.7, attack: 30, release: 200, sidechain: 100, topology: dsp.CompOptical, character: dsp.SatTube, drive: 3, width: 100, monoBass: true, averageGR: 1.5},
+	// Sub shelf (+1.5 at 90 Hz, about +1.2 at 120 Hz) with a 250 Hz mud cut; VCA control.
+	ProfileBassHeavy: {eq: [5]float64{1.5, -0.6, 0, 0, 0.2}, freq: [5]float64{0: 90}, threshold: -16, ratio: 1.8, attack: 30, release: 200, sidechain: 120, topology: dsp.CompVCA, character: dsp.SatTape, drive: 4, width: 102, monoBass: true, averageGR: 1.5},
 }
 
-// ProposalBaseline returns the static baseline a measured Deep proposal starts from.
+// ProposalBaseline returns the static baseline a measured Deep proposal starts
+// from, with its fallback threshold. AnalyzeDeepV2Context measures the source
+// to set the threshold and the Level match gain.
 func ProposalBaseline(profile ProfileID) dsp.Params {
 	recipe, ok := proposalRecipes[profile]
 	if !ok {
@@ -66,13 +78,17 @@ func ProposalBaseline(profile ProfileID) dsp.Params {
 	p.EQEnabled = true
 	for i := range p.Bands {
 		p.Bands[i].GainDB = recipe.eq[i]
+		if recipe.freq[i] > 0 {
+			p.Bands[i].FreqHz = recipe.freq[i]
+		}
 	}
-	p.Compressor = dsp.CompressorParams{Enabled: true, ThresholdDB: recipe.threshold, Ratio: recipe.ratio, AttackMS: recipe.attack, ReleaseMS: recipe.release, KneeDB: 6, MakeupDB: 0, SidechainHPFHz: recipe.sidechain, AutoRelease: true, Topology: dsp.CompOptical}
+	// Auto release stays off so the listed release is the one applied.
+	p.Compressor = dsp.CompressorParams{Enabled: true, ThresholdDB: recipe.threshold, Ratio: recipe.ratio, AttackMS: recipe.attack, ReleaseMS: recipe.release, KneeDB: 6, MakeupDB: 0, SidechainHPFHz: recipe.sidechain, AutoRelease: false, Topology: recipe.topology}
 	p.Saturation = dsp.SaturationParams{Enabled: recipe.drive > 0, Amount: recipe.drive, Character: recipe.character}
 	p.Stereo.Enabled = true
 	p.Stereo.WidthPct = recipe.width
 	p.Stereo.MonoBass = recipe.monoBass
-	p.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: MaxStartingCeilingDBTP, TargetLUFS: recipe.targetLUFS, ReleaseMS: 85, TruePeak: false}
+	p.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: MaxStartingCeilingDBTP, TargetLUFS: p.Limiter.TargetLUFS, ReleaseMS: 85, TruePeak: false}
 	p.Repair = dsp.RepairParams{}
 	return p
 }
@@ -158,4 +174,31 @@ func predictionFindings(before, after dsp.Metrics) []Finding {
 			Detail: fmt.Sprintf("Rendered through the export limiter, the true-peak to RMS crest falls from %.1f dB to %.1f dB. Transients can lose impact; reduce compression, saturation or limiting if the source's punch matters.", before.DynamicRangeDB, after.DynamicRangeDB)})
 	}
 	return findings
+}
+
+// measureCompressorAverageGR renders only the stages that feed the compressor
+// (input gain, EQ and the compressor itself) and returns its average reduction
+// over audible frames.
+func measureCompressorAverageGR(ctx context.Context, buf *audio.Buffer, params dsp.Params) (float64, error) {
+	p := params
+	p.AlgorithmVersion = dsp.LegacyAlgorithmVersion
+	p.Saturation.Enabled = false
+	p.Stereo.Enabled = false
+	p.Limiter.Enabled = false
+	p.DitherBits = 0
+	if err := dsp.ValidateParams(p); err != nil {
+		return 0, err
+	}
+	engine := dsp.NewEngine(float64(buf.SampleRate))
+	engine.SetParams(p)
+	const block = 4096
+	outL, outR := make([]float32, block), make([]float32, block)
+	for start := 0; start < len(buf.Left); start += block {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+		end := min(start+block, len(buf.Left))
+		engine.ProcessBlock(buf.Left[start:end], buf.Right[start:end], outL[:end-start], outR[:end-start])
+	}
+	return engine.GainReductionStats().CompressorAverageDB, nil
 }

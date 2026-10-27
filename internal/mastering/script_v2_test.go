@@ -132,7 +132,7 @@ func TestPublicScriptV2ProposalsAvoidUnsupportedProcessing(t *testing.T) {
 			t.Fatal(err)
 		}
 		params := script.ChainParams
-		if params.AlgorithmVersion != dsp.LegacyAlgorithmVersion || params.Repair != (dsp.RepairParams{}) || params.Limiter.TruePeak || params.Compressor.Topology != dsp.CompOptical || params.Limiter.CeilingDBTP > -1 {
+		if params.AlgorithmVersion != dsp.LegacyAlgorithmVersion || params.Repair != (dsp.RepairParams{}) || params.Limiter.TruePeak || params.Compressor.Topology != ProposalBaseline(profile).Compressor.Topology || params.Limiter.CeilingDBTP > -1 {
 			t.Fatal("public v2 proposal contains unavailable processing", profile, params)
 		}
 		legacy := ProfilePreset(profile)

@@ -28,21 +28,97 @@ func TestProposalBaselinesAreHonestStartingPoints(t *testing.T) {
 			t.Fatalf("%s baseline adds level: makeup %.2f input %.2f", profile, params.Compressor.MakeupDB, params.InputGainDB)
 		}
 		for i, band := range params.Bands {
-			if math.Abs(band.GainDB) > 1 {
-				t.Fatalf("%s band %d moves %.2f dB; conservative recipes stay within 1 dB", profile, i, band.GainDB)
+			if math.Abs(band.GainDB) > 1.5 {
+				t.Fatalf("%s band %d moves %.2f dB; conservative recipes stay within 1.5 dB", profile, i, band.GainDB)
 			}
 		}
 		if params.Compressor.Ratio > 2 || params.Saturation.Amount > 10 || params.Stereo.WidthPct > 106 || params.Stereo.WidthPct < 100 {
 			t.Fatalf("%s dynamics, drive or width exceed the conservative recipe: %+v", profile, params)
 		}
-		if params.Repair.Enabled || params.Compressor.Topology != dsp.CompOptical {
-			t.Fatalf("%s uses unavailable processing", profile)
+		if params.Repair.Enabled || params.Compressor.AutoRelease {
+			t.Fatalf("%s uses unavailable processing or overrides its listed release", profile)
 		}
 	}
 	// Legacy v1 presets keep their character but no longer exceed -1 dBTP.
 	for _, profile := range allProfiles {
 		if ceiling := ProfilePreset(profile).Limiter.CeilingDBTP; ceiling > MaxStartingCeilingDBTP {
 			t.Fatalf("legacy %s ceiling %.2f dBTP above -1", profile, ceiling)
+		}
+	}
+}
+
+// S1: each profile has at least one 1 dB signature move that matches its name,
+// measured as the baseline EQ response, and stands out from every other profile.
+func TestProfileSignaturesMatchTheirNames(t *testing.T) {
+	signatures := []struct {
+		profile   ProfileID
+		frequency []float64
+		topology  dsp.CompTopology
+	}{
+		{ProfileWarmAnalog, []float64{250}, dsp.CompOptical},    // low-mid body
+		{ProfilePunchyCommercial, []float64{4000}, dsp.CompVCA}, // attack and presence
+		{ProfileDynamicOpen, []float64{12000}, dsp.CompOptical}, // air
+		{ProfileVocalForward, []float64{2000}, dsp.CompOptical}, // vocal intelligibility
+		{ProfileBassHeavy, []float64{40, 120}, dsp.CompVCA},     // sub and the 120 Hz bump
+	}
+	response := func(profile ProfileID, frequency float64) float64 {
+		params := ProposalBaseline(profile)
+		return dsp.EQResponseDB(48000, frequency, params.EQEnabled, params.Bands)
+	}
+	for _, signature := range signatures {
+		params := ProposalBaseline(signature.profile)
+		if params.Compressor.Topology != signature.topology {
+			t.Fatalf("%s uses %s, want %s", signature.profile, params.Compressor.Topology, signature.topology)
+		}
+		largest := 0.0
+		for _, band := range params.Bands {
+			largest = math.Max(largest, math.Abs(band.GainDB))
+		}
+		if largest < 1 {
+			t.Fatalf("%s has no 1 dB signature move", signature.profile)
+		}
+		for _, frequency := range signature.frequency {
+			own := response(signature.profile, frequency)
+			if own < 1 {
+				t.Fatalf("%s measures %+.2f dB at %.0f Hz, want at least +1 dB", signature.profile, own, frequency)
+			}
+			for _, other := range allProfiles {
+				if other != signature.profile && own-response(other, frequency) < 0.5 {
+					t.Fatalf("%s (%+.2f dB) does not stand out from %s (%+.2f dB) at %.0f Hz", signature.profile, own, other, response(other, frequency), frequency)
+				}
+			}
+		}
+	}
+	// Bass Heavy no longer cuts the bass it is named for; Warm Analog is the darkest top.
+	if response(ProfileBassHeavy, 120) <= response(ProfileBassHeavy, 250) || response(ProfileBassHeavy, 250) > -0.3 {
+		t.Fatal("Bass Heavy must lift 120 Hz and clear 250 Hz")
+	}
+	for _, other := range allProfiles {
+		if other != ProfileWarmAnalog && response(ProfileWarmAnalog, 12000) >= response(other, 12000) {
+			t.Fatalf("Warm Analog is not darker than %s at 12 kHz", other)
+		}
+	}
+}
+
+// R3: each profile's listed release is audible. Doubling it changes the
+// measured compressor reduction, so the field is not a placebo.
+func TestProfileReleaseTimesAreAudible(t *testing.T) {
+	buf := referenceMix(3, true)
+	ctx := context.Background()
+	for _, profile := range allProfiles {
+		params := ProposalBaseline(profile)
+		params.Compressor.ThresholdDB = -20
+		short, err := measureCompressorAverageGR(ctx, buf, params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		params.Compressor.ReleaseMS *= 3
+		long, err := measureCompressorAverageGR(ctx, buf, params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if long-short < 0.1 {
+			t.Fatalf("%s release is inaudible: %.3f dB vs %.3f dB average reduction", profile, short, long)
 		}
 	}
 }

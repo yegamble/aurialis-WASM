@@ -21,3 +21,21 @@ it("gives every master its own slot once the album fills the chart", () => {
   expect(container.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 360 160");
   expect(container.querySelectorAll("rect")).toHaveLength(9);
 });
+
+it("reports a silent master as silent and keeps the scale set by the audible masters", () => {
+  const silent = { id: "silent", title: "Room tone", measured: { integratedLufs: -70, truePeakDbtp: -133.67 }, requestedLufs: null };
+  const { getByRole } = render(<AlbumLevelChart masters={[master("loud"), silent]} />);
+  const row = getByRole("row", { name: /Room tone/ });
+  expect(row.textContent).toContain("Silent");
+  expect(row.textContent).not.toContain("133");
+  const quiet = { ...master("quiet"), measured: { integratedLufs: -20, truePeakDbtp: -6 } };
+  const heights = (masters: Parameters<typeof AlbumLevelChart>[0]["masters"]) => {
+    const view = render(<AlbumLevelChart masters={masters} />);
+    const values = Array.from(view.container.querySelectorAll("rect")).map((bar) => Number(bar.getAttribute("height")));
+    view.unmount();
+    return values;
+  };
+  cleanup();
+  // A silent master must not drag the floor to −137 and flatten the audible bars together.
+  expect(heights([master("loud"), quiet, silent]).slice(0, 2)).toEqual(heights([master("loud"), quiet]));
+});

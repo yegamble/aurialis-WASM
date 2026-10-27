@@ -206,7 +206,7 @@ test("a mixed 48 kHz / 44.1 kHz browser-local album renders every master at 44.1
   await page.getByRole("button", { name: "New album", exact: true }).click();
   await page.getByRole("link", { name: /Untitled sequence 1/u }).click();
   for (const track of tracks) await page.getByRole("button", { name: track.title, exact: true }).click();
-  const panel = page.getByRole("region", { name: "Album level", exact: true });
+  const panel = page.getByRole("region", { name: "Album delivery format", exact: true });
   await panel.getByRole("group", { name: "Sample rate", exact: true }).getByRole("button", { name: "44.1 kHz", exact: true }).click();
   await panel.getByRole("group", { name: "Bit depth", exact: true }).getByRole("button", { name: "16-bit PCM", exact: true }).click();
   await page.getByRole("button", { name: "Render album masters", exact: true }).click();

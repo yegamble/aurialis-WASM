@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { LivePlaybackState } from "@/lib/live-playback";
 import { Icon } from "./Icon";
 import { formatTime } from "./Primitives";
@@ -18,6 +18,8 @@ type RealTransportProps = {
   nextTrackTitle?: string;
   handover?: boolean;
   inline?: boolean;
+  /** Opt-in static loudness match (V1-11): the toggle and its applied offset text. */
+  match?: { enabled: boolean; text: string; onToggle: (enabled: boolean) => void };
 };
 
 const actionClass = "touch-none select-none grid size-[44px] shrink-0 place-items-center rounded-full border border-transparent bg-transparent text-ink [&_svg]:size-5 transition-colors hover:enabled:bg-paper-deep disabled:cursor-not-allowed disabled:opacity-45";
@@ -116,7 +118,8 @@ function useHoldAction(direction: -1 | 1, onScrub: RealTransportProps["onScrub"]
 }
 
 /** One live audio clock: A is processed, B original; restart always means this track at zero. */
-export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal, onVolume, onRestart, onForward, onRepeat, onScrub, nextTrackTitle, handover = false, inline = false }: RealTransportProps) {
+export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal, onVolume, onRestart, onForward, onRepeat, onScrub, nextTrackTitle, handover = false, inline = false, match }: RealTransportProps) {
+  const matchId = useId();
   const playing = state?.playing ?? false;
   const loading = state?.loading ?? false;
   const original = state?.original ?? false;
@@ -133,7 +136,8 @@ export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal,
     <div className={`transport @container ${inline ? "relative w-full" : "fixed right-[14px] bottom-[calc(82px+env(safe-area-inset-bottom,0px))] left-[14px] z-25 w-auto md:sticky md:right-auto md:bottom-3 md:left-auto md:w-full"} min-w-0 rounded-[22px] border border-line-dark bg-paper px-3 py-2 shadow-[var(--shadow)]`}
       aria-label="Playback transport" aria-busy={loading || handover}
       data-position={position} data-playing={playing} data-ready={state?.ready ?? false}
-      data-parameter-version={state?.parameterVersion ?? 0} data-applied-version={state?.appliedVersion ?? 0}>
+      data-parameter-version={state?.parameterVersion ?? 0} data-applied-version={state?.appliedVersion ?? 0}
+      data-match-processed-db={state?.loudnessMatch?.processedDb ?? 0} data-match-original-db={state?.loudnessMatch?.originalDb ?? 0}>
       <div className="grid min-w-0 grid-cols-[minmax(188px,1fr)_60px] items-center gap-x-2 gap-y-1 @min-[640px]:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
         <div className="ab-toggle col-start-1 row-start-1 inline-flex w-fit justify-self-start rounded-full border border-line bg-paper-deep p-[3px] @min-[640px]:justify-self-start" role="group" aria-label="Processed and original audio">
           {([false, true] as const).map((isOriginal) => {
@@ -178,6 +182,15 @@ export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal,
           </label>
         </div>
       </div>
+      {match && <div className="mt-1 flex min-w-0 items-center gap-2">
+        <button type="button" disabled={unavailable} aria-pressed={match.enabled} aria-describedby={matchId}
+          title="Match loudness · Lowers the louder of A and B by one fixed offset measured from the export render. Listening only; export is unchanged."
+          className="min-h-[44px] min-w-[44px] shrink-0 rounded-full border border-line bg-paper-deep px-3 text-[11px] font-semibold text-ink-soft transition-colors hover:enabled:bg-paper aria-pressed:border-clay-dark aria-pressed:bg-clay-wash aria-pressed:text-clay-dark disabled:cursor-not-allowed disabled:opacity-45"
+          onClick={() => { match.onToggle(!match.enabled); }}>
+          Match loudness
+        </button>
+        <p id={matchId} aria-live="polite" aria-atomic="true" title={match.text || undefined} className="match-status m-0 min-w-0 truncate text-[11px] text-ink-soft tabular-nums">{match.text}</p>
+      </div>}
       <p role="status" aria-live="polite" aria-atomic="true" title={status || undefined} className="transport-status m-0 h-4 truncate px-2 text-center text-[10px] leading-4 text-ink-soft">{status}</p>
     </div>
   );

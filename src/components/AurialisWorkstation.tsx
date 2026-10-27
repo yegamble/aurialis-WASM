@@ -24,6 +24,7 @@ import { ExtendedCompressorControls, ExtendedStereoControls, FrequencyDynamicsCo
 import { DSPModule } from "./shared/DSPModule";
 import { EQBandControls, LimiterReleaseControl } from "./shared/EQBandControls";
 import { RealTransport } from "./shared/RealTransport";
+import { useLoudnessMatch } from "@/lib/use-loudness-match";
 import { ReleaseReview } from "./shared/ReleaseReview";
 import { createLivePlayback, type LiveMeter, type LivePlaybackController, type LivePlaybackState, type LiveSpectrum } from "@/lib/live-playback";
 import { usePathname } from "next/navigation";
@@ -651,6 +652,10 @@ function MasterView({ trackId }: { trackId: string }) {
   const liveSettings = useMemo(() => track ? clampAdvancedToSampleRate(track.advanced, source?.sampleRate ?? track.sampleRate) : createDefaultAdvancedParams(), [track?.advanced, track?.sampleRate, source?.sampleRate]);
   const currentSettings = useRef(liveSettings);
   currentSettings.current = liveSettings;
+  const loudnessMatch = useLoudnessMatch(track, sourceBlob);
+  const { processedDb: matchProcessedDb, originalDb: matchOriginalDb } = loudnessMatch.gains;
+  const currentMatch = useRef(loudnessMatch.gains);
+  currentMatch.current = loudnessMatch.gains;
   const liveMeter = playback?.playing ? meter : null;
   const levels = liveMeter ? { peak: liveMeter.peakDbfs <= -119.9 ? "−∞" : liveMeter.peakDbfs.toFixed(1), rms: liveMeter.rmsDbfs <= -119.9 ? "−∞" : liveMeter.rmsDbfs.toFixed(1), crest: liveMeter.peakDbfs <= -119.9 ? "—" : liveMeter.crestDb.toFixed(1) } : null;
   const reading = (value: number | null | undefined) => value === null || value === undefined ? "—" : value.toFixed(1);
@@ -680,6 +685,7 @@ function MasterView({ trackId }: { trackId: string }) {
         onError: (error) => { if (active) setLiveError(error.message); },
       }, sourceBlob && track?.sourceIdentity ? { blob: sourceBlob, identity: track.sourceIdentity, ...(track.deepMastering?.applied ? { applied: track.deepMastering.applied } : {}) } : undefined);
       live.current = controller;
+      controller.setLoudnessMatch(currentMatch.current);
       setPlayback(controller.getState());
       setLiveError("");
       controls = bindPlaybackControls(track?.title || "Untitled track", {
@@ -704,6 +710,9 @@ function MasterView({ trackId }: { trackId: string }) {
       return undefined;
     }
   }, [source, sourceBlob, trackId]);
+
+  // Monitoring only: export requests never read this gain.
+  useEffect(() => { live.current?.setLoudnessMatch({ processedDb: matchProcessedDb, originalDb: matchOriginalDb }); }, [matchProcessedDb, matchOriginalDb]);
 
   useEffect(() => {
     if (track?.deepMastering?.applied) return;
@@ -1052,6 +1061,7 @@ function MasterView({ trackId }: { trackId: string }) {
             onForward={forward}
             onRepeat={(repeat) => { live.current?.setRepeat(repeat); }}
             onScrub={onScrub}
+            match={{ enabled: loudnessMatch.enabled, text: loudnessMatch.text, onToggle: loudnessMatch.setEnabled }}
             {...(nextTrack ? { nextTrackTitle: nextTrack.title || "Untitled track" } : {})}
             handover={handover}
           />

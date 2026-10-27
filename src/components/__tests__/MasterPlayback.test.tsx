@@ -54,6 +54,7 @@ beforeEach(() => {
       seek: vi.fn((position: number) => { update({ position }); }),
       setParams: vi.fn(), applyScript: vi.fn(), detachScript: vi.fn(), setBypass: vi.fn((original: boolean) => { update({ original }); }),
       setVolume: vi.fn((volume: number) => { update({ volume }); }),
+      setLoudnessMatch: vi.fn((match: { processedDb: number; originalDb: number } | null) => { update({ loudnessMatch: match ?? { processedDb: 0, originalDb: 0 } }); }),
       setRepeat: vi.fn((repeat: boolean) => { update({ repeat }); }),
       dispose: vi.fn(), getState: () => instance.state,
     };
@@ -441,6 +442,61 @@ describe("master live playback lifecycle", () => {
     expect(render.mock.calls[1]?.[3]).toEqual({ sampleRate: 44100, dither: "none" });
     await within(screen.getByRole("dialog")).findByText(/without dither at 44\.1 kHz \(converted from 48 kHz\) using the same Go DSP parameters\. Delivered true peak -1\.04 dBTP at 44\.1 kHz\.$/);
   }, 20000);
+
+  it("matches A and B with one static measured offset, re-measures stale settings at unity, and never changes export (V1-11)", async () => {
+    const storage = new Map<string, string>([["aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1) })]]);
+    vi.stubGlobal("localStorage", { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => { storage.set(key, value); } });
+    const measure = vi.spyOn(engine, "measureRender").mockImplementation((_file, render) => {
+      const input = "params" in render ? (render.params as { inputGainDb: number }).inputGainDb : 0;
+      return Promise.resolve({ sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: { ...exportMetrics, integratedLufs: -14 }, afterMetrics: { ...exportMetrics, integratedLufs: -14 + input } });
+    });
+    const delivery = vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: previewWAV(pcm), truePeakDbtp: -1 });
+    const originals = (["createObjectURL", "revokeObjectURL"] as const).map((key) => [key, Object.getOwnPropertyDescriptor(URL, key)] as const);
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: () => "blob:export" });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: () => undefined });
+    onTestFinished(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+      for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(URL, key, descriptor); else Reflect.deleteProperty(URL, key); }
+    });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    mount(); await ready();
+    const instance = latest();
+    const exportOnce = async (calls: number) => {
+      fireEvent.click(screen.getByRole("button", { name: "Export" }));
+      fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));
+      await waitFor(() => { expect(delivery).toHaveBeenCalledTimes(calls); });
+      const close = within(screen.getByRole("dialog")).getAllByRole("button", { name: /Close/ })[0];
+      if (!close) throw new Error("Missing export close button");
+      fireEvent.click(close);
+    };
+    const toggle = screen.getByRole("button", { name: "Match loudness" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(measure).not.toHaveBeenCalled();
+    await exportOnce(1);
+    fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "-4.5" } });
+    fireEvent.click(toggle);
+    expect(storage.get("aurialis-match-loudness-v1")).toBe("1");
+    await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("B −4.5 dB to match A"); }, { timeout: 5000 });
+    expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: -4.5 });
+    // A is measured on the export algorithm (2), not the live preview limiter.
+    expect(measure.mock.calls.at(-1)?.[1]).toMatchObject({ params: { inputGainDb: -4.5, algorithmVersion: 2 } });
+    // A settings change makes the reading stale: unity at once, then the new static offset.
+    fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "3" } });
+    await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("Measuring A and B loudness…"); });
+    expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: 0 });
+    await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("A −3.0 dB to match B"); }, { timeout: 5000 });
+    expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: -3, originalDb: 0 });
+    fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "0" } });
+    await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("A and B already match"); }, { timeout: 5000 });
+    // Export with the match on sends exactly the request it sent with the match off.
+    await exportOnce(2);
+    // Same source blob and the byte-identical serialized render request (the fourth argument is the abort signal).
+    expect(delivery.mock.calls[1]?.[0]).toBe(delivery.mock.calls[0]?.[0]);
+    expect(JSON.stringify(delivery.mock.calls[1]?.slice(1, 4))).toBe(JSON.stringify(delivery.mock.calls[0]?.slice(1, 4)));
+    fireEvent.click(toggle);
+    expect(storage.get("aurialis-match-loudness-v1")).toBe("0");
+    await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe(""); });
+  }, 30000);
 
   it("does not create an engine when an old source load resolves after navigation", async () => {
     let resolveSource: ((value: Blob) => void) | undefined;

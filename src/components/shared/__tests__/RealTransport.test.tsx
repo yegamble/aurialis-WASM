@@ -8,12 +8,12 @@ function handlers() { return { onPlay: vi.fn().mockResolvedValue(undefined), onP
 afterEach(cleanup);
 
 describe("live A/B transport", () => {
-  it("defaults to A processed, offers B original immediately and has no hidden level matching", () => {
+  it("defaults to A processed, offers B original immediately and has no implicit level matching", () => {
     const callbacks = handlers();
     render(<RealTransport {...callbacks} state={initial} sourceReady />);
     expect(screen.getByRole("button", { name: "A Processed" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "B Original" }).disabled).toBe(false);
-    expect(screen.queryByRole("button", { name: "Match level" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Match loudness" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "B Original" }));
     expect(callbacks.onOriginal).toHaveBeenLastCalledWith(true);
     fireEvent.click(screen.getByRole("button", { name: "A Processed" }));
@@ -21,6 +21,27 @@ describe("live A/B transport", () => {
     expect(callbacks.onPlay).not.toHaveBeenCalled();
     expect(callbacks.onPause).not.toHaveBeenCalled();
     expect(callbacks.onVolume).not.toHaveBeenCalled();
+  });
+
+  it("offers an opt-in Match loudness toggle whose applied offset is visible and announced (V1-11)", () => {
+    const callbacks = handlers(); const onToggle = vi.fn();
+    const { container, rerender } = render(<RealTransport {...callbacks} state={initial} sourceReady match={{ enabled: false, text: "", onToggle }} />);
+    const toggle = screen.getByRole<HTMLButtonElement>("button", { name: "Match loudness" });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.className).toContain("min-h-[44px]");
+    fireEvent.click(toggle); expect(onToggle).toHaveBeenLastCalledWith(true);
+    rerender(<RealTransport {...callbacks} state={{ ...initial, loudnessMatch: { processedDb: 0, originalDb: -4.2 } }} sourceReady match={{ enabled: true, text: "B −4.2 dB to match A", onToggle }} />);
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    const live = container.querySelector("[aria-live=polite].match-status");
+    expect(live?.textContent).toBe("B −4.2 dB to match A");
+    expect(live?.getAttribute("aria-atomic")).toBe("true");
+    expect(toggle.getAttribute("aria-describedby")).toBe(live?.id);
+    const transport = container.querySelector(".transport");
+    expect(transport?.getAttribute("data-match-original-db")).toBe("-4.2");
+    expect(transport?.getAttribute("data-match-processed-db")).toBe("0");
+    fireEvent.click(toggle); expect(onToggle).toHaveBeenLastCalledWith(false);
+    rerender(<RealTransport {...callbacks} state={null} sourceReady={false} match={{ enabled: true, text: "", onToggle }} />);
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Match loudness" }).disabled).toBe(true);
   });
 
   it("keeps the controller clock and play state when comparison routing changes", () => {

@@ -249,6 +249,27 @@ describe("master live playback lifecycle", () => {
     await waitFor(() => { expect(normalize).toHaveBeenCalledWith(expect.any(Blob), custom, -12, expect.any(AbortSignal)); });
   }, 30000);
 
+  it("lowers a saved ceiling above −1 dBTP with a visible, dismissible note", async () => {
+    const track = testStore.tracks[0]; if (!track) throw new Error("Missing track");
+    localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: [{ ...track, mode: "simple", target: "Loud", advanced: { ...track.advanced, limiter: { ...track.advanced.limiter, enabled: true, targetLufs: -9, ceiling: -0.2 } } }] }));
+    mount(); await ready();
+    expect(screen.getByText("This project's saved limiter ceiling of −0.2 dBFS was lowered to −1 dBFS, the highest ceiling Aurialis offers. Set target loudness or export again to re-measure.")).toBeTruthy();
+    expect(screen.getByRole<HTMLSelectElement>("combobox", { name: "Output target" }).value).toBe("Loud");
+    await waitFor(() => { expect(savedTrack().advanced.limiter.ceiling).toBe(-1); });
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss ceiling note" }));
+    expect(screen.queryByText(/saved limiter ceiling/u)).toBeNull();
+  }, 30000);
+
+  it("offers one Deep profile control and no legacy static profile cards", async () => {
+    mount(); await ready();
+    fireEvent.click(screen.getByRole("tab", { name: "deep" }));
+    expect(screen.getAllByRole("combobox", { name: /profile/iu })).toHaveLength(1);
+    expect(screen.getByRole("combobox", { name: "Deep engineer profile" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Apply profile" })).toBeNull();
+    expect(screen.queryByText("Engineer profiles")).toBeNull();
+    for (const legacy of ["Modern Pop Polish", "Hip-Hop Low-End", "Indie Warmth", "Metal Wall", "Pop Punk Air"]) expect(screen.queryByText(legacy)).toBeNull();
+  }, 30000);
+
   it("disposes on leaving and constructs a new playable engine on return without stale callbacks", async () => {
     const first = mount();
     await ready();

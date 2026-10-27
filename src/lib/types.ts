@@ -204,6 +204,7 @@ export type Track = {
   target: string;
   metrics: Metrics;
   advanced: AdvancedParams;
+  /** Legacy static profile id kept for saved projects; no control applies it. */
   profile: ProfileId;
   releaseScore?: number;
 };

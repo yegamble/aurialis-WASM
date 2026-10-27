@@ -417,38 +417,6 @@ input[type="range"] {
   color: var(--ink);
 }
 
-.profile-list {
-  display: grid;
-  gap: 8px;
-}
-
-.profile-card {
-  text-align: left;
-  padding: 12px 14px;
-  min-height: 44px;
-  border-radius: 16px;
-  border: 1px solid var(--line-dark);
-  background: var(--paper);
-  display: grid;
-  gap: 3px;
-}
-
-.profile-card.is-active {
-  background: var(--clay-wash);
-  border-color: var(--clay-dark);
-}
-
-.profile-card strong {
-  font-family: var(--serif);
-  font-size: 18px;
-  font-weight: 500;
-}
-
-.profile-card span {
-  font-size: 12px;
-  color: var(--ink-soft);
-}
-
 .lane {
   display: grid;
   grid-template-columns: 92px 1fr;

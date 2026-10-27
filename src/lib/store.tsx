@@ -29,41 +29,12 @@ import type {
   EQBandId,
   EQBandParams,
   LimiterParams,
-  ProfileId,
   RepairParams,
   SaturationParams,
   StereoParams,
   Track,
 } from "./types";
 import { compressorTopologies } from "./types";
-
-export const profiles: { id: ProfileId; name: string; note: string }[] = [
-  {
-    id: "modern_pop_polish",
-    name: "Modern Pop Polish",
-    note: "Tight lows, open top, controlled chorus lift.",
-  },
-  {
-    id: "hip_hop_low_end",
-    name: "Hip-Hop Low-End",
-    note: "Sub-forward weight with articulate transients.",
-  },
-  {
-    id: "indie_warmth",
-    name: "Indie Warmth",
-    note: "Soft compression and an organic midrange.",
-  },
-  {
-    id: "metal_wall",
-    name: "Metal Wall",
-    note: "Dense impact, precise bass and assertive mids.",
-  },
-  {
-    id: "pop_punk_air",
-    name: "Pop Punk Air",
-    note: "Bright presence and energetic drum movement.",
-  },
-];
 
 type StoreState = {
   tracks: Track[];

@@ -18,7 +18,7 @@ import { restoredSimpleDirection, type SimpleChange } from "./simple-directions"
 import { hasAppliedDeep } from "./reference-matching";
 import { readReleaseReport } from "./release-review";
 import { pruneAlbumOffsets, readAlbumLevel } from "./album-levels";
-import { deepSourceMatches, readDeepMasteringState, type DeepMasteringState, type DeepSettingsSnapshot, type ScriptV2 } from "./deep-mastering";
+import { deepSourceMatches, loweredDeepCeilings, readDeepMasteringState, type DeepMasteringState, type DeepSettingsSnapshot, type ScriptV2 } from "./deep-mastering";
 import type {
   Album,
   AdvancedParams,
@@ -447,10 +447,11 @@ function dbLabel(value: number): string {
 
 // V1-09: no saved project keeps a limiter ceiling above −1 dBTP. Lower the
 // current settings and the Deep snapshots together so they still match, and
-// leave a visible note so the change is never silent.
-function migrateLimiterCeiling(track: Track): Track {
+// leave a visible note so the change is never silent, including for a draft.
+// savedDeep holds the draft and applied ceilings that reading the Deep state already lowered.
+function migrateLimiterCeiling(track: Track, savedDeep: readonly number[]): Track {
   const deep = track.deepMastering;
-  const saved = [track.advanced.limiter.ceiling, deep?.applied?.chainParams.limiter.ceilingDbtp, deep?.before?.advanced.limiter.ceiling]
+  const saved = [track.advanced.limiter.ceiling, deep?.applied?.chainParams.limiter.ceilingDbtp, deep?.before?.advanced.limiter.ceiling, ...(deep ? savedDeep : [])]
     .filter((value): value is number => value !== undefined && value > MAX_LIMITER_CEILING_DB);
   if (saved.length === 0) return track;
   const lower = (advanced: AdvancedParams): AdvancedParams => ({ ...advanced, limiter: { ...advanced.limiter, ceiling: Math.min(MAX_LIMITER_CEILING_DB, advanced.limiter.ceiling) } });
@@ -535,7 +536,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
           ...(track.advanced?.repair ?? {}),
         },
       }, track.sampleRate),
-    }));
+    }), loweredDeepCeilings(track.deepMastering));
   });
   return {
     tracks,

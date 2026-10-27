@@ -179,6 +179,20 @@ export async function compileScript(script: ScriptV2, deviceRate: number, signal
   return compiledScript(body, script, deviceRate);
 }
 
+function savedCeiling(script: unknown): number | undefined {
+  const chain = typeof script === "object" && script !== null ? (script as { chainParams?: unknown }).chainParams : undefined;
+  const limiter = typeof chain === "object" && chain !== null ? (chain as { limiter?: unknown }).limiter : undefined;
+  const ceiling = typeof limiter === "object" && limiter !== null ? (limiter as { ceilingDbtp?: unknown }).ceilingDbtp : undefined;
+  return typeof ceiling === "number" && ceiling > MAX_LIMITER_CEILING_DB ? ceiling : undefined;
+}
+
+/** Saved draft or applied ceilings above −1 dBTP, which reading lowers (V1-09), so hydration can say so. */
+export function loweredDeepCeilings(value: unknown): number[] {
+  if (typeof value !== "object" || value === null) return [];
+  const { proposal, applied } = value as { proposal?: unknown; applied?: unknown };
+  return [savedCeiling(proposal), savedCeiling(applied)].filter((ceiling) => ceiling !== undefined);
+}
+
 /** Hydration never applies a saved script; the live controller validates it before publication. */
 export function readDeepMasteringState(value: unknown, identity: SourceIdentity | undefined, sourceRevision: number): DeepMasteringState {
   if (!identity) throw failure();
@@ -191,6 +205,11 @@ export function readDeepMasteringState(value: unknown, identity: SourceIdentity 
     state.prediction = Object.keys(record).length === 2
       ? { revision, afterMetrics: typedShape(metricsTemplate, object(data.prediction, ["revision", "afterMetrics"]).afterMetrics) }
       : { revision, ...measuredPrediction(object(data.prediction, ["revision", ...predictionFields])) };
+  }
+  // A lowered draft ceiling is a new draft revision, so its old prediction reads as stale.
+  if (savedCeiling(data.proposal) !== undefined) {
+    if (proposal.revision < Number.MAX_SAFE_INTEGER) state.proposal = { ...proposal, revision: proposal.revision + 1 };
+    else delete state.prediction;
   }
   if (data.applied !== undefined) state.applied = readScriptV2(data.applied, identity);
   if (data.before !== undefined) {

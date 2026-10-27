@@ -260,7 +260,7 @@ describe("master live playback lifecycle", () => {
     expect(screen.queryByText(/resampled/u)).toBeNull();
     expect(screen.getByText("Playback responds to your controls immediately and runs the export chain, so what you hear is what you export.")).toBeTruthy();
     act(() => { instance.state = { ...instance.state, liveSampleRate: 44100 }; instance.callbacks.onState?.(instance.state); });
-    expect(screen.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export. Use Audition export for an exact listen.")).toBeTruthy();
+    expect(screen.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export (about 0.2 LU). Use Audition export for an exact listen.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Audition export" })).toBeTruthy();
     vi.spyOn(engine, "normalizeSimpleAudio").mockImplementation((_blob, advanced) => Promise.resolve({ advanced, measurement: { sampleRate: 48000, frames: 4800, duration: 0.1, beforeMetrics: exportMetrics, afterMetrics: exportMetrics } }));
     fireEvent.click(screen.getByRole("tab", { name: "simple" }));

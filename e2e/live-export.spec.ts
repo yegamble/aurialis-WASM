@@ -268,7 +268,7 @@ test("a rejected source rate falls back to the device rate with a visible resamp
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
   expect(await outputEnergyRate(page)).toBe(44100);
-  await expect(page.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export. Use Audition export for an exact listen.", { exact: true })).toBeVisible();
+  await expect(page.getByText("This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export (about 0.2 LU). Use Audition export for an exact listen.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Audition export", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Pause", exact: true }).click();
 });

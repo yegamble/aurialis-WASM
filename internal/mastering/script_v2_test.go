@@ -49,6 +49,7 @@ func TestScriptV2StrictJSON(t *testing.T) {
 		}
 	}
 }
+
 // V1-11: scripts saved before the engine loudness match was retired carry
 // "loudnessMatchAb":false. They still decode and render; true never renders.
 func TestScriptV2AcceptsTheRetiredLoudnessMatchOnlyAsFalse(t *testing.T) {

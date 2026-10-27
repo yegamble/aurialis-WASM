@@ -71,7 +71,7 @@ it("owns the growing download cache before each render and releases it when its 
 it("releases completed prefix bytes when a later render fails", async () => {
   mount(); vi.mocked(engine.serverRender).mockResolvedValueOnce(wav).mockRejectedValueOnce(new Error("Controlled second-render failure"));
   await start();
-  await screen.findByText("Controlled second-render failure");
+  await screen.findByText(`“${tracks[1]?.title ?? ""}” could not be rendered: Controlled second-render failure`);
   expect(owners[0]?.update).toHaveBeenCalledWith(2 * wav.size);
   expect(owners[0]?.dispose).toHaveBeenCalledOnce();
   expect(screen.queryByRole("region", { name: "Rendered album downloads" })).toBeNull();
@@ -116,7 +116,7 @@ it("deletes partially saved masters when a later render fails", async () => {
   mocks.saveAudio.mockResolvedValue({ durable: true });
   mount(); vi.mocked(engine.serverRender).mockResolvedValueOnce(wav).mockRejectedValueOnce(new Error("Controlled second-render failure"));
   await start();
-  await screen.findByText("Controlled second-render failure");
+  await screen.findByText(`“${tracks[1]?.title ?? ""}” could not be rendered: Controlled second-render failure`);
   const saved = mocks.saveAudio.mock.calls[0]?.[0] as string;
   expect(mocks.deleteAudio).toHaveBeenCalledWith(saved);
   expect(mocks.saveAlbumMasters).not.toHaveBeenCalled();
@@ -213,4 +213,14 @@ it("charts only levels measured from the rendered masters", async () => {
   expect(table.textContent).toContain("−1.24 dBTP");
   expect(table.textContent).toContain("−16 LUFS");
   expect(table.textContent).not.toContain("−20");
+});
+
+it("names the track whose normalize render failed", async () => {
+  seed({ mode: "normalize", targetLufs: -16, offsets: [] });
+  vi.mocked(engine.normalizeSimpleAudio).mockReset().mockImplementation((_source, advanced) => Promise.resolve({ advanced, measurement: { sampleRate: 48000, frames: 48000, duration: 1, beforeMetrics: metrics, afterMetrics: metrics } }))
+    .mockImplementationOnce((_source, advanced) => Promise.resolve({ advanced, measurement: { sampleRate: 48000, frames: 48000, duration: 1, beforeMetrics: metrics, afterMetrics: metrics } }))
+    .mockRejectedValueOnce(new Error("The source is too quiet to normalize reliably."));
+  mount(); await start();
+  await screen.findByText(`“${tracks[1]?.title ?? ""}” could not be rendered: The source is too quiet to normalize reliably.`);
+  expect(screen.queryByRole("region", { name: "Rendered album downloads" })).toBeNull();
 });

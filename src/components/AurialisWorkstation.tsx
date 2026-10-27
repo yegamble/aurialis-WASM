@@ -1834,7 +1834,10 @@ function AlbumView({ albumId }: { albumId: string }) {
                 // the worker result becomes its downloadable Blob.
                 memory.update(expectedBytes);
                 // The project is read, never written: the album level lives on the album.
-                const { blob, measured } = await renderAlbumTrack(track, file, step, albumEngine, controller.signal);
+                const { blob, measured } = await renderAlbumTrack(track, file, step, albumEngine, controller.signal).catch((cause: unknown) => {
+                  // In a long album the user must know which song failed.
+                  throw new Error(`“${track.title}” could not be rendered: ${cause instanceof Error ? cause.message : "the render failed."}`, { cause });
+                });
                 if (controller.signal.aborted) return;
                 if (durable !== false) {
                   const audioId = newAudioAssetId("master");

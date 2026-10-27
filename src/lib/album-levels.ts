@@ -16,10 +16,10 @@ export type AlbumOffset = { trackId: string; offsetDb: number };
 export type AlbumLevel = { mode: AlbumLevelMode; targetLufs: AlbumTarget; offsets: AlbumOffset[] };
 export const DEFAULT_ALBUM_LEVEL: AlbumLevel = { mode: "keep", targetLufs: -14, offsets: [] };
 
-export type AlbumTrackPlan =
+type AlbumTrackPlan =
   | { trackId: string; mode: "keep"; gainDb: 0 }
   | { trackId: string; mode: "normalize"; targetLufs: AlbumTarget; offsetDb: number; requestedLufs: number };
-export type AlbumPlan = { ok: true; tracks: AlbumTrackPlan[] } | { ok: false; error: string };
+type AlbumPlan = { ok: true; tracks: AlbumTrackPlan[] } | { ok: false; error: string };
 /** Integrated loudness and true peak measured from one rendered album master. */
 export type AlbumMasterLevel = { integratedLufs: number; truePeakDbtp: number };
 

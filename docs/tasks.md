@@ -1162,4 +1162,30 @@ Chair ruling 2026-10-27 from V1-10 Round E QA, which also folds in the V1-10 Rou
 - The meter bound covers what the export limiter emits. Unprocessed content up to 0.498 fs (an export with the limiter off, or the torture mix itself) still reads 0.17 dB low at 44.1/48 kHz and 0.62 dB low at 96 kHz.
 - A V8 CPU number on an idle host is still to be recorded.
 
+**Round E 1 corrections (Devil's Advocate: not verified on `cd8b835`), 2026-10-27.** The Devil's Advocate reproduced the ceiling and meter numbers; these items close its findings.
+- B1. `origin/fix/v1-10-live-export-path` (`c03ed1e`) is merged in, and one `raceEnabled` tag file serves both features. The branch will merge `main` again once V1-10 lands.
+- R2, live == export for files that end loud. The export drains the lookahead against silence, but live playback ran the chain and guard on past the end. The worklet now calls `aurialis_live_end_input(offset)` once per finite pass, one alignment delay ahead of the audible deadline. That quantum processes up to the offset and then drains like `Engine.Drain`, and a later deadline (Repeat turned back on) resets the engine. Before the fix the Devil's Advocate probe (clipped ±0.9 square plus a 0.449 fs tone, +4 dB, −1 dBTP) differed at −89 dB (44.1 kHz) and −104 dB (48 kHz). It is now bit-identical at both rates, for an end inside a quantum and on its boundary, with the limiter alone and with every module on (`TestLivePlaybackOfALoudAbruptEndRendersTheExport`, Vitest `live-worklet.test.ts`).
+- R5 (Chair), meters. The export meter (`MeasureStereo`) now reconstructs by spectral shift: 65,536-point transforms measure 49,152 frames each with 8,192 frames of context per side, on a 4× grid with parabolic refinement. On a 3 s unlimited export dense between 0.47 fs and Nyquist it reads −0.027/−0.037/−0.001 dB against the reference at 44.1/48/96 kHz. The old meter, which the live display keeps, reads −0.45/−0.21/−0.01 dB on the 3 s mix and up to −1.19 dB on a 1 s one. On the ceiling matrix both meters read within 0.01 dB. FFmpeg peak error is 0.0057 dB.
+- S1, guard switching. A 5 ms raised-cosine crossfade covers live limiter and true-peak toggles. Leaving bypass restarts the guard from silence and fades it in, and bypass plays the processed column so engaging it fades out. Exports never fade. Measured above 16 kHz at unity gain reduction, a switch adds at most 0.0005; instant switching added 0.0025–0.011. The test bound is 0.0006 (`TestGuardSwitchLeavesNoSplice`).
+- S3, guard response. Ripple is 0 to +0.01 dB up to 0.45 fs. The stopband sits at −69.99 dB from 0.4643 fs (not 0.464) at 44.1/48/96 kHz, and the streaming filter matches the analytic response (`TestNyquistGuardResponse`).
+- S4. At a 0.8 peak, the clipped square gets no Level match: capped, 2.25 dB of reduction reported, and the drop finding shown (`TestLevelMatchStaysAtZeroWhenTheProposalAlreadyLimitsHeavily`). The user guide says hard-clipped sources now get about 0.25 dB or more extra limiting. A P2 ledger line asks the finding to name the cause.
+- S6. A depguard rule rejects non-test imports of `internal/audio/truepeakref`.
+- R3, R4. `api.md` describes the guard, both meters and the reference, with no remaining 49-tap or 128-tap claims. README, the user guide and the limiter panel say that with the limiter on, audio above 0.45 × the sample rate (19.85 kHz at 44.1 kHz) is filtered, and that the limiter is no longer null-transparent at unity gain.
+- R1, real-worklet CPU gate (`e2e/live-export.spec.ts` "keeps up live", heaviest chain, 48 kHz, 30 s, interleaved, load average 104–205). Every completed run passed 0.5 with `slow` 0.
+  - V1-10 head `c03ed1e`: mean load 0.472, 0.471, 0.436, 0.495 (average 0.469). Drift −2 to −5 ms against a 150 ms limit. Three more base runs failed before starting: one webServer timeout, then a stale QA asset left by that killed run.
+  - V1-13: mean load 0.482, 0.485, 0.463, 0.497, 0.482, 0.497, 0.452 (average 0.480). Drift −4 to −57 ms, except one run with a +1,793 ms host stall that failed the drift check.
+  - The difference (+0.011) is inside run-to-run noise, so the live meter keeps its 48-tap kernel.
+- S5, race cost. Command: `go test -race -count=1 -timeout 30m ./...`, run locally at load average 73–165.
+  - V1-13 per-package: `internal/audio/dsp` 720 s, `internal/mastering` 522 s, `wasm/dsp` 392 s, `internal/audio/truepeakref` 135 s, `internal/audio/steminfer` 119 s, `internal/audio` 110 s, `internal/browserjobs` 95 s.
+  - `internal/server` failed `TestRenderOutlivesBaseDeadlineWithinExportBudget` (a 5 s wall-clock budget). The V1-10 head fails it the same way under the same load (2 of 2), and V1-13 passes it alone (3 of 3).
+  - The V1-10 head right after (load 45–200): `internal/audio/dsp` 594 s, `internal/mastering` 571 s, `wasm/dsp` 289 s, `internal/server` 69 s.
+  - V1-10's last PR CI took 273 s, 240 s and 110 s for those three packages. This branch has no PR, so it has no CI times yet; the 10 m per-package limit must be checked on the PR.
+- Export budget calibration (non-race, interleaved, load average 230–300): base 9.46/3.52 µs per frame (2.28×/3.17× headroom), V1-13 8.64/4.33 µs per frame (2.50×/2.57×). An earlier pair at load 280 failed for both builds.
+- Round E 1 gates (local, 2026-10-27, load average 45–300 from concurrent agents):
+  - `gofmt -l` empty; `go vet`, golangci-lint v2.15.0 (with depguard; 0 issues) and identypo pass; tsc, ESLint, knip and cspell (407 files) pass.
+  - `bash scripts/build.sh` passes; `pnpm run test:wasm` passes, with `verify-realtime.mjs` now checking the source-end drain at 44.1/48/96 kHz; 7 offline renders are byte-identical.
+  - FFmpeg meters: 15 comparisons, peak error 0.0059 dB.
+  - Vitest `--maxWorkers=2`: 707/707.
+  - Playwright `mastering-targets`, `live-export` and `release-artifacts` (`--workers=1`): 18 of 19. The "rejected source rate" case timed out clicking Pause after its 1 s source had finished playing at load 230; alone it passed 2 of 2.
+
 Status: **implemented — open, awaiting merge** (`fix/v1-13-true-peak-ceiling`).

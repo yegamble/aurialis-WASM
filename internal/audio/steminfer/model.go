@@ -134,23 +134,26 @@ type Store struct {
 	URL    string
 	Client *http.Client
 
-	mu      sync.Mutex
-	model   *Model
-	loading chan struct{}
-	err     error
-	written int64
+	mu       sync.Mutex
+	model    *Model
+	loading  chan struct{}
+	fetching bool
+	err      error
+	written  int64
+
+	// size and digest pin the accepted file; zero means the real model.
+	// Tests substitute a small stand-in.
+	size   int64
+	digest string
+
+	// verifyMu guards the cached on-disk verification behind Status.
+	verifyMu      sync.Mutex
+	checked       diskCheck
+	verifications int
 }
 
 // Path is the cached model file location.
 func (store *Store) Path() string { return filepath.Join(store.Dir, modelFile) }
-
-// Status reports whether the model is loaded and, during a download, how many
-// bytes have arrived.
-func (store *Store) Status() (ready bool, downloading bool, written int64) {
-	store.mu.Lock()
-	defer store.mu.Unlock()
-	return store.model != nil, store.loading != nil, store.written
-}
 
 // Model returns the verified model, loading the cached file or downloading it
 // first. A failed attempt is not cached, so the next call retries.
@@ -181,14 +184,14 @@ func (store *Store) Model(ctx context.Context) (*Model, error) {
 			}
 		}
 		done := make(chan struct{})
-		store.loading, store.err, store.written = done, nil, 0
+		store.loading, store.err, store.written, store.fetching = done, nil, 0, false
 		store.mu.Unlock()
 
 		// The shared load outlives one caller's cancellation so other waiters
 		// are not starved; it still has its own bound through the HTTP client.
 		model, err := store.load(context.WithoutCancel(ctx))
 		store.mu.Lock()
-		store.model, store.err, store.loading = model, err, nil
+		store.model, store.err, store.loading, store.fetching = model, err, nil, false
 		store.mu.Unlock()
 		close(done)
 		if err != nil {
@@ -201,21 +204,29 @@ func (store *Store) Model(ctx context.Context) (*Model, error) {
 func (store *Store) load(ctx context.Context) (*Model, error) {
 	path := store.Path()
 	if model, err := LoadModel(ctx, path); err == nil {
+		// LoadModel checked the full SHA-256, so the file is vouched for.
+		store.markVerified()
 		return model, nil
 	} else if !errors.Is(err, os.ErrNotExist) {
 		// A corrupt or stale cache is replaced, never trusted.
 		_ = os.Remove(path)
+		_ = os.Remove(store.markerPath())
 	}
 	url := store.URL
 	if url == "" {
 		url = ModelURL
 	}
-	if err := Download(ctx, store.Client, url, path, func(n int64) {
+	store.mu.Lock()
+	store.fetching = true
+	store.mu.Unlock()
+	size, digest := store.pins()
+	if err := download(ctx, store.Client, url, path, size, digest, func(n int64) {
 		store.mu.Lock()
 		store.written += n
 		store.mu.Unlock()
 	}); err != nil {
 		return nil, err
 	}
+	store.markVerified()
 	return LoadModel(ctx, path)
 }

@@ -110,10 +110,22 @@ func TestStoreDownloadsOnceAndReplacesCorruptCache(t *testing.T) {
 	if requests != 1 || models[0] == nil || models[1] != models[0] || models[3] != models[0] {
 		t.Fatalf("requests %d; models shared %v", requests, models[1] == models[0])
 	}
-	if ready, downloading, written := store.Status(); !ready || downloading || written != ModelBytes {
-		t.Fatalf("status ready %v downloading %v written %d", ready, downloading, written)
+	if status := store.Status(); status.State != ModelLoaded {
+		t.Fatalf("status %+v", status)
 	}
 	again := &Store{Dir: store.Dir, URL: server.URL}
+	// A restart reports the verified cache without hashing or loading it.
+	if status := again.Status(); status.State != ModelCached || again.verifications != 0 {
+		t.Fatalf("restart status %+v after %d hashes", status, again.verifications)
+	}
+	// Without the marker (a cache from an older build) it hashes once.
+	if err := os.Remove(again.markerPath()); err != nil {
+		t.Fatal(err)
+	}
+	unmarked := &Store{Dir: store.Dir, URL: server.URL}
+	if status := unmarked.Status(); status.State != ModelCached || unmarked.verifications != 1 {
+		t.Fatalf("unmarked status %+v after %d hashes", status, unmarked.verifications)
+	}
 	if _, err := again.Model(context.Background()); err != nil || requests != 1 {
 		t.Fatalf("cached model re-downloaded: %v, %d requests", err, requests)
 	}

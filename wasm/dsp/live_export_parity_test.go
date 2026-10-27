@@ -1,0 +1,159 @@
+package main
+
+import (
+	"math"
+	"testing"
+
+	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
+)
+
+// liveVector packs params into the ABI 2 control vector the worklet sends
+// (src/lib/live-controls.ts packLiveControls), algorithm slot included.
+func liveVector(p dsp.Params) liveVersionedControlVector {
+	flag := func(value bool) float64 {
+		if value {
+			return 1
+		}
+		return 0
+	}
+	code := func(value any, values ...any) float64 {
+		for index, candidate := range values {
+			if candidate == value {
+				return float64(index)
+			}
+		}
+		panic("unknown enum value")
+	}
+	var v liveVersionedControlVector
+	v[0], v[1], v[3], v[4] = flag(p.Bypass), flag(p.ABOriginal), p.InputGainDB, flag(p.EQEnabled)
+	for i, band := range p.Bands {
+		o := 5 + i*5
+		v[o], v[o+1], v[o+2], v[o+4] = band.FreqHz, band.GainDB, band.Q, flag(band.Enabled)
+		v[o+3] = code(band.Type, dsp.FilterHighPass, dsp.FilterLowShelf, dsp.FilterPeaking, dsp.FilterHighShelf)
+	}
+	c := p.Compressor
+	v[30], v[31], v[32], v[33], v[34], v[35], v[36], v[37] = flag(c.Enabled), c.ThresholdDB, c.Ratio, c.AttackMS, c.ReleaseMS, c.KneeDB, c.MakeupDB, c.SidechainHPFHz
+	v[38] = code(c.Topology, dsp.CompOptical, dsp.CompVariableMu, dsp.CompFET, dsp.CompVCA)
+	v[39], v[40] = flag(p.Saturation.Enabled), p.Saturation.Amount
+	v[41] = code(p.Saturation.Character, dsp.SatWarm, dsp.SatThick, dsp.SatCrisp, dsp.SatClean, dsp.SatTube, dsp.SatTape, dsp.SatTransformer)
+	v[42], v[43], v[44], v[45] = flag(p.Stereo.Enabled), p.Stereo.WidthPct, flag(p.Stereo.MonoBass), p.Stereo.CrossoverHz
+	l := p.Limiter
+	v[46], v[47], v[48], v[49], v[50] = flag(l.Enabled), l.CeilingDBTP, l.TargetLUFS, l.ReleaseMS, flag(l.TruePeak)
+	v[51], v[52], v[53], v[54] = flag(p.Repair.Enabled), p.Repair.DeEssDB, p.Repair.TransientDB, flag(p.Repair.DeClip)
+	v[55], v[56], v[57], v[58] = float64(p.DitherBits), flag(c.AutoRelease), p.Stereo.MidGainDB, p.Stereo.SideGainDB
+	v[59], v[60], v[61], v[62] = flag(p.DeHarsh.Enabled), p.DeHarsh.FrequencyHz, p.DeHarsh.ThresholdDB, p.DeHarsh.RangeDB
+	v[63], v[64], v[65] = flag(p.Multiband.Enabled), p.Multiband.LowMidHz, p.Multiband.MidHighHz
+	for i, band := range p.Multiband.Bands {
+		o := 66 + i*5
+		v[o], v[o+1], v[o+2], v[o+3], v[o+4] = band.ThresholdDB, band.Ratio, band.AttackMS, band.ReleaseMS, band.MakeupDB
+	}
+	v[liveControlValues] = float64(p.AlgorithmVersion)
+	return v
+}
+
+// livePlayback renders a source the way the worklet plays it: ABI 2 controls,
+// 128-frame quanta, silent quanta after the source ends, and the processed
+// ring read the engine's latency ahead of the dry ring so A lines up with B.
+// It returns what is heard for each source frame and the live meter snapshot.
+func livePlayback(t *testing.T, rate float64, left, right []float32, params dsp.Params) ([]float32, []float32, dsp.LiveLoudness) {
+	t.Helper()
+	blocks := liveBlockBridge{bridge: NewBridge(rate)}
+	vector := liveVector(params)
+	if vector.apply(blocks.bridge, liveVersionedControlValues) != 1 || blocks.reset() != 1 {
+		t.Fatal("live controls rejected")
+	}
+	latency := blocks.bridge.LatencyFrames()
+	frames := len(left)
+	processed := [2][]float32{make([]float32, 0, frames+latency+liveBlockFrames), make([]float32, 0, frames+latency+liveBlockFrames)}
+	for start := 0; len(processed[0]) < frames+latency; start += liveBlockFrames {
+		for frame := range liveBlockFrames {
+			blocks.channels[0][frame], blocks.channels[1][frame] = 0, 0
+			if start+frame < frames {
+				blocks.channels[0][frame], blocks.channels[1][frame] = left[start+frame], right[start+frame]
+			}
+		}
+		if blocks.process() != liveBlockFrames {
+			t.Fatal("live quantum rejected")
+		}
+		processed[0] = append(processed[0], blocks.channels[2][:]...)
+		processed[1] = append(processed[1], blocks.channels[3][:]...)
+	}
+	blocks.meterSnapshot()
+	return processed[0][latency : latency+frames], processed[1][latency : latency+frames], blocks.meter.Snapshot()
+}
+
+func residualDB(got, want [2][]float32) float64 {
+	var difference, signal float64
+	for channel := range got {
+		for i := range got[channel] {
+			d := float64(got[channel][i]) - float64(want[channel][i])
+			difference += d * d
+			signal += float64(want[channel][i]) * float64(want[channel][i])
+		}
+	}
+	if difference == 0 {
+		return math.Inf(-1)
+	}
+	return 10 * math.Log10(difference/signal)
+}
+
+// V1-10 acceptance: live playback renders the export algorithm, so what is
+// heard is what is exported. Through the worklet's ABI and 128-frame quanta,
+// heard A matches the export render within −60 dB residual and 0.1 LU, and the
+// live true-peak meter, which reads after the true-peak limiter, reads what the
+// export measures and stays within 0.1 dB of the ceiling on program material.
+//
+// With every module on (130% width, a +2 dB 12 kHz shelf and driven Tube
+// saturation over noise hats) the BS.1770 4x meter reads up to 0.25 dB above
+// the ceiling on export and live alike, where an independent 32x reference
+// reads at most 0.06 dB over: an export-limiter margin, not a live difference.
+func TestLivePlaybackRendersTheExport(t *testing.T) {
+	hot := dsp.DefaultParams()
+	hot.AlgorithmVersion, hot.InputGainDB = dsp.TruePeakAlgorithmVersion, 15
+	hot.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: -1, TargetLUFS: -9, ReleaseMS: 80, TruePeak: true}
+	cases := map[string]struct {
+		params       dsp.Params
+		holdsCeiling bool
+	}{
+		"hot limiter":     {hot, true},
+		"every module on": {heaviestLiveParams(dsp.TruePeakAlgorithmVersion, dsp.SatTube), false},
+	}
+	for _, rate := range []float64{44100, 48000, 96000} {
+		left, right := denseMix(rate, 12)
+		for name, c := range cases {
+			params := c.params
+			heardL, heardR, meter := livePlayback(t, rate, left, right, params)
+			exportL, exportR, exported := dsp.RenderBuffer(left, right, rate, params)
+			residual := residualDB([2][]float32{heardL, heardR}, [2][]float32{exportL, exportR})
+			heard := dsp.MeasureStereo(heardL, heardR, rate)
+			deltaLUFS := heard.IntegratedLUFS - exported.IntegratedLUFS
+			meterDelta := meter.IntegratedLUFS - exported.IntegratedLUFS
+			t.Logf("%.0f Hz %s: residual %.1f dB, ΔLUFS %.4f (meter %.4f), live TP meter %.3f dBTP, export TP %.3f dBTP",
+				rate, name, residual, deltaLUFS, meterDelta, meter.TruePeakDBTP, exported.TruePeakDBTP)
+			if residual > -60 {
+				t.Errorf("%.0f Hz %s: live vs export residual %.1f dB", rate, name, residual)
+			}
+			if math.Abs(deltaLUFS) > 0.1 || math.Abs(meterDelta) > 0.1 {
+				t.Errorf("%.0f Hz %s: ΔLUFS %.3f, live meter ΔLUFS %.3f", rate, name, deltaLUFS, meterDelta)
+			}
+			if math.Abs(meter.TruePeakDBTP-exported.TruePeakDBTP) > 0.01 {
+				t.Errorf("%.0f Hz %s: live TP meter %.3f dBTP, export %.3f dBTP", rate, name, meter.TruePeakDBTP, exported.TruePeakDBTP)
+			}
+			if ceiling := params.Limiter.CeilingDBTP; c.holdsCeiling && meter.TruePeakDBTP > ceiling+0.1 {
+				t.Errorf("%.0f Hz %s: live TP meter %.3f dBTP over ceiling %.1f", rate, name, meter.TruePeakDBTP, ceiling)
+			}
+		}
+	}
+}
+
+func TestLiveVectorRoundTrips(t *testing.T) {
+	params := heaviestLiveParams(dsp.TruePeakAlgorithmVersion, dsp.SatTransformer)
+	vector := liveVector(params)
+	var legacy liveControlVector
+	copy(legacy[:], vector[:liveControlValues])
+	decoded, accepted := legacy.params()
+	decoded.AlgorithmVersion = uint32(vector[liveControlValues])
+	if !accepted || decoded != params {
+		t.Fatalf("vector does not round-trip: %+v", decoded)
+	}
+}

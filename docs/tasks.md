@@ -1130,17 +1130,19 @@ Chair ruling 2026-10-27 from V1-10 Round E QA, which also folds in the V1-10 Rou
 **CPU.** Measured on the M2 with other agents holding load average 10–200.
 - Native min-of-15 per stereo frame: the guard costs 12 ns, the new meter 167 ns (old meter 71 ns) and the detector 340 ns. The added 108 ns is about 0.005 load at 48 kHz natively.
 - V1-10 measured the detector at 0.04–0.06 load in V8, about 3× native. On that scale V1-13 adds about 0.016, which puts QA's 0.140–0.179 baseline near 0.16–0.20, under the 1/3 budget.
-- Interleaved V8 runs of `bench-live.mjs` (algorithm 2, heaviest chain) could not separate the change from host noise. At 48 kHz the base read 0.25–0.44 mean load and the new build 0.20–0.42 at the same time.
+- Interleaved V8 runs of `bench-live.mjs` (algorithm 2, heaviest chain, 48 kHz, four alternating runs, load average 8–22) cannot separate the change from host noise. The best mean load per model was 0.165–0.218 for the V1-10 base and 0.160–0.197 for V1-13 (Warm, Tube, Transformer), with p99 0.169–0.396. QA's baseline was 0.140–0.179 and the budget is 0.333.
 
 **Evidence and gates** (local, 2026-10-27).
 - `unit`: `truepeakref_test.go`, `meter_truepeak_test.go`, `truepeak_test.go`, `resample_test.go`, `true_peak_ceiling_test.go`.
-- Under `-race`, the ceiling matrix runs at 48 kHz only. A new non-race CI step runs every rate.
+- Under `-race`, the ceiling matrix runs at 48 kHz only (21 s at load 14). A new non-race CI step runs every rate. `go test -race ./internal/... ./wasm/...` passed. Under load 20–50, `internal/audio/dsp` took 522 s and `wasm/dsp` took 658 s; the V1-13 tests account for about 54 s of that.
+- `gofmt`, `go vet`, golangci-lint v2.15.0 (0 issues), cspell (402 files), and both WASM builds pass.
+- Vitest `--maxWorkers=2`: 693 of 695 passed. The two `MasterPlayback.test.tsx` cases timed out at 20 s under load 150–220 and passed when the file was rerun alone. No TypeScript changed.
 - FFmpeg meter comparison (`pnpm run test:meters`): 15 fixtures, peak error 0.0051 dB (was 0.0312).
 - `pnpm run test:wasm`: offline export parity, 7 renders byte-identical.
 - Playwright `mastering-targets`, `live-export` and `release-artifacts`: 16/16 passed (`--workers=1`).
 
 **Open.**
 - The meter bound covers what the export limiter emits. Unprocessed content up to 0.498 fs (an export with the limiter off, or the torture mix itself) still reads 0.17 dB low at 44.1/48 kHz and 0.62 dB low at 96 kHz.
-- A clean V8 CPU number on an idle host is still to be recorded.
+- A V8 CPU number on an idle host is still to be recorded.
 
 Status: **implemented — open, awaiting merge** (`fix/v1-13-true-peak-ceiling`).

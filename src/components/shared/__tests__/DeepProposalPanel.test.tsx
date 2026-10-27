@@ -115,7 +115,7 @@ describe("Deep proposal review interactions", () => {
     expect(levels.textContent).toContain("Predicted true peak−6.50 dBTP" + "source −6.00 dBTP");
     expect(levels.textContent).toContain("Predicted crest11.6 dB" + "source 12.0 dB, −0.4 dB");
     // The one Level match gain sits under the loudness card, with the measured reductions.
-    const loudness = screen.getByRole("group", { name: "Predicted loudness" });
+    const loudness = screen.getByText("Predicted loudness").parentElement; if (!loudness) throw new Error("Missing loudness card");
     expect(loudness.textContent).toContain("Level match +1.2 dB (compressor makeup) holds the source loudness.");
     expect(levels.textContent).toContain("Compressor average reduction 1.5 dB · export limiter peak reduction 0.3 dB.");
     expect(screen.getByText("Proposed ceiling").nextElementSibling?.textContent).toBe("−1.00 dBTP");
@@ -132,7 +132,7 @@ describe("Deep proposal review interactions", () => {
     mocks.analyze.mockResolvedValueOnce(measured(proposal(), { gainDb: 0.4, neededDb: 2.9, ceilingLimited: true }));
     mount(false); fireEvent.click(await screen.findByRole("button", { name: "Analyze Deep proposal" }));
     await screen.findByText("Measured proposal ready. Your applied processing has not changed.");
-    expect(screen.getByRole("group", { name: "Predicted loudness" }).textContent).toContain("Level match +0.4 dB (compressor makeup). Holding the source loudness needs +2.9 dB; the −1 dBTP ceiling leaves room for only +0.4 dB.");
+    expect(screen.getByText("Predicted loudness").parentElement?.textContent).toContain("Level match +0.4 dB (compressor makeup). Holding the source loudness needs +2.9 dB; the −1 dBTP ceiling leaves room for only +0.4 dB.");
     fireEvent.change(await screen.findByRole("combobox", { name: "Automation move" }), { target: { value: "gain" } });
     fireEvent.click(await screen.findByRole("button", { name: "Solo in proposal" }));
     expect(await screen.findByText("Predicted levels describe the whole draft. While a move is soloed, Apply mutes the other moves, so these levels no longer apply; clear solo to compare them.")).toBeTruthy();

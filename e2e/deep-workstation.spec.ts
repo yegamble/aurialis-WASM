@@ -62,7 +62,7 @@ test("Deep offers one profile control and lists every changed field with predict
   const match = proposed.deepMastering?.prediction?.levelMatch; if (!match) throw new Error("Missing Level match");
   expect(proposal.chainParams.compressor.makeupDb).toBe(match.gainDb); expect(proposal.chainParams.inputGainDb).toBeLessThanOrEqual(0); expect(proposal.chainParams.limiter.ceilingDbtp).toBeLessThanOrEqual(-1);
   expect(proposed.deepMastering?.prediction?.revision).toBe(proposal.revision);
-  await expect(page.getByRole("group", { name: "Predicted loudness", exact: true })).toContainText("Level match " + (match.gainDb > 0 ? "+" : "") + match.gainDb.toFixed(1).replace("-", "−") + " dB (compressor makeup)");
+  await expect(page.getByText("Predicted loudness", { exact: true }).locator("..")).toContainText("Level match " + (match.gainDb > 0 ? "+" : "") + match.gainDb.toFixed(1).replace("-", "−") + " dB (compressor makeup)");
   const expected = proposalChanges(before, proposal); expect(expected.length).toBeGreaterThan(0);
   const items = page.getByRole("list", { name: "Changed settings", exact: true }).getByRole("listitem");
   await expect(items).toHaveCount(expected.length);

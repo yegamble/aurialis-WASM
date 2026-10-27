@@ -56,8 +56,9 @@ func liveVector(p dsp.Params) liveVersionedControlVector {
 }
 
 // livePlayback renders a source the way the worklet plays it: ABI 2 controls,
-// 128-frame quanta, silent quanta after the source ends, and the processed
-// ring read the engine's latency ahead of the dry ring so A lines up with B.
+// 128-frame quanta, the source's end marked (aurialis_live_end_input) in the
+// quantum that holds it, silent quanta after it, and the processed ring read
+// the engine's latency ahead of the dry ring so A lines up with B.
 // It returns what is heard for each source frame and the live meter snapshot.
 func livePlayback(t *testing.T, rate float64, left, right []float32, params dsp.Params) ([]float32, []float32, dsp.LiveLoudness) {
 	t.Helper()
@@ -75,6 +76,9 @@ func livePlayback(t *testing.T, rate float64, left, right []float32, params dsp.
 			if start+frame < frames {
 				blocks.channels[0][frame], blocks.channels[1][frame] = left[start+frame], right[start+frame]
 			}
+		}
+		if start <= frames && frames < start+liveBlockFrames && blocks.endInput(uint32(frames-start)) != 1 {
+			t.Fatal("source end rejected")
 		}
 		if blocks.process() != liveBlockFrames {
 			t.Fatal("live quantum rejected")
@@ -233,5 +237,45 @@ func TestLiveVectorRoundTrips(t *testing.T) {
 	decoded.AlgorithmVersion = uint32(vector[liveControlValues])
 	if !accepted || decoded != params {
 		t.Fatalf("vector does not round-trip: %+v", decoded)
+	}
+}
+
+// loudAbruptEnd is the V1-13 Round E probe: a hard-clipped ±0.9 square and a
+// 0.449 fs tone that stop at full level on the last frame.
+func loudAbruptEnd(rate float64, frames int) ([]float32, []float32) {
+	left, right := make([]float32, frames), make([]float32, frames)
+	for i := range left {
+		square := 0.9
+		if math.Sin(2*math.Pi*441*float64(i)/rate) < 0 {
+			square = -0.9
+		}
+		tone := 0.3 * math.Sin(2*math.Pi*0.449*float64(i))
+		left[i] = float32(math.Max(-0.9, math.Min(0.9, square+tone)))
+		right[i] = float32(math.Max(-0.9, math.Min(0.9, 0.8*square-tone)))
+	}
+	return left, right
+}
+
+// V1-13 Round E R2: a file that ends loud renders the same final frames live
+// as exported. The export drains the lookahead against silence (dsp.Engine
+// Drain clears the Nyquist guard), so live playback must drain from the
+// source's last frame too, not run the chain and guard on into silence.
+func TestLivePlaybackOfALoudAbruptEndRendersTheExport(t *testing.T) {
+	p := dsp.DefaultParams()
+	p.AlgorithmVersion, p.InputGainDB = dsp.TruePeakAlgorithmVersion, 4
+	p.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: -1, TargetLUFS: -9, ReleaseMS: 80, TruePeak: true}
+	every := heaviestLiveParams(dsp.TruePeakAlgorithmVersion, dsp.SatTube)
+	for _, rate := range []float64{44100, 48000} {
+		// An end inside a quantum and one on its boundary.
+		for _, frames := range []int{int(rate/4) + 37, 128 * 90} {
+			left, right := loudAbruptEnd(rate, frames)
+			for name, params := range map[string]dsp.Params{"limiter": p, "every module on": every} {
+				heardL, heardR, _ := livePlayback(t, rate, left, right, params)
+				exportL, exportR, _ := dsp.RenderBuffer(left, right, rate, params)
+				if residual := residualDB([2][]float32{heardL, heardR}, [2][]float32{exportL, exportR}); !math.IsInf(residual, -1) {
+					t.Errorf("%.0f Hz, %d frames, %s: live vs export residual %.1f dB, want bit-identical", rate, frames, name, residual)
+				}
+			}
+		}
 	}
 }

@@ -26,6 +26,12 @@ type liveBlockBridge struct {
 	meter    dsp.LoudnessMeter
 	meterOut [liveMeterValues]float64
 	recentGR float64
+	// The source's input ends endAt-1 frames into the next block (0: not yet
+	// known). From there the block drains like an export (dsp.Engine
+	// Drain) and later blocks stay drained until reset, so a file that ends
+	// loud renders the same final frames live as exported (V1-13).
+	endAt int
+	ended bool
 }
 
 func (b *liveBlockBridge) buffer(channel uint32) *[liveBlockFrames]float32 {
@@ -50,7 +56,7 @@ func (b *liveBlockBridge) process() uint32 {
 			b.inputs[channel][frame] = sample
 		}
 	}
-	if !b.bridge.ProcessBlock(b.inputs[0][:], b.inputs[1][:], b.channels[2][:], b.channels[3][:]) {
+	if !b.render() {
 		return 0
 	}
 	for channel := 2; channel < 4; channel++ {
@@ -64,6 +70,38 @@ func (b *liveBlockBridge) process() uint32 {
 	b.meter.Process(b.channels[2][:], b.channels[3][:])
 	b.recentGR = math.Max(b.recentGR, b.bridge.GainReductionDB())
 	return liveBlockFrames
+}
+
+// render processes the scratch inputs into channels 2/3, draining from the
+// source's end like an export render.
+func (b *liveBlockBridge) render() bool {
+	outL, outR := b.channels[2][:], b.channels[3][:]
+	start := liveBlockFrames
+	switch {
+	case b.ended:
+		start = 0
+	case b.endAt > 0:
+		start, b.ended, b.endAt = b.endAt-1, true, 0
+	}
+	if start > 0 && !b.bridge.ProcessBlock(b.inputs[0][:start], b.inputs[1][:start], outL[:start], outR[:start]) {
+		return false
+	}
+	if start < liveBlockFrames {
+		drained := start + b.bridge.Drain(outL[start:], outR[start:])
+		clear(outL[drained:])
+		clear(outR[drained:])
+	}
+	return true
+}
+
+// endInput marks where the source's input ends in the next block: frame
+// offset 0–128, where 128 means after it. It returns 0 for other offsets.
+func (b *liveBlockBridge) endInput(offset uint32) uint32 {
+	if b.bridge == nil || offset > liveBlockFrames || b.ended || b.endAt > 0 {
+		return 0
+	}
+	b.endAt = int(offset) + 1
+	return 1
 }
 
 func (b *liveBlockBridge) syncMeterRate() {
@@ -91,6 +129,7 @@ func (b *liveBlockBridge) reset() uint32 {
 		return 0
 	}
 	b.bridge.Reset()
+	b.endAt, b.ended = 0, false
 	b.syncMeterRate()
 	b.meter.Reset()
 	b.recentGR = 0

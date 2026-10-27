@@ -22,6 +22,16 @@ func WasmLiveProcess() uint32 {
 	return liveBlocks.process()
 }
 
+// WasmLiveEndInput marks the source's last input frame: the next block
+// processes offset frames (0–128), then drains the lookahead as an export
+// render does, and later blocks stay drained until reset. It returns 1, or 0
+// for an invalid offset or a second call before reset.
+//
+//go:wasmexport aurialis_live_end_input
+func WasmLiveEndInput(offset uint32) uint32 {
+	return liveBlocks.endInput(offset)
+}
+
 // WasmLiveReset resets the same engine used by the existing JSON control API.
 //
 //go:wasmexport aurialis_live_reset

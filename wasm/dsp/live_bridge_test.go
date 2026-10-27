@@ -148,3 +148,39 @@ func TestLiveMeterReadsProcessedOutputAndGainReduction(t *testing.T) {
 		t.Fatal("uninitialized bridge published a meter snapshot")
 	}
 }
+
+// aurialis_live_end_input accepts one offset in 0–128 per stream; reset
+// clears it. After the end, quanta carry only the drained lookahead, then
+// silence, whatever the input holds.
+func TestLiveEndInputDrainsLikeAnExport(t *testing.T) {
+	b := liveBlockBridge{bridge: NewBridge(48000)}
+	p := dsp.DefaultParams()
+	p.AlgorithmVersion = dsp.TruePeakAlgorithmVersion
+	p.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: -1, TargetLUFS: -9, ReleaseMS: 80, TruePeak: true}
+	if !b.bridge.SetParams(p) || b.reset() != 1 {
+		t.Fatal("settings rejected")
+	}
+	if b.endInput(liveBlockFrames+1) != 0 {
+		t.Fatal("offset past the quantum accepted")
+	}
+	if b.endInput(5) != 1 || b.endInput(6) != 0 {
+		t.Fatal("end not accepted exactly once")
+	}
+	for frame := range liveBlockFrames {
+		b.channels[0][frame], b.channels[1][frame] = 0.5, -0.5
+	}
+	latency := b.bridge.LatencyFrames()
+	for block := 0; block < 3; block++ {
+		if b.process() != liveBlockFrames {
+			t.Fatal("block rejected")
+		}
+		for frame, sample := range b.channels[2] {
+			if at := block*liveBlockFrames + frame; at >= 5+latency && (sample != 0 || b.channels[3][frame] != 0) {
+				t.Fatalf("frame %d after the drained lookahead is %g, want silence", at, sample)
+			}
+		}
+	}
+	if b.reset() != 1 || b.endInput(0) != 1 {
+		t.Fatal("reset did not clear the end")
+	}
+}

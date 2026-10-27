@@ -36,6 +36,16 @@ func WasmLiveProcess() uint32 {
 	return reactorBlocks.process()
 }
 
+// WasmLiveEndInput marks the source's last input frame: the next block
+// processes offset frames (0–128), then drains the lookahead as an export
+// render does, and later blocks stay drained until reset. It returns 1, or 0
+// for an invalid offset or a second call before reset.
+//
+//go:wasmexport aurialis_live_end_input
+func WasmLiveEndInput(offset uint32) uint32 {
+	return reactorBlocks.endInput(offset)
+}
+
 // WasmLiveReset clears only DSP history while retaining the current settings.
 //
 //go:wasmexport aurialis_live_reset

@@ -426,6 +426,21 @@ describe("direct Go worklet lifecycle", () => {
     for (let block = 0; block < 4; block++) f.render(0.4, 0.4);
     expect(f.render(0.4, 0.4).every(channel => channel.every(value => Math.abs(value - 0.2) < 1e-7))).toBe(true);
   });
+  it("meters the monitored level before the match gain, so peak, RMS and crest describe A or B, not the attenuation (V1-11)", () => {
+    const f = workletFixture();
+    f.message({ type: "reset", generation: 1 });
+    const meters = () => f.processor.port.postMessage.mock.calls.map(([message]) => message as { type?: string; peakDbfs?: number; rmsDbfs?: number }).filter((message) => message.type === "meter");
+    for (let block = 0; block < 40; block++) f.render(0.25, 0.25);
+    const before = meters().at(-1);
+    f.message({ type: "match", processed: 0.5, original: 1 });
+    for (let block = 0; block < 40; block++) f.render(0.25, 0.25);
+    const after = meters().at(-1);
+    expect(before?.peakDbfs).toBeCloseTo(20 * Math.log10(0.5), 6);
+    expect(after?.peakDbfs).toBeCloseTo(before?.peakDbfs ?? 0, 9);
+    expect(after?.rmsDbfs).toBeCloseTo(before?.rmsDbfs ?? 0, 9);
+    // The speakers still receive the matched level.
+    expect(f.render(0.25, 0.25).every(channel => channel.every(value => Math.abs(value - 0.25) < 1e-7))).toBe(true);
+  });
   it("ends at the exact sample and restores continuous output when the repeat gate is removed", () => {
     const f = workletFixture();
     f.message({ type: "reset", generation: 1 });

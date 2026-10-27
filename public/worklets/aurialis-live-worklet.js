@@ -376,10 +376,13 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       const wetL = available ? this.samples[2 * FRAMES + outputOffset + i] : 0;
       const wetR = available ? this.samples[3 * FRAMES + outputOffset + i] : 0;
       const audible = blockFrame + i < endFrame;
-      const wet = (1 - this.mix) * this.matchProcessed, dry = this.mix * this.matchOriginal;
+      const wet = 1 - this.mix, dry = this.mix;
+      // Meters read the selected A or B at monitor volume, before the static
+      // loudness match, so the match never shows up as a level change.
       const l = audible ? (wetL * wet + dryL * dry) * this.volume : 0;
       const r = audible ? (wetR * wet + dryR * dry) * this.volume : 0;
-      outL[i] = l; outR[i] = r;
+      outL[i] = audible ? (wetL * wet * this.matchProcessed + dryL * dry * this.matchOriginal) * this.volume : 0;
+      outR[i] = audible ? (wetR * wet * this.matchProcessed + dryR * dry * this.matchOriginal) * this.volume : 0;
       this.peak = Math.max(this.peak, Math.abs(l), Math.abs(r));
       this.sum += l * l + r * r;
       this.ll += l * l; this.rr += r * r; this.lr += l * r;

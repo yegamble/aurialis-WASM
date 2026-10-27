@@ -1,6 +1,7 @@
 package dsp
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -32,5 +33,22 @@ func TestValidateParamsCapsLimiterCeilingAtMinusOne(t *testing.T) {
 	p.Limiter.CeilingDBTP = -0.3
 	if ValidateParams(p) == nil {
 		t.Fatal("disabled limiter kept a -0.3 dBTP ceiling")
+	}
+}
+
+// A known field with the wrong JSON type names the field and the expected
+// type, never the request text, so the API can say which setting is wrong.
+func TestDecodeParamsJSONNamesMistypedFields(t *testing.T) {
+	for _, tc := range []struct{ body, want string }{
+		{`{"limiter":{"ceilingDbtp":"-0.5"}}`, "limiter.ceilingDbtp must be a number"},
+		{`{"inputGainDb":true}`, "inputGainDb must be a number"},
+		{`{"stereo":{"monoBass":"yes"}}`, "stereo.monoBass must be a boolean"},
+		{`{"compressor":7}`, "compressor must be an object"},
+	} {
+		_, err := DecodeParamsJSON([]byte(tc.body), DefaultParams())
+		var rangeErr *RangeError
+		if !errors.As(err, &rangeErr) || err.Error() != tc.want {
+			t.Fatalf("%s: %v, want %q", tc.body, err, tc.want)
+		}
 	}
 }

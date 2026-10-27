@@ -397,6 +397,46 @@
       }
     },
     {
+      "name": "TS-008d Name a Mistyped Limiter Ceiling",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('A string ceiling is rejected with 400 invalid_params', function () { pm.response.to.have.status(400); pm.expect(pm.response.json().error).to.eql('invalid_params'); });",
+              "pm.test('The error names the field and its type', function () { pm.expect(pm.response.json().detail).to.eql('limiter.ceilingDbtp must be a number'); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "bitDepth",
+              "value": "24",
+              "type": "text"
+            },
+            {
+              "key": "params",
+              "value": "{\"limiter\":{\"ceilingDbtp\":\"-0.5\"}}",
+              "type": "text"
+            }
+          ]
+        },
+        "url": "{{baseUrl}}/api/master/render"
+      }
+    },
+    {
       "name": "TS-009 POST /separate Missing File Returns 400",
       "event": [
         {

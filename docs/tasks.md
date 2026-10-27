@@ -1139,3 +1139,26 @@ Round E evidence:
   - CI run 40572976220 on `f53ce0c`: all jobs green, including Playwright shards 1–3 and the responsive and WCAG gate. Run 40567586962 on `1be60e4` failed only the forced 192 kHz case and the calibrated +0.6 burner, which did not overload the runner; both were replaced.
   - Local: `gofmt -l` empty, `go vet` passes (no Go changed this round). `test:wasm`, `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass. Vitest `--maxWorkers=2` 726 passed. `bash scripts/build.sh` passes.
   - Local Playwright: `live-overload` 8/8 (fires in 4.1–4.8 s), `audition-export` 4/4, `simple-styles` 9/9 and `live-export` 10/10 (before the burner change). The full native list ran 81/90 at load average 150–280; the failures were page-load and capture timeouts, plus the forced 192 kHz Deep oracle case, where playbackStats reported real underruns under that contention. Browser build: `audition-export`, `matched-ab`, `workflows` and `local-audio` 17/18, and the timed-out Deep live-apply case passed on rerun.
+
+**Round 5 (Devil's Advocate: not verified on `302181b`), 2026-10-27.**
+- R-1. A finished audition render used to play whatever it rendered and pause live, even after an edit or a live Play during the render. It now reads the latest settings key and live state from refs. After an edit the result stays stale and silent; after live Play it waits, Ready, without taking over the transport. Covered by unit tests (both fail without the check) and e2e cases that hold the render request.
+- R-2. The V1-10 criteria cell again lists, for sources ≤ 48 kHz, residual ≤ −60 dB, a LUFS difference ≤ 0.1, live TP ≤ ceiling + 0.1 and no device underruns in 10 min, with the owner-ruled capped clause as written. The 600 s soak (device-underrun gate and drift):
+  - Attempt 1: load average 44–208. The overload message stopped playback at 488 s on real device underruns (playbackStats).
+  - Attempt 2: load average 45–195. It stopped at 93 s, the same way.
+  - Attempt 3: load average 11–42. It stopped at 119 s. A diagnostic run showed the playbackStats judge firing on one host stall that fell across a second boundary (41 ms, then 12 ms of real underrun), while the worklet watch had no bad window. The judge now needs three consecutive seconds over 1%, not two. The QA stall cases now fire in 5.3–6.1 s, up from 4.1–4.8, and every keeps-playing case still holds.
+  - Attempt 4, after that change, at load average 16–59: passed. 600 s of audio, 0 device underruns after warm-up, drift +10 ms (limit 250), mean kernel load 0.47. `slow` was 573 calls with a maximum of 7 ms; it is informational only and the output buffer absorbed them.
+- S-1. A device change re-reads the fallback slack. The docs say Firefox and Safari may fall back to the 10 ms floor. Local engine runs of the keeps-playing cases in `live-overload.spec.ts`:
+  - Firefox: 4/4.
+  - WebKit: the unpatched export-during-playback case passed. The three cases that patch the worklet never started playback, because WebKit did not load the test's blob-URL patched module (a harness limit, not the app).
+  - Adding these projects to CI stays P2.
+- S-2. The docs say new settings restart only the worklet's watch.
+- S-3. Audition memory is reserved for the file once it exists. While a fresh audition is held, Export downloads that same Blob; natively it sends no second render request (unit and e2e).
+- S-4. Media keys and the page's play/pause key drive whichever player was started last, and the Media Session reports the audition while it plays (unit test).
+- S-5. The resampled note now gives the same "about 0.2 LU" as the cap note and the guide. Measured on the fallback: −0.13, +0.05 and −0.18 LU.
+- S-6. With playbackStats hidden, the 2–3 ms-per-quantum burner still fires (e2e). The docs describe coarse-clock mode: the slack rule turns off, and the lag and load rules remain.
+- Not done, as the Devil's Advocate advised: turning off the worklet's lag and load rules where playbackStats exists, and dropping the 5 ms keeps-playing case.
+- Round 5 gates (local, load average 11–200):
+  - `gofmt -l` empty; no Go changed.
+  - TypeScript and unit tests: `test:wasm`, `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass; Vitest 731 passed. Unit and live-playback tests passed again after the three-second change.
+  - Native Playwright: `audition-export`, `live-overload`, `live-export`, `live-playback`, `transport`, `a11y-responsive` and `simple-styles` 54/54 before the change; `live-overload` 8/8 after it.
+  - CI on the pushed head is recorded in the PR.

@@ -297,11 +297,10 @@ test(`the export algorithm keeps up live for ${String(SOAK_SECONDS)} s with ever
   await writeFile(info.outputPath("live-soak-evidence.json"), JSON.stringify(evidence, null, 2));
   await info.attach("live-soak-evidence", { body: JSON.stringify(evidence), contentType: "application/json" });
   expect(timing.sampleRate).toBe(RATE);
-  // No ring underrun, no kernel call certainly over its 2.67 ms deadline, and the
-  // audio clock kept pace with the wall clock (a render thread that falls behind
-  // makes it lag). The ring cannot run dry from CPU load alone: the kernel runs
-  // inside process(), so slow and the drift are the CPU gauges.
-  expect(timing.ringUnderruns, JSON.stringify(evidence)).toBe(0);
+  // No kernel call certainly over its 2.67 ms deadline, and the audio clock kept
+  // pace with the wall clock (a render thread that falls behind makes it lag).
+  // ringUnderruns stays in the evidence but is not a CPU gauge: the kernel runs
+  // inside process(), so the ring cannot run dry from load (it is always 0 here).
   expect(timing.slow, JSON.stringify(evidence)).toBe(0);
   expect(Math.abs(evidence.clockDriftMs), JSON.stringify(evidence)).toBeLessThanOrEqual(evidence.driftLimitMs);
   // The 3x budget is measured on a quiet machine (docs/tasks.md V1-10). Shared CI

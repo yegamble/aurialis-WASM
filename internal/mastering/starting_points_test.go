@@ -203,6 +203,21 @@ func TestPredictionFindingsExplainLoudnessAndCrestChanges(t *testing.T) {
 	if detail := predictionFindings(before, dsp.Metrics{IntegratedLUFS: -18.5, DynamicRangeDB: 15}, &ProposalPrediction{LevelMatch: LevelMatch{GainDB: MaxLevelMatchGainDB, NeededDB: 14.5}})[0].Detail; !strings.Contains(detail, "needs +14.5 dB") || !strings.Contains(detail, "stops at +12.0 dB") {
 		t.Fatal("gain-capped drop does not explain the +12 dB bound:", detail)
 	}
+	// V1-11: every loudness-change finding that suggests a matched comparison
+	// names the transport's Match loudness toggle, which exists only after Apply.
+	for _, tc := range []struct {
+		after      dsp.Metrics
+		prediction *ProposalPrediction
+	}{
+		{dsp.Metrics{IntegratedLUFS: -14.5, DynamicRangeDB: 13}, nil},
+		{dsp.Metrics{IntegratedLUFS: -18.5, DynamicRangeDB: 15}, nil},
+		{dsp.Metrics{IntegratedLUFS: -18.5, DynamicRangeDB: 15}, &ProposalPrediction{LevelMatch: LevelMatch{GainDB: MaxLevelMatchGainDB, NeededDB: 14.5}}},
+		{dsp.Metrics{IntegratedLUFS: -18.5, DynamicRangeDB: 15}, &ProposalPrediction{LevelMatch: LevelMatch{GainDB: 1}}},
+	} {
+		if detail := predictionFindings(before, tc.after, tc.prediction)[0].Detail; !strings.Contains(detail, "after Apply, turn on Match loudness beside A/B") || strings.Contains(detail, "matched loudness") {
+			t.Fatal("loudness finding does not point at the Match loudness toggle:", detail)
+		}
+	}
 	if findings := predictionFindings(dsp.Metrics{IntegratedLUFS: -120}, dsp.Metrics{IntegratedLUFS: -60, DynamicRangeDB: 0}, nil); len(findings) != 0 {
 		t.Fatal("silent source fabricated findings")
 	}

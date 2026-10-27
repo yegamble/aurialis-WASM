@@ -267,18 +267,18 @@ func predictionFindings(before, after dsp.Metrics, prediction *ProposalPredictio
 	if rise := after.IntegratedLUFS - before.IntegratedLUFS; rise > MaxUnexplainedLoudnessRiseLU {
 		findings = append(findings, Finding{ID: "predicted-loudness-increase", Severity: "warning", Lane: "Volume",
 			Title:  fmt.Sprintf("Proposal raises loudness by %.1f LU", rise),
-			Detail: fmt.Sprintf("Rendered through the export limiter, this proposal measures %.1f LUFS against the source's %.1f LUFS. Louder playback can sound better without being better; compare at matched loudness before applying.", after.IntegratedLUFS, before.IntegratedLUFS)})
+			Detail: fmt.Sprintf("Rendered through the export limiter, this proposal measures %.1f LUFS against the source's %.1f LUFS. Louder playback can sound better without being better; after Apply, turn on Match loudness beside A/B to compare at equal loudness.", after.IntegratedLUFS, before.IntegratedLUFS)})
 	}
 	if drop := before.IntegratedLUFS - after.IntegratedLUFS; drop > MaxUnexplainedLoudnessRiseLU {
-		cause := "A quieter result can sound worse in comparison; compare at matched loudness or use Set target loudness."
+		cause := "A quieter result can sound worse in comparison; after Apply, turn on Match loudness beside A/B, or use Set target loudness."
 		switch {
 		case prediction == nil:
 		case prediction.LevelMatch.LimiterCapped:
 			cause = fmt.Sprintf("Holding the source loudness would need more than %.0f dB of limiting; the proposal is %.1f LU quieter with a %s Level match. Raise the level yourself only if the extra limiting sounds clean.", MaxLevelMatchLimiterReductionDB, drop, signedDB(prediction.LevelMatch.GainDB))
 		case prediction.LevelMatch.GainDB >= MaxLevelMatchGainDB:
-			cause = fmt.Sprintf("Holding the source loudness needs %s; the Level match stops at %s. Compare at matched loudness or use Set target loudness.", signedDB(prediction.LevelMatch.NeededDB), signedDB(MaxLevelMatchGainDB))
+			cause = fmt.Sprintf("Holding the source loudness needs %s; the Level match stops at %s; after Apply, turn on Match loudness beside A/B, or use Set target loudness.", signedDB(prediction.LevelMatch.NeededDB), signedDB(MaxLevelMatchGainDB))
 		default:
-			cause = fmt.Sprintf("The %s Level match gain did not hold the source loudness. Compare at matched loudness or use Set target loudness.", signedDB(prediction.LevelMatch.GainDB))
+			cause = fmt.Sprintf("The %s Level match gain did not hold the source loudness; after Apply, turn on Match loudness beside A/B, or use Set target loudness.", signedDB(prediction.LevelMatch.GainDB))
 		}
 		findings = append(findings, Finding{ID: "predicted-loudness-decrease", Severity: "info", Lane: "Volume",
 			Title:  fmt.Sprintf("Proposal lowers loudness by %.1f LU", drop),

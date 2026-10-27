@@ -128,7 +128,8 @@ func crestStart(ratio, phase float64, reversed bool) []float32 {
 // 0.1 dB of an independent time-domain reference (a ±1024-tap sinc over the
 // zero-extended file, before its first frame and after its last). The export
 // meter once fitted its first parabola through a fake zero and read up to
-// 0.79 dB high.
+// 0.79 dB high (the Devil's Advocate's decaying cosine, the RED trigger here)
+// and a 1-frame file 0.766 dB high (QA-6).
 func TestExportMeterReadsFilesThatStartOrEndOnACrest(t *testing.T) {
 	type edgeCase struct {
 		name string
@@ -147,6 +148,8 @@ func TestExportMeterReadsFilesThatStartOrEndOnACrest(t *testing.T) {
 		lone[at] = 0.9
 		cases = append(cases, edgeCase{fmt.Sprintf("sample %d of 64", at), lone})
 	}
+	// QA-6: a 1-frame file once read 0.766 dB high, the same fake-zero fit.
+	cases = append(cases, edgeCase{"1-frame file", []float32{0.9}}, edgeCase{"2-frame file", []float32{0.9, -0.6}})
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
@@ -159,5 +162,52 @@ func TestExportMeterReadsFilesThatStartOrEndOnACrest(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// nyquistFlip is QA's V1-13 probe: a full-scale alternation at exactly
+// Nyquist whose polarity flips halfway. Its true peak, at the flip, grows
+// like (2/π)·ln N with the run length, so no finite context reads it.
+func nyquistFlip(frames int) ([]float32, []float32) {
+	left, right := make([]float32, frames), make([]float32, frames)
+	for i := range left {
+		s := float32(1)
+		if i%2 == 1 {
+			s = -s
+		}
+		if i >= frames/2 {
+			s = -s
+		}
+		left[i], right[i] = s, -s
+	}
+	return left, right
+}
+
+// V1-13 Round E 2 QA-1 (Chair ruling): the export meter's one documented
+// exception is sustained coherent energy within about fs/16384 of Nyquist.
+// It pins the bound: a flip run that fits one transform reads within 0.1 dB,
+// and a longer one reads at least what the meter's 8,192 frames of context on
+// each side reconstruct, never more than the full reconstruction.
+func TestExportMeterNyquistFlipBound(t *testing.T) {
+	const rate = 44100.0
+	shortL, shortR := nyquistFlip(2 * offlinePeakGuard)
+	contextPeak := truepeakref.PeakDBTP([][]float32{shortL, shortR}, 0)
+	lengths := []float64{1, 4, 10}
+	if raceEnabled {
+		lengths = []float64{1, 4}
+	}
+	for _, seconds := range lengths {
+		left, right := nyquistFlip(int(rate * seconds))
+		reference := truepeakref.PeakDBTP([][]float32{left, right}, 0)
+		got := MeasureStereo(left, right, rate).TruePeakDBTP
+		t.Logf("%.0f s: reference %+.3f dBTP, export meter %+.3f dBTP (under-read %.3f dB); 8,192-frame context %+.3f dBTP", seconds, reference, got, reference-got, contextPeak)
+		switch {
+		case got > reference+0.02:
+			t.Fatalf("%.0f s: export meter over-reads by %.3f dB", seconds, got-reference)
+		case seconds == 1 && got < reference-0.1:
+			t.Fatalf("1 s fits one transform but reads %.3f dB low", reference-got)
+		case got < contextPeak-0.1:
+			t.Fatalf("%.0f s: export meter %.3f dBTP is below its 8,192-frame context %.3f dBTP", seconds, got, contextPeak)
+		}
 	}
 }

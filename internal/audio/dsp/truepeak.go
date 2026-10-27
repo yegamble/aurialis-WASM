@@ -95,7 +95,7 @@ func (d *truePeakDetector) sample(left, right float64) float64 {
 
 // nyquistGuardSections is an 8th-order elliptic low-pass in second-order
 // sections {b0, b1, b2, a1, a2}: flat to 0.45 fs (0 to +0.01 dB, unity at
-// DC) and at least 70 dB down from 0.464 fs. It is specified in normalized
+// DC) and at least 69.99 dB down from 0.4643 fs. It is specified in normalized
 // frequency, so one set serves every rate: 19.8 kHz passband at 44.1 kHz,
 // 21.6 kHz at 48 kHz. truePeakFIR is accurate to 0.14% up to 0.45 fs but
 // under-reads by 10% at 0.47 fs and 60% at 0.49 fs, so content in the top of

@@ -35,7 +35,9 @@ func (e *Engine) LatencyFrames() int {
 }
 
 // Drain emits buffered audio after the last input frame, up to the shorter
-// output slice. It does not extend a source with an IIR decay or reset history.
+// output slice. It does not extend a source with an IIR decay or reset history,
+// except that the v2 limiter's Nyquist guard is cleared: the rendered file is
+// silent after its last frame, so the limiter must not see the guard ring on.
 // The immediate v1 engine has no buffered frames; outputs remain untouched.
 // For v2 it flushes the lookahead with silence and returns the frames written.
 func (e *Engine) Drain(outL, outR []float32) int {
@@ -43,6 +45,7 @@ func (e *Engine) Drain(outL, outR []float32) int {
 		return 0
 	}
 	n := min(len(outL), len(outR), e.truePeak.pending)
+	e.truePeak.guard = nyquistGuard{}
 	passthrough := e.params.Bypass || (e.isChainNeutral() && !e.params.ABOriginal)
 	for i := 0; i < n; i++ {
 		if passthrough {

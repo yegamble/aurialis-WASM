@@ -433,6 +433,9 @@ func TestLegacyScriptsExplainLargeLoudnessChanges(t *testing.T) {
 
 // A clipped, square-like source cannot get louder without more limiting: the
 // Level match stops at 2 dB of limiter reduction and the drop finding says why.
+// The source peaks at 0.75: since V1-13 the limiter band-limits at 0.45 fs and
+// reads the clipped edges' true peaks, so at 0.8 the proposal alone took 2.25
+// dB of reduction and left no Level match to cap.
 func TestLevelMatchReportsTheLimitingCap(t *testing.T) {
 	t.Parallel()
 	const rate, seconds = 48000, 2.0
@@ -440,7 +443,7 @@ func TestLevelMatchReportsTheLimitingCap(t *testing.T) {
 	left, right := make([]float32, frames), make([]float32, frames)
 	for i := range frames {
 		phase := float64(i) / rate
-		value := .8 * math.Tanh(8*(math.Sin(2*math.Pi*110*phase)+.5*math.Sin(2*math.Pi*1760*phase)))
+		value := .75 * math.Tanh(8*(math.Sin(2*math.Pi*110*phase)+.5*math.Sin(2*math.Pi*1760*phase)))
 		left[i], right[i] = float32(value), float32(value)
 	}
 	buf := &audio.Buffer{Left: left, Right: right, SampleRate: rate, Channels: 2, Frames: frames, Duration: seconds}

@@ -1,10 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { playingAt, upload96, verifyAuditionMatchesExport } from "./audition-export-cases";
 
 test("Audition export plays the exact Export WAV of a 96 kHz source from its Blob, decoding nothing", async ({ page }) => {
   test.setTimeout(120_000);
-  await verifyAuditionMatchesExport(page);
+  await verifyAuditionMatchesExport(page, true);
 });
 
 test("an edit marks the audition stale and stops it; a re-render can be canceled", async ({ page }) => {
@@ -34,6 +34,51 @@ test("an edit marks the audition stale and stops it; a re-render can be canceled
   } finally {
     release();
   }
+});
+
+/** Hold the next render request until `release()`, then let it through. */
+async function holdNextRender(page: Page) {
+  let release = () => {};
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  const seen = new Promise<void>((resolve) => {
+    void page.route("**/api/master/render", async (route) => { resolve(); await held; await route.continue(); }, { times: 1 });
+  });
+  return { seen, release };
+}
+
+// R-1 (Round 5): a render that completes after an edit, or after live Play,
+// must not play or take over the transport.
+test("an edit during the audition render leaves it stale; it never plays", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await upload96(page);
+  const render = await holdNextRender(page);
+  await page.getByRole("button", { name: "Audition export", exact: true }).click();
+  await render.seen;
+  await page.getByRole("slider", { name: "Input gain", exact: true }).fill("3");
+  render.release();
+  await expect(page.getByText("Settings changed after this audition was rendered, so it no longer matches the export. Re-render to hear the current export.", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(1000);
+  expect(await playingAt(page)).toBe(0);
+  await expect(page.getByRole("button", { name: "Re-render audition", exact: true })).toBeVisible();
+});
+
+test("live Play during the audition render keeps playing live; the audition waits, ready", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await upload96(page);
+  const render = await holdNextRender(page);
+  await page.getByRole("button", { name: "Repeat track", exact: true }).click();
+  await page.getByRole("button", { name: "Audition export", exact: true }).click();
+  await render.seen;
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
+  render.release();
+  await expect(page.getByText("Ready: the exact export file (96 kHz (source) · 24-bit PCM · TPDF dither).", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(1000);
+  expect(await playingAt(page)).toBe(0);
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
 });
 
 for (const width of [320, 1440]) {

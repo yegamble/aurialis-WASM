@@ -1238,11 +1238,12 @@ input[type="range"] {
   }
 }
 @media (max-width: 767px) {
+  /* Clears the fixed transport (with its Match loudness row) above the bottom navigation. */
   .master-page {
-    padding-bottom: 240px;
+    padding-bottom: 288px;
   }
   .master-page :is(button, input, select, a) {
-    scroll-margin-bottom: 240px;
+    scroll-margin-bottom: 288px;
   }
 }
 @media (min-width: 768px) {

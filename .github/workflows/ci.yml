@@ -131,9 +131,12 @@ jobs:
       - name: Verify full-length live/export parity without the race detector
         timeout-minutes: 5
         run: go test -run '^TestLive(Playback|DeepScript)RendersTheExport$' -count=1 -v ./wasm/dsp
-      - name: Verify the true-peak ceiling on every rate without the race detector
+      - name: Verify the true-peak ceiling and loud-end parity on every rate without the race detector
         timeout-minutes: 5
-        run: go test -run 'HoldTheCeilingAgainstTheLongSincReference$' -count=1 ./wasm/dsp
+        run: go test -run 'HoldTheCeilingAgainstTheLongSincReference$|^TestLivePlaybackOfALoudAbruptEndRendersTheExport$' -count=1 ./wasm/dsp
+      - name: Verify the true-peak and live meters on every case without the race detector
+        timeout-minutes: 5
+        run: go test -run '^Test(ExportMeter|TruePeakMeterReads|LiveMeter)' -count=1 ./internal/audio/dsp
       - name: Install FFmpeg for independent meter verification
         timeout-minutes: 5
         run: |

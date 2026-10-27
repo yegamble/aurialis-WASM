@@ -343,7 +343,6 @@ input[type="range"] {
   display: grid;
 }
 
-.consistency-chart,
 .overlay-chart {
   width: 100%;
   height: 150px;
@@ -1377,8 +1376,6 @@ input[type="range"] {
 }
 .album-card h2 { margin-top: 9px; font-size: 29px; overflow-wrap: anywhere; }
 .album-card p { margin-top: 7px; font-size: 12px; }
-.album-score { margin-top: 24px; padding-top: 13px; display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); font-size: 12px; }
-.album-score strong { font: 500 22px var(--serif); }
 .album-hero {
   display: grid;
   grid-template-columns: 100px minmax(0, 1fr);
@@ -1419,25 +1416,6 @@ input[type="range"] {
 .album-track-list strong { font: 500 18px var(--serif); }
 .album-track-list small { margin-top: 4px; font-size: 11px; color: var(--ink-soft); }
 .consistency { min-width: 0; }
-.consistency-chart {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-around;
-  gap: 12px;
-  min-height: 290px;
-  height: auto;
-  margin-top: 20px;
-  padding: 30px 0 0;
-  border-radius: 0;
-  border-bottom: 1px solid var(--line-dark);
-  background: transparent;
-  overflow-x: auto;
-}
-.consistency-chart > div { height: 240px; min-width: 44px; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
-.consistency-chart > div > span { width: min(58px, 80%); position: relative; display: block; background: var(--moss); border-radius: 5px 5px 0 0; }
-.consistency-chart i { position: absolute; top: -24px; width: 100%; text-align: center; font-size: 11px; font-style: normal; }
-.consistency-chart small { margin-top: 8px; font-size: 11px; }
-.consistency-chart > p { align-self: center; margin: auto; font: 400 24px var(--serif); }
 
 .reference-layout { display: grid; gap: 18px; }
 .reference-layout > section, .reference-controls { padding: 24px; }

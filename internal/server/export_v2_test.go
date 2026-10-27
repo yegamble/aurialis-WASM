@@ -76,3 +76,27 @@ func TestExportRenderWithTruePeakAlgorithm(t *testing.T) {
 		t.Fatalf("v2 script export %.2f dBTP above %.1f", got.TruePeakDBTP, ceiling)
 	}
 }
+
+// V1-09 Round E: the deprecated profile= render has no algorithm in the
+// request, so it renders through the true-peak export limiter and delivers
+// at most -1 dBTP like every current export.
+func TestDeprecatedProfileRenderHoldsTheTruePeakCeiling(t *testing.T) {
+	srv := server.New(server.Config{Workers: 1})
+	defer srv.Close()
+	const rate, frames = 44100, 22050
+	wav := intersampleWAV(t, rate, frames)
+	for _, profile := range []string{"metal_wall", "modern_pop_polish", "Punchy Commercial"} {
+		recorder := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(recorder, newMultipartRequest(t, http.MethodPost, "/api/master/render", "source.wav", wav, map[string]string{"profile": profile, "bitDepth": "32"}))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("%s: %d %s", profile, recorder.Code, recorder.Body.String())
+		}
+		out, err := audio.DecodeAndDisarm("render.wav", recorder.Body.Bytes())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := dsp.MeasureStereo(out.Left, out.Right, rate); got.TruePeakDBTP > -1 {
+			t.Fatalf("%s: %.2f dBTP above -1", profile, got.TruePeakDBTP)
+		}
+	}
+}

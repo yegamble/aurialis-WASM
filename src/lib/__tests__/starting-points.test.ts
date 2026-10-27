@@ -70,7 +70,7 @@ describe("V1-09 honest starting points", () => {
     const deep = { sourceRevision: 0, proposal: script(), targets, prediction: { revision: 1, afterMetrics: metrics } };
     expect(readDeepMasteringState(deep, identity, 0)).toEqual(deep);
     // Predictions measured since the Level match carry it and both gain reductions.
-    const matched = { ...deep, prediction: { ...deep.prediction, levelMatch: { gainDb: 1.4, neededDb: 1.42, ceilingLimited: false }, compressorAverageGainReductionDb: 1.5, limiterPeakGainReductionDb: 0.3 } };
+    const matched = { ...deep, prediction: { ...deep.prediction, levelMatch: { gainDb: 1.4, neededDb: 1.42, limiterCapped: false }, compressorAverageGainReductionDb: 1.5, limiterPeakGainReductionDb: 0.3 } };
     expect(readDeepMasteringState(matched, identity, 0)).toEqual(matched);
     expect(() => readDeepMasteringState({ ...matched, prediction: { ...matched.prediction, levelMatch: { gainDb: 1.4 } } }, identity, 0)).toThrow("script");
     expect(() => readDeepMasteringState({ ...matched, prediction: { ...matched.prediction, limiterPeakGainReductionDb: undefined } }, identity, 0)).toThrow("script");

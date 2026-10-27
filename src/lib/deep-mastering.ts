@@ -40,8 +40,8 @@ interface CompiledScript {
   sourceVerified: false;
 }
 export type DeepSettingsSnapshot = { advanced: AdvancedParams; profile: ProfileId; genre: string; tone: string; intensity: number; target: string; simpleCustom: boolean; shortcutUndo: ShortcutUndo };
-/** The one explicit gain (compressor makeup) that holds the source loudness, limited by the ceiling's headroom. */
-export interface LevelMatch { gainDb: number; neededDb: number; ceilingLimited: boolean }
+/** The one explicit gain (compressor makeup) that holds the source loudness, limited to 2 dB of export limiter reduction. */
+export interface LevelMatch { gainDb: number; neededDb: number; limiterCapped: boolean }
 /** Levels measured by rendering a draft revision through the export algorithm. Predictions saved before the Level match have only `afterMetrics`. */
 export interface DeepPrediction { revision: number; afterMetrics: MeasuredAudioMetrics; levelMatch?: LevelMatch; compressorAverageGainReductionDb?: number; limiterPeakGainReductionDb?: number }
 export interface MeasuredProposal { proposal: ScriptV2; prediction: Omit<DeepPrediction, "revision"> }
@@ -129,8 +129,8 @@ export function readScriptV2(value: unknown, expectedSource?: SourceIdentity): S
 
 const predictionFields = ["afterMetrics", "levelMatch", "compressorAverageGainReductionDb", "limiterPeakGainReductionDb"] as const;
 function measuredPrediction(record: Record<string, unknown>): Omit<DeepPrediction, "revision"> {
-  const match = object(record.levelMatch, ["gainDb", "neededDb", "ceilingLimited"]);
-  return { afterMetrics: typedShape(metricsTemplate, record.afterMetrics), levelMatch: { gainDb: number(match.gainDb, -36, 36), neededDb: number(match.neededDb), ceilingLimited: bool(match.ceilingLimited) }, compressorAverageGainReductionDb: number(record.compressorAverageGainReductionDb, 0), limiterPeakGainReductionDb: number(record.limiterPeakGainReductionDb, 0) };
+  const match = object(record.levelMatch, ["gainDb", "neededDb", "limiterCapped"]);
+  return { afterMetrics: typedShape(metricsTemplate, record.afterMetrics), levelMatch: { gainDb: number(match.gainDb, -36, 36), neededDb: number(match.neededDb), limiterCapped: bool(match.limiterCapped) }, compressorAverageGainReductionDb: number(record.compressorAverageGainReductionDb, 0), limiterPeakGainReductionDb: number(record.limiterPeakGainReductionDb, 0) };
 }
 function predictedMetrics(value: unknown): Omit<DeepPrediction, "revision"> {
   return measuredPrediction(object(value, predictionFields));

@@ -16,7 +16,7 @@ const identity = { pcmHash: "a".repeat(64), sampleRate: 48000, frames: 48000 };
 const targets: TargetMetadata[] = automationTargets.map((name) => ({ name, minimum: -24, maximum: 24, cellTolerance: 0.1, sampleAccurate: name === "inputGainDb" || name === "stereo.widthPct" }));
 function proposal(): ScriptV2 { return { version: "2.0", source: identity, revision: 1, profile: "Warm Analog", summary: "Measured source with neutral sections", chainParams: engineParams(createDefaultAdvancedParams()), sections: [{ id: "section-1", name: "Section 1", roleHint: "unknown", startFrame: 0, endFrame: 48000, confidence: 0.8 }], moves: [{ id: "gain", sectionId: "section-1", target: "inputGainDb", operation: "add", points: [{ frame: 12000, value: -1 }, { frame: 36000, value: -1 }], muted: false, fadeFrames: 100, reason: "Measured headroom" }], findings: [], beforeMetrics: { integratedLufs: -18, shortTermLufs: -18, truePeakDbtp: -6, samplePeakDbfs: -6, dynamicRangeDb: 12, correlation: 1, lowBassCorrelation: 1, dcLeftDbfs: -100, dcRightDbfs: -100, clippingSamples: 0, gainReductionDb: 0 } }; }
 const predicted = { integratedLufs: -19.2, shortTermLufs: -19, truePeakDbtp: -6.5, samplePeakDbfs: -6.6, dynamicRangeDb: 11.6, correlation: 1, lowBassCorrelation: 1, dcLeftDbfs: -100, dcRightDbfs: -100, clippingSamples: 0, gainReductionDb: 0 };
-const levelMatch = { gainDb: 1.2, neededDb: 1.24, ceilingLimited: false };
+const levelMatch = { gainDb: 1.2, neededDb: 1.24, limiterCapped: false };
 function measured(script: ScriptV2, match = levelMatch): MeasuredProposal { return { proposal: script, prediction: { afterMetrics: predicted, levelMatch: match, compressorAverageGainReductionDb: 1.46, limiterPeakGainReductionDb: 0.3 } }; }
 function mount(withDraft = true, withApplied = false) {
   const original = testStore.tracks[0]; if (!original) throw new Error("Missing track");
@@ -128,11 +128,11 @@ describe("Deep proposal review interactions", () => {
     expect(await screen.findByText("Predicted levels were measured for draft revision 1. This draft has changed since then; analyze again to re-measure, or apply and export to measure the result.")).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Predicted export levels" })).toBeNull();
   });
-  it("names the ceiling when it limits the Level match, and marks the prediction stale while a move is soloed", async () => {
-    mocks.analyze.mockResolvedValueOnce(measured(proposal(), { gainDb: 0.4, neededDb: 2.9, ceilingLimited: true }));
+  it("names the limiting cap when it limits the Level match, and marks the prediction stale while a move is soloed", async () => {
+    mocks.analyze.mockResolvedValueOnce(measured(proposal(), { gainDb: 0.4, neededDb: 2.9, limiterCapped: true }));
     mount(false); fireEvent.click(await screen.findByRole("button", { name: "Analyze Deep proposal" }));
     await screen.findByText("Measured proposal ready. Your applied processing has not changed.");
-    expect(screen.getByText("Predicted loudness").parentElement?.textContent).toContain("Level match +0.4 dB (compressor makeup). Holding the source loudness needs +2.9 dB; the −1 dBTP ceiling leaves room for only +0.4 dB.");
+    expect(screen.getByText("Predicted loudness").parentElement?.textContent).toContain("Level match +0.4 dB (compressor makeup). Holding the source loudness needs +2.9 dB, which would take more than 2 dB of export limiting.");
     fireEvent.change(await screen.findByRole("combobox", { name: "Automation move" }), { target: { value: "gain" } });
     fireEvent.click(await screen.findByRole("button", { name: "Solo in proposal" }));
     expect(await screen.findByText("Predicted levels describe the whole draft. While a move is soloed, Apply mutes the other moves, so these levels no longer apply; clear solo to compare them.")).toBeTruthy();

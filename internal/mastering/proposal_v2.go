@@ -83,21 +83,24 @@ func AnalyzeDeepV2Context(ctx context.Context, buf *audio.Buffer, profile Profil
 		return nil, nil, err
 	}
 	if audible {
-		// One explicit, listed gain holds the source loudness where the ceiling allows (V1-09).
-		match := levelMatchFor(metrics, prediction.AfterMetrics, script.ChainParams.Limiter.CeilingDBTP)
-		if match.GainDB != 0 {
-			script.ChainParams.Compressor.MakeupDB = match.GainDB
+		// One explicit, listed gain holds the source loudness within 2 dB of
+		// limiter reduction (V1-09 Round E); the prediction is its export render.
+		renders := 0
+		prediction, err = searchLevelMatch(metrics.IntegratedLUFS, script.ChainParams.Limiter.CeilingDBTP, prediction, func(gainDB float64) (ProposalPrediction, error) {
+			script.ChainParams.Compressor.MakeupDB = gainDB
 			if _, err := ValidateScriptV2Context(ctx, script, buf.SampleRate); err != nil {
-				return nil, nil, err
+				return ProposalPrediction{}, err
 			}
 			if onProgress != nil {
-				onProgress(85, "Re-measuring the proposal with its Level match gain...")
+				onProgress(75+5*renders, "Re-measuring the proposal with its Level match gain...")
 			}
-			if prediction, err = predictExportContext(ctx, buf, script); err != nil {
-				return nil, nil, err
-			}
+			renders++
+			return predictExportContext(ctx, buf, script)
+		})
+		if err != nil {
+			return nil, nil, err
 		}
-		prediction.LevelMatch = match
+		script.ChainParams.Compressor.MakeupDB = prediction.LevelMatch.GainDB
 		script.Findings = append(script.Findings, predictionFindings(metrics, prediction.AfterMetrics, &prediction)...)
 	}
 	if onProgress != nil {

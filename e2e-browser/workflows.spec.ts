@@ -185,8 +185,8 @@ async function nativeLevel(info: TestInfo, wav: Buffer, label: string): Promise<
 }
 
 // Streaming is the Pop default; Custom keeps the Loud −9 LUFS target under a
-// −1 dBTP ceiling, seeded the way a saved custom/profile project carries it.
-for (const { name, targetLufs, ceiling } of [{ name: "Streaming", targetLufs: -14, ceiling: -1 }, { name: "Custom", targetLufs: -9, ceiling: -1 }]) {
+// −1.5 dBTP ceiling, seeded the way a saved custom/profile project carries it.
+for (const { name, targetLufs, ceiling } of [{ name: "Streaming", targetLufs: -14, ceiling: -1 }, { name: "Custom", targetLufs: -9, ceiling: -1.5 }]) {
   test(`Set target loudness on a dense program converges in the browser worker and exports at ${String(targetLufs)} LUFS / ${String(ceiling)} dBTP`, async ({ page, context }, info) => {
     test.setTimeout(180_000);
     const requests = observeNetwork(context);

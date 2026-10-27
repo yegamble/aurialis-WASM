@@ -2,8 +2,9 @@
 import { readFile } from "node:fs/promises";
 import { decode } from "./audio-fixture";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
-import type { Track } from "../src/lib/types";
+import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { proposalChanges } from "../src/lib/proposal-changes";
+import type { MeasuredAudioMetrics, Track } from "../src/lib/types";
 import { uploadProject } from "./workflow-fixture";
 import { captureDeepDevice, capturedDevice, capturedProgress } from "./deep-capture";
 async function project(page: Page): Promise<Track> { const track = await page.evaluate(() => (JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as { tracks: Track[] }).tracks[0]); if (!track) throw new Error("Missing project"); return track; }
@@ -36,6 +37,58 @@ test("actual measured Deep proposal preserves audio settings and its populated e
   await page.getByRole("spinbutton", { name: "Point 1 value", exact: true }).fill("-10"); await page.getByRole("spinbutton", { name: "Point 1 value", exact: true }).blur();
   expect((await project(page)).advanced).toEqual(before);
   expect((await project(page)).deepMastering?.proposal.moves.find((move) => move.id === selected.id)?.points[0]?.value).toBe(-10);
+});
+
+/** Native BS.1770 loudness, 4x true peak and crest of an exported WAV, unprocessed. */
+async function measureExport(request: APIRequestContext, buffer: Buffer): Promise<MeasuredAudioMetrics> {
+  const response = await request.post("/api/master/render", { multipart: { file: { name: "measure.wav", mimeType: "audio/wav", buffer }, params: JSON.stringify({ bypass: true }), format: "json" } });
+  expect(response.status()).toBe(200);
+  return (await response.json() as { beforeMetrics: MeasuredAudioMetrics }).beforeMetrics;
+}
+const decimal = (text: string | undefined) => Number(text?.replace("−", "-"));
+
+test("Deep offers one profile control and lists every changed field with predicted levels the export measures", async ({ page, request }, info) => {
+  test.setTimeout(180000);
+  await uploadProject(page, "deep-predict.wav", 8, "dense");
+  await page.getByRole("tab", { name: "deep", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: /profile/iu })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Apply profile", exact: true })).toHaveCount(0);
+  await page.getByRole("combobox", { name: "Deep engineer profile", exact: true }).selectOption("Punchy Commercial");
+  const before = (await project(page)).advanced;
+  await page.getByRole("button", { name: "Analyze Deep proposal", exact: true }).click();
+  await expect(page.getByText("Measured proposal ready. Your applied processing has not changed.", { exact: true })).toBeVisible({ timeout: 120000 });
+  const proposed = await project(page), proposal = proposed.deepMastering?.proposal; if (!proposal) throw new Error("Missing measured proposal");
+  expect(proposal.chainParams.compressor.makeupDb).toBe(0); expect(proposal.chainParams.inputGainDb).toBeLessThanOrEqual(0); expect(proposal.chainParams.limiter.ceilingDbtp).toBeLessThanOrEqual(-1);
+  expect(proposed.deepMastering?.prediction?.revision).toBe(proposal.revision);
+  const expected = proposalChanges(before, proposal); expect(expected.length).toBeGreaterThan(0);
+  const items = page.getByRole("list", { name: "Changed settings", exact: true }).getByRole("listitem");
+  await expect(items).toHaveCount(expected.length);
+  expect(await items.allTextContents()).toEqual(expected.map((change) => change.label + change.from + " → " + change.to));
+  const levels = (await page.getByRole("region", { name: "Predicted export levels", exact: true }).textContent()) ?? "";
+  const lufs = decimal(/Predicted loudness(−?\d+\.\d) LUFS/u.exec(levels)?.[1]), peak = decimal(/Predicted true peak(−?\d+\.\d{2}) dBTP/u.exec(levels)?.[1]), crest = decimal(/Predicted crest(\d+\.\d) dB/u.exec(levels)?.[1]);
+  expect([lufs, peak, crest].every(Number.isFinite)).toBe(true);
+  const drop = proposal.beforeMetrics.integratedLufs - lufs;
+  if (drop > 1) await expect(page.getByText(/^Proposal lowers loudness by \d+\.\d LU$/u)).toBeVisible();
+  if (-drop > 1) await expect(page.getByText(/^Proposal raises loudness by \d+\.\d LU$/u)).toBeVisible();
+  if (proposal.beforeMetrics.dynamicRangeDb - crest > 4) await expect(page.getByText(/^Proposal reduces crest factor by/u)).toBeVisible();
+  for (const width of [320, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze()).violations, String(width) + "px proposal review").toEqual([]);
+    await page.screenshot({ path: info.outputPath("deep-prediction-" + String(width) + ".png"), fullPage: true });
+  }
+  await page.getByRole("button", { name: "Apply Deep proposal", exact: true }).click();
+  await expect.poll(async () => (await project(page)).deepMastering?.applied?.revision ?? 0).toBe(proposal.revision);
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const dialog = page.getByRole("dialog"); await dialog.getByRole("button", { name: "24-bit PCM", exact: true }).click();
+  const pending = page.waitForEvent("download"); await dialog.getByRole("button", { name: "Render & download WAV", exact: true }).click();
+  const download = await pending; expect(await download.failure()).toBeNull(); const path = await download.path(); if (!path) throw new Error("Missing Deep export");
+  const exported = await measureExport(request, await readFile(path));
+  await info.attach("deep-prediction-vs-export", { body: JSON.stringify({ predicted: { lufs, peak, crest, stored: proposed.deepMastering?.prediction }, exported, changes: expected }, null, 2), contentType: "application/json" });
+  expect(Math.abs(exported.integratedLufs - lufs)).toBeLessThanOrEqual(0.1);
+  expect(Math.abs(exported.truePeakDbtp - peak)).toBeLessThanOrEqual(0.1);
+  expect(Math.abs(exported.dynamicRangeDb - crest)).toBeLessThanOrEqual(0.2);
+  expect(exported.truePeakDbtp).toBeLessThanOrEqual(-1);
 });
 
 test("Deep cancel detaches immediately during admission and deletes the actual late job", async ({ page }) => {

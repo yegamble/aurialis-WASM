@@ -146,10 +146,11 @@ for (const [index, fixture] of fixtures.entries()) {
       compare(output[3][frame], fixture.outputRight[start + frame], `JS ABI2 right fixture${index} frame${start + frame}`);
     }
   }
-  // Algorithm 1 buffers nothing: after the source's end the block is silent.
+  // Algorithm 1 buffers nothing: a source end drains an empty tail.
   assert.equal(wasm.aurialis_live_end_input(0), 1);
-  const ended = renderDirect(inputLeft.subarray(0, 128), inputRight.subarray(0, 128));
-  assert.ok(ended[2].every(sample => sample === 0) && ended[3].every(sample => sample === 0), "audio after the source's end");
+  renderDirect(inputLeft.subarray(0, 128), inputRight.subarray(0, 128));
+  assert.equal(wasm.aurialis_live_tail_frames(), 0, "immediate engine drained a tail");
+  assert.equal(wasm.aurialis_live_resume_input(), 1);
   assert.equal(wasm.aurialis_live_reset(), 1);
 }
 console.log(`wasm-live-direct: ${fixtures.length} native fixtures matched exactly; JSON and ABI2/algorithm1 paths matched; fixed pointers, validation, zero sign, source end, shared controls/state/reset and one-page memory growth passed`);

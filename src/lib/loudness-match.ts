@@ -106,7 +106,7 @@ export function loudnessMatchRequest(track: Track): LoudnessMatchRequest {
 
 /** One offline measurement of A and B through the live settings. */
 export async function measureLoudnessMatch(source: Blob, request: LoudnessMatchRequest, signal: AbortSignal): Promise<LoudnessReading> {
-  // Background: Export, Deep analysis and other user jobs pre-empt it in the browser queue.
+  // Background: Export, Deep analysis and other user jobs preempt it in the browser queue.
   const measured = await measureRender(source, request.render, signal, "background");
   signal.throwIfAborted();
   return { key: request.key, scope: request.scope, processedLufs: measured.afterMetrics.integratedLufs, originalLufs: measured.beforeMetrics.integratedLufs };

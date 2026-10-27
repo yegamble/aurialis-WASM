@@ -5,7 +5,7 @@ import type { Track } from "./types";
 
 /** Wait for a settings edit to settle before measuring a whole render. */
 const MEASURE_DELAY_MS = 400;
-/** Retry after a user job pre-empted the background measurement. */
+/** Retry after a user job preempted the background measurement. */
 const RETRY_DELAY_MS = 1500;
 
 /**

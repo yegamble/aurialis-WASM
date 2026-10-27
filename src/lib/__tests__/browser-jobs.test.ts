@@ -137,7 +137,7 @@ describe("device-local browser audio transport", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("pre-empts background loudness measurements so a foreground export never reports busy (V1-11)", async () => {
+  it("preempts background loudness measurements so a foreground export never reports busy (V1-11)", async () => {
     const { deviceAudioRequest } = await import("../browser-jobs");
     const running = deviceAudioRequest("/api/master/render", { method: "POST", body: render(source()) }, undefined, "background").then(() => undefined, (error: unknown) => error);
     await waitFor(() => { expect(TestWorker.all[0]?.message).toBeDefined(); });
@@ -150,7 +150,7 @@ describe("device-local browser audio transport", () => {
     expect(TestWorker.all).toHaveLength(2);
     TestWorker.all[1]?.reply();
     expect((await exported).status).toBe(200);
-    // A background request waits behind a foreground job instead of pre-empting it.
+    // A background request waits behind a foreground job instead of preempting it.
     const foreground = deviceAudioRequest("/api/master/render", { method: "POST", body: render(source()) });
     await waitFor(() => { expect(TestWorker.all[2]?.message).toBeDefined(); });
     const later = deviceAudioRequest("/api/master/render", { method: "POST", body: render(source()) }, undefined, "background");

@@ -186,10 +186,10 @@ const backgroundJobs = new Set<{ controller: AbortController; settled: Promise<v
 async function execute(request: JobRequest, source = new Blob(), reference = new Blob(), callerSignal = new AbortController().signal, onProgress?: (progress: number, stage: string) => void, priority: JobPriority = "foreground"): Promise<JobResult> {
   callerSignal.throwIfAborted();
   if (priority === "foreground" && backgroundJobs.size > 0) {
-    // Export, Deep and the other user actions pre-empt measurements, so a
+    // Export, Deep and the other user actions preempt measurements, so a
     // background job can neither delay them in the FIFO nor make them busy.
     const preempted = [...backgroundJobs];
-    for (const job of preempted) job.controller.abort(new DOMException("A foreground audio job pre-empted this measurement.", "AbortError"));
+    for (const job of preempted) job.controller.abort(new DOMException("A foreground audio job preempted this measurement.", "AbortError"));
     await Promise.all(preempted.map((job) => job.settled));
     callerSignal.throwIfAborted();
   }

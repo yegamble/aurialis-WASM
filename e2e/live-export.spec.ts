@@ -342,6 +342,17 @@ test("load outside the kernel past real time (a burner spinning 2–3 ms of each
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
 });
 
+// S-6 (Round 5): the same marginal overload where playbackStats is missing
+// (Firefox, Safari) must be caught by the worklet's own lag and slack rules.
+test("without playbackStats, the same burner still fires the can't-keep-up message", async ({ page }) => {
+  test.setTimeout(150_000);
+  await page.addInitScript(() => { Object.defineProperty(AudioContext.prototype, "playbackStats", { configurable: true, get: () => undefined }); });
+  await burn(page, -3);
+  await playHeaviest(page, "live-burner-fallback.wav");
+  await expect(page.getByText(OVERLOAD, { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
+});
+
 test("a burner at +0.3 of each quantum stays under real time and plays 30 s with no message", async ({ page }) => {
   test.setTimeout(150_000);
   await burn(page, 0.3);

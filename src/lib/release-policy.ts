@@ -24,7 +24,10 @@ export function releaseChecks(platform: ReleasePlatform, metrics: MeasuredAudioM
   const profile = releaseProfiles.find((item) => item.name === platform);
   if (!profile) throw new Error("Choose a supported delivery profile.");
   const target = "loudness" in profile ? profile.loudness : null;
-  const peakLimit = (platform === "Spotify" || platform === "SoundCloud") && metrics.integratedLufs > -14 ? -2 : -1;
+  // Spotify and SoundCloud publish −2 dBTP for loud masters. Apple Music and YouTube are
+  // lossy streaming too, so Aurialis asks for the same headroom without citing them.
+  const lossyStreaming = platform === "Spotify" || platform === "SoundCloud" || platform === "Apple Music" || platform === "YouTube";
+  const peakLimit = lossyStreaming && metrics.integratedLufs > -14 ? -2 : -1;
   const publishedPeak = target !== null;
   const format = platform === "CD" ? output.sampleRate === 44100 && output.bitDepth === 16
     : platform === "Apple Music" || platform === "Podcast" ? sourceRates.includes(output.sampleRate) && output.bitDepth !== 32
@@ -37,12 +40,12 @@ export function releaseChecks(platform: ReleasePlatform, metrics: MeasuredAudioM
         : `Published working guidance: ${String(target)} LUFS${platform === "Podcast" ? " ±1 LU" : "; the ±1 LU review band is an Aurialis preference"}. No gain is applied by this check.` },
     { name: "Reconstructed peak estimate", reading: `${metrics.truePeakDbtp.toFixed(2)} dBTP`,
       status: ((platform === "Spotify" || platform === "SoundCloud") ? metrics.truePeakDbtp < peakLimit : metrics.truePeakDbtp <= peakLimit) ? "pass" : "review",
-      guidance: `${publishedPeak ? "Published guidance" : "Aurialis working headroom"}: ${String(peakLimit)} dBTP${peakLimit === -2 ? " for a master louder than −14 LUFS" : ""}. The finite 4× FIR estimate does not certify codec or converter peaks.` },
+      guidance: `${publishedPeak ? "Published guidance" : "Aurialis working headroom"}: ${String(peakLimit).replace("-", "−")} dBTP${peakLimit === -2 ? " for a master louder than −14 LUFS" : ""}.${peakLimit === -2 && !publishedPeak ? " Lossy streaming encodes of loud masters can overshoot the source peak; this is not a published requirement of this destination." : ""} The finite 4× FIR estimate does not certify codec or converter peaks.` },
     { name: "Encoded full-scale frames", reading: String(output.fullScaleFrames), status: output.fullScaleFrames === 0 ? "pass" : "review",
       guidance: `Sample peak ${metrics.samplePeakDbfs.toFixed(2)} dBFS. Counted from the exact encoded samples; full scale does not establish how or when clipping happened.` },
     { name: "Output format", reading: `${String(output.sampleRate / 1000)} kHz · ${String(output.bitDepth)}-bit ${output.bitDepth === 32 ? "float" : "PCM"} · stereo`,
       status: format === null ? "info" : format ? "pass" : "review",
-      guidance: platform === "CD" ? "CD PCM requires 44.1 kHz / 16-bit stereo. This check never resamples or changes resolution."
+      guidance: platform === "CD" ? "CD PCM requires 44.1 kHz / 16-bit stereo. Choose 44.1 kHz and 16-bit PCM in Delivery format; the check then measures that converted, dithered file, the same one Export delivers."
         : platform === "YouTube" ? "The cited partner guidance recommends 48 kHz stereo / 24-bit; higher rates and 16-bit are accepted. Video/container validation remains separate."
         : format === null ? "Confirm the distributor's supported source format. No unverified format requirement is inferred."
         : "Published stereo PCM rates: 44.1, 48, 88.2, 96, 176.4 or 192 kHz, with 16 or 24 bits. Source provenance and codec approval need separate review." },

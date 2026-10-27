@@ -23,6 +23,23 @@ describe("source-specific delivery guidance", () => {
       expect(check(platform, "Reconstructed peak estimate", { integratedLufs: -13, truePeakDbtp: -2.01 }).status).toBe("pass");
     }
   });
+  it("asks for lossy-streaming headroom on loud Apple Music and YouTube masters as Aurialis guidance", () => {
+    for (const platform of ["Apple Music", "YouTube"] as const) {
+      expect(check(platform, "Reconstructed peak estimate", { truePeakDbtp: -1 }).status).toBe("pass");
+      const loud = check(platform, "Reconstructed peak estimate", { integratedLufs: -9, truePeakDbtp: -1 });
+      expect(loud.status).toBe("review");
+      expect(loud.guidance).toContain("Aurialis working headroom: −2 dBTP for a master louder than −14 LUFS");
+      expect(loud.guidance).toMatch(/lossy streaming/iu);
+      expect(check(platform, "Reconstructed peak estimate", { integratedLufs: -9, truePeakDbtp: -2 }).status).toBe("pass");
+    }
+    // CD is lossless PCM and Podcast keeps its published −1 dBTP.
+    for (const platform of ["CD", "Podcast"] as const) expect(check(platform, "Reconstructed peak estimate", { integratedLufs: -9, truePeakDbtp: -1 }).status).toBe("pass");
+  });
+  it("points CD guidance to the delivery format instead of claiming no conversion is possible", () => {
+    const guidance = check("CD", "Output format", {}, { sampleRate: 48000, bitDepth: 24 }).guidance;
+    expect(guidance).toContain("Choose 44.1 kHz and 16-bit PCM in Delivery format");
+    expect(guidance).not.toContain("never resamples");
+  });
   it("does not invent stereo LUFS mandates or genre-independent crest requirements", () => {
     for (const platform of ["Apple Music", "YouTube", "CD"] as const) {
       expect(check(platform, "Integrated loudness", { integratedLufs: -8 }).status).toBe("info");

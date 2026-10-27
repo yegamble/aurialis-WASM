@@ -11,14 +11,14 @@ import { denseFixture, uploadProject } from "./workflow-fixture";
 // V1-10: live playback renders the export algorithm, so what is heard is what is exported.
 const RATE = 48000, LOOP_SECONDS = 8, CEILING_DBTP = -1;
 const SOAK_SECONDS = Number(process.env.AURIALIS_LIVE_SOAK_SECONDS ?? "30");
-/** Audio-clock lag allowed per second of audio, so the limit scales with the
- * soak length (150 ms at 30 s). Quiet-host runs lagged −4 to +2 ms in 30 s and
- * under 40 ms in 600 s; the worst run QA called clean lagged 234 ms in 150 s
- * (1.6 ms/s). A kernel too slow to keep up lags at (load − 1) s per second,
- * 50 ms/s at a 1.05 load, so 5 ms/s keeps 3× margin over clean hosts and still
- * fails a kernel over its deadline. Host stalls on an overloaded machine (915 ms
- * in 30 s at load average 65, with 0 slow kernel calls) also fail it: rerun those. */
-const DRIFT_MS_PER_AUDIO_SECOND = 5;
+/** Audio-clock lag allowed: min(250 ms, 5 ms per audio second), 150 ms at
+ * 30 s. Quiet-host runs lagged −4 to +2 ms in 30 s and under 40 ms in 600 s;
+ * the worst run QA called clean lagged 234 ms in 150 s (1.6 ms/s). A kernel too
+ * slow to keep up lags at (load − 1) s per second, 50 ms/s at a 1.05 load, and
+ * the worklet's own deadline watch stops playback within about 3 s of that.
+ * Host stalls on an overloaded machine (915 ms in 30 s at load average 65, with
+ * 0 slow kernel calls) also fail it: rerun those. */
+const DRIFT_MS_PER_AUDIO_SECOND = 5, DRIFT_MS_MAX = 250;
 
 type Timing = { clock: string; resolutionMs: number; quanta: number; totalMs: number; maxMs: number; slow: number; maybeSlow: number; ringUnderruns: number; wallMs: number; audioMs: number; sampleRate: number };
 type TimingWindow = Window & { qaTiming?: Timing };
@@ -141,7 +141,7 @@ test.use({ bypassCSP: true });
 
 /** One whole loop of K-weighted speaker output and the live TP meter against
  * the exported 32-bit float WAV of the heaviest chain, both past a full loop of warm-up. */
-async function liveAgainstExport(page: Page, info: TestInfo, sourceRate: number) {
+async function liveAgainstExport(page: Page, info: TestInfo, sourceRate: number, limits = { lu: 0.1, tp: 0.1 }) {
   await observeOutputEnergy(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await uploadProject(page, `live-export-${String(sourceRate)}.wav`, 2 * LOOP_SECONDS, twoLoops(sourceRate));
@@ -162,7 +162,6 @@ async function liveAgainstExport(page: Page, info: TestInfo, sourceRate: number)
   await page.waitForTimeout(LOOP_SECONDS * 1000);
   const contextRate = await outputEnergyRate(page);
   const liveLevel = await meanOutputEnergy(page, LOOP_SECONDS * contextRate);
-  console.log("DELTAS", JSON.stringify(await page.evaluate(() => (window as unknown as { qaDeltas?: number[] }).qaDeltas?.slice(0, 60))));
   const meter = page.locator(".metric-strip > div").filter({ hasText: "True peak" }).locator("strong");
   const liveTruePeak = Number((await meter.innerText()).replace("−", "-"));
   const resampledNote = await page.getByText(/so live A is resampled before processing/u).count();
@@ -174,8 +173,8 @@ async function liveAgainstExport(page: Page, info: TestInfo, sourceRate: number)
   await info.attach("live-export-evidence", { body: JSON.stringify(evidence), contentType: "application/json" });
   // What you hear as A is what you export: same loudness, and the live meter
   // reads no hotter than the delivered file.
-  expect(Math.abs(evidence.deltaLu), JSON.stringify(evidence)).toBeLessThanOrEqual(0.1);
-  expect(liveTruePeak, JSON.stringify(evidence)).toBeLessThanOrEqual(deliveredPeak + 0.1);
+  expect(Math.abs(evidence.deltaLu), JSON.stringify(evidence)).toBeLessThanOrEqual(limits.lu);
+  expect(liveTruePeak, JSON.stringify(evidence)).toBeLessThanOrEqual(deliveredPeak + limits.tp);
   return evidence;
 }
 
@@ -206,6 +205,26 @@ for (const [sourceRate, deviceRate] of [[48000, 44100], [44100, 48000]] as const
   });
 }
 
+// Above 48 kHz live playback is capped at an integer ratio to stay inside the
+// 3x CPU budget (V1-10 Round E 2), even on an interface at the source's rate;
+// the export keeps the source rate. Measured (two runs each, heaviest chain):
+// 96→48 kHz ΔLU +0.174, live TP −1.2 against the export's −1.08 dBTP; 88.2→44.1
+// kHz ΔLU +0.139, −1.0 against −1.24. The note says live may differ; these
+// bounds only catch a regression beyond that.
+for (const [sourceRate, liveRate] of [[96000, 48000], [88200, 44100]] as const) {
+  test(`a ${String(sourceRate / 1000)} kHz source plays live at ${String(liveRate / 1000)} kHz and says why`, async ({ page }, info) => {
+    test.setTimeout(180_000);
+    await page.addInitScript((rate) => {
+      const NativeContext = AudioContext;
+      window.AudioContext = class extends NativeContext { constructor(options?: AudioContextOptions) { super({ sampleRate: rate, ...options }); } };
+    }, sourceRate);
+    const evidence = await liveAgainstExport(page, info, sourceRate, { lu: 0.25, tp: 0.35 });
+    expect(evidence.contextRate, JSON.stringify(evidence)).toBe(liveRate);
+    expect(evidence.resampledNote, JSON.stringify(evidence)).toBe(0);
+    await expect(page.getByText(`Aurialis plays this ${String(sourceRate / 1000)} kHz source at ${String(liveRate / 1000)} kHz to stay within its live CPU budget; the export keeps the source's ${String(sourceRate / 1000)} kHz.`, { exact: true })).toBeVisible();
+  });
+}
+
 // A browser that cannot open the source rate: playback still works at the
 // device rate, and the page says plainly that live A is resampled. Measured on
 // this fallback, 48 kHz on 44.1 kHz drifts −0.13 LU and its live meter reads
@@ -230,6 +249,31 @@ test("a rejected source rate falls back to the device rate with a visible resamp
   await page.getByRole("button", { name: "Pause", exact: true }).click();
 });
 
+// Real overload (V1-10 Round E 2), with no test hook in the worklet: forcing the
+// context to 192 kHz makes the unmodified heaviest chain cost about four times
+// its 48 kHz load (0.4–0.5 here), so the render thread cannot keep up and the
+// deadline watch must stop playback with a message naming the cause, not a
+// buffer fault. DevTools Emulation.setCPUThrottlingRate cannot do this: at 20x
+// the worklet's kernel load stayed 0.47 with no clock lag, because it throttles
+// the renderer's main thread, not the AudioWorklet thread.
+const OVERLOAD = "Playback can't keep up on this device with the current processing. Turn off some processing modules, or close other busy apps or tabs, then press Play.";
+test("an overloaded render thread stops playback with the can't-keep-up message", async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.addInitScript(() => {
+    const NativeContext = AudioContext;
+    window.AudioContext = class extends NativeContext { constructor(options?: AudioContextOptions) { super({ ...options, sampleRate: 192000 }); } };
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await uploadProject(page, "live-overload.wav", LOOP_SECONDS, "dense");
+  await heaviestChain(page);
+  await page.getByRole("button", { name: "Repeat track", exact: true }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  const transport = page.locator(".transport");
+  await expect(page.getByText(OVERLOAD, { exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(transport).toHaveAttribute("data-playing", "false");
+  await expect(page.getByText(/buffer fault/u)).toHaveCount(0);
+});
+
 test.describe("sustained live playback", () => {
 test(`the export algorithm keeps up live for ${String(SOAK_SECONDS)} s with every module on`, async ({ page }, info) => {
   test.setTimeout(SOAK_SECONDS * 1000 + 120_000);
@@ -249,13 +293,16 @@ test(`the export algorithm keeps up live for ${String(SOAK_SECONDS)} s with ever
   if (!timing) throw new Error("Missing worklet timing");
   const quantumMs = 1000 * 128 / timing.sampleRate;
   const evidence = { ...timing, meanKernelMs: timing.totalMs / timing.quanta, meanLoad: timing.totalMs / timing.quanta / quantumMs, quantumMs,
-    clockDriftMs: timing.wallMs - timing.audioMs, driftLimitMs: DRIFT_MS_PER_AUDIO_SECOND * timing.audioMs / 1000 };
+    clockDriftMs: timing.wallMs - timing.audioMs, driftLimitMs: Math.min(DRIFT_MS_MAX, DRIFT_MS_PER_AUDIO_SECOND * timing.audioMs / 1000) };
   await writeFile(info.outputPath("live-soak-evidence.json"), JSON.stringify(evidence, null, 2));
   await info.attach("live-soak-evidence", { body: JSON.stringify(evidence), contentType: "application/json" });
   expect(timing.sampleRate).toBe(RATE);
-  // No underrun: every quantum's output was ready, and the audio clock kept pace
-  // with the wall clock (a render thread that falls behind makes it lag).
+  // No ring underrun, no kernel call certainly over its 2.67 ms deadline, and the
+  // audio clock kept pace with the wall clock (a render thread that falls behind
+  // makes it lag). The ring cannot run dry from CPU load alone: the kernel runs
+  // inside process(), so slow and the drift are the CPU gauges.
   expect(timing.ringUnderruns, JSON.stringify(evidence)).toBe(0);
+  expect(timing.slow, JSON.stringify(evidence)).toBe(0);
   expect(Math.abs(evidence.clockDriftMs), JSON.stringify(evidence)).toBeLessThanOrEqual(evidence.driftLimitMs);
   // The 3x budget is measured on a quiet machine (docs/tasks.md V1-10). Shared CI
   // and agent hosts swing 2x, so this only catches gross regressions.

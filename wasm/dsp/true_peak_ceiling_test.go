@@ -65,8 +65,10 @@ func nyquistTorture(rate float64, seconds int) ([]float32, []float32) {
 }
 
 // ceilingChain returns the algorithm v2 export settings for a test chain:
-// the heaviest live chain with Crisp or Tube saturation, or a bare limiter
-// driven 12 dB into a fast 10 ms release, whose gain moves fastest.
+// the heaviest live chain with Crisp or Tube saturation, the same chain with
+// 0.6% Warm saturation (the noise hats keep their near-Nyquist energy), or a
+// bare limiter driven 12 dB into a fast 10 ms release, whose gain moves
+// fastest.
 func ceilingChain(chain string, ceiling float64) dsp.Params {
 	var p dsp.Params
 	switch chain {
@@ -74,6 +76,9 @@ func ceilingChain(chain string, ceiling float64) dsp.Params {
 		p = heaviestLiveParams(dsp.TruePeakAlgorithmVersion, dsp.SatCrisp)
 	case "Tube":
 		p = heaviestLiveParams(dsp.TruePeakAlgorithmVersion, dsp.SatTube)
+	case "light-Warm":
+		p = heaviestLiveParams(dsp.TruePeakAlgorithmVersion, dsp.SatWarm)
+		p.Saturation.Amount = 0.6
 	default:
 		p = dsp.DefaultParams()
 		p.AlgorithmVersion, p.InputGainDB = dsp.TruePeakAlgorithmVersion, 12
@@ -116,7 +121,7 @@ func TestExportsHoldTheCeilingAgainstTheLongSincReference(t *testing.T) {
 	var cases []ceilingCase
 	for _, rate := range []float64{44100, 48000, 96000} {
 		for _, fixture := range []string{"dense", "torture"} {
-			for _, chain := range []string{"Crisp", "Tube", "hot-limiter"} {
+			for _, chain := range []string{"Crisp", "Tube", "light-Warm", "hot-limiter"} {
 				cases = append(cases, ceilingCase{fixture, chain, rate, -1})
 			}
 			cases = append(cases, ceilingCase{fixture, "hot-limiter", rate, -2}, ceilingCase{fixture, "Crisp", rate, -1.5})

@@ -14,9 +14,9 @@ import (
 // except for what lies beyond the guard; a parabola then refines the 4x grid.
 const (
 	offlinePeakPhases = 4
-	offlinePeakBlock  = 1 << 15 // frames measured per transform
-	offlinePeakGuard  = 1 << 14 // frames of context on each side
-	offlinePeakSize   = offlinePeakBlock + 2*offlinePeakGuard
+	offlinePeakSize   = 1 << 16 // transform length
+	offlinePeakGuard  = 1 << 13 // frames of context on each side
+	// Each transform measures offlinePeakSize - 2*offlinePeakGuard = 49152 frames.
 )
 
 // offlineTruePeak returns the highest reconstructed absolute value of either

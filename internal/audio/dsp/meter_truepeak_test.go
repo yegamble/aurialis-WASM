@@ -88,7 +88,7 @@ func TestExportMeterReadsUnlimitedNearNyquistContent(t *testing.T) {
 	for _, rate := range []float64{44100, 48000, 96000} {
 		t.Run(fmt.Sprintf("%.0f", rate), func(t *testing.T) {
 			t.Parallel()
-			left, right := nearNyquistProgram(rate, int(rate))
+			left, right := nearNyquistProgram(rate, int(3*rate)) // several transform blocks
 			p := DefaultParams()
 			p.AlgorithmVersion = TruePeakAlgorithmVersion
 			p.Limiter.Enabled = false

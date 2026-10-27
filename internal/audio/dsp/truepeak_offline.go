@@ -16,6 +16,10 @@ const (
 	offlinePeakPhases = 4
 	offlinePeakSize   = 1 << 16 // transform length
 	offlinePeakGuard  = 1 << 13 // frames of context on each side
+	// offlinePeakShortGuard separates a file that fits one transform from its
+	// periodic image: an image 2,048 frames past the measured span leaves under
+	// 2e-4 of its edge amplitude there.
+	offlinePeakShortGuard = 1 << 11
 	// Each transform measures offlinePeakSize - 2*offlinePeakGuard = 49152 frames.
 	// offlinePeakEdge frames of the zero extension are measured before the
 	// first frame and after the last: a file that starts or ends on a crest
@@ -37,11 +41,15 @@ func offlineTruePeak(ctx context.Context, left, right []float32) (float64, error
 	// Measured frames run from -offlinePeakEdge to n+offlinePeakEdge-1.
 	first, end := -offlinePeakEdge, n+offlinePeakEdge
 	size := offlinePeakSize
+	guard := offlinePeakGuard
 	if end-first+2*offlinePeakGuard < size {
-		// A short file fits one transform; shrink it to the next power of two.
-		size = 1 << bits.Len(uint(end-first+2*offlinePeakGuard-1))
+		// A short file fits one transform, so the whole file is its context and
+		// the guard only has to keep the periodic image away from the measured
+		// span; shrink the transform to the next power of two.
+		guard = offlinePeakShortGuard
+		size = 1 << bits.Len(uint(end-first+2*guard-1))
 	}
-	block := size - 2*offlinePeakGuard
+	block := size - 2*guard
 	transform := newPeakFFT(size)
 	// rotation[p-1][k] delays phase p by p/M samples at bin k (0..size/2).
 	var rotation [offlinePeakPhases - 1][]complex128
@@ -72,7 +80,7 @@ func offlineTruePeak(ctx context.Context, left, right []float32) (float64, error
 			return 0, err
 		}
 		for i := range spectrum {
-			spectrum[i] = sample(start - offlinePeakGuard + i)
+			spectrum[i] = sample(start - guard + i)
 		}
 		transform.run(spectrum, false)
 		for p := range phases {
@@ -87,7 +95,7 @@ func offlineTruePeak(ctx context.Context, left, right []float32) (float64, error
 				}
 			}
 			transform.run(shifted, true)
-			copy(phases[p], shifted[offlinePeakGuard:offlinePeakGuard+block])
+			copy(phases[p], shifted[guard:guard+block])
 		}
 		for i := 0; i < block && start+i < end; i++ {
 			values := [offlinePeakPhases]complex128{sample(start + i)}

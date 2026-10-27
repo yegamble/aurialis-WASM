@@ -98,6 +98,8 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
     load, wait, processGo, applyGo, message, render };
 }
 
+const OVERLOAD = "Playback can't keep up on this device with the current processing. Turn off some processing modules, or close other busy apps or tabs, then press Play.";
+const FAULT = "Live playback lost its processed audio (an internal buffer fault, not a CPU limit). Press Play to restart, and reload the page if it happens again.";
 const silent = (output: Float32Array[]) => output.every(channel => channel.every(sample => sample === 0));
 
 describe("direct Go worklet lifecycle", () => {
@@ -417,7 +419,7 @@ describe("direct Go worklet lifecycle", () => {
     expect(f.tags[512]).toBe(0);
     expect(f.header[4]).toBe(0);
   });
-  it("retains cumulative misses and the existing 200 ms consecutive-missing failure policy", () => {
+  it("retains cumulative misses and reports 200 ms of missing processed audio as a buffer fault, not CPU", () => {
     const f = workletFixture();
     f.header[6] = 3;
     f.message({ type: "reset", generation: 1 });
@@ -429,8 +431,48 @@ describe("direct Go worklet lifecycle", () => {
     expect(silent(f.render())).toBe(true);
     expect(f.header[6]).toBe(79);
     expect(f.processor.failed).toBe(true);
-    // The stall names its cause and what to change, not just "restart".
-    expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "error", message: "Playback can't keep up on this device with these modules on. Turn off heavy modules such as Multiband compressor, De-Harsh or Saturation, then press Play. Sources at 88.2 kHz and above cost about twice as much to play." });
+    // Missing output with the kernel run synchronously is a tag or generation fault.
+    expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "error", message: FAULT });
+  });
+  // Thousands of rendered quanta: allow for a loaded host.
+  describe("deadline watch (CPU overload)", { timeout: 60_000 }, () => {
+    /** Play `seconds` of active audio with a fake wall clock: each quantum takes
+     * `wallMs` of wall time, of which the kernel call takes `kernelMs`. */
+    function play(f: ReturnType<typeof workletFixture>, seconds: number, wallMs: number, kernelMs: number, clock: { now: number }) {
+      f.kernel.aurialis_live_process.mockImplementation(() => { clock.now += kernelMs; return f.processGo(); });
+      const quanta = Math.round(seconds * 48000 / 128);
+      for (let index = 0; index < quanta && !f.processor.failed; index++) { f.render(); clock.now += wallMs - kernelMs; }
+    }
+    function watched() {
+      const f = workletFixture(), clock = { now: 1000 };
+      Reflect.set(f.context, "Date", { now: () => clock.now });
+      f.message({ type: "reset", generation: 1 });
+      return { f, clock };
+    }
+    const quantumMs = 1000 * 128 / 48000;
+    it("fires the overload message when the audio clock keeps falling behind the wall clock", () => {
+      const { f, clock } = watched();
+      play(f, 5, quantumMs * 1.2, 1, clock);
+      expect(f.processor.failed).toBe(true);
+      expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "error", message: OVERLOAD });
+      expect(f.processor.port.postMessage).not.toHaveBeenCalledWith({ type: "error", message: FAULT });
+    });
+    it("fires when the kernel uses more than 90% of the audio it renders, even before the clock lags", () => {
+      const { f, clock } = watched();
+      play(f, 5, quantumMs, quantumMs * 0.95, clock);
+      expect(f.processor.port.postMessage).toHaveBeenCalledWith({ type: "error", message: OVERLOAD });
+    });
+    it("stays quiet for a kernel within budget, one host stall and a pause gap", () => {
+      const { f, clock } = watched();
+      play(f, 2.5, quantumMs, quantumMs * 0.5, clock);
+      clock.now += 900; // one stalled callback: a single late window, not two in a row
+      play(f, 2.5, quantumMs, quantumMs * 0.5, clock);
+      f.message({ type: "hold" }); clock.now += 60_000;
+      f.message({ type: "reset", generation: 1 });
+      play(f, 2.5, quantumMs, quantumMs * 0.5, clock);
+      expect(f.processor.failed).toBe(false);
+      expect(f.processor.port.postMessage).not.toHaveBeenCalledWith(expect.objectContaining({ type: "error" }));
+    });
   });
   it("applies one static attenuate-only match gain to A or B, ramped once, without changing crest or contrast (V1-11)", () => {
     const f = workletFixture();

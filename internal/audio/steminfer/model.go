@@ -150,6 +150,9 @@ type Store struct {
 	verifyMu      sync.Mutex
 	checked       diskCheck
 	verifications int
+	// afterDownload, nil outside tests, runs between a finished download and
+	// loading the downloaded file.
+	afterDownload func()
 }
 
 // Path is the cached model file location.
@@ -228,5 +231,12 @@ func (store *Store) load(ctx context.Context) (*Model, error) {
 		return nil, err
 	}
 	store.markVerified()
+	// The verified file is in place; reading it into memory is loading.
+	store.mu.Lock()
+	store.fetching = false
+	store.mu.Unlock()
+	if store.afterDownload != nil {
+		store.afterDownload()
+	}
 	return LoadModel(ctx, path)
 }

@@ -159,6 +159,28 @@ func TestStoreStatusDuringARealDownload(t *testing.T) {
 	}
 }
 
+func TestStoreStatusReportsLoadingAfterADownload(t *testing.T) {
+	body := []byte("pretend separation model")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(body) }))
+	defer server.Close()
+	store := smallStore(t, body)
+	store.URL = server.URL
+	downloaded, release := make(chan struct{}), make(chan struct{})
+	store.afterDownload = func() { close(downloaded); <-release }
+	done := make(chan error, 1)
+	go func() { _, err := store.Model(context.Background()); done <- err }()
+	<-downloaded
+	// The bytes are on disk and verified; reading them into memory is loading,
+	// not a download stuck at 100%.
+	if got := store.Status(); got.State != ModelLoading {
+		t.Fatalf("after the download finished, status %+v", got)
+	}
+	close(release)
+	if err := <-done; err == nil {
+		t.Fatal("stand-in model loaded")
+	}
+}
+
 func TestBackendReportsAcceleration(t *testing.T) {
 	if Accelerated() != (Backend() == "apple-accelerate") {
 		t.Fatalf("accelerated %v with backend %s", Accelerated(), Backend())

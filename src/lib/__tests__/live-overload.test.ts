@@ -21,6 +21,13 @@ describe("playbackStats underrun watch (V1-10 Round 4)", () => {
     // 4 ms every quantum: the device misses most of each second.
     expect(run([500, 500, 500, 500])[0]).toBe(4);
   });
+  it("fires on periodic dropouts that skip a second, by the 3-window sum (Round 6 S-2)", () => {
+    // 60/60/0 ms repeating: never three bad seconds in a row, but 4% of 3 s.
+    expect(run([60, 60, 0, 60, 60, 0, 60, 60, 0]).length).toBeGreaterThan(0);
+    // 200 ms every 2 s: 6.7–13% of any 3 s.
+    expect(run([200, 0, 200, 0, 200, 0]).length).toBeGreaterThan(0);
+    expect(run([0, 200, 0, 200, 0, 200])[0]).toBeLessThanOrEqual(4);
+  });
   it("ignores one host stall that straddles a second boundary (measured 41 ms then 12 ms)", () => {
     expect(run([0, 0, 41, 12, 0, 0, 41, 12, 0])).toEqual([]);
   });

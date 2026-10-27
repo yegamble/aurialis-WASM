@@ -258,8 +258,8 @@ describe("direct Go worklet lifecycle", () => {
     // the previous quantum's level into the first 40 frames of A.
     const levels = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6];
     const heard = levels.map(level => f.render(level, -level)[0]);
-    for (let quantum = 1; quantum < levels.length; quantum++)
-      expect(heard[quantum]?.every(value => value === Math.fround(2 * (levels[quantum - 1] ?? 0)))).toBe(true);
+    for (const [quantum, output] of heard.slice(1).entries())
+      expect(output?.every(value => value === Math.fround(2 * (levels.at(quantum) ?? 0)))).toBe(true);
     expect(f.header[6]).toBe(0);
     f.message({ type: "original", value: true });
     for (let block = 0; block < 4; block++) f.render(0.7);

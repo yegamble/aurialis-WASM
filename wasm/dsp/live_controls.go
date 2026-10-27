@@ -12,7 +12,8 @@ const liveControlValues = 81
 
 type liveControlVector [liveControlValues]float64
 
-// Layout: global flags/gain/EQ [0:5]; five EQ bands, each frequency/gain/Q/type/
+// Layout: global flags/gain/EQ [0:5], where [2] is the retired engine
+// loudness match and must be zero (V1-11); five EQ bands, each frequency/gain/Q/type/
 // enabled [5:30]; compressor [30:39]; saturation [39:42]; stereo [42:46];
 // limiter [46:51]; repair [51:55]; dither bits [55]. Boolean values are exactly
 // zero or one. Additive controls: auto release [56], M/S gains [57:59],
@@ -39,7 +40,10 @@ func (v *liveControlVector) params() (dsp.Params, bool) {
 			return dsp.Params{}, false
 		}
 	}
-	for _, index := range [...]int{0, 1, 2, 4, 9, 14, 19, 24, 29, 30, 39, 42, 44, 46, 50, 51, 54, 56, 59, 63} {
+	if v[2] != 0 {
+		return dsp.Params{}, false
+	}
+	for _, index := range [...]int{0, 1, 4, 9, 14, 19, 24, 29, 30, 39, 42, 44, 46, 50, 51, 54, 56, 59, 63} {
 		if v[index] != 0 && v[index] != 1 {
 			return dsp.Params{}, false
 		}
@@ -57,7 +61,7 @@ func (v *liveControlVector) params() (dsp.Params, bool) {
 	topologies := [...]dsp.CompTopology{dsp.CompOptical, dsp.CompVariableMu, dsp.CompFET, dsp.CompVCA}
 	characters := [...]dsp.SatCharacter{dsp.SatWarm, dsp.SatThick, dsp.SatCrisp, dsp.SatClean, dsp.SatTube, dsp.SatTape, dsp.SatTransformer}
 	params := dsp.Params{
-		Bypass: v[0] == 1, ABOriginal: v[1] == 1, LoudnessMatchAB: v[2] == 1,
+		Bypass: v[0] == 1, ABOriginal: v[1] == 1,
 		InputGainDB: v[3], EQEnabled: v[4] == 1,
 	}
 	for index := range params.Bands {

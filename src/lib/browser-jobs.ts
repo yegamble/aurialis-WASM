@@ -179,9 +179,23 @@ function awaitCancellation<T>(promise: Promise<T>, signal: AbortSignal): Promise
   });
 }
 
-async function execute(request: JobRequest, source = new Blob(), reference = new Blob(), signal = new AbortController().signal, onProgress?: (progress: number, stage: string) => void): Promise<JobResult> {
-  signal.throwIfAborted();
+/** Background jobs (the A/B loudness measurement) yield to anything the user started. */
+export type JobPriority = "foreground" | "background";
+const backgroundJobs = new Set<{ controller: AbortController; settled: Promise<void> }>();
+
+async function execute(request: JobRequest, source = new Blob(), reference = new Blob(), callerSignal = new AbortController().signal, onProgress?: (progress: number, stage: string) => void, priority: JobPriority = "foreground"): Promise<JobResult> {
+  callerSignal.throwIfAborted();
+  if (priority === "foreground" && backgroundJobs.size > 0) {
+    // Export, Deep and the other user actions preempt measurements, so a
+    // background job can neither delay them in the FIFO nor make them busy.
+    const preempted = [...backgroundJobs];
+    for (const job of preempted) job.controller.abort(new DOMException("A foreground audio job preempted this measurement.", "AbortError"));
+    await Promise.all(preempted.map((job) => job.settled));
+    callerSignal.throwIfAborted();
+  }
   if (pending >= 2) throw new Error("Local audio processing is busy. Cancel the current job or try again shortly.");
+  const preemption = priority === "background" ? new AbortController() : undefined;
+  const signal = preemption ? AbortSignal.any([callerSignal, preemption.signal]) : callerSignal;
   const inputBytes = source.size + reference.size;
   if (inputBytes > MAX_JOB_INPUT_BYTES) throw new Error("The combined audio exceeds the 257 MiB local job limit. " + LOCAL_FALLBACK);
   // A waiting request already retains these Blobs, before its full preflight.
@@ -201,6 +215,11 @@ async function execute(request: JobRequest, source = new Blob(), reference = new
   };
   const result = queue.then(run, run).finally(() => { pending--; inputMemory.dispose(); });
   queue = result.then(() => undefined, () => undefined);
+  if (preemption) {
+    const job = { controller: preemption, settled: queue };
+    backgroundJobs.add(job);
+    void queue.then(() => { backgroundJobs.delete(job); });
+  }
   return awaitCancellation(result, signal);
 }
 
@@ -255,11 +274,73 @@ function deliveredPeak(json: string): number | undefined {
   return typeof peak === "number" && Number.isFinite(peak) ? peak : undefined;
 }
 
+// User actions outrank the background A/B loudness measurement on both
+// transports. The native server admits one audio POST and answers 503 to the
+// rest, so foreground work aborts any in-flight measurement and retries a 503
+// it caused; measurements never start while user work is active or just ended
+// (multi-stage Deep analysis has short gaps between its requests).
+const FOREGROUND_GRACE_MS = 2000;
+const NATIVE_RETRIES = 4;
+let foregroundDepth = 0;
+let foregroundEndedAt = -Infinity;
+const nativeBackground = new Set<{ controller: AbortController; settled: Promise<void> }>();
+
+function preempted(): DOMException {
+  return new DOMException("A foreground audio job preempted this measurement.", "AbortError");
+}
+
+/** Run user-initiated audio work (Export, Deep, Smart Split) with priority over background measurements. */
+export async function withForegroundAudio<T>(work: () => Promise<T>): Promise<T> {
+  foregroundDepth++;
+  try {
+    const running = [...nativeBackground];
+    // Start immediately when nothing yields, so admission stays synchronous.
+    if (running.length > 0) {
+      for (const job of running) job.controller.abort(preempted());
+      await Promise.all(running.map((job) => job.settled));
+    }
+    return await work();
+  } finally {
+    foregroundDepth--;
+    foregroundEndedAt = performance.now();
+  }
+}
+
+function foregroundBusy(): boolean {
+  return foregroundDepth > 0 || performance.now() - foregroundEndedAt < FOREGROUND_GRACE_MS;
+}
+
+async function nativeRequest(path: string, init: RequestInit, priority: JobPriority): Promise<Response> {
+  if (priority === "background") {
+    if (foregroundBusy()) throw preempted();
+    const controller = new AbortController();
+    const response = fetch(path, { ...init, signal: init.signal ? AbortSignal.any([init.signal, controller.signal]) : controller.signal });
+    const job = { controller, settled: response.then(() => undefined, () => undefined) };
+    nativeBackground.add(job);
+    try {
+      const result = await response;
+      // The slot was taken by user work: retry later rather than report a failure.
+      if (result.status === 503) throw preempted();
+      return result;
+    } finally { nativeBackground.delete(job); }
+  }
+  return withForegroundAudio(async () => {
+    for (let attempt = 0; ; attempt++) {
+      const response = await fetch(path, init);
+      // A just-aborted measurement may still hold the slot for a moment.
+      if (response.status !== 503 || attempt >= NATIVE_RETRIES || init.signal?.aborted) return response;
+      const after = Number(response.headers.get("Retry-After"));
+      await new Promise((resolve) => setTimeout(resolve, Math.min(1000, Number.isFinite(after) && after > 0 ? after * 1000 : 250)));
+    }
+  });
+}
+
 /** Same contract as the device-local HTTP transport, implemented without network audio on websites. */
-export async function deviceAudioRequest(path: string, init: RequestInit, onProgress?: (progress: number, stage: string) => void): Promise<Response> {
+export async function deviceAudioRequest(path: string, init: RequestInit, onProgress?: (progress: number, stage: string) => void, priority: JobPriority = "foreground"): Promise<Response> {
   const url = new URL(path, typeof location === "undefined" ? "https://local.invalid" : location.origin);
   if (!path.startsWith("/api/") || path.startsWith("//") || url.origin !== (typeof location === "undefined" ? "https://local.invalid" : location.origin)) throw new Error("Audio requests must stay on this device.");
-  if (!usesBrowserAudio()) return fetch(path, init);
+  if (!usesBrowserAudio()) return nativeRequest(path, init, priority);
+  if (priority === "background" && foregroundBusy()) throw preempted();
   if (init.method !== "POST") throw new Error("Unsupported local audio request method.");
   let request: JobRequest, source = new Blob(), reference = new Blob();
   if (init.body instanceof FormData) {
@@ -275,7 +356,8 @@ export async function deviceAudioRequest(path: string, init: RequestInit, onProg
       request.deviceRate = Number(rate);
     }
   } else throw new Error("Invalid local audio request body.");
-  const result = await execute(request, source, reference, init.signal ?? undefined, onProgress);
+  const run = () => execute(request, source, reference, init.signal ?? undefined, onProgress, priority);
+  const result = priority === "foreground" ? await withForegroundAudio(run) : await run();
   const headers = new Headers({ "Content-Type": result.audio.byteLength ? "audio/wav" : "application/json", "Cache-Control": "no-store" });
   if (result.audio.byteLength) {
     headers.set("X-Aurialis-Source-Metrics", result.json);

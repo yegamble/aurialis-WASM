@@ -17,11 +17,20 @@ export type LivePlaybackState = {
   repeat: boolean;
   repeatPending?: boolean;
   volume: number;
+  /** Applied static monitor attenuation in dB (each ≤ 0); absent in fixtures predating V1-11. */
+  loudnessMatch?: LoudnessMatchGains;
   underruns: number;
   parameterVersion: number;
   appliedVersion: number;
   error: string | null;
 };
+
+/** One static, attenuate-only A/B monitor gain pair in dB (V1-11). Never part of export. */
+export type LoudnessMatchGains = { processedDb: number; originalDb: number };
+const UNITY_MATCH: LoudnessMatchGains = { processedDb: 0, originalDb: 0 };
+function matchMessage(match: LoudnessMatchGains) {
+  return { type: "match", processed: 10 ** (match.processedDb / 20), original: 10 ** (match.originalDb / 20) };
+}
 
 /** BS.1770-4 / EBU R128 readings of the processed output (before A/B and volume). */
 export type LiveLoudness = {
@@ -78,6 +87,8 @@ export type LivePlaybackController = {
   detachScript: (settings: AdvancedParams, signal: AbortSignal, canCommit?: () => boolean) => Promise<void>;
   setBypass: (original: boolean) => void;
   setVolume: (volume: number) => void;
+  /** Apply one static attenuate-only monitor gain pair, or unity with null. */
+  setLoudnessMatch: (match: LoudnessMatchGains | null) => void;
   setRepeat: (enabled: boolean) => void;
   dispose: () => void;
   getState: () => LivePlaybackState;
@@ -123,7 +134,7 @@ export function createLivePlayback(
   let state: LivePlaybackState = {
     position: 0, duration: source.left.length / source.sampleRate,
     playing: false, ready: false, loading: false, original: false, repeat: false, volume: 1,
-    underruns: 0, parameterVersion: 1, appliedVersion: 0, error: null,
+    loudnessMatch: UNITY_MATCH, underruns: 0, parameterVersion: 1, appliedVersion: 0, error: null,
   };
   let audio: AudioContext | undefined;
   let worklet: AudioWorkletNode | undefined;
@@ -436,6 +447,7 @@ export function createLivePlayback(
       splitter = split; merger = merge; leftAnalyser = left; rightAnalyser = right;
       node.port.postMessage({ type: "original", value: state.original });
       node.port.postMessage({ type: "volume", value: state.volume });
+      node.port.postMessage(matchMessage(state.loudnessMatch ?? UNITY_MATCH));
     });
     await Promise.all([ready, loaded, resumed]);
     if (isDisposed() || audio !== context) return;
@@ -600,6 +612,14 @@ export function createLivePlayback(
       if (disposed || !Number.isFinite(volume)) return;
       state = { ...state, volume: Math.max(0, Math.min(1, volume)) };
       worklet?.port.postMessage({ type: "volume", value: state.volume });
+      emit();
+    },
+    setLoudnessMatch(match) {
+      const next = match ?? UNITY_MATCH;
+      // Monitoring only lowers the louder side; refuse boosts and non-finite values.
+      if (disposed || ![next.processedDb, next.originalDb].every((value) => Number.isFinite(value) && value <= 0)) return;
+      state = { ...state, loudnessMatch: { processedDb: next.processedDb, originalDb: next.originalDb } };
+      worklet?.port.postMessage(matchMessage(next));
       emit();
     },
     setRepeat(enabled) {

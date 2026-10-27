@@ -1,6 +1,6 @@
 import { engineParams, exportParams } from "./engine-params";
 export { engineParams } from "./engine-params";
-import { deviceAudioRequest, usesBrowserAudio } from "./browser-jobs";
+import { deviceAudioRequest, usesBrowserAudio, type JobPriority } from "./browser-jobs";
 import type { ScriptV2 } from "./deep-mastering";
 import type { AdvancedParams, ExportDelivery, MeasuredAudioMetrics, SourceIdentity } from "./types";
 
@@ -72,6 +72,7 @@ async function audioRequest(
   data: FormData,
   signal?: AbortSignal,
   json = false,
+  priority: JobPriority = "foreground",
 ): Promise<Response> {
   signal?.throwIfAborted();
   try {
@@ -80,10 +81,12 @@ async function audioRequest(
       body: data,
       ...(json ? { headers: { Accept: "application/json" } } : {}),
       ...(signal ? { signal } : {}),
-    });
+    }, undefined, priority);
   } catch (error: unknown) {
     signal?.throwIfAborted();
-    if (usesBrowserAudio()) throw error;
+    // A preempted background measurement is retried by its caller, not a connection failure.
+    const preempted = typeof error === "object" && error !== null && "name" in error && error.name === "AbortError";
+    if (usesBrowserAudio() || preempted) throw error;
     const address = typeof location === "undefined" ? "this address" : location.origin;
     throw new Error(
       `Could not reach the local audio server at ${address}. Check that Aurialis is running, then try again. If your browser reports a blocked local connection, check this site's local-network permission.`,
@@ -371,11 +374,17 @@ export async function measureAudio(
   params: object = { bypass: true },
   signal?: AbortSignal,
 ): Promise<AudioMeasurement> {
+  return measureRender(file, { params }, signal);
+}
+
+/** Measure the source and one export render (static parameters or a script) without downloading audio. */
+export async function measureRender(file: Blob, render: { params: object } | { script: ScriptV2 }, signal?: AbortSignal, priority: JobPriority = "foreground"): Promise<AudioMeasurement> {
   const form = new FormData();
   form.append("file", file, "source.wav");
-  form.append("params", JSON.stringify(params));
+  if ("script" in render) form.append("script", JSON.stringify(render.script));
+  else form.append("params", JSON.stringify(render.params));
   form.append("format", "json");
-  const response = await audioRequest(form, signal, true);
+  const response = await audioRequest(form, signal, true, priority);
   if (!response.ok) throw await audioError(response, "Audio measurement failed.");
   const body: unknown = await readAudioResponse(() => response.json() as Promise<unknown>, signal);
   return audioMeasurement(body);

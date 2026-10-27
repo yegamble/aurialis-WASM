@@ -10,7 +10,7 @@ describe("fixed Go live control ABI", () => {
   it("maps all fields to their specified numeric positions", () => {
     const controls: ReturnType<typeof engineParams> = {
       ...params(),
-      bypass: true, abOriginal: false, loudnessMatchAb: true, inputGainDb: -6, eqEnabled: false,
+      bypass: true, abOriginal: false, inputGainDb: -6, eqEnabled: false,
       bands: [
         { freqHz: 35, gainDb: -1, q: 0.5, type: "high_pass", enabled: true },
         { freqHz: 150, gainDb: 2, q: 0.6, type: "low_shelf", enabled: false },
@@ -27,7 +27,7 @@ describe("fixed Go live control ABI", () => {
       multiband: {enabled: false, lowMidHz: 200, midHighHz: 4000, bands: [{thresholdDb: -24, ratio: 1.5, attackMs: 30, releaseMs: 150, makeupDb: 0}, {thresholdDb: -24, ratio: 1.5, attackMs: 30, releaseMs: 150, makeupDb: 0}, {thresholdDb: -24, ratio: 1.5, attackMs: 30, releaseMs: 150, makeupDb: 0}]},
     };
     expect(Array.from(packLiveControls(controls))).toEqual([
-      1, 0, 1, -6, 0,
+      1, 0, 0, -6, 0,
       35, -1, 0.5, 0, 1, 150, 2, 0.6, 1, 0, 900, -3, 0.7, 2, 1,
       3000, 4, 0.8, 3, 0, 14000, -5, 0.9, 2, 1,
       0, -21, 3, 9, 130, 5, 2, 95, 3,
@@ -35,6 +35,10 @@ describe("fixed Go live control ABI", () => {
       1, 2, -1, 1, 4000, -20, 4, 0, 200, 4000,
       -24, 1.5, 30, 150, 0, -24, 1.5, 30, 150, 0, -24, 1.5, 30, 150, 0,
     ]);
+  });
+  it("keeps slot 2, the retired engine loudness match, at zero (V1-11)", () => {
+    expect(Object.hasOwn(params(), "loudnessMatchAb")).toBe(false);
+    expect(packLiveControls(params())[2]).toBe(0);
   });
   it("encodes each supported compressor and saturation enumeration", () => {
     for (const [code, topology] of compressorTopologies.entries()) {

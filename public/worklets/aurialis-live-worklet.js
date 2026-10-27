@@ -36,6 +36,11 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.mix = 0;
     this.volume = 1;
     this.targetVolume = 1;
+    // V1-11 static, attenuate-only loudness match (linear, 0 < gain <= 1).
+    this.matchProcessed = 1;
+    this.matchOriginal = 1;
+    this.targetMatchProcessed = 1;
+    this.targetMatchOriginal = 1;
     this.endTime = Infinity;
     this.ready = false;
     this.controlVersion = 0;
@@ -93,6 +98,13 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         this.original = message.value;
       } else if (message.type === "volume") {
         this.targetVolume = message.value;
+      } else if (message.type === "match") {
+        // One fixed monitor gain per side; anything but an attenuation is ignored.
+        const valid = value => typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 1;
+        if (valid(message.processed) && valid(message.original)) {
+          this.targetMatchProcessed = message.processed;
+          this.targetMatchOriginal = message.original;
+        }
       }
       } catch (error) { this.fail(error); }
     };
@@ -356,14 +368,21 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     for (let i = 0; i < QUANTUM; i++) {
       this.mix += Math.max(-step, Math.min(step, targetMix - this.mix));
       this.volume += Math.max(-volumeStep, Math.min(volumeStep, this.targetVolume - this.volume));
+      // A changed match ramps once over 10 ms like volume, then stays fixed.
+      this.matchProcessed += Math.max(-volumeStep, Math.min(volumeStep, this.targetMatchProcessed - this.matchProcessed));
+      this.matchOriginal += Math.max(-volumeStep, Math.min(volumeStep, this.targetMatchOriginal - this.matchOriginal));
       const dryL = expected > 0 ? this.samples[outputOffset + i] : 0;
       const dryR = expected > 0 ? this.samples[FRAMES + outputOffset + i] : 0;
       const wetL = available ? this.samples[2 * FRAMES + outputOffset + i] : 0;
       const wetR = available ? this.samples[3 * FRAMES + outputOffset + i] : 0;
       const audible = blockFrame + i < endFrame;
-      const l = audible ? (wetL * (1 - this.mix) + dryL * this.mix) * this.volume : 0;
-      const r = audible ? (wetR * (1 - this.mix) + dryR * this.mix) * this.volume : 0;
-      outL[i] = l; outR[i] = r;
+      const wet = 1 - this.mix, dry = this.mix;
+      // Meters read the selected A or B at monitor volume, before the static
+      // loudness match, so the match never shows up as a level change.
+      const l = audible ? (wetL * wet + dryL * dry) * this.volume : 0;
+      const r = audible ? (wetR * wet + dryR * dry) * this.volume : 0;
+      outL[i] = audible ? (wetL * wet * this.matchProcessed + dryL * dry * this.matchOriginal) * this.volume : 0;
+      outR[i] = audible ? (wetR * wet * this.matchProcessed + dryR * dry * this.matchOriginal) * this.volume : 0;
       this.peak = Math.max(this.peak, Math.abs(l), Math.abs(r));
       this.sum += l * l + r * r;
       this.ll += l * l; this.rr += r * r; this.lr += l * r;

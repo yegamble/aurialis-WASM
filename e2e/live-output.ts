@@ -8,8 +8,10 @@ type OutputProbe = {
   sampleRate: number;
   left: number[];
   right: number[];
-  energy?: { remaining: number; frames: number; squares: number };
+  energy?: { remaining: number; frames: number; squares: number; k?: KWeighting };
 };
+/** BS.1770 K-weighting (pre-filter shelf then RLB high-pass) with per-channel state. */
+type KWeighting = { coefficients: number[][]; state: number[][] };
 type ProbeWindow = Window & { qaOutput?: OutputProbe };
 
 /** Test-only tap of the actual node feeding the speakers; no application DSP mocks. */
@@ -41,8 +43,23 @@ export async function observeOutput(page: Page): Promise<void> {
           const energy = probe.energy;
           if (energy && energy.remaining > 0) {
             const count = Math.min(energy.remaining, probe.left.length);
+            const k = energy.k;
+            // Two cascaded biquads per channel; state holds x1, x2, y1, y2 per stage.
+            const weigh = (sample: number, channel: number) => {
+              if (!k) return sample;
+              let value = sample;
+              for (let stage = 0; stage < 2; stage++) {
+                const [b0 = 0, b1 = 0, b2 = 0, a1 = 0, a2 = 0] = k.coefficients[stage] ?? [];
+                const s = k.state[channel * 2 + stage] ?? [0, 0, 0, 0];
+                const [x1 = 0, x2 = 0, y1 = 0, y2 = 0] = s;
+                const y = b0 * value + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+                k.state[channel * 2 + stage] = [value, x1, y, y1];
+                value = y;
+              }
+              return value;
+            };
             for (let index = 0; index < count; index++)
-              energy.squares += (probe.left[index] ?? 0) ** 2 + (probe.right[index] ?? 0) ** 2;
+              energy.squares += weigh(probe.left[index] ?? 0, 0) ** 2 + weigh(probe.right[index] ?? 0, 1) ** 2;
             energy.remaining -= count;
             energy.frames += count;
           }
@@ -74,14 +91,28 @@ export async function outputLevel(page: Page) {
   });
 }
 
-/** Average a whole source-period window, retaining no extra PCM buffers. */
-export async function meanOutputLevel(page: Page, frames?: number): Promise<number> {
-  await page.evaluate((count) => {
+/**
+ * Average a whole source-period window, retaining no extra PCM buffers. With
+ * `weighting: "k"` the speaker output is K-weighted (ungated BS.1770), so A
+ * and B with different spectra compare in loudness rather than raw power.
+ */
+export async function meanOutputLevel(page: Page, frames?: number, weighting: "flat" | "k" = "flat"): Promise<number> {
+  await page.evaluate(([count, kWeighted]) => {
     const probe = (window as ProbeWindow).qaOutput;
     if (!probe) throw new Error("Missing live output probe");
-    probe.energy = { remaining: count ?? probe.sampleRate, frames: 0, squares: 0 };
-  }, frames);
-  await expect.poll(() => page.evaluate(() => (window as ProbeWindow).qaOutput?.energy?.remaining), { intervals: [50] }).toBe(0);
+    const biquad = (fs: number) => {
+      const shelfK = Math.tan(Math.PI * 1681.974450955533 / fs), shelfQ = 0.7071752369554196;
+      const vh = 10 ** (3.999843853973347 / 20), vb = vh ** 0.4996667741545416, s0 = 1 + shelfK / shelfQ + shelfK * shelfK;
+      const passK = Math.tan(Math.PI * 38.13547087602444 / fs), passQ = 0.5003270373238773, p0 = 1 + passK / passQ + passK * passK;
+      return [
+        [(vh + vb * shelfK / shelfQ + shelfK * shelfK) / s0, 2 * (shelfK * shelfK - vh) / s0, (vh - vb * shelfK / shelfQ + shelfK * shelfK) / s0, 2 * (shelfK * shelfK - 1) / s0, (1 - shelfK / shelfQ + shelfK * shelfK) / s0],
+        [1, -2, 1, 2 * (passK * passK - 1) / p0, (1 - passK / passQ + passK * passK) / p0],
+      ];
+    };
+    probe.energy = { remaining: count ?? probe.sampleRate, frames: 0, squares: 0,
+      ...(kWeighted ? { k: { coefficients: biquad(probe.sampleRate), state: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] } } : {}) };
+  }, [frames, weighting === "k"] as const);
+  await expect.poll(() => page.evaluate(() => (window as ProbeWindow).qaOutput?.energy?.remaining), { intervals: [50], timeout: 30_000 }).toBe(0);
   return page.evaluate(() => {
     const energy = (window as ProbeWindow).qaOutput?.energy;
     if (!energy || !energy.frames) throw new Error("Missing live output energy");

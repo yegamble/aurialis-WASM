@@ -1,4 +1,4 @@
-import { usesBrowserAudio } from "./browser-jobs";
+import { usesBrowserAudio, withForegroundAudio } from "./browser-jobs";
 import { safeFileBaseName } from "./zip";
 
 /** The server's model state (GET /api/stems/model `state`). */
@@ -205,7 +205,8 @@ export async function runStemSplit(source: Blob, stems: number, signal: AbortSig
   const body = new FormData();
   body.append("file", source, "source.wav");
   body.append("stems", String(stems));
-  const submitted = await fetch("/api/separate", { method: "POST", body, signal: AbortSignal.any([signal, AbortSignal.timeout(65_000)]) });
+  // Outranks the background A/B loudness measurement for the native upload slot.
+  const submitted = await withForegroundAudio(() => fetch("/api/separate", { method: "POST", body, signal: AbortSignal.any([signal, AbortSignal.timeout(65_000)]) }));
   const admitted: unknown = await submitted.json().catch(() => null);
   if (!submitted.ok) throw rejected(submitted, admitted);
   let job = record(admitted);

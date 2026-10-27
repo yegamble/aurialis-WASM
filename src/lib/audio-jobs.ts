@@ -1,4 +1,4 @@
-import { deviceAudioRequest, usesBrowserAudio } from "./browser-jobs";
+import { deviceAudioRequest, usesBrowserAudio, withForegroundAudio } from "./browser-jobs";
 function object(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Invalid audio job response.");
   return value as Record<string, unknown>;
@@ -18,6 +18,11 @@ export async function runAudioJob<T>(path: string, body: FormData, signal: Abort
     if (completed.status !== "done") throw new Error("Local audio analysis did not complete.");
     return result(completed);
   }
+  // The whole native job (admission and polling) outranks the background A/B measurement.
+  return withForegroundAudio(() => nativeJob(path, body, signal, onProgress, result));
+}
+
+async function nativeJob<T>(path: string, body: FormData, signal: AbortSignal, onProgress: (progress: number, stage: string) => void, result: (job: Record<string, unknown>) => T): Promise<T> {
   const submitted = object(await responseJSON(await fetch(path, { method: "POST", body, signal: AbortSignal.timeout(65_000) })));
   if (typeof submitted.jobId !== "string" || !/^[a-zA-Z0-9-]{1,80}$/u.test(submitted.jobId)) throw new Error("Invalid analysis job identity.");
   const id = submitted.jobId;

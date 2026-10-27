@@ -24,6 +24,7 @@ function enumCode(values: string[], value: string): number {
 }
 
 // This fixed vector is the shared Go WASI control ABI, not a second DSP model.
+// Slot 2 held the retired engine loudness match (V1-11) and is always zero.
 export function packLiveControls(params: EngineParams, abiVersion: number = 1): Float64Array<ArrayBuffer> {
   if (abiVersion !== 1 && abiVersion !== 2) throw new Error("Unsupported live control ABI.");
   const algorithmVersion = params.algorithmVersion === undefined ? 1 : params.algorithmVersion;
@@ -34,7 +35,7 @@ export function packLiveControls(params: EngineParams, abiVersion: number = 1): 
   if (params.multiband && params.multiband.bands.length !== 3)
     throw new Error("Live audio requires three multiband bands.");
   const values = new Float64Array([
-    Number(params.bypass), Number(params.abOriginal), Number(params.loudnessMatchAb), params.inputGainDb, Number(params.eqEnabled),
+    Number(params.bypass), Number(params.abOriginal), 0, params.inputGainDb, Number(params.eqEnabled),
     ...params.bands.flatMap((band) => [band.freqHz, band.gainDb, band.q, enumCode(filterTypes, band.type), Number(band.enabled)]),
     Number(params.compressor.enabled), params.compressor.thresholdDb, params.compressor.ratio,
     params.compressor.attackMs, params.compressor.releaseMs, params.compressor.kneeDb,

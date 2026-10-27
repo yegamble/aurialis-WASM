@@ -41,6 +41,10 @@
   --ochre-wash: #eee0bd;
   --danger: #9c3d32;
   --shadow: 0 18px 50px rgba(41, 35, 31, 0.08);
+  /* Mobile fixed transport: its offset above the bottom navigation, its measured
+     height (set by RealTransport; 180 px before measurement) and the page clearance. */
+  --transport-bottom: calc(82px + env(safe-area-inset-bottom, 0px));
+  --transport-clearance: calc(var(--transport-bottom) + var(--transport-height, 180px) + 24px);
   --serif: "Newsreader", Georgia, serif;
   --sans: "Instrument Sans", -apple-system, BlinkMacSystemFont, sans-serif;
 
@@ -1238,11 +1242,12 @@ input[type="range"] {
   }
 }
 @media (max-width: 767px) {
+  /* Clears the fixed transport, whose measured height RealTransport publishes. */
   .master-page {
-    padding-bottom: 240px;
+    padding-bottom: var(--transport-clearance);
   }
   .master-page :is(button, input, select, a) {
-    scroll-margin-bottom: 240px;
+    scroll-margin-bottom: var(--transport-clearance);
   }
 }
 @media (min-width: 768px) {

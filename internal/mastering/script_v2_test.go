@@ -49,6 +49,30 @@ func TestScriptV2StrictJSON(t *testing.T) {
 		}
 	}
 }
+
+// V1-11: scripts saved before the engine loudness match was retired carry
+// "loudnessMatchAb":false. They still decode and render; true never renders.
+func TestScriptV2AcceptsTheRetiredLoudnessMatchOnlyAsFalse(t *testing.T) {
+	buf, script := scriptFixture(t)
+	data, err := json.Marshal(script)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "loudnessMatchAb") {
+		t.Fatal("new scripts must not carry the retired field")
+	}
+	legacy := strings.Replace(string(data), `"abOriginal":false,`, `"abOriginal":false,"loudnessMatchAb":false,`, 1)
+	decoded, err := DecodeScriptV2([]byte(legacy))
+	if err != nil || decoded.ChainParams != script.ChainParams {
+		t.Fatalf("legacy script did not decode to the same settings: %v", err)
+	}
+	enabled, err := DecodeScriptV2([]byte(strings.Replace(legacy, `"loudnessMatchAb":false`, `"loudnessMatchAb":true`, 1)))
+	if err == nil {
+		if _, _, _, err = RenderScriptV2Context(context.Background(), buf, enabled); err == nil {
+			t.Fatal("a script enabling the retired engine loudness match rendered")
+		}
+	}
+}
 func TestScriptV2SourceBindingEmptyIdentityAndInterval(t *testing.T) {
 	buf, script := scriptFixture(t)
 	ctx := context.Background()

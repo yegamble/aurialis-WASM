@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import * as dsp from "../audio-dsp";
 import { createDefaultAdvancedParams, mapSimpleToDSP, MAX_LIMITER_CEILING_DB } from "../audio-dsp";
 import { engineParams } from "../browser-engine";
-import { automationTargets, deepSettingsSnapshot, readDeepMasteringState, type ScriptV2 } from "../deep-mastering";
+import { advancedFromScript, automationTargets, deepSettingsSnapshot, readDeepMasteringState, readScriptV2, type ScriptV2 } from "../deep-mastering";
 import { masteringTargets } from "../mastering-targets";
 import { proposalChanges } from "../proposal-changes";
 import { normalizeHydratedState, reduceStoreState } from "../store";
@@ -36,6 +36,15 @@ describe("V1-09 honest starting points", () => {
     expect(changed.tracks[0]?.advanced.limiter.ceiling).toBe(-1);
     const lower = reduceStoreState(testStore, { type: "UPDATE_LIMITER", trackId: source().id, patch: { ceiling: -2.5 } });
     expect(lower.tracks[0]?.advanced.limiter.ceiling).toBe(-2.5);
+  });
+
+  it("clamps a script's ceiling to −1 dBTP when it is read or applied", () => {
+    const hot = engineParams(createDefaultAdvancedParams()); hot.limiter = { ...hot.limiter, enabled: true, truePeak: false, ceilingDbtp: -0.5 };
+    expect(readScriptV2(script(hot)).chainParams.limiter.ceilingDbtp).toBe(-1);
+    expect(advancedFromScript(script(hot)).limiter.ceiling).toBe(-1);
+    const quiet = { ...hot, limiter: { ...hot.limiter, ceilingDbtp: -2.5 } };
+    expect(readScriptV2(script(quiet)).chainParams.limiter.ceilingDbtp).toBe(-2.5);
+    expect(advancedFromScript(script(quiet)).limiter.ceiling).toBe(-2.5);
   });
 
   it("migrates saved ceilings above −1 dBTP with a visible note, including Deep snapshots", () => {

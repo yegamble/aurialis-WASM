@@ -1,5 +1,5 @@
 import { MAX_SOURCE_FRAMES } from "./audio-limits";
-import { createDefaultAdvancedParams } from "./audio-dsp";
+import { createDefaultAdvancedParams, MAX_LIMITER_CEILING_DB } from "./audio-dsp";
 import { runAudioJob } from "./audio-jobs";
 import { deviceAudioRequest } from "./browser-jobs";
 import { engineParams } from "./browser-engine";
@@ -89,7 +89,9 @@ function params(value: unknown): ScriptParams {
   for (const band of parsed.bands) if (!["high_pass", "low_shelf", "peaking", "high_shelf"].includes(band.type)) throw failure();
   if (!["optical", "vari_mu", "fet", "vca"].includes(parsed.compressor.topology) || !["Warm", "Thick", "Crisp", "Clean", "Tube", "Tape", "Transformer"].includes(parsed.saturation.character)) throw failure();
   if (parsed.repair.enabled || (parsed.limiter.enabled && parsed.limiter.truePeak)) throw failure();
-  return { ...parsed, ...(algorithmVersion !== undefined ? { algorithmVersion: number(algorithmVersion, 0, 1, true) } : {}) };
+  // V1-09: no script, saved or downloaded, applies a ceiling above −1 dBTP.
+  const limiter = { ...parsed.limiter, ceilingDbtp: Math.min(MAX_LIMITER_CEILING_DB, parsed.limiter.ceilingDbtp) };
+  return { ...parsed, limiter, ...(algorithmVersion !== undefined ? { algorithmVersion: number(algorithmVersion, 0, 1, true) } : {}) };
 }
 function points(value: unknown, frames: number): AutomationPoint[] {
   const values = list(value, 256, 2).map((item) => { const point = object(item, ["frame", "value"]); return { frame: number(point.frame, 0, frames, true), value: number(point.value) }; });
@@ -207,7 +209,7 @@ export function advancedFromScript(script: ScriptV2): AdvancedParams {
     compressor: { enabled: params.compressor.enabled, threshold: params.compressor.thresholdDb, ratio: params.compressor.ratio, attack: params.compressor.attackMs, release: params.compressor.releaseMs, knee: params.compressor.kneeDb, makeup: params.compressor.makeupDb, sidechainHpfHz: params.compressor.sidechainHpfHz, autoRelease: params.compressor.autoRelease, topology: params.compressor.topology },
     saturationModule: { enabled: params.saturation.enabled, drive: params.saturation.amount, character: params.saturation.character },
     stereo: { enabled: params.stereo.enabled, width: params.stereo.widthPct, monoBass: params.stereo.monoBass, crossoverHz: params.stereo.crossoverHz, midGainDb: params.stereo.midGainDb, sideGainDb: params.stereo.sideGainDb },
-    limiter: { enabled: params.limiter.enabled, ceiling: params.limiter.ceilingDbtp, targetLufs: params.limiter.targetLufs, release: params.limiter.releaseMs, truePeak: params.limiter.truePeak },
+    limiter: { enabled: params.limiter.enabled, ceiling: Math.min(MAX_LIMITER_CEILING_DB, params.limiter.ceilingDbtp), targetLufs: params.limiter.targetLufs, release: params.limiter.releaseMs, truePeak: params.limiter.truePeak },
     deHarsh: params.deHarsh, multiband: params.multiband,
   };
 }

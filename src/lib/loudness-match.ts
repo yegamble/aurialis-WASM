@@ -14,25 +14,28 @@ import type { Track } from "./types";
  * it after the engine, and export requests are built without it.
  */
 
-/** Integrated loudness of A (render of the live settings) and B (source), for one settings key. */
-export type LoudnessReading = { key: string; processedLufs: number; originalLufs: number };
+/**
+ * Integrated loudness of A (render of the live settings) and B (source). `key`
+ * names the measured settings; `scope` the track and source they belong to.
+ */
+export type LoudnessReading = { key: string; scope: string; processedLufs: number; originalLufs: number };
+
+/** Applied to A Processed and B Original; each is ≤ 0 dB and at least one is exactly 0 dB. */
+type MatchOffset = {
+  processedDb: number;
+  originalDb: number;
+  /** The attenuated side, or null when both already measure the same. */
+  attenuated: "A" | "B" | null;
+};
 
 export type LoudnessMatch =
   | { state: "off" }
-  | { state: "measuring" }
+  /** `held` is the previous static offset for this track and source, kept until the new reading arrives. */
+  | { state: "measuring"; held: MatchOffset | null }
   | { state: "unavailable"; reason: string }
-  | {
-    state: "matched";
-    /** Applied to A Processed and B Original; each is ≤ 0 dB and at least one is exactly 0 dB. */
-    processedDb: number;
-    originalDb: number;
-    processedGain: number;
-    originalGain: number;
-    /** The attenuated side, or null when both already measure the same. */
-    attenuated: "A" | "B" | null;
-  };
+  | ({ state: "matched" } & MatchOffset);
 
-type LoudnessMatchRequest = { key: string; render: { params: object } | { script: ScriptV2 } };
+type LoudnessMatchRequest = { key: string; scope: string; render: { params: object } | { script: ScriptV2 } };
 
 /** BS.1770 gating reports −70 LUFS for silence; a match against it would be meaningless. */
 const SILENCE_LUFS = -70;
@@ -46,37 +49,42 @@ export function matchGains(processedLufs: number, originalLufs: number): { proce
   return difference > 0 ? { processedDb: -difference, originalDb: 0 } : { processedDb: 0, originalDb: difference };
 }
 
-/**
- * The match for the current settings. A reading measured for other settings
- * is stale: report re-measuring and apply nothing rather than a wrong offset.
- */
-export function resolveLoudnessMatch(enabled: boolean, key: string | null, reading: LoudnessReading | null, error?: { key: string; message: string } | null): LoudnessMatch {
-  if (!enabled) return { state: "off" };
-  if (key === null) return { state: "unavailable", reason: "Restore the source audio to measure A and B." };
-  if (error?.key === key) return { state: "unavailable", reason: error.message };
-  if (reading?.key !== key) return { state: "measuring" };
-  const { processedLufs, originalLufs } = reading;
-  if (!Number.isFinite(processedLufs) || !Number.isFinite(originalLufs) || processedLufs <= SILENCE_LUFS || originalLufs <= SILENCE_LUFS)
-    return { state: "unavailable", reason: "A or B is too quiet to measure." };
+function offsetOf({ processedLufs, originalLufs }: LoudnessReading): MatchOffset | null {
+  if (!Number.isFinite(processedLufs) || !Number.isFinite(originalLufs) || processedLufs <= SILENCE_LUFS || originalLufs <= SILENCE_LUFS) return null;
   const { processedDb, originalDb } = matchGains(processedLufs, originalLufs);
-  const offset = Math.min(processedDb, originalDb);
-  return {
-    state: "matched", processedDb, originalDb,
-    processedGain: 10 ** (processedDb / 20), originalGain: 10 ** (originalDb / 20),
-    attenuated: offset > -MATCHED_DB ? null : processedDb < 0 ? "A" : "B",
-  };
+  return { processedDb, originalDb, attenuated: Math.min(processedDb, originalDb) > -MATCHED_DB ? null : processedDb < 0 ? "A" : "B" };
+}
+
+/**
+ * The match for the current settings. A reading for other settings of the
+ * same track and source keeps its static offset while re-measuring (Round E);
+ * one from another source is never applied.
+ */
+export function resolveLoudnessMatch(enabled: boolean, current: { key: string; scope: string } | null, reading: LoudnessReading | null, error?: { key: string; message: string } | null): LoudnessMatch {
+  if (!enabled) return { state: "off" };
+  if (current === null) return { state: "unavailable", reason: "Restore the source audio to measure A and B." };
+  if (error?.key === current.key) return { state: "unavailable", reason: error.message };
+  if (reading?.key !== current.key) return { state: "measuring", held: reading?.scope === current.scope ? offsetOf(reading) : null };
+  const offset = offsetOf(reading);
+  return offset ? { state: "matched", ...offset } : { state: "unavailable", reason: "A or B is too quiet to measure." };
+}
+
+function offsetText(offset: MatchOffset): string {
+  if (offset.attenuated === null) return "0.0";
+  return (offset.attenuated === "B" ? offset.originalDb : offset.processedDb).toFixed(1).replace("-", "−");
 }
 
 /** Visible and announced description of the applied offset. */
 export function loudnessMatchText(match: LoudnessMatch): string {
   switch (match.state) {
     case "off": return "";
-    case "measuring": return "Measuring A and B loudness…";
+    case "measuring":
+      if (!match.held) return "Measuring A and B loudness…";
+      return `Re-measuring (holding ${match.held.attenuated === null ? "" : match.held.attenuated + " "}${offsetText(match.held)} dB)`;
     case "unavailable": return `Match unavailable. ${match.reason}`;
     case "matched": {
       if (match.attenuated === null) return "A and B already match";
-      const offset = (match.attenuated === "A" ? match.processedDb : match.originalDb).toFixed(1).replace("-", "−");
-      return `${match.attenuated} ${offset} dB to match ${match.attenuated === "A" ? "B" : "A"}`;
+      return `${match.attenuated} ${offsetText(match)} dB to match ${match.attenuated === "A" ? "B" : "A"}`;
     }
   }
 }
@@ -92,14 +100,15 @@ export function loudnessMatchRequest(track: Track): LoudnessMatchRequest {
   const applied = track.deepMastering?.applied;
   const render = applied ? { script: applied } : { params: engineParams(clampAdvancedToSampleRate(track.advanced, track.sampleRate)) };
   const settings = appliedRevisionKey(track) ?? JSON.stringify(render);
-  return { key: ["match", track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0, track.sourceIdentity?.pcmHash ?? "", settings].join("|"), render };
+  const scope = ["match", track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0, track.sourceIdentity?.pcmHash ?? ""].join("|");
+  return { key: `${scope}|${settings}`, scope, render };
 }
 
 /** One offline measurement of A and B through the live settings. */
 export async function measureLoudnessMatch(source: Blob, request: LoudnessMatchRequest, signal: AbortSignal): Promise<LoudnessReading> {
   const measured = await measureRender(source, request.render, signal);
   signal.throwIfAborted();
-  return { key: request.key, processedLufs: measured.afterMetrics.integratedLufs, originalLufs: measured.beforeMetrics.integratedLufs };
+  return { key: request.key, scope: request.scope, processedLufs: measured.afterMetrics.integratedLufs, originalLufs: measured.beforeMetrics.integratedLufs };
 }
 
 /** Per-browser monitoring preference; never stored in a project or export. */

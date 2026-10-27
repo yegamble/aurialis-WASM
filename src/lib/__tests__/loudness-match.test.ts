@@ -7,8 +7,8 @@ import type { ScriptV2 } from "../deep-mastering";
 import type { Track } from "../types";
 import { testStore } from "./fixtures";
 
-const reading = (processedLufs: number, originalLufs: number, key = "k"): LoudnessReading => ({ key, processedLufs, originalLufs });
-const db = (gain: number) => 20 * Math.log10(gain);
+const reading = (processedLufs: number, originalLufs: number, key = "k", scope = "s"): LoudnessReading => ({ key, scope, processedLufs, originalLufs });
+const at = (key = "k", scope = "s") => ({ key, scope });
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("static attenuate-only A/B loudness match (V1-11)", () => {
@@ -25,46 +25,54 @@ describe("static attenuate-only A/B loudness match (V1-11)", () => {
     expect(Math.abs((processedLufs + gains.processedDb) - (originalLufs + gains.originalDb))).toBeLessThanOrEqual(0.5);
   });
 
-  it("attenuates only the louder side and reports linear gains no greater than one", () => {
-    const louderA = resolveLoudnessMatch(true, "k", reading(-9, -14.2));
+  it("attenuates only the louder side", () => {
+    const louderA = resolveLoudnessMatch(true, at(), reading(-9, -14.2));
     expect(louderA).toMatchObject({ state: "matched", attenuated: "A" });
     if (louderA.state !== "matched") throw new Error("unmatched");
     expect(louderA.processedDb).toBeCloseTo(-5.2, 9); expect(louderA.originalDb).toBe(0);
-    expect(db(louderA.processedGain)).toBeCloseTo(-5.2, 9); expect(louderA.originalGain).toBe(1);
-    const louderB = resolveLoudnessMatch(true, "k", reading(-18.1, -13.9));
-    expect(louderB).toMatchObject({ state: "matched", attenuated: "B", processedDb: 0, processedGain: 1 });
+    expect(Object.keys(louderA).sort()).toEqual(["attenuated", "originalDb", "processedDb", "state"]);
+    const louderB = resolveLoudnessMatch(true, at(), reading(-18.1, -13.9));
+    expect(louderB).toMatchObject({ state: "matched", attenuated: "B", processedDb: 0 });
     if (louderB.state !== "matched") throw new Error("unmatched");
     expect(louderB.originalDb).toBeCloseTo(-4.2, 9);
   });
 
   it("is one static gain: identical inputs always give the identical offset", () => {
-    const first = resolveLoudnessMatch(true, "k", reading(-10, -13));
-    for (let index = 0; index < 5; index++) expect(resolveLoudnessMatch(true, "k", reading(-10, -13))).toEqual(first);
+    const first = resolveLoudnessMatch(true, at(), reading(-10, -13));
+    for (let index = 0; index < 5; index++) expect(resolveLoudnessMatch(true, at(), reading(-10, -13))).toEqual(first);
   });
 
   it("is off by default and applies nothing while off", () => {
-    expect(resolveLoudnessMatch(false, "k", reading(-9, -14))).toEqual({ state: "off" });
+    expect(resolveLoudnessMatch(false, at(), reading(-9, -14))).toEqual({ state: "off" });
     expect(loudnessMatchText({ state: "off" })).toBe("");
   });
 
-  it("never applies a stale offset: a reading for other settings means re-measuring at unity", () => {
-    expect(resolveLoudnessMatch(true, "new-settings", reading(-9, -14, "old-settings"))).toEqual({ state: "measuring" });
-    expect(resolveLoudnessMatch(true, "k", null)).toEqual({ state: "measuring" });
+  it("holds the last static offset while re-measuring edited settings, but never carries one to another source", () => {
+    const held = resolveLoudnessMatch(true, at("new-settings"), reading(-18.1, -13.9, "old-settings"));
+    expect(held).toMatchObject({ state: "measuring", held: { processedDb: 0, attenuated: "B" } });
+    if (held.state !== "measuring" || !held.held) throw new Error("no held offset");
+    expect(held.held.originalDb).toBeCloseTo(-4.2, 9);
+    expect(loudnessMatchText(held)).toBe("Re-measuring (holding B −4.2 dB)");
+    expect(loudnessMatchText(resolveLoudnessMatch(true, at("new"), reading(-14.02, -14, "old")))).toBe("Re-measuring (holding 0.0 dB)");
+    // Another track or source: nothing to hold, unity while measuring.
+    expect(resolveLoudnessMatch(true, at("other-source|k", "other-source"), reading(-9, -14))).toEqual({ state: "measuring", held: null });
+    expect(resolveLoudnessMatch(true, at(), null)).toEqual({ state: "measuring", held: null });
+    expect(resolveLoudnessMatch(true, at("new"), reading(-70, -14, "old"))).toEqual({ state: "measuring", held: null });
     expect(resolveLoudnessMatch(true, null, reading(-9, -14))).toMatchObject({ state: "unavailable" });
-    expect(resolveLoudnessMatch(true, "k", null, { key: "k", message: "Audio measurement failed." })).toEqual({ state: "unavailable", reason: "Audio measurement failed." });
-    expect(resolveLoudnessMatch(true, "k", null, { key: "old", message: "Audio measurement failed." })).toEqual({ state: "measuring" });
+    expect(resolveLoudnessMatch(true, at(), null, { key: "k", message: "Audio measurement failed." })).toEqual({ state: "unavailable", reason: "Audio measurement failed." });
+    expect(resolveLoudnessMatch(true, at(), null, { key: "old", message: "Audio measurement failed." })).toEqual({ state: "measuring", held: null });
   });
 
   it("refuses to match gated silence instead of applying an extreme offset", () => {
-    expect(resolveLoudnessMatch(true, "k", reading(-70, -14))).toMatchObject({ state: "unavailable" });
-    expect(resolveLoudnessMatch(true, "k", reading(-14, Number.NaN))).toMatchObject({ state: "unavailable" });
+    expect(resolveLoudnessMatch(true, at(), reading(-70, -14))).toMatchObject({ state: "unavailable" });
+    expect(resolveLoudnessMatch(true, at(), reading(-14, Number.NaN))).toMatchObject({ state: "unavailable" });
   });
 
   it("announces the applied offset in words with a typographic minus", () => {
-    expect(loudnessMatchText(resolveLoudnessMatch(true, "k", reading(-18.1, -13.9)))).toBe("B −4.2 dB to match A");
-    expect(loudnessMatchText(resolveLoudnessMatch(true, "k", reading(-9, -14.25)))).toBe("A −5.3 dB to match B");
-    expect(loudnessMatchText(resolveLoudnessMatch(true, "k", reading(-14.02, -14)))).toBe("A and B already match");
-    expect(loudnessMatchText({ state: "measuring" })).toBe("Measuring A and B loudness…");
+    expect(loudnessMatchText(resolveLoudnessMatch(true, at(), reading(-18.1, -13.9)))).toBe("B −4.2 dB to match A");
+    expect(loudnessMatchText(resolveLoudnessMatch(true, at(), reading(-9, -14.25)))).toBe("A −5.3 dB to match B");
+    expect(loudnessMatchText(resolveLoudnessMatch(true, at(), reading(-14.02, -14)))).toBe("A and B already match");
+    expect(loudnessMatchText({ state: "measuring", held: null })).toBe("Measuring A and B loudness…");
     expect(loudnessMatchText({ state: "unavailable", reason: "Restore the source." })).toBe("Match unavailable. Restore the source.");
   });
 });
@@ -81,6 +89,9 @@ describe("export-path measurement request", () => {
     expect("params" in request.render && "algorithmVersion" in request.render.params).toBe(false);
     const louder = createDefaultAdvancedParams(); louder.input = 4;
     expect(loudnessMatchRequest(track({ advanced: louder })).key).not.toBe(request.key);
+    // Same track and source: a held offset may bridge the re-measurement.
+    expect(loudnessMatchRequest(track({ advanced: louder })).scope).toBe(request.scope);
+    expect(loudnessMatchRequest(track({ sourceRevision: 7 })).scope).not.toBe(request.scope);
     expect(loudnessMatchRequest(track()).key).toBe(request.key);
   });
   it("measures the applied Deep revision as live playback plays it, not through the export transform", () => {

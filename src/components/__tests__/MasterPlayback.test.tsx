@@ -481,10 +481,10 @@ describe("master live playback lifecycle", () => {
     // A is measured on what live playback plays (algorithm 1), not the export limiter.
     expect(measure.mock.calls.at(-1)?.[1]).toMatchObject({ params: { inputGainDb: -4.5, limiter: { truePeak: false } } });
     expect(measure.mock.calls.at(-1)?.[1]).not.toHaveProperty("params.algorithmVersion");
-    // A settings change makes the reading stale: unity at once, then the new static offset.
+    // A settings change makes the reading stale: the last static offset is held, then replaced.
     fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "3" } });
-    await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("Measuring A and B loudness…"); });
-    expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: 0 });
+    await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("Re-measuring (holding B −4.5 dB)"); });
+    expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: -4.5 });
     await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("A −3.0 dB to match B"); }, { timeout: 5000 });
     expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: -3, originalDb: 0 });
     fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "0" } });

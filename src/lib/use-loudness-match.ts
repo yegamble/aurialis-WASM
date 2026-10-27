@@ -25,7 +25,7 @@ export function useLoudnessMatch(track: Track | undefined, source: Blob | null) 
   const request = useMemo(() => {
     if (!track) return null;
     try { return loudnessMatchRequest(track); }
-    catch (cause) { return { key: null, error: cause instanceof Error ? cause.message : "These settings cannot be measured." }; }
+    catch (cause) { return { key: null, scope: null, error: cause instanceof Error ? cause.message : "These settings cannot be measured." }; }
   }, [track]);
   const pending = useRef(request);
   pending.current = request;
@@ -47,8 +47,10 @@ export function useLoudnessMatch(track: Track | undefined, source: Blob | null) 
   let match: LoudnessMatch;
   if (!enabled) match = { state: "off" };
   else if (request && "error" in request) match = { state: "unavailable", reason: request.error };
-  else if (!source) match = { state: "measuring" };
-  else match = resolveLoudnessMatch(true, key, reading, failure);
-  const gains: LoudnessMatchGains = match.state === "matched" ? { processedDb: match.processedDb, originalDb: match.originalDb } : { processedDb: 0, originalDb: 0 };
+  else if (!source || !request) match = { state: "measuring", held: null };
+  else match = resolveLoudnessMatch(true, request, reading, failure);
+  // Static either way: the measured offset, or the previous one held while re-measuring.
+  const applied = match.state === "matched" ? match : match.state === "measuring" ? match.held : null;
+  const gains: LoudnessMatchGains = applied ? { processedDb: applied.processedDb, originalDb: applied.originalDb } : { processedDb: 0, originalDb: 0 };
   return { enabled, setEnabled, match, gains, text: loudnessMatchText(match) };
 }

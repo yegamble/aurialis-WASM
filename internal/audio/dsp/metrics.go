@@ -146,10 +146,8 @@ func measureStereoContext(ctx context.Context, left, right []float32, sampleRate
 			blocks = append(blocks, math.Max(0, windowEnergy)/float64(windowLen))
 		}
 	}
-	// Flush interpolation history to include reconstructed peaks at the final edge.
-	for i := 0; i < 13; i++ {
-		maxTruePeak = math.Max(maxTruePeak, interpolator.sample(0, 0))
-	}
+	// Include reconstructed peaks at the final edge against trailing silence.
+	maxTruePeak = math.Max(maxTruePeak, interpolator.flush())
 	if n < windowLen {
 		blocks = append(blocks, sumSqK/float64(n))
 	}

@@ -6,9 +6,13 @@ afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("Smart Split client", () => {
   it("reads the local model status and treats the browser build as unavailable", async () => {
-    const fetchMock = vi.fn(() => Promise.resolve(json({ available: true, ready: false, downloading: true, downloadedBytes: 5, totalBytes: 10 })));
+    const speed = { windowSeconds: 20, hopSeconds: 10, idleSecondsPerWindow: 32, busySecondsPerWindow: 173 };
+    const fetchMock = vi.fn(() => Promise.resolve(json({ available: true, ready: false, downloading: true, downloadedBytes: 5, totalBytes: 10, state: "downloading", accelerated: true, backend: "apple-accelerate", speed })));
     vi.stubGlobal("fetch", fetchMock);
-    expect(await stemModelStatus()).toEqual({ reachable: true, available: true, ready: false, downloading: true, downloadedBytes: 5, totalBytes: 10 });
+    expect(await stemModelStatus()).toEqual({ reachable: true, available: true, ready: false, downloading: true, downloadedBytes: 5, totalBytes: 10, state: "downloading", accelerated: true, backend: "apple-accelerate", speed });
+    // A plain-Go build: no speed, and an unknown state falls back to the booleans.
+    fetchMock.mockImplementationOnce(() => Promise.resolve(json({ available: false, ready: true, state: "bogus", accelerated: false, backend: "portable-go", speed: { windowSeconds: -1 } })));
+    expect(await stemModelStatus()).toMatchObject({ available: false, state: "loaded", accelerated: false, backend: "portable-go", speed: null });
     vi.stubEnv("NEXT_PUBLIC_AURIALIS_EXECUTION", "browser");
     fetchMock.mockClear();
     expect((await stemModelStatus()).available).toBe(false);

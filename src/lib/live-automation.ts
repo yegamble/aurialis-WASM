@@ -1,5 +1,5 @@
 import { compileScript, readScriptV2, type ScriptV2 } from "./deep-mastering";
-import { liveScript } from "./engine-params";
+import { exportChain } from "./engine-params";
 import { packLiveControls } from "./live-controls";
 import type { SourceIdentity } from "./types";
 import { verifyCanonicalSource } from "./project-import";
@@ -20,7 +20,7 @@ export async function prepareLiveAutomation(script: ScriptV2, blob: Blob, device
   }
   // The script is validated and compiled as authored; live playback renders its
   // baseline through the export chain, the conversion export applies (V1-10).
-  return { source, controls: packLiveControls(liveScript({ chainParams: compiled.baseline }).chainParams, 2), moves, moveCount: compiled.moves.length, revision: compiled.revision, deviceRate: compiled.deviceRate };
+  return { source, controls: packLiveControls(exportChain(compiled.baseline), 2), moves, moveCount: compiled.moves.length, revision: compiled.revision, deviceRate: compiled.deviceRate };
 }
 
 export async function verifiedSourceVector(blob: Blob, identity: SourceIdentity, signal: AbortSignal) {

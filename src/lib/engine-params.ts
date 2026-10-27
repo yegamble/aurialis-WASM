@@ -62,9 +62,9 @@ export function engineParams(advanced: AdvancedParams) {
   };
 }
 
-/** DSP algorithm for offline exports: the lookahead true-peak limiter, which
- * algorithm 2 selects with limiter.truePeak. Live playback stays on algorithm 1
- * because the worklet cannot absorb the limiter's latency. */
+/** DSP algorithm for exports and live playback: the lookahead true-peak
+ * limiter, which algorithm 2 selects with limiter.truePeak. The live worklet
+ * compensates its latency (V1-10). */
 export const EXPORT_ALGORITHM_VERSION = 2;
 
 function withExportLimiter<T extends { limiter: object }>(params: T): T & { algorithmVersion: number } {
@@ -81,6 +81,14 @@ export function exportScript<T extends { chainParams: { limiter: object; ditherB
   const copy = structuredClone(script);
   return { ...copy, chainParams: { ...withExportLimiter(copy.chainParams), ditherBits: 0 } };
 }
+
+/** What live playback renders (V1-10): the export settings themselves, so what
+ * you hear is what you export. Nothing needs to differ: dither follows the
+ * export's bit depth after the render, and the worklet mixes B Original and
+ * the equal-loudness offset outside the engine. */
+export const liveParams = exportParams;
+/** The applied Deep script as live playback renders it: the export copy. */
+export const liveScript = exportScript;
 
 /** What one master renders for delivery: its applied Deep script, else its settings. */
 export function exportRender(track: Pick<Track, "advanced" | "deepMastering">): { params: ReturnType<typeof exportParams> } | { script: ScriptV2 } {

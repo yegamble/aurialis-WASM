@@ -1,7 +1,7 @@
 import { clampAdvancedToSampleRate } from "./audio-dsp";
 import { measureRender } from "./browser-engine";
 import { appliedRevisionKey, type ScriptV2 } from "./deep-mastering";
-import { engineParams } from "./engine-params";
+import { liveParams, liveScript } from "./engine-params";
 import type { Track } from "./types";
 
 /**
@@ -90,15 +90,14 @@ export function loudnessMatchText(match: LoudnessMatch): string {
 }
 
 /**
- * What live playback plays for this track: the algorithm 1 settings the
- * worklet receives, or the applied Deep revision as it is attached. Export's
- * true-peak limiter reads up to about 2 LU quieter on heavily limited masters,
- * so measuring export would mis-match what is heard (Round E). When V1-10
- * moves live playback to the export algorithm, this follows automatically.
+ * What live playback plays for this track: the live settings the worklet
+ * receives, or the applied Deep revision as it is attached. A must be measured
+ * on what is heard (Round E); since V1-10 that is the export algorithm, so the
+ * same liveParams/liveScript the player uses build this render.
  */
 export function loudnessMatchRequest(track: Track): LoudnessMatchRequest {
   const applied = track.deepMastering?.applied;
-  const render = applied ? { script: applied } : { params: engineParams(clampAdvancedToSampleRate(track.advanced, track.sampleRate)) };
+  const render = applied ? { script: liveScript(applied) } : { params: liveParams(clampAdvancedToSampleRate(track.advanced, track.sampleRate)) };
   const settings = appliedRevisionKey(track) ?? JSON.stringify(render);
   const scope = ["match", track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0, track.sourceIdentity?.pcmHash ?? ""].join("|");
   return { key: `${scope}|${settings}`, scope, render };

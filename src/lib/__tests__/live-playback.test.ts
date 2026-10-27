@@ -34,6 +34,7 @@ function graphHarness(autoReady = true, autoArm = true, autoAutomation = false) 
     module: WebAssembly.Module;
     entropy: Uint8Array;
     clockOriginMs: number;
+    controlAbiVersion: number;
   };
   class Node {
     port = new Port();
@@ -288,6 +289,10 @@ describe("per-track live audio lifecycle", () => {
     expect(options.clockOriginMs).toBeGreaterThan(0);
     expect(Array.from(publication)).toEqual([2, 1, 0, 0]);
     expect(values[3]).toBe(settings.input);
+    // V1-10: live playback renders the export algorithm and its true-peak limiter.
+    expect(options.controlAbiVersion).toBe(2);
+    expect(new Float64Array(options.controls, 16, 82)[81]).toBe(2);
+    expect(values[50]).toBe(1);
     controller.setParams({ ...settings, input: 6 });
     expect(Array.from(publication)).toEqual([4, 2, 0, 0]);
     expect(values[3]).toBe(6);

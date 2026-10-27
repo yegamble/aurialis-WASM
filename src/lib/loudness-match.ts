@@ -1,18 +1,20 @@
+import { clampAdvancedToSampleRate } from "./audio-dsp";
 import { measureRender } from "./browser-engine";
 import { appliedRevisionKey, type ScriptV2 } from "./deep-mastering";
-import { exportParams, exportScript } from "./engine-params";
+import { engineParams } from "./engine-params";
 import type { Track } from "./types";
 
 /**
  * Opt-in, static, attenuate-only A/B loudness match for monitoring (V1-11).
  *
- * One fixed gain, computed from the integrated loudness of the export render
- * (A) and the source (B), lowers whichever is louder. It never boosts, never
+ * One fixed gain, computed from the integrated loudness of an offline render of
+ * exactly what live playback plays (A) and the source (B), lowers whichever is
+ * louder. It never boosts, never
  * tracks the signal over time, and never reaches export: the transport applies
  * it after the engine, and export requests are built without it.
  */
 
-/** Integrated loudness of A (export render of the current settings) and B (source), for one settings key. */
+/** Integrated loudness of A (render of the live settings) and B (source), for one settings key. */
 export type LoudnessReading = { key: string; processedLufs: number; originalLufs: number };
 
 export type LoudnessMatch =
@@ -80,18 +82,20 @@ export function loudnessMatchText(match: LoudnessMatch): string {
 }
 
 /**
- * What export renders for this track, so A is measured on the delivered
- * algorithm rather than the live preview limiter. The key changes whenever the
- * source or anything export renders changes.
+ * What live playback plays for this track: the algorithm 1 settings the
+ * worklet receives, or the applied Deep revision as it is attached. Export's
+ * true-peak limiter reads up to about 2 LU quieter on heavily limited masters,
+ * so measuring export would mis-match what is heard (Round E). When V1-10
+ * moves live playback to the export algorithm, this follows automatically.
  */
 export function loudnessMatchRequest(track: Track): LoudnessMatchRequest {
   const applied = track.deepMastering?.applied;
-  const render = applied ? { script: exportScript(applied) } : { params: exportParams(track.advanced) };
+  const render = applied ? { script: applied } : { params: engineParams(clampAdvancedToSampleRate(track.advanced, track.sampleRate)) };
   const settings = appliedRevisionKey(track) ?? JSON.stringify(render);
   return { key: ["match", track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0, track.sourceIdentity?.pcmHash ?? "", settings].join("|"), render };
 }
 
-/** One offline measurement of A and B through the export path. */
+/** One offline measurement of A and B through the live settings. */
 export async function measureLoudnessMatch(source: Blob, request: LoudnessMatchRequest, signal: AbortSignal): Promise<LoudnessReading> {
   const measured = await measureRender(source, request.render, signal);
   signal.throwIfAborted();

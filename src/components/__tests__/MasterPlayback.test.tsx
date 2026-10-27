@@ -478,8 +478,9 @@ describe("master live playback lifecycle", () => {
     expect(storage.get("aurialis-match-loudness-v1")).toBe("1");
     await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("B −4.5 dB to match A"); }, { timeout: 5000 });
     expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: -4.5 });
-    // A is measured on the export algorithm (2), not the live preview limiter.
-    expect(measure.mock.calls.at(-1)?.[1]).toMatchObject({ params: { inputGainDb: -4.5, algorithmVersion: 2 } });
+    // A is measured on what live playback plays (algorithm 1), not the export limiter.
+    expect(measure.mock.calls.at(-1)?.[1]).toMatchObject({ params: { inputGainDb: -4.5, limiter: { truePeak: false } } });
+    expect(measure.mock.calls.at(-1)?.[1]).not.toHaveProperty("params.algorithmVersion");
     // A settings change makes the reading stale: unity at once, then the new static offset.
     fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "3" } });
     await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("Measuring A and B loudness…"); });

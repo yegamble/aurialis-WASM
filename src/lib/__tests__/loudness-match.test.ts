@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createDefaultAdvancedParams } from "../audio-dsp";
+import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "../audio-dsp";
 import { engineParams } from "../browser-engine";
 import { exportParams, exportScript } from "../engine-params";
 import { loudnessMatchRequest, loudnessMatchText, matchGains, readMatchPreference, resolveLoudnessMatch, writeMatchPreference, type LoudnessReading } from "../loudness-match";
@@ -74,19 +74,22 @@ describe("export-path measurement request", () => {
     const base = testStore.tracks[0]; if (!base) throw new Error("Missing fixture");
     return { ...base, ...patch };
   };
-  it("measures exactly the parameters export renders and keys them by source and settings", () => {
+  it("measures exactly what live playback plays (algorithm 1), not the export limiter, keyed by source and settings", () => {
     const request = loudnessMatchRequest(track());
-    expect(request.render).toEqual({ params: exportParams(track().advanced) });
+    expect(request.render).toEqual({ params: engineParams(clampAdvancedToSampleRate(track().advanced, track().sampleRate)) });
+    expect(request.render).not.toEqual({ params: exportParams(track().advanced) });
+    expect("params" in request.render && "algorithmVersion" in request.render.params).toBe(false);
     const louder = createDefaultAdvancedParams(); louder.input = 4;
     expect(loudnessMatchRequest(track({ advanced: louder })).key).not.toBe(request.key);
     expect(loudnessMatchRequest(track()).key).toBe(request.key);
   });
-  it("measures the applied Deep revision through the export transform", () => {
+  it("measures the applied Deep revision as live playback plays it, not through the export transform", () => {
     const base = track();
     const applied: ScriptV2 = { version: "2.0", source: { pcmHash: "a".repeat(64), sampleRate: 48000, frames: 48000 }, revision: 3, profile: "Warm Analog", summary: "s", chainParams: engineParams(createDefaultAdvancedParams()), sections: [], moves: [], findings: [], beforeMetrics: { integratedLufs: -18, shortTermLufs: -18, truePeakDbtp: -6, samplePeakDbfs: -6, dynamicRangeDb: 12, correlation: 0.5, lowBassCorrelation: 1, dcLeftDbfs: -100, dcRightDbfs: -100, clippingSamples: 0, gainReductionDb: 0 } };
     const deep = { sourceRevision: 0, proposal: applied, targets: [], applied };
     const request = loudnessMatchRequest(track({ deepMastering: deep }));
-    expect(request.render).toEqual({ script: exportScript(applied) });
+    expect(request.render).toEqual({ script: applied });
+    expect(request.render).not.toEqual({ script: exportScript(applied) });
     expect(request.key).not.toBe(loudnessMatchRequest(base).key);
     expect(loudnessMatchRequest(track({ deepMastering: { ...deep, applied: { ...applied, revision: 4 } } })).key).not.toBe(request.key);
   });

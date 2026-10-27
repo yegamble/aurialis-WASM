@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { albumLevelSummary, albumMastersKey, albumOffset, DEFAULT_ALBUM_LEVEL, planAlbumLevels, readAlbumLevel, renderAlbumTrack, withAlbumOffset, type AlbumLevel, type AlbumRenderEngine } from "../album-levels";
-import { exportParams, exportRender, exportScript } from "../engine-params";
+import { engineParams, exportParams, exportRender, exportScript } from "../engine-params";
 import { CD_DELIVERY, DEFAULT_DELIVERY } from "../delivery-format";
 import type { ScriptV2 } from "../deep-mastering";
 import type { MeasuredAudioMetrics, Track } from "../types";
@@ -90,6 +90,18 @@ describe("album level plan", () => {
     expect(albumMastersKey([first, second], normalize(), CD_DELIVERY)).not.toBe(albumMastersKey([first, second], normalize(), DEFAULT_DELIVERY));
     // 32-bit float carries no dither, so that choice names the same masters.
     expect(albumMastersKey([first], DEFAULT_ALBUM_LEVEL, { bitDepth: 32, sampleRate: 44100, dither: false })).toBe(albumMastersKey([first], DEFAULT_ALBUM_LEVEL, { bitDepth: 32, sampleRate: 44100, dither: true }));
+  });
+
+  it("keeps masters saved before the format was selectable current at the default format", () => {
+    // Earlier masters rendered each source rate at 24-bit with TPDF dither and keyed only the level and sequence.
+    const sequence = (requested: (track: Track) => number | "keep") => [first, second].map((track) => [track.id, track.sourceRevision, engineParams(track.advanced), requested(track)]);
+    expect(albumMastersKey([first, second], DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY)).toBe(JSON.stringify(sequence(() => "keep")));
+    const level = normalize(), plan = planAlbumLevels(level, [first, second]);
+    if (!plan.ok) throw new Error("Expected a normalize plan");
+    const requested = (track: Track) => { const step = plan.tracks.find((item) => item.trackId === track.id); return step?.mode === "normalize" ? step.requestedLufs : "keep"; };
+    expect(albumMastersKey([first, second], level, DEFAULT_DELIVERY)).toBe(JSON.stringify({ mode: "normalize", targetLufs: level.targetLufs, offsets: [0, 0], blocked: false, sequence: sequence(requested) }));
+    // Any other format still names different masters.
+    expect(albumMastersKey([first, second], DEFAULT_ALBUM_LEVEL, { ...DEFAULT_DELIVERY, dither: false })).not.toBe(albumMastersKey([first, second], DEFAULT_ALBUM_LEVEL, DEFAULT_DELIVERY));
   });
 
   it("invalidates a Deep master when loading lowers its applied ceiling at the same revision", () => {

@@ -81,7 +81,8 @@ export function planAlbumLevels(level: AlbumLevel, tracks: readonly Pick<Track, 
 }
 
 /** Identifies rendered masters: the sequence, each project's settings, the used level
- * and the delivery format (bit depth plus the rate and dither sent with the render).
+ * and the delivery format (bit depth plus the rate and dither sent with the render;
+ * the default format keeps the key masters had before the format was selectable).
  * A normalize choice always names its target and offsets, blocked or not, so it can
  * never match masters kept at each level. */
 export function albumMastersKey(tracks: readonly Track[], level: AlbumLevel, format: DeliveryFormat): string {
@@ -90,10 +91,13 @@ export function albumMastersKey(tracks: readonly Track[], level: AlbumLevel, for
     const step = plan.ok ? plan.tracks.at(index) : undefined;
     return [track.id, track.sourceRevision, appliedRevisionKey(track) ?? engineParams(track.advanced), step?.mode === "normalize" ? step.requestedLufs : "keep"];
   });
-  const delivery = { bitDepth: format.bitDepth, ...deliveryRequest(format) };
-  if (level.mode === "keep") return JSON.stringify({ delivery, sequence });
+  const request = deliveryRequest(format);
+  // The default format (each source rate, 24-bit, TPDF) is what every earlier master
+  // rendered, so it keeps the earlier key and those saved masters stay current.
+  const delivery = format.bitDepth === 24 && Object.keys(request).length === 0 ? {} : { delivery: { bitDepth: format.bitDepth, ...request } };
+  if (level.mode === "keep") return "delivery" in delivery ? JSON.stringify({ ...delivery, sequence }) : JSON.stringify(sequence);
   const offsets = tracks.map((track) => albumOffset(level, track.id));
-  return JSON.stringify({ mode: "normalize", targetLufs: level.targetLufs, offsets, blocked: !plan.ok, delivery, sequence });
+  return JSON.stringify({ mode: "normalize", targetLufs: level.targetLufs, offsets, blocked: !plan.ok, ...delivery, sequence });
 }
 
 export type AlbumRenderEngine = {

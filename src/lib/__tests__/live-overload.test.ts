@@ -42,6 +42,8 @@ describe("playbackStats underrun watch (V1-10 Round 4)", () => {
     expect(run([0, 0, 200, 0, 200, 0])[0]).toBeLessThanOrEqual(5);
     // The trade-off: two separate 80 ms dropouts within five seconds also stop.
     expect(run([0, 0, 80, 0, 0, 80, 0]).length).toBeGreaterThan(0);
+    // So does one long glitch plus a small click a few seconds later (QA E8).
+    expect(run([0, 0, 300, 0, 0, 11, 0]).length, "300 ms then an 11 ms click 3 s later").toBeGreaterThan(0);
   });
   /** `seconds` windows with `ms` of underrun in every `every`-th window (from `at`). */
   const sparse = (seconds: number, every: number, ms: number, at = 2) => Array.from({ length: seconds }, (_, index) => (index >= at && (index - at) % every === 0 ? ms : 0));

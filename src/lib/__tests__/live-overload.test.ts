@@ -22,10 +22,11 @@ describe("playbackStats underrun watch (V1-10 Round 4)", () => {
     expect(run([500, 500, 500, 500])[0]).toBe(4);
   });
   it("fires on periodic dropouts that skip a second: two separate bursts over 3% in the last five windows", () => {
-    // 60/60/0 ms repeating: never three bad windows in a row, but two separate
-    // bursts and 4.8% of the last five windows.
-    expect(run([60, 60, 0, 60, 60, 0, 60, 60, 0]).length).toBeGreaterThan(0);
-    // 200 ms every 2 s: 6.7–13% of any 3 s.
+    // 60/60/0 ms repeating: never three bad windows in a row. It fires at second
+    // 4, when only three windows have been judged: two separate bursts and 4.0%
+    // (120 ms over 3 s) of those windows.
+    expect(run([60, 60, 0, 60, 60, 0, 60, 60, 0])[0]).toBe(4);
+    // 200 ms every 2 s: two or more bursts over 3% of the last five windows.
     expect(run([200, 0, 200, 0, 200, 0]).length).toBeGreaterThan(0);
     expect(run([0, 200, 0, 200, 0, 200])[0]).toBeLessThanOrEqual(4);
   });

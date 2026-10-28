@@ -1210,11 +1210,11 @@ Round E evidence:
   - CI run 40676565609 on `5949b83`: green.
 
 **Round 8 (Devil's Advocate E7: not verified on `5d22b20`), 2026-10-28.**
-- REQUIRED-1. Bursts five or more windows apart never stopped playback at any size: 300 ms or 900 ms every 5 s, and 1 s every 6 s. A long-horizon rule now judges the last fifteen windows once that many have been judged: three or more separate bursts and at least 2% underrun stop playback. One shared `judge()` serves both horizons. Requiring the full fifteen makes the outcome independent of where the glitches fall. The 2% bound is inclusive, so 60 ms every 3 s (exactly 2%) stops rather than depending on rounding.
+- REQUIRED-1. Bursts five or more windows apart never stopped playback at any size: 300 ms or 900 ms every 5 s, and 1 s every 6 s. A long-horizon rule now judges the last fifteen windows once that many have been judged: three or more separate bursts and at least 2% underrun stop playback. One shared `judge()` serves both horizons. Requiring the full fifteen makes the outcome independent of where the glitches fall. The 2% bound is inclusive, so exactly 2% stops; a unit row of exact binary fractions pins this (a strict bound fails it). Before, the 60 ms every 3 s case reached 2% only through floating-point rounding.
   - The rule in words: three or more separate glitches within about 15 s stop playback; a single glitch never does.
-  - Unit rows, across every phase: 1 s every 6 s (one window, or 500+500 ms) stops by 19 s; 300 ms and 900 ms every 5 s stop at 16 s; 60 ms every 3 s stops at 16 s. 60/60/0 ms and 200 ms every 2 s are unchanged. Every earlier must-not-fire row still passes.
-  - Accepted limit: 70 ms every 4 s never stops, wherever it falls.
-  - Native e2e: a 1 s stall every 6 s stops in 14.2 s (bound 22 s); the other stop cases stop in 4.9–5.5 s. The 120 and 250 ms one-shot keeps-playing cases still pass.
+  - Unit rows, across every phase: 1 s every 6 s (one window, or 500+500 ms) stops by about 19 s after Play; 300 ms and 900 ms every 5 s, and 60 ms every 3 s, stop about 17 s after Play. 60/60/0 ms and 200 ms every 2 s are unchanged. Every earlier must-not-fire row still passes.
+  - Accepted limit: 70 ms every 4 s never stops, wherever it falls. Glitches 8 s or more apart never stop playback, whatever their size (1 s every 8 or 10 s never stops). The long rule needs about 17 s of uninterrupted playback after every Play, seek, device change or state change, because each resets the watch; dense or sustained overload is still caught within 4–5 s of a reset. Small glitches count toward the three: one 300 ms glitch plus two 11 ms glitches within 15 s stop playback.
+  - Native e2e: a 1 s stall every 6 s stops in about 21 s on CI (15-window rule) and in about 14 s on the local host, where a post-stall recovery underrun lets the 5-window rule fire first (see Round 8b). The other stop cases stop in 4.9–5.5 s. The 120 and 250 ms one-shot keeps-playing cases still pass.
   - The +0.3 burner case failed once at `--repeat-each=4`. Its processor calibrated in its constructor and stalled the render thread for about 200 ms at start, causing real startup underruns. Calibration moved to the main thread, and all three burner cases then passed 4/4.
 - S-1. The iOS route's click now starts `resume()` and `play()` in the same turn and awaits both, since WebKit's activation may not survive an await. A unit test pins the synchronous order.
 - S-2. The stick probe uses 0.5 when the slider is at 1, so the route is built at any level (unit test).
@@ -1230,3 +1230,27 @@ Round E evidence:
   - Local: `gofmt -l` empty (no Go changed). `bash scripts/build.sh`, `test:wasm`, `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass. Vitest 750/750.
   - Full native Playwright (`--workers=1`): 163/163 at load average 6–127.
   - CI run 40687001724 on `bf788e3`: green.
+
+**Round 8b (QA E7, Devil's Advocate E8 on `55bf1ca`), 2026-10-28.**
+- Q-S2. A/B paused the audition but left it as the last player, so Space or a media key resumed the processed audition while B Original showed as pressed. A/B now hands the play/pause keys back to live; Space then starts live with B applied. Covered by a unit test and by QA's e7-ab-space e2e, which fails without the fix. The source is looped there so it cannot end first.
+- +0.3 burner on this host (`--repeat-each=8` at load average 35–55): 5/8. Not loosened, as ruled. playbackStats traces of the failures:
+  - Real underruns from host contention. In one run, three separate ~100 ms underruns came at about 10.5, 11.7 and 15.8 s (213 → 315 → 416 → 533 ms cumulative), so the 15-window rule fired.
+  - In another, at load average 303, about 1 s of underrun accrued every 2 s.
+  - Passing runs show only the startup underrun (101–277 ms) and nothing after. That confirms 29c9621 removed the startup storm.
+  - The burner now reports its achieved share. One run on this host read 0.517 for a requested 0.3: wall-clock spin time grows with preemption. The test requires at least 0.25.
+- DA E8 REQUIRED-1. "1 s every 6 s stops in 14.2 s" cannot come from the 15-window rule, which first judges about 17 s in. The stop was real, though, and came from another rule. With `--repeat-each=5` at load average 37–83 (the host was never below 8), it stopped at 14.0–14.4 s in four runs and at 21.1 s in one.
+  - The playbackStats traces explain it. Each 1 s stall (about 996 ms of underrun) is followed by about 200 ms of recovery underrun in the next window, and the stall stretches that window to about 2.2 s. So the second stall already falls within five windows, and the 5-window two-burst rule fires at about 14 s.
+  - On CI (run 40690786541, 22.4 s for the test) the 15-window rule fired at about 21 s.
+  - Shorter stalls (300 or 500 ms every 5–6 s) caused no device underrun at all in headless Chromium, so no e2e can isolate the 15-window rule. The exact unit rows prove it.
+  - The e2e therefore requires 12–25 s (after the second stall, before the 25 s bound), not the ruled 16 s lower bound. It prints the figure for CI evidence, and its comment records the reasoning.
+  - Tasks, architecture and the ledger give both figures.
+- DA E8 SHOULD-1 and P2. The docs add three statements:
+  - Glitches 8 s or more apart never stop playback.
+  - The long rule needs about 17 s of uninterrupted playback after each reset.
+  - Small glitches count toward the three.
+
+  New unit rows pin `LONG_BURSTS = 3` (two 500 ms glitches never stop), the inclusive bound (exact binary fractions), every phase of 1 s every 6 s, and 1 s every 8 or 10 s never stopping. Unit stop times now read "about 17 s after Play". The duplicated doc comment in `AuditionExport.tsx` is gone.
+- CI run 40701436023 (`ef39cb5`) failed one case: A/B then Space. Space arrived before the media pause event's task, so the keys still saw the audition playing. Pausing now clears the playing flag at once (`92322ab`), and the e2e waits for Play audition first. That run printed `sparse 1 s every 6 s fired after 21175 ms` (the 15-window rule) and `burner achieved share 0.331`.
+- Round 8b gates (2026-10-28):
+  - Local: `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass. Vitest 753/753; one run hit the known V1-11 `MasterPlayback` flake, which passed 3/3 on rerun.
+  - Playwright `--workers=1` after `bash scripts/build.sh`: `audition-export` 10/10, with the A/B-Space case 4/4 on `--repeat-each=4`; `live-overload` 13/13.

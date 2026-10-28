@@ -42,6 +42,9 @@ describe("playbackStats underrun watch (V1-10 Round 4)", () => {
     // Measured on a real host (QA E9, 1 s every 10 s of audio): one ~1 s stall
     // whose recovery reached a third window (994, 197, 24 ms) stopped playback alone.
     expect(run([0, 0, 994, 197, 24, 0, 0, 0]).length, "994 + 197 + 24 ms (QA E9)").toBeGreaterThan(0);
+    // Two more measured shapes: the recovery left about 12 ms in a third window.
+    expect(run([0, 0, 994, 227, 12, 0, 0, 0]).length, "994 + 227 + 12 ms (QA E9)").toBeGreaterThan(0);
+    expect(run([0, 0, 1708, 105, 12, 0, 0, 0]).length, "1708 + 105 + 12 ms (QA E9)").toBeGreaterThan(0);
     expect(run([0, 0, 1000, 1000, 1000, 0, 0, 0]).length, "one 3 s dropout").toBeGreaterThan(0);
     const threeEveryTen = Array.from({ length: 40 }, (_, index) => (index >= 2 && (index - 2) % 10 < 3 ? 1000 : 0));
     expect(run(threeEveryTen).length, "3 s every 10 s").toBeGreaterThan(0);

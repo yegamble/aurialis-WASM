@@ -1048,7 +1048,7 @@ Evidence (`unit`, in-process HTTP handler): `TestExportRenderWithTruePeakAlgorit
 
 Live playback, its meters and the Equal-loudness A/B measurement now render algorithm 2, the export's lookahead true-peak limiter, so what you hear is what you export. Branch `fix/v1-10-live-export-path`.
 
-**CPU budget, measured first.** The gate was a mean kernel time per 128-frame quantum of at most a third of the quantum (2.67 ms at 48 kHz). The heaviest chain the UI can enable together was used: five +2 dB EQ bands, De-Harsh, three-band multiband, the compressor with auto release, 60% saturation, 130% width with mono bass and M/S gains, and the limiter. Repair is excluded because the UI cannot enable it. Apple M2, compiled WASI reactor in Node 26 V8 through the restricted browser host (`node wasm/dsp/bench-live.mjs public/wasm/aurialis-realtime.wasm 20`), range over the Warm, Tube and Transformer models:
+**CPU budget, measured first.** The gate was a mean kernel time per 128-frame quantum of at most a third of the quantum (2.67 ms at 48 kHz). The heaviest chain the UI can enable together was used: five +2 dB EQ bands, De-Harsh, three-band multiband, the compressor with auto release, 60% saturation, 130% width with mono bass and M/S gains, and the limiter. Repair is excluded because the UI cannot enable it. Apple M2, compiled WASI reactor in Node 26 V8 through the restricted browser host (`node wasm/dsp/bench-live.mjs public/wasm/aurialis-realtime.wasm 20`, a script deleted in Round 8), range over the Warm, Tube and Transformer models:
 
 | Rate | Algorithm 1 mean load (p99) | Algorithm 2 mean load (p99) | Algorithm 2 latency |
 | --- | --- | --- | --- |
@@ -1126,7 +1126,7 @@ Round E evidence:
 - S5. Capped cases require live TP ≤ ceiling + 0.1.
 - S6. "Integer ratio for the 44.1/48 kHz families" is now in `live-rate.ts` and `architecture.md`.
 - S7. The ring-overrun error now uses the buffer-fault message, and fires only if the generation is unchanged after READ is loaded, so a seek race cannot trip it (unit-tested both ways).
-- `bench-live.mjs` now labels its output a relative V8 benchmark, not a browser load.
+- `bench-live.mjs` now labels its output a relative V8 benchmark, not a browser load. (Round 8: deleted, since nothing used it and its figures read about 2.5× low against the real worklet.)
 - QA Round E 3, F-1 (BLOCKER) and F-2. A single kernel call over quantum + 1 ms used to mark a window bad. The output buffer (about 10.6 ms) absorbs a 4–8 ms call, so clean playback stopped: Chromium's `underrunEvents` stayed 12→12, and on CI the soak and five `simple-styles` tests with an export rendering stopped. Meanwhile a 60 ms stall once a second outside the kernel (378 real underruns) was missed, because the render thread catches up on the clock. Chair ruling, implemented:
   - Primary: `live-overload.ts` samples `AudioContext.playbackStats` once a second on the main thread. After a warm-up window, two consecutive seconds over 1% underrun duration fire.
   - Fallback (no playbackStats): the worklet counts a miss only when a whole callback, or the gap before it, overruns the quantum by more than the output's slack, max(outputLatency, 2 × baseLatency, 10 ms), plus a clock step.

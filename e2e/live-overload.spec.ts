@@ -84,6 +84,19 @@ for (const waitMs of [120, 250]) {
   });
 }
 
+// Repeated but sparse glitches (Round 8): a 1 s stall every 6 s must stop
+// playback through the 15-window rule, within about 22 s of Play.
+test("a 1 s stall every 6 s stops with the can't-keep-up message within about 22 s", async ({ page }) => {
+  test.setTimeout(120_000);
+  await hitch(page, 1000, 2250, "after");
+  const started = await play(page, "sparse-1s-6s.wav");
+  await expect(page.getByText(OVERLOAD_MESSAGE, { exact: true })).toBeVisible({ timeout: 40_000 });
+  const elapsed = Date.now() - started;
+  test.info().annotations.push({ type: "fired-after-ms", description: String(elapsed) });
+  expect(elapsed, "fired after (ms)").toBeLessThanOrEqual(22_000);
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
+});
+
 // Real underruns must stop playback within 8 s: every quantum 4 ms late, a
 // 60 ms stall once a second on either side of the kernel (QA F-2, missed before
 // because the render thread catches up on the clock), and periodic dropouts that

@@ -289,20 +289,15 @@ const OVERLOAD = "Playback can't keep up on this device with the current process
 // Load outside the kernel (V1-10 Round 4): a test-only "burner" AudioWorkletNode
 // in the same context busy-waits on the same render thread, while the app's
 // worklet and kernel are untouched. A share spins a calibrated fraction of every
-// 128-frame quantum (calibrated twice against Date.now, the second after JIT
-// warm-up); a negative share instead spins until Date.now has moved that many
+// 128-frame quantum; the spin is calibrated on the main thread (twice, the second
+// after JIT warm-up), because calibrating in the processor's constructor stalled
+// the render thread for about 200 ms at start and caused real startup underruns
+// (Round 8). A negative share instead spins until Date.now has moved that many
 // milliseconds, which overloads any CPU. (A forced 192 kHz context was dropped:
 // whether it overloads depends on the runner, and CI's did not.)
 const BURNER = `class QaBurner extends AudioWorkletProcessor {
   constructor(options) {
-    super(); this.share = options.processorOptions.share;
-    let sink = 0;
-    for (let pass = 0; pass < 2; pass++) {
-      let iterations = 0; const start = Date.now();
-      while (Date.now() - start < 100) { for (let i = 0; i < 1000; i++) sink += Math.sqrt(i + sink % 7); iterations += 1000; }
-      this.perMs = iterations / (Date.now() - start);
-    }
-    this.sink = sink;
+    super(); this.share = options.processorOptions.share; this.perMs = options.processorOptions.perMs; this.sink = 0;
   }
   process() {
     if (this.share < 0) { const start = Date.now(); while (Date.now() - start < -this.share) {} return true; }
@@ -325,7 +320,13 @@ async function burn(page: Page, share: number): Promise<void> {
         burning.add(context);
         const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
         void context.audioWorklet.addModule(url).finally(() => { URL.revokeObjectURL(url); }).then(() => {
-          const burner = new AudioWorkletNode(context, "qa-burner", { numberOfInputs: 0, numberOfOutputs: 1, processorOptions: { share: extra } });
+          let perMs = 0, sink = 0;
+          for (let pass = 0; pass < 2; pass++) {
+            let iterations = 0; const start = Date.now();
+            while (Date.now() - start < 100) { for (let i = 0; i < 1000; i++) sink += Math.sqrt(i + sink % 7); iterations += 1000; }
+            perMs = iterations / (Date.now() - start);
+          }
+          const burner = new AudioWorkletNode(context, "qa-burner", { numberOfInputs: 0, numberOfOutputs: 1, processorOptions: { share: extra, perMs: perMs + sink * 0 } });
           const silent = context.createGain(); silent.gain.value = 0;
           Reflect.apply(nativeConnect, burner, [silent]); Reflect.apply(nativeConnect, silent, [context.destination]);
         });

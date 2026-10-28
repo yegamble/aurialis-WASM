@@ -20,20 +20,20 @@ const UNDERRUN_SHARE = 0.01;
 // (measured: 41 ms then 12 ms, at load average 40) is two bad seconds and must
 // not stop playback; a sustained 60 ms-per-second dropout is bad every second.
 // Periodic dropouts that skip a second (60/60/0 ms, or 200 ms every 2 s) are
-// caught by the sum over the last three windows, over 3% of them (90 ms in 3 s),
-// but only when at least two of those windows are bad: one isolated stall, even
-// 300 ms long, falls in a single window and never fires. Known limit: a single
-// stall over about 90 ms that splits across a boundary with both halves over
-// 10 ms makes two bad windows and does fire.
-const WINDOW_SECONDS = 0.9, STRIKES = 3, RECENT = 3, RECENT_SHARE = 0.03, RECENT_BAD = 2;
+// caught over the last five windows: at least two separate bursts (runs of
+// adjacent bad windows with a good window between them) and over 3% underrun
+// in total. One long glitch is tolerated, even a 1 s burst split across two
+// windows (QA measured one at startup on a loaded host); repeated glitches stop
+// playback, including two separate 80 ms dropouts a few seconds apart.
+const WINDOW_SECONDS = 0.9, STRIKES = 3, RECENT = 5, RECENT_SHARE = 0.03, BURSTS = 2;
 
 /**
  * Judge sustained device underruns from successive playbackStats samples
  * (about one per second). The first window after (re)start is a warm-up:
  * Chromium records 12–19 underrun events while the stream starts. Three bad
- * windows in a row, or more than 3% underrun summed over the last three windows
- * when at least two of them are bad, are an overload. One isolated host stall is
- * not, nor one that splits across a boundary into one bad and one clean window.
+ * windows in a row, or at least two separate bursts with more than 3% underrun
+ * in total over the last five windows, are an overload. One glitch, however long
+ * and however it splits across windows, is not.
  */
 export function createUnderrunWatch() {
   let previous: PlaybackStatsLike | null = null, windows = 0, strikes = 0;
@@ -55,7 +55,8 @@ export function createUnderrunWatch() {
       strikes = bad ? strikes + 1 : 0;
       recent = [...recent, { underrun, seconds, bad }].slice(-RECENT);
       const sum = recent.reduce((total, window) => ({ underrun: total.underrun + window.underrun, seconds: total.seconds + window.seconds }), { underrun: 0, seconds: 0 });
-      const periodic = recent.length === RECENT && recent.filter((window) => window.bad).length >= RECENT_BAD && sum.underrun > RECENT_SHARE * sum.seconds;
+      const bursts = recent.filter((window, index) => window.bad && !recent[index - 1]?.bad).length;
+      const periodic = bursts >= BURSTS && sum.underrun > RECENT_SHARE * sum.seconds;
       return strikes >= STRIKES || periodic;
     },
   };

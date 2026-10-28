@@ -28,13 +28,20 @@ describe("playbackStats underrun watch (V1-10 Round 4)", () => {
     expect(run([200, 0, 200, 0, 200, 0]).length).toBeGreaterThan(0);
     expect(run([0, 200, 0, 200, 0, 200])[0]).toBeLessThanOrEqual(4);
   });
-  it("never fires on one isolated stall, however long, or 100 ms in the first judged window (Round 7 R-1)", () => {
-    for (const ms of [91, 120, 250, 300]) expect(run([0, 0, ms, 0, 0, 0, 0]), `${String(ms)} ms`).toEqual([]);
-    expect(run([0, 100, 0, 0, 0, 0])).toEqual([]);
+  it("tolerates one glitch however long or split (Round 7 revised R-1)", () => {
+    for (const ms of [85, 91, 100, 120, 150, 250, 300]) expect(run([0, 0, ms, 0, 0, 0, 0, 0]), `${String(ms)} ms`).toEqual([]);
+    expect(run([0, 0, 41, 12, 0, 0, 0, 0]), "41/12 straddle").toEqual([]);
+    expect(run([0, 0, 60, 40, 0, 0, 0, 0]), "60+40 straddle").toEqual([]);
+    expect(run([0, 120, 0, 0, 0, 0, 0]), "120 ms in the first judged window").toEqual([]);
+    expect(run([0, 0, 500, 503, 0, 0, 0, 0]), "one ~1 s burst across two windows").toEqual([]);
   });
-  it("still fires on 60/60/0 and on 200 ms every 2 s, within four judged seconds", () => {
-    expect(run([0, 60, 60, 0, 60, 60, 0])[0]).toBeLessThanOrEqual(6);
-    expect(run([0, 200, 0, 200, 0, 200])[0]).toBeLessThanOrEqual(6);
+  it("stops on repeated glitches within the 8 s bound: 60/60/0 and 200 ms every 2 s", () => {
+    // Index 0 is the warm-up window; a stop at judged window n is n + 2 s after Play.
+    expect(run([0, 60, 60, 0, 60, 60, 0])[0]).toBeLessThanOrEqual(5);
+    expect(run([0, 200, 0, 200, 0, 200])[0]).toBeLessThanOrEqual(5);
+    expect(run([0, 0, 200, 0, 200, 0])[0]).toBeLessThanOrEqual(5);
+    // The trade-off: two separate 80 ms dropouts within five seconds also stop.
+    expect(run([0, 0, 80, 0, 0, 80, 0]).length).toBeGreaterThan(0);
   });
   it("restarts with a warm-up when the context's duration runs backwards", () => {
     const watch = createUnderrunWatch();
@@ -51,7 +58,7 @@ describe("playbackStats underrun watch (V1-10 Round 4)", () => {
   it("ignores startup underruns, a clean device and one isolated dropout", () => {
     expect(run([200, 0, 0, 0, 0, 0])).toEqual([]);
     expect(run(Array.from({ length: 30 }, () => 0))).toEqual([]);
-    expect(run([0, 0, 80, 0, 0, 80, 0])).toEqual([]);
+    expect(run([0, 0, 80, 0, 0, 0, 0])).toEqual([]);
     expect(run([0, 9, 9, 9, 9])).toEqual([]);
   });
   it("restarts after reset and when the context's duration restarts", () => {

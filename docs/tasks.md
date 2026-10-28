@@ -1167,7 +1167,7 @@ Round E evidence:
 - REQUIRED-1, audition volume. The audition element ignored the Playback volume, so at 0.1 it played about 20 dB louder than live. It now follows the slider on start and on every move. Where `HTMLMediaElement.volume` does not stick (iOS Safari), the element is routed once through a GainNode; other browsers get no second Web Audio path. Covered by unit tests, including that fallback, and an e2e (0.1, then 0.6). The guide, architecture and README say the audition is the exact export, so Equal-loudness A/B does not apply to it.
 - S-1. Live loading counts as playing. A render that finishes during a cold live start leaves the audition Ready and does not pause live. The `MasterPlayback` unit test pins this and fails without the change. (Round 7: the cold-Play e2e passed with the fix reverted, so it was dropped.)
 - S-2. The playbackStats judge also fires on more than 3% underrun summed over the last three windows. That catches 60/60/0 ms and 200 ms every 2 s; the 53 ms straddling stall (about 1.8%) still does not fire. Unit-tested, and both patterns are in `live-overload.spec.ts`.
-- S-3. Every stop in `live-overload.spec.ts` must come within 8 s. Measured: 5.2–5.4 s for all five stop cases.
+- S-3. Every stop in `live-overload.spec.ts` must come within 8 s. Measured in Round 6: 5.2–5.4 s for all five stop cases.
 - S-4. The Audition = Export check is no longer circular. A fresh Export is rendered before any audition exists, and the audition's Blob must match it; a second Export must hand over the held file (natively, no render request). This runs in both the native and browser-build suites.
 - P2 fixes:
   - The architecture now says roughly the first 2 s after each start are never judged.
@@ -1187,7 +1187,7 @@ Round E evidence:
   - Unit rows that must fire: 60/60/0 ms and 200 ms every 2 s.
   - Native e2e: one 120 ms and one 250 ms stall about 6 s in keep playing. QA's one-shot probe (53, 100, 150 and 250 ms, and two 40 ms stalls 2 s apart) also keeps playing.
   - The +0.3 burner case passed 4/4 with `--repeat-each=4` at load average 8–23.
-  - The five stop cases in `live-overload.spec.ts` stop in 5.0–5.5 s (bound 8 s).
+  - The five stop cases in `live-overload.spec.ts` stopped in 5.0–5.5 s in Round 7 (bound 8 s).
   - P2-2: a duration that runs backwards resets the watch, warm-up included.
 - R-2. The iOS volume fallback is built only in a Play click: detect that `.volume` does not stick, build the context and the MediaElementSource once, await `resume()`, set the element to 1 and play. The volume effect only moves an existing gain. Auto-play after a render that would need the route stays Ready. Unit tests cover:
   - no context on mount or on a volume change;
@@ -1208,3 +1208,25 @@ Round E evidence:
   - Full native Playwright (`--workers=1`): 162/162 at load average 15–18.
   - Load stayed above the 8 cores, so the 600 s soak was not rerun; the 120 s run above is the evidence.
   - CI run 40676565609 on `5949b83`: green.
+
+**Round 8 (Devil's Advocate E7: not verified on `5d22b20`), 2026-10-28.**
+- REQUIRED-1. Bursts five or more windows apart never stopped playback at any size: 300 ms or 900 ms every 5 s, and 1 s every 6 s. A long-horizon rule now judges the last fifteen windows once that many have been judged: three or more separate bursts and at least 2% underrun stop playback. One shared `judge()` serves both horizons. Requiring the full fifteen makes the outcome independent of where the glitches fall. The 2% bound is inclusive, so 60 ms every 3 s (exactly 2%) stops rather than depending on rounding.
+  - The rule in words: three or more separate glitches within about 15 s stop playback; a single glitch never does.
+  - Unit rows, across every phase: 1 s every 6 s (one window, or 500+500 ms) stops by 19 s; 300 ms and 900 ms every 5 s stop at 16 s; 60 ms every 3 s stops at 16 s. 60/60/0 ms and 200 ms every 2 s are unchanged. Every earlier must-not-fire row still passes.
+  - Accepted limit: 70 ms every 4 s never stops, wherever it falls.
+  - Native e2e: a 1 s stall every 6 s stops in 14.2 s (bound 22 s); the other stop cases stop in 4.9–5.5 s. The 120 and 250 ms one-shot keeps-playing cases still pass.
+  - The +0.3 burner case failed once at `--repeat-each=4`. Its processor calibrated in its constructor and stalled the render thread for about 200 ms at start, causing real startup underruns. Calibration moved to the main thread, and all three burner cases then passed 4/4.
+- S-1. The iOS route's click now starts `resume()` and `play()` in the same turn and awaits both, since WebKit's activation may not survive an await. A unit test pins the synchronous order.
+- S-2. The stick probe uses 0.5 when the slider is at 1, so the route is built at any level (unit test).
+- P2-1. The render progress is announced in quarters.
+- P2-2. The progress bar sits after the focused button.
+- P2-3. Architecture and tasks now carry the same re-measured stop times.
+- P2-4. The remaining iOS limit is that the path is unverified on a real device.
+- P2-6. Unit tests pin M4 (auto-play leaves a suspended route alone and calls no resume) and M8 (the latch resets).
+- P2-7. The deep-recovery probe flake is on the ledger's audio-thread-tap P2 line.
+- `wasm/dsp/bench-live.mjs` is deleted (unused).
+- P2-5 is a new ledger line only.
+- Round 8 gates (2026-10-28):
+  - Local: `gofmt -l` empty (no Go changed). `bash scripts/build.sh`, `test:wasm`, `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass. Vitest 750/750.
+  - Full native Playwright (`--workers=1`): 163/163 at load average 6–127.
+  - CI run 40687001724 on `bf788e3`: green.

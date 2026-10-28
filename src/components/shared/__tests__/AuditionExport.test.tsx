@@ -1,3 +1,4 @@
+import { StrictMode } from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi, type MockInstance } from "vitest";
 import * as engine from "@/lib/browser-engine";
@@ -136,25 +137,54 @@ describe("Audition export (V1-10 owner ruling)", () => {
     view.rerender(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={0.55} livePlaying={false} onStart={onStart} />);
     expect(element().volume).toBeCloseTo(0.55, 6);
   });
-  it("routes through one GainNode only where the element ignores .volume (iOS Safari)", async () => {
+  it("builds the iOS GainNode route only in a Play click, once under StrictMode, and resumes it (Round 7 R-2)", async () => {
     const volume = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "volume");
-    Object.defineProperty(HTMLMediaElement.prototype, "volume", { configurable: true, get: () => 1, set: () => undefined });
+    const assigned: number[] = [];
+    Object.defineProperty(HTMLMediaElement.prototype, "volume", { configurable: true, get: () => 1, set: (value: number) => { assigned.push(value); } });
     onTestFinished(() => { if (volume) Object.defineProperty(HTMLMediaElement.prototype, "volume", volume); });
-    const gain = { gain: { value: 1 }, connect: vi.fn() };
-    const sourceNode = { connect: vi.fn(() => gain) };
-    gain.connect.mockReturnValue({});
-    const created = vi.fn();
-    vi.stubGlobal("AudioContext", class { destination = {}; constructor() { created(); } createGain() { return gain; } createMediaElementSource() { return sourceNode; } close() { return Promise.resolve(); } });
+    const gain = { gain: { value: 1 }, connect: vi.fn(() => ({})) };
+    const sources = vi.fn(() => ({ connect: vi.fn(() => gain) }));
+    const created = vi.fn(), resume = vi.fn();
+    vi.stubGlobal("AudioContext", class {
+      destination = {}; state = "suspended";
+      constructor() { created(); }
+      createGain() { return gain; }
+      createMediaElementSource() { return sources(); }
+      resume() { resume(); this.state = "running"; return Promise.resolve(); }
+      close() { return Promise.resolve(); }
+    });
     vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: wav, truePeakDbtp: null });
     const onStart = vi.fn();
-    const view = render(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={0.2} livePlaying={false} onStart={onStart} />);
+    const view = render(<StrictMode><AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={0.2} livePlaying={false} onStart={onStart} /></StrictMode>);
+    view.rerender(<StrictMode><AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={0.3} livePlaying={false} onStart={onStart} /></StrictMode>);
+    expect(created).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
-    await screen.findByRole("button", { name: "Pause audition" });
+    // Auto-play after the render is not a gesture: no context, it waits, Ready.
+    expect(await screen.findByText(/^Ready: the exact export file/u)).toBeTruthy();
+    expect(created).not.toHaveBeenCalled();
+    expect(playSpy).not.toHaveBeenCalled();
+    await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Play audition" })); await Promise.resolve(); await Promise.resolve(); });
     expect(created).toHaveBeenCalledOnce();
-    expect(gain.gain.value).toBeCloseTo(0.2, 6);
-    view.rerender(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={0.6} livePlaying={false} onStart={onStart} />);
+    expect(sources).toHaveBeenCalledOnce();
+    expect(resume).toHaveBeenCalledOnce();
+    expect(gain.gain.value).toBeCloseTo(0.3, 6);
+    expect(assigned.at(-1)).toBe(1);
+    expect(playSpy).toHaveBeenCalledOnce();
+    view.rerender(<StrictMode><AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={0.6} livePlaying={false} onStart={onStart} /></StrictMode>);
     expect(gain.gain.value).toBeCloseTo(0.6, 6);
     expect(created).toHaveBeenCalledOnce();
+    expect(sources).toHaveBeenCalledOnce();
+  });
+  it.each(["NotAllowedError", "AbortError"])("keeps a held audition Ready when play() rejects with %s, and the next click plays (S-3)", async (name) => {
+    vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: wav, truePeakDbtp: null });
+    playSpy.mockImplementationOnce(() => Promise.reject(new DOMException("refused", name)));
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    expect(await screen.findByText(/^Ready: the exact export file .*Press Play audition to try again\.$/u)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Play audition" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Play audition" }));
+    expect(await screen.findByRole("button", { name: "Pause audition" })).toBeTruthy();
+    expect(playSpy).toHaveBeenCalledTimes(2);
   });
 
   it("pauses when live playback starts and revokes its Blob URL on unmount", async () => {

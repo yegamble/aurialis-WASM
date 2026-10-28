@@ -34,22 +34,45 @@ type Phase =
   | { kind: "ready" }
   | { kind: "error"; message: string };
 
-/**
- * Set the element's volume; where it does not stick (iOS Safari ignores
- * HTMLMediaElement.volume), route the element through one GainNode instead.
- * Other browsers never get a second Web Audio path.
- */
-function applyVolume(element: HTMLAudioElement | null, volume: number, fallback: { current: { context: AudioContext; gain: GainNode } | null }): void {
-  if (!element) return;
-  const level = Math.max(0, Math.min(1, Number.isFinite(volume) ? volume : 1));
+type Fallback = { current: { context: AudioContext; gain: GainNode } | null };
+const clampVolume = (volume: number) => Math.max(0, Math.min(1, Number.isFinite(volume) ? volume : 1));
+
+/** Follow a volume change: the GainNode once routed, else the element. Never
+ * creates Web Audio objects; that happens only in a gesture (prepareVolume). */
+function applyVolume(element: HTMLAudioElement | null, volume: number, fallback: Fallback): void {
+  const level = clampVolume(volume);
   if (fallback.current) { fallback.current.gain.gain.value = level; return; }
-  element.volume = level;
-  if (Math.abs(element.volume - level) < 0.001 || typeof AudioContext === "undefined") return;
-  const context = new AudioContext();
-  const gain = context.createGain();
+  if (element) element.volume = level;
+}
+
+/**
+ * Before playing: set the element's volume, and where it does not stick (iOS
+ * Safari ignores HTMLMediaElement.volume), route the element once through a
+ * GainNode on a resumed context, with the element itself at 1. Building and
+ * resuming that context needs a user gesture, so without one (auto-play after
+ * a render) this returns false where the route is missing or suspended, and the
+ * audition stays Ready for a click. Other browsers never get a Web Audio path.
+ * The iOS path is unverified on a real device (no WebKit/iOS project).
+ */
+async function prepareVolume(element: HTMLAudioElement, volume: number, fallback: Fallback, gesture: boolean): Promise<boolean> {
+  const level = clampVolume(volume);
+  if (!fallback.current) {
+    element.volume = level;
+    if (Math.abs(element.volume - level) < 0.001 || typeof AudioContext === "undefined") return true;
+    if (!gesture) return false;
+    const context = new AudioContext();
+    const gain = context.createGain();
+    context.createMediaElementSource(element).connect(gain).connect(context.destination);
+    fallback.current = { context, gain };
+  }
+  const { context, gain } = fallback.current;
+  if (context.state !== "running") {
+    if (!gesture) return false;
+    await context.resume();
+  }
   gain.gain.value = level;
-  context.createMediaElementSource(element).connect(gain).connect(context.destination);
-  fallback.current = { context, gain };
+  element.volume = 1;
+  return true;
 }
 
 /**
@@ -80,6 +103,7 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
   const pending = useRef<AbortController | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "idle", message: "" });
   const [playing, setPlaying] = useState(false);
+  const [notice, setNotice] = useState("");
   const playingNow = useRef(false);
   const [heldKey, setHeldKey] = useState("");
   const key = auditionKey(track, delivery);
@@ -96,19 +120,29 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
     if (held.current) { URL.revokeObjectURL(held.current.url); held.current.memory.dispose(); }
     held.current = null;
     setHeldKey("");
+    setNotice("");
     latest.current.onHeld?.(null);
   }
   function cancel() {
     pending.current?.abort();
     pending.current = null;
   }
-  async function play() {
+  /** `gesture` is false for the auto-play after a render, which is not one. */
+  async function play(gesture = true) {
     const element = audio.current;
     if (!element || !held.current || held.current.key !== latest.current.key) return;
-    onStart();
-    applyVolume(element, latest.current.volume, fallbackGain);
-    try { await element.play(); }
-    catch (cause) { setPhase({ kind: "error", message: cause instanceof Error ? `The audition could not play: ${cause.message}` : "The audition could not play. Try again." }); }
+    try {
+      if (!(await prepareVolume(element, latest.current.volume, fallbackGain, gesture))) return;
+      onStart();
+      await element.play();
+      setNotice("");
+    } catch (cause) {
+      // A refused or interrupted start (NotAllowedError, AbortError) keeps the
+      // held file: stay Ready, and the next click plays it.
+      setNotice(cause instanceof DOMException && cause.name === "NotAllowedError"
+        ? "The browser did not allow the audition to start. Press Play audition to try again."
+        : "The audition did not start. Press Play audition to try again.");
+    }
   }
   const handle = useRef<AuditionHandle>({
     canPlay: () => held.current !== null && held.current.key === latest.current.key,
@@ -151,7 +185,7 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
       latest.current.onHeld?.({ key: renderedKey, blob, truePeakDbtp });
       // An edit during the render leaves it stale, and live Play during the render
       // keeps the transport: in either case it waits, ready, without playing.
-      if (renderedKey === latest.current.key && !latest.current.livePlaying) await play();
+      if (renderedKey === latest.current.key && !latest.current.livePlaying) await play(false);
     } catch (cause) {
       if (pending.current === controller) pending.current = null;
       setPhase(controller.signal.aborted
@@ -165,7 +199,7 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
     : stale
       ? "Settings changed after this audition was rendered, so it no longer matches the export. Re-render to hear the current export."
       : phase.kind === "ready"
-        ? `${playing ? "Playing" : "Ready:"} the exact export file (${format}).`
+        ? `${playing ? "Playing" : "Ready:"} the exact export file (${format}).${notice && !playing ? ` ${notice}` : ""}`
         : phase.message;
 
   function changed(next: boolean) { playingNow.current = next; setPlaying(next); latest.current.onPlayingChange?.(next); }

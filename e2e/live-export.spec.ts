@@ -301,9 +301,13 @@ const BURNER = `class QaBurner extends AudioWorkletProcessor {
   }
   process() {
     if (this.share < 0) { const start = Date.now(); while (Date.now() - start < -this.share) {} return true; }
-    const count = this.share * 1000 * 128 / sampleRate * this.perMs;
+    const count = this.share * 1000 * 128 / sampleRate * this.perMs, start = Date.now();
     let sink = this.sink; for (let i = 0; i < count; i++) sink += Math.sqrt(i + sink % 7);
-    this.sink = sink; return true;
+    this.sink = sink;
+    // Achieved spin, summed in Date.now ticks (unbiased over many quanta).
+    this.spent = (this.spent || 0) + Date.now() - start; this.quanta = (this.quanta || 0) + 1;
+    if (this.quanta % 375 === 0) this.port.postMessage({ share: this.spent / (this.quanta * 1000 * 128 / sampleRate) });
+    return true;
   }
 }
 registerProcessor("qa-burner", QaBurner);`;
@@ -327,6 +331,7 @@ async function burn(page: Page, share: number): Promise<void> {
             perMs = iterations / (Date.now() - start);
           }
           const burner = new AudioWorkletNode(context, "qa-burner", { numberOfInputs: 0, numberOfOutputs: 1, processorOptions: { share: extra, perMs: perMs + sink * 0 } });
+          burner.port.onmessage = (event: MessageEvent<{ share: number }>) => { (window as Window & { qaBurnerShare?: number }).qaBurnerShare = event.data.share; };
           const silent = context.createGain(); silent.gain.value = 0;
           Reflect.apply(nativeConnect, burner, [silent]); Reflect.apply(nativeConnect, silent, [context.destination]);
         });
@@ -370,6 +375,11 @@ test("a burner at +0.3 of each quantum stays under real time and plays 30 s with
   await burn(page, 0.3);
   await playHeaviest(page, "live-burner-warm.wav");
   await page.waitForTimeout(30_000);
+  // The burner really spun about 0.3 of each quantum (P2-3, Round 8b).
+  const achieved = await page.evaluate(() => (window as Window & { qaBurnerShare?: number }).qaBurnerShare ?? 0);
+  test.info().annotations.push({ type: "burner-share", description: achieved.toFixed(3) });
+  console.log(`burner achieved share ${achieved.toFixed(3)}`);
+  expect(achieved, "achieved burner share of a quantum").toBeGreaterThanOrEqual(0.25);
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
   await expect(page.getByText(OVERLOAD, { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Pause", exact: true }).click();

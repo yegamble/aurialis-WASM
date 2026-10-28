@@ -85,15 +85,21 @@ for (const waitMs of [120, 250]) {
 }
 
 // Repeated but sparse glitches (Round 8): a 1 s stall every 6 s must stop
-// playback through the 15-window rule, within about 22 s of Play.
-test("a 1 s stall every 6 s stops with the can't-keep-up message within about 22 s", async ({ page }) => {
+// playback through the 15-window rule. The stall is counted in quanta, so each
+// cycle is 6 s of audio plus the 1 s stall: 7 s of wall clock. The rule needs
+// a baseline tick, a warm-up window and fifteen judged windows (about 17 s), and
+// the third stall falls near 21 s, so the bound is 25 s. The lower bound (16 s)
+// proves the 15-window rule fired, not one of the faster rules.
+test("a 1 s stall every 6 s stops with the can't-keep-up message through the 15-window rule", async ({ page }) => {
   test.setTimeout(120_000);
   await hitch(page, 1000, 2250, "after");
   const started = await play(page, "sparse-1s-6s.wav");
   await expect(page.getByText(OVERLOAD_MESSAGE, { exact: true })).toBeVisible({ timeout: 40_000 });
   const elapsed = Date.now() - started;
   test.info().annotations.push({ type: "fired-after-ms", description: String(elapsed) });
-  expect(elapsed, "fired after (ms)").toBeLessThanOrEqual(22_000);
+  console.log(`sparse 1 s every 6 s fired after ${String(elapsed)} ms`);
+  expect(elapsed, "fired after (ms)").toBeGreaterThanOrEqual(16_000);
+  expect(elapsed, "fired after (ms)").toBeLessThanOrEqual(25_000);
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
 });
 

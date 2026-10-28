@@ -308,7 +308,7 @@ describe("master live playback lifecycle", () => {
     });
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("play")); return Promise.resolve(); });
-    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("pause")); });
+    const mediaPause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("pause")); });
     vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
     const rendered = canonicalWAV({ ...pcm, sampleRate: 96000 });
     const delivery = vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: rendered, truePeakDbtp: -1.1 });
@@ -323,16 +323,18 @@ describe("master live playback lifecycle", () => {
     fireEvent.keyDown(document.body, { key: " ", code: "Space" });
     expect(await screen.findByRole("button", { name: "Pause audition" })).toBeTruthy();
     expect(instance.controller.play).not.toHaveBeenCalled();
+    // A real media element fires "pause" in a later task; a key pressed in the
+    // same task as A/B must already see the audition stopped (92322ab, Round 8c).
+    mediaPause.mockImplementation(function (this: HTMLMediaElement) { setTimeout(() => { this.dispatchEvent(new Event("pause")); }, 0); });
     // A/B while the audition plays pauses it and sets live's bypass, without starting live (Q-S3).
     fireEvent.click(screen.getByRole("button", { name: "B Original" }));
-    expect(await screen.findByRole("button", { name: "Play audition" })).toBeTruthy();
     expect(instance.controller.setBypass).toHaveBeenLastCalledWith(true);
     expect(instance.controller.play).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "B Original" }).getAttribute("aria-pressed")).toBe("true");
-    // After A/B, the play/pause key starts live (with B applied), not the audition (Round 8b Q-S2).
+    // Then, before the pause event, the play/pause key starts live (with B applied), not the audition (Round 8b Q-S2).
     fireEvent.keyDown(document.body, { key: " ", code: "Space" });
     await waitFor(() => { expect(instance.controller.play).toHaveBeenCalledOnce(); });
-    expect(screen.getByRole("button", { name: "Play audition" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Play audition" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "B Original" }).getAttribute("aria-pressed")).toBe("true");
     // Export downloads the same held file instead of rendering it again.
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
     fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));

@@ -128,7 +128,9 @@ test("keyboard focus stays on the audition button through render, cancel, play a
 });
 
 // Round 8b Q-S2 (QA E7 e7-ab-space): A/B during the audition hands the
-// play/pause keys back to live; Space then starts live with B applied.
+// play/pause keys back to live; Space then starts live with B applied. B and
+// Space go in one task, before the media "pause" event fires, so the case
+// fails if A/B leaves the audition marked as playing until that event (92322ab).
 test("after A/B during the audition, Space starts live with B applied, not the audition", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -137,12 +139,15 @@ test("after A/B during the audition, Space starts live with B applied, not the a
   await page.getByRole("button", { name: "Repeat track", exact: true }).click();
   await page.getByRole("button", { name: "Audition export", exact: true }).click();
   await expect.poll(() => playingAt(page), { timeout: 30_000 }).toBeGreaterThan(0.2);
-  await page.getByRole("button", { name: "B Original", exact: true }).click();
-  await expect.poll(() => playingAt(page)).toBe(0);
-  await expect(page.getByRole("button", { name: "Play audition", exact: true })).toBeVisible();
-  await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur(); });
-  await page.keyboard.press("Space");
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    const original = document.querySelector<HTMLButtonElement>('button[aria-label="B Original"]');
+    if (!original) throw new Error("Missing B Original");
+    original.click();
+    document.body.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space", bubbles: true, cancelable: true }));
+  });
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true", { timeout: 30_000 });
+  await expect.poll(() => playingAt(page)).toBe(0);
   await page.waitForTimeout(1000);
   expect(await playingAt(page)).toBe(0);
   await expect(page.getByRole("button", { name: "B Original", exact: true })).toHaveAttribute("aria-pressed", "true");

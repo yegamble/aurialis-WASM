@@ -283,6 +283,48 @@ describe("Audition export (V1-10 owner ruling)", () => {
     expect(screen.getByRole("button", { name: "Play audition" })).toBeTruthy();
   });
 
+  /** A held, paused audition whose next play() stays pending until `reject` (optionally firing "play" at once). */
+  async function pendingStart(view: ReturnType<typeof mount>, firePlay = false) {
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pause audition" }));
+    let rejectPlay: ((reason: unknown) => void) | undefined;
+    playSpy.mockImplementationOnce(function (this: HTMLMediaElement) {
+      if (firePlay) this.dispatchEvent(new Event("play"));
+      return new Promise<void>((_resolve, reject) => { rejectPlay = reject; });
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Play audition" }));
+    return {
+      view,
+      reject: () => act(async () => { rejectPlay?.(new DOMException("interrupted by pause()", "AbortError")); await Promise.resolve(); await Promise.resolve(); }),
+    };
+  }
+  it("a start interrupted by the Pause audition button is not reported as a failure (Round 8g)", async () => {
+    vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: wav, truePeakDbtp: null });
+    const start = await pendingStart(mount(), true);
+    fireEvent.click(screen.getByRole("button", { name: "Pause audition" }));
+    await start.reject();
+    expect(screen.queryByText(/did not start/u)).toBeNull();
+    expect(screen.getByRole("button", { name: "Play audition" })).toBeTruthy();
+  });
+  it("a start interrupted by an edit (then undone) is not reported as a failure (Round 8g)", async () => {
+    vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: wav, truePeakDbtp: null });
+    const { view, reject } = await pendingStart(mount());
+    const edited = { ...base(), advanced: { ...base().advanced, input: 3 } };
+    view.rerender(<AuditionExport track={edited} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying={false} onStart={view.onStart} />);
+    view.rerender(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying={false} onStart={view.onStart} />);
+    await reject();
+    expect(screen.getByText(/^Ready: the exact export file/u)).toBeTruthy();
+    expect(screen.queryByText(/did not start/u)).toBeNull();
+  });
+  it("a start interrupted by live playing is not reported as a failure (Round 8g)", async () => {
+    vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: wav, truePeakDbtp: null });
+    const { view, reject } = await pendingStart(mount());
+    view.rerender(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying onStart={view.onStart} />);
+    await reject();
+    expect(screen.getByText(/^Ready: the exact export file/u)).toBeTruthy();
+    expect(screen.queryByText(/did not start/u)).toBeNull();
+  });
+
   it("live played and paused again during the render: the audition still waits, Ready (Q-S1)", async () => {
     const complete = heldRender();
     const view = mount();

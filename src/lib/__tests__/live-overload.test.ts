@@ -28,6 +28,23 @@ describe("playbackStats underrun watch (V1-10 Round 4)", () => {
     expect(run([200, 0, 200, 0, 200, 0]).length).toBeGreaterThan(0);
     expect(run([0, 200, 0, 200, 0, 200])[0]).toBeLessThanOrEqual(4);
   });
+  it("never fires on one isolated stall, however long, or 100 ms in the first judged window (Round 7 R-1)", () => {
+    for (const ms of [91, 120, 250, 300]) expect(run([0, 0, ms, 0, 0, 0, 0]), `${String(ms)} ms`).toEqual([]);
+    expect(run([0, 100, 0, 0, 0, 0])).toEqual([]);
+  });
+  it("still fires on 60/60/0 and on 200 ms every 2 s, within four judged seconds", () => {
+    expect(run([0, 60, 60, 0, 60, 60, 0])[0]).toBeLessThanOrEqual(6);
+    expect(run([0, 200, 0, 200, 0, 200])[0]).toBeLessThanOrEqual(6);
+  });
+  it("restarts with a warm-up when the context's duration runs backwards", () => {
+    const watch = createUnderrunWatch();
+    const sample = (total: number, under: number) => watch.sample({ totalDuration: total, underrunDuration: under, underrunEvents: 0 });
+    sample(10, 0); sample(11, 0); sample(12, 0.1); sample(13, 0.2);
+    expect(sample(0, 0)).toBe(false); // baseline of the new stream
+    expect(sample(1, 0.3)).toBe(false); // warm-up window, not judged
+    expect(sample(2, 0.6)).toBe(false); expect(sample(3, 0.9)).toBe(false);
+    expect(sample(4, 1.2)).toBe(true);
+  });
   it("ignores one host stall that straddles a second boundary (measured 41 ms then 12 ms)", () => {
     expect(run([0, 0, 41, 12, 0, 0, 41, 12, 0])).toEqual([]);
   });

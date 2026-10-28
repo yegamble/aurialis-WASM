@@ -315,7 +315,7 @@ const BURNER = `class QaBurner extends AudioWorkletProcessor {
       const achieved = this.spent / (this.quanta * quantumMs);
       // Damped (square root) so one noisy window cannot swing the next.
       if (achieved > 0) this.perMs *= Math.sqrt(Math.max(0.25, Math.min(4, this.share / achieved)));
-      this.port.postMessage({ share: achieved });
+      this.port.postMessage({ share: achieved, perMs: this.perMs });
       this.spent = 0; this.quanta = 0;
     }
     return true;
@@ -342,7 +342,7 @@ async function burn(page: Page, share: number): Promise<void> {
             perMs = iterations / (Date.now() - start);
           }
           const burner = new AudioWorkletNode(context, "qa-burner", { numberOfInputs: 0, numberOfOutputs: 1, processorOptions: { share: extra, perMs: perMs + sink * 0 } });
-          burner.port.onmessage = (event: MessageEvent<{ share: number }>) => { const scope = window as Window & { qaBurnerShares?: number[] }; (scope.qaBurnerShares ??= []).push(event.data.share); };
+          burner.port.onmessage = (event: MessageEvent<{ share: number; perMs: number }>) => { const scope = window as Window & { qaBurner?: { share: number; perMs: number }[] }; (scope.qaBurner ??= []).push(event.data); };
           const silent = context.createGain(); silent.gain.value = 0;
           Reflect.apply(nativeConnect, burner, [silent]); Reflect.apply(nativeConnect, silent, [context.destination]);
         });
@@ -388,9 +388,15 @@ test("a burner at +0.3 of each quantum stays under real time and plays 30 s with
   await page.waitForTimeout(30_000);
   // The burner really spun about 0.3 of each quantum on the render thread (QA E8).
   // Mean over the last 10 one-second windows, once the correction has settled.
-  const achieved = await page.evaluate(() => { const shares = ((window as Window & { qaBurnerShares?: number[] }).qaBurnerShares ?? []).slice(-10); return shares.length ? shares.reduce((a, b) => a + b, 0) / shares.length : 0; });
+  const windows = await page.evaluate(() => (window as Window & { qaBurner?: { share: number; perMs: number }[] }).qaBurner ?? []);
+  const last = windows.slice(-10), achieved = last.reduce((sum, window) => sum + window.share, 0) / Math.max(1, last.length);
   test.info().annotations.push({ type: "burner-share", description: achieved.toFixed(3) });
-  console.log(`burner achieved share ${achieved.toFixed(3)}`);
+  console.log(`burner achieved share ${achieved.toFixed(3)} over ${String(windows.length)} windows (first ${windows[0]?.share.toFixed(3) ?? "none"})`);
+  // The correction loop ran (Round 8c): many windows reported, the share moved
+  // from its first reading, and the spin rate was adjusted.
+  expect(windows.length, "burner windows reported").toBeGreaterThan(10);
+  expect(windows.at(-1)?.share, "last share differs from the first").not.toBe(windows[0]?.share);
+  expect(new Set(windows.map((window) => window.perMs)).size, "distinct spin rates").toBeGreaterThan(1);
   expect(achieved, "achieved burner share of a quantum").toBeGreaterThanOrEqual(0.25);
   expect(achieved, "achieved burner share of a quantum").toBeLessThanOrEqual(0.35);
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");

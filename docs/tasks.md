@@ -1271,3 +1271,7 @@ Round E evidence:
 - Round 8b gates (2026-10-28):
   - Local: `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass. Vitest 753/753; one run hit the known V1-11 `MasterPlayback` flake, which passed 3/3 on rerun.
   - Playwright `--workers=1` after `bash scripts/build.sh`: `audition-export` 10/10, with the A/B-Space case 4/4 on `--repeat-each=4`; `live-overload` 13/13.
+  - After QA E8 (load average 21–49), on a fresh `bash scripts/build.sh`:
+    - `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass.
+    - Vitest `--maxWorkers=2`: 753/753.
+    - Playwright `--workers=1`: `audition-export` plus `live-overload` 23/23, with the sparse case at 21.2 s (the 15-window rule). The three burner cases 3/3, with share 0.301. The 30 s soak passed.

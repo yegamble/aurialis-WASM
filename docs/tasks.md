@@ -1165,7 +1165,7 @@ Round E evidence:
 
 **Round 6 (Devil's Advocate: not verified on `a386720`), 2026-10-27.** The Chair accepted the three-strike rule.
 - REQUIRED-1, audition volume. The audition element ignored the Playback volume, so at 0.1 it played about 20 dB louder than live. It now follows the slider on start and on every move. Where `HTMLMediaElement.volume` does not stick (iOS Safari), the element is routed once through a GainNode; other browsers get no second Web Audio path. Covered by unit tests, including that fallback, and an e2e (0.1, then 0.6). The guide, architecture and README say the audition is the exact export, so Equal-loudness A/B does not apply to it.
-- S-1. Live loading counts as playing. A render that finishes during a cold live start leaves the audition Ready and does not pause live (unit test, which fails without the change, and an e2e that releases the held render right after Play).
+- S-1. Live loading counts as playing. A render that finishes during a cold live start leaves the audition Ready and does not pause live. The `MasterPlayback` unit test pins this and fails without the change. (Round 7: the cold-Play e2e passed with the fix reverted, so it was dropped.)
 - S-2. The playbackStats judge also fires on more than 3% underrun summed over the last three windows. That catches 60/60/0 ms and 200 ms every 2 s; the 53 ms straddling stall (about 1.8%) still does not fire. Unit-tested, and both patterns are in `live-overload.spec.ts`.
 - S-3. Every stop in `live-overload.spec.ts` must come within 8 s. Measured: 5.2–5.4 s for all five stop cases.
 - S-4. The Audition = Export check is no longer circular. A fresh Export is rendered before any audition exists, and the audition's Blob must match it; a second Export must hand over the held file (natively, no render request). This runs in both the native and browser-build suites.
@@ -1179,3 +1179,32 @@ Round E evidence:
   - Local: `gofmt -l` empty (no Go changed). `bash scripts/build.sh`, `test:wasm`, `tsc` and the browser-test `tsc`, ESLint, knip and cspell (407 files) pass. Vitest 736/736.
   - Full native Playwright (`--workers=1`): 157/159 at load average 14–145. The forced 192 kHz Deep oracle case (stopped by the overload message on real underruns) and `deep-recovery`'s late-ACK case both passed on rerun at load average 10.
   - CI run 40660379878 on `9bd290f`: green.
+
+**Round 7 (Devil's Advocate E6: not verified on `8d2a0b8`), 2026-10-28.**
+- R-1, revised by the Chair after QA E6. Round 6's 3% sum rule stopped playback on one isolated dropout of 91 ms or more. A first fix, two bad windows out of the last three, still fired on one ~1 s startup burst spanning two windows, which QA saw stop the +0.3 burner case once. The sum rule now needs, over the last five windows, at least two separate bursts (runs of adjacent windows over 1%, with a good window between them) and more than 3% underrun in total. Three bad seconds in a row still stop playback.
+  - The trade-off, documented: one long glitch is tolerated; repeated glitches stop playback, including two separate 80 ms dropouts a few seconds apart.
+  - Unit rows that must not fire: isolated 85, 91, 100, 120, 150, 250 and 300 ms stalls; the 41/12 ms and 60+40 ms straddles; 120 ms in the first judged window; one ~1 s burst across two windows.
+  - Unit rows that must fire: 60/60/0 ms and 200 ms every 2 s.
+  - Native e2e: one 120 ms and one 250 ms stall about 6 s in keep playing. QA's one-shot probe (53, 100, 150 and 250 ms, and two 40 ms stalls 2 s apart) also keeps playing.
+  - The +0.3 burner case passed 4/4 with `--repeat-each=4` at load average 8–23.
+  - The five stop cases in `live-overload.spec.ts` stop in 5.0–5.5 s (bound 8 s).
+  - P2-2: a duration that runs backwards resets the watch, warm-up included.
+- R-2. The iOS volume fallback is built only in a Play click: detect that `.volume` does not stick, build the context and the MediaElementSource once, await `resume()`, set the element to 1 and play. The volume effect only moves an existing gain. Auto-play after a render that would need the route stays Ready. Unit tests cover:
+  - no context on mount or on a volume change;
+  - resume on a suspended context;
+  - one source under `<StrictMode>`;
+  - auto-play not building the route.
+
+  The docs say the iOS path is unverified on a real device.
+- S-1. The cold-Play e2e was dropped; the unit test pins the behavior.
+- S-2. `architecture.md`, `tasks.md` and the code comments are re-synced.
+- S-3. A `play()` rejection keeps the held audition Ready with a short note, and the next click plays (unit-tested for NotAllowedError and AbortError).
+- P2-4. `heaviestChain` asserts that EQ, De-Harsh, multiband, compressor with auto release, saturation, stereo with mono bass and the limiter all survive reload. That ledger P2 line is retired. With every stage confirmed on, a 120 s heaviest-chain soak (load average 18–46, above the 8 cores, so not the 600 s run) measured mean kernel load 0.42, 0 device underruns after warm-up and drift −4 ms; QA's own 120 s run at load average 40–66 measured 0.43.
+- Q-S1 (QA E6). Live Play then Pause during a held render let the finished audition auto-play. A latch now records that live played during the render, and the audition waits, Ready. Covered by a unit test and QA's audition-probe P3 as an e2e.
+- Q-S2. Focus fell to the body after Enter, Cancel or Re-render, because each state had its own button. One button now changes its label and action, so focus stays on it (WCAG 2.4.3). Covered by a unit test that checks the same DOM node, and an e2e that checks `activeElement` after each transition.
+- Q-S3. Pressing A/B while the audition plays now pauses the audition and sets live's A/B without starting live (unit test).
+- Round 7 gates (2026-10-28):
+  - Local: `gofmt -l` empty (no Go changed). `bash scripts/build.sh`, `test:wasm`, `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass. Vitest 743/743.
+  - Full native Playwright (`--workers=1`): 162/162 at load average 15–18.
+  - Load stayed above the 8 cores, so the 600 s soak was not rerun; the 120 s run above is the evidence.
+  - CI run 40676565609 on `5949b83`: green.

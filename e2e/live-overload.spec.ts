@@ -94,9 +94,10 @@ for (const waitMs of [120, 250]) {
 // and the 5-window two-burst rule fires at about 14 s. Shorter stalls (300 or
 // 500 ms) cause no device underrun at all in headless Chromium, so no e2e can
 // isolate the 15-window rule; the exact unit rows prove it. Any rule may fire,
-// and each is correct: if the first stall's recovery reaches a third window
-// (about 1 in 15 stalls on QA E9's host), three strikes fire at about
-// 8–9 s. The first stall begins about 6 s after Play, so the 7 s floor only
+// and each is correct: if the first stall's recovery reaches a third window,
+// three strikes fire at about 8–9 s. On QA E9's host 3 of 86 recorded stalls
+// (3 of 53 in the 1 s every 10 s runs) left three bad windows, and no first
+// stall did. The first stall begins about 6 s after Play, so the 7 s floor only
 // proves the stop came after a stall began (Round 8e).
 test("a 1 s stall every 6 s stops with the can't-keep-up message", async ({ page }) => {
   test.setTimeout(120_000);

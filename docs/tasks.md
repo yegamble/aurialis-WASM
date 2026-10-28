@@ -1300,11 +1300,11 @@ Round E evidence:
     - The three burner cases and the 30 s soak: 4/4.
 
 **Round 8d (Devil's Advocate E10, QA E9 on the Round 8c head), 2026-10-28.**
-- The false claim. "1 s every 10 s never stops" was false. QA's `sparse-gap` probe stopped once at 34.4 s on a real host (QA E9's fuller set: 3 of 10 runs; see Round 8e): one stall left three bad windows (994 ms over 1.96 s, 197 ms over 2.19 s, then 24 ms over 1.03 s, which is 2.3%), so three strikes fired. About 1 in 15 recorded stalls has this shape. This is the third round of false overload claims, and all of them described idealized windows as host behavior.
+- The false claim. "1 s every 10 s never stops" was false. QA's `sparse-gap` probe stopped once at 34.4 s on a real host (QA E9's fuller set: 3 of 10 runs; see Round 8e): one stall left three bad windows (994 ms over 1.96 s, 197 ms over 2.19 s, then 24 ms over 1.03 s, which is 2.3%), so three strikes fired. About 1 in 15 recorded stalls has this shape (corrected in Round 8g: 3 of 86 recorded stalls (3 of 53 in the 1 s every 10 s runs); no first stall did). This is the third round of false overload claims, and all of them described idealized windows as host behavior.
 - Ruling 1. `live-overload.ts`, architecture, the ledger V1-10 row and tasks now state only:
   - The three rules. Three bad judged seconds in a row stop playback. So do two separate bursts with over 3% underrun in the last five, and three separate bursts with 2% or more in the last fifteen.
   - What holds by construction: a glitch confined to two judged seconds cannot trigger the first rule alone.
-  - Every universal "never stops" or "always stops" claim about wall-clock patterns is gone. In its place (as reworded in Round 8f): in QA E9's runs on one host, a ~1 s stall spanned one to three judged windows; a stall stops playback on its own when it leaves three windows in a row over 1% (about 1 of 15 stalls did). Sparse glitches spaced well apart may never stop playback.
+  - Every universal "never stops" or "always stops" claim about wall-clock patterns is gone. In its place (as reworded in Round 8f): in QA E9's runs on one host, a ~1 s stall spanned one to three judged windows; a stall stops playback on its own when it leaves three windows in a row over 1% (Round 8g corrects the count: 3 of 86 recorded stalls (3 of 53 in the 1 s every 10 s runs); no first stall did). Sparse glitches spaced well apart may never stop playback.
   - Examples are labelled either as unit rows in idealized 1 s windows or as measured on one host.
   - Earlier rounds' claims in this file are marked as false or rephrased in idealized windows.
 - Ruling 2. A unit row pins QA's shape: 994, 197 and 24 ms in consecutive windows stops.
@@ -1320,7 +1320,7 @@ Round E evidence:
     - The three burner cases: 3/3.
 
 **Round 8e (Chair), 2026-10-28.** Two flake risks flagged in Round 8d are removed.
-- Sparse case. Either rule may fire, and each is correct. A first stall whose recovery reaches a third window fires by three strikes at about 8–9 s (about 1 in 15 stalls). The floor is now 7 s, just after the first stall begins at about 6 s. The 25 s upper bound stays.
+- Sparse case. Either rule may fire, and each is correct. A first stall whose recovery reaches a third window fires by three strikes at about 8–9 s (3 of 86 recorded stalls (3 of 53 in the 1 s every 10 s runs); no first stall did; Round 8g). The floor is now 7 s, just after the first stall begins at about 6 s. The 25 s upper bound stays.
 - Burner. The "closer to 0.3 than the first window" assert is gone, since it could flake whenever the first window landed near 0.3. The distinct spin-rate assert, which catches a missing correction loop, and the 0.25–0.35 bound on the last-ten mean stay. The edit also dropped the at-least-ten-windows check without saying so; Round 8f restores it.
 - QA E9 (on the Round 8c and 8d heads), verdict NOT VERIFIED on docs only. QA independently closed the burner check (a Chromium trace measured 0.300–0.305) and the Space-after-B check.
   - R-1, docs: the measured examples showed too few stops. Architecture, the ledger V1-10 row and this file now give QA's native runs on one host, replayed through the rules to within 0.4 s:
@@ -1366,4 +1366,10 @@ Round E evidence:
   - The architecture sentence on a refused or interrupted start adds "unless our own pause or edit interrupted it".
   - The five-window rule reads "over up to the last five windows".
   - The 60/60/0 ms unit row now asserts the stop at second 4, with 4.0% over three judged windows. Its 200 ms comment uses the five-window rule.
-- Round 8g gates (2026-10-28, load average about 7; each gate judged on its own exit status): `tsc` and the browser-test `tsc`, ESLint, knip and cspell all exit 0, and Vitest `--maxWorkers=2` passes 760/760.
+- QA E10 (on the Round 8f head): VERIFIED.
+  - SHOULD-1. QA replayed all 25 traces through the rules. "About 1 of 15 stalls" did not match the data.
+  - What the replay found: 3 of 86 recorded stalls left three bad windows in a row (3 of 53 in the 1 s every 10 s runs), and no first stall did. Of the first stalls, 19 spanned two windows and 6 spanned one. Later stalls spanned one window 38 times, two 20 times and three 3 times.
+  - Architecture, the ledger V1-10 row, this file and the sparse e2e comment now give those figures. The 7 s floor stays.
+  - P2-1. A new ledger watch line covers the "without playbackStats, a 60 ms stall once a second" case. It failed once in about 14 runs at load average 8.8, then passed 3/3 and 8/8. It is the worklet slack rule's false negative, outside the V1-10 diff.
+  - P2-2 (the Play/Pause double-click within 3–16 ms): no action, as ruled.
+- Round 8g gates (2026-10-28, load average about 7; each gate judged on its own exit status): `tsc` and the browser-test `tsc`, ESLint, knip and cspell all exit 0, and Vitest `--maxWorkers=2` passes 760/760, both before and after the QA E10 edits.

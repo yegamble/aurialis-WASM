@@ -1304,12 +1304,12 @@ Round E evidence:
 - Ruling 1. `live-overload.ts`, architecture, the ledger V1-10 row and tasks now state only:
   - The three rules. Three bad judged seconds in a row stop playback. So do two separate bursts with over 3% underrun in the last five, and three separate bursts with 2% or more in the last fifteen.
   - What holds by construction: a glitch confined to two judged seconds cannot trigger the first rule alone.
-  - Every universal "never stops" or "always stops" claim about wall-clock patterns is gone. In its place: on a real host a ~1 s stall spans two or three judged seconds; when its recovery reaches a third, it stops playback on its own (about 1 of 15 stalls). Sparse glitches spaced well apart may never stop playback.
+  - Every universal "never stops" or "always stops" claim about wall-clock patterns is gone. In its place (as reworded in Round 8f): in QA E9's runs on one host, a ~1 s stall spanned one to three judged windows; a stall stops playback on its own when it leaves three windows in a row over 1% (about 1 of 15 stalls did). Sparse glitches spaced well apart may never stop playback.
   - Examples are labelled either as unit rows in idealized 1 s windows or as measured on one host.
   - Earlier rounds' claims in this file are marked as false or rephrased in idealized windows.
 - Ruling 2. A unit row pins QA's shape: 994, 197 and 24 ms in consecutive windows stops.
 - Ruling 3. The e2e stop bound is now 10 s: five 1 s ticks plus main-thread timer delay. The DA's jitter simulation gave a p99 of 8.3–9.4 s at load 12–17. The docs now say "about five 1 s ticks after a reset, longer when the main thread is busy".
-- Ruling 4. The burner test required the mean of the last ten windows to be closer to 0.3 than the first window, and still required more than one spin rate (Round 8e removed the first-window comparison). One local run read 0.300, with the first window at 0.202.
+- Ruling 4. The burner test required the mean of the last ten windows to be closer to 0.3 than the first window, and still required more than one spin rate (Round 8e removed the first-window comparison and, undisclosed, the at-least-ten-windows check; Round 8f restores the latter). One local run read 0.300, with the first window at 0.202.
 - Ruling 5. The sparse e2e's comment notes that a first stall reaching a third window fires early by three strikes and fails the 13 s bound (Round 8e lowers it to 7 s).
 - Ruling 6. No new 2.5 s e2e was added; the claim it would test is removed instead.
 - Round 8d gates (2026-10-28, load average 5–13):
@@ -1321,7 +1321,7 @@ Round E evidence:
 
 **Round 8e (Chair), 2026-10-28.** Two flake risks flagged in Round 8d are removed.
 - Sparse case. Either rule may fire, and each is correct. A first stall whose recovery reaches a third window fires by three strikes at about 8–9 s (about 1 in 15 stalls). The floor is now 7 s, just after the first stall begins at about 6 s. The 25 s upper bound stays.
-- Burner. The "closer to 0.3 than the first window" assert is gone, since it could flake whenever the first window landed near 0.3. The distinct spin-rate assert, which catches a missing correction loop, and the 0.25–0.35 bound on the last-ten mean stay.
+- Burner. The "closer to 0.3 than the first window" assert is gone, since it could flake whenever the first window landed near 0.3. The distinct spin-rate assert, which catches a missing correction loop, and the 0.25–0.35 bound on the last-ten mean stay. The edit also dropped the at-least-ten-windows check without saying so; Round 8f restores it.
 - QA E9 (on the Round 8c and 8d heads), verdict NOT VERIFIED on docs only. QA independently closed the burner check (a Chromium trace measured 0.300–0.305) and the Space-after-B check.
   - R-1, docs: the measured examples showed too few stops. Architecture, the ledger V1-10 row and this file now give QA's native runs on one host, replayed through the rules to within 0.4 s:
     - 1 s every 10 s of audio: stopped in 3 of 10 runs, at 25.1, 34.4 and 64.2 s, by three in a row.
@@ -1338,3 +1338,22 @@ Round E evidence:
     - `live-overload` plus `audition-export`: 24/24. The sparse case stopped at 14.1 s.
     - The V5 case: 4/4 at `--repeat-each=4`.
     - The three burner cases: 3/3, share 0.298 (first window 0.211).
+
+**Round 8f (Devil's Advocate E11 on the Round 8e head), 2026-10-28.** Every `802b88d` mutation was caught; two items were REQUIRED.
+- REQUIRED-2, a regression from `802b88d`: after a refused audition start, the Media Session stayed "playing".
+  - The cause: `play()` marks the audition playing, then `onStart` pauses live, whose update set the session to "playing". A refused start fires no media event, so the catch reset only the flag.
+  - The fix: the catch now goes through `changed()`, which tells the workstation.
+  - The new MasterPlayback row stubs `navigator.mediaSession`, refuses a Play audition and requires `playbackState === "paused"`. It failed before the fix with "playing". The audition tests share a `heldAudition()` setup.
+- REQUIRED-1, docs and comments. "On a real host a ~1 s stall spans two or three judged seconds" was unlabelled and contradicted by the 1.18 s-in-3.18 s example, and "when its recovery reaches a third, it stops" skipped the 1% condition. `live-overload.ts`, its unit rows, architecture, the ledger V1-10 row and this file now say: in QA E9's runs on one host, a ~1 s stall spanned one to three judged windows; a stall stops playback on its own when it leaves three windows in a row over 1%.
+  - The ledger row's Round 4–6 sentence ("5.2–5.4 s … over 3% summed over three windows") is labelled as history under retired rules.
+  - The other measured figures in the code (the 5–8 ms call, the 41/12 ms straddle, the 12–19 startup events) now say they were measured.
+- SHOULD-1. The burner e2e again requires at least ten windows. Round 8e had dropped that check without saying so.
+- P2-1. A/B, Space, Pause or an edit during a pending audition start showed "The audition did not start". Every start and every pause we ask for now bumps an attempt counter, and a rejected start that is no longer the latest attempt stays silent. A unit row covers it, and fails with the check removed.
+- P2-2. The sparse e2e comment says "QA E9's host", not "a real host".
+- P2-3. The unit test no longer cites the retired 3-window sum.
+- Round 8f gates (2026-10-28, load average 6–25; each gate judged on its own exit status):
+  - Static: `tsc` and the browser-test `tsc`, ESLint, knip and cspell all exit 0.
+  - Vitest `--maxWorkers=2`: 757/757.
+  - Playwright `--workers=1`, after `bash scripts/build.sh`:
+    - `audition-export` plus `live-overload`: 24/24. The sparse case stopped at 13.9 s.
+    - The three burner cases: 3/3, share 0.328 (first window 0.173).

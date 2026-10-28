@@ -392,10 +392,9 @@ test("a burner at +0.3 of each quantum stays under real time and plays 30 s with
   const last = windows.slice(-10), achieved = last.reduce((sum, window) => sum + window.share, 0) / Math.max(1, last.length);
   test.info().annotations.push({ type: "burner-share", description: achieved.toFixed(3) });
   console.log(`burner achieved share ${achieved.toFixed(3)} over ${String(windows.length)} windows (first ${windows[0]?.share.toFixed(3) ?? "none"})`);
-  // The correction loop ran (Round 8c): many windows reported, the share moved
-  // from its first reading, and the spin rate was adjusted.
-  expect(windows.length, "burner windows reported").toBeGreaterThan(10);
-  expect(windows.at(-1)?.share, "last share differs from the first").not.toBe(windows[0]?.share);
+  // The correction loop ran and helped (Round 8d): the settled mean is closer
+  // to 0.3 than the first window, and the spin rate was adjusted.
+  expect(Math.abs(achieved - 0.3), "settled mean closer to 0.3 than the first window").toBeLessThan(Math.abs((windows[0]?.share ?? Infinity) - 0.3));
   expect(new Set(windows.map((window) => window.perMs)).size, "distinct spin rates").toBeGreaterThan(1);
   expect(achieved, "achieved burner share of a quantum").toBeGreaterThanOrEqual(0.25);
   expect(achieved, "achieved burner share of a quantum").toBeLessThanOrEqual(0.35);

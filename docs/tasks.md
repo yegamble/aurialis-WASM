@@ -1357,3 +1357,13 @@ Round E evidence:
   - Playwright `--workers=1`, after `bash scripts/build.sh`:
     - `audition-export` plus `live-overload`: 24/24. The sparse case stopped at 13.9 s.
     - The three burner cases: 3/3, share 0.328 (first window 0.173).
+
+**Round 8g (Devil's Advocate E12 on the Round 8f head: VERIFIED), 2026-10-28.** Tests and docs only; no runtime code changed.
+- SHOULD-2. Three new `AuditionExport` unit rows hold `play()` pending and then interrupt it, each by a different path, before rejecting it with AbortError: the Pause audition button, an edit that is then undone, and live starting to play. None may show "did not start". Before this round, mutations M5, M7 and M8 survived. Each row now fails when its path is reverted to `audio.current?.pause()`; I ran each mutation to check.
+- SHOULD-1. The ledger V1-10 row's "Round 4–6 history" parenthetical now closes right after the 600 s soak (Round 5), so the current rules and QA E9's figures sit outside it. The parentheses balance.
+- P2:
+  - Architecture and the ledger row say "three judged windows (about 1 s each) in a row" instead of "three consecutive seconds" or "three bad seconds in a row".
+  - The architecture sentence on a refused or interrupted start adds "unless our own pause or edit interrupted it".
+  - The five-window rule reads "over up to the last five windows".
+  - The 60/60/0 ms unit row now asserts the stop at second 4, with 4.0% over three judged windows. Its 200 ms comment uses the five-window rule.
+- Round 8g gates (2026-10-28, load average about 7; each gate judged on its own exit status): `tsc` and the browser-test `tsc`, ESLint, knip and cspell all exit 0, and Vitest `--maxWorkers=2` passes 760/760.

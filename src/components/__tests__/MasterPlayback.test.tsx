@@ -323,6 +323,12 @@ describe("master live playback lifecycle", () => {
     fireEvent.keyDown(document.body, { key: " ", code: "Space" });
     expect(await screen.findByRole("button", { name: "Pause audition" })).toBeTruthy();
     expect(instance.controller.play).not.toHaveBeenCalled();
+    // A/B while the audition plays pauses it and sets live's bypass, without starting live (Q-S3).
+    fireEvent.click(screen.getByRole("button", { name: "B Original" }));
+    expect(await screen.findByRole("button", { name: "Play audition" })).toBeTruthy();
+    expect(instance.controller.setBypass).toHaveBeenLastCalledWith(true);
+    expect(instance.controller.play).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "B Original" }).getAttribute("aria-pressed")).toBe("true");
     // Export downloads the same held file instead of rendering it again.
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
     fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));

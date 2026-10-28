@@ -288,25 +288,36 @@ const OVERLOAD = "Playback can't keep up on this device with the current process
 
 // Load outside the kernel (V1-10 Round 4): a test-only "burner" AudioWorkletNode
 // in the same context busy-waits on the same render thread, while the app's
-// worklet and kernel are untouched. A share spins a calibrated fraction of every
-// 128-frame quantum; the spin is calibrated on the main thread (twice, the second
-// after JIT warm-up), because calibrating in the processor's constructor stalled
-// the render thread for about 200 ms at start and caused real startup underruns
-// (Round 8). A negative share instead spins until Date.now has moved that many
-// milliseconds, which overloads any CPU. (A forced 192 kHz context was dropped:
+// worklet and kernel are untouched. A share spins a fraction of every 128-frame
+// quantum. A first estimate comes from the main thread (calibrating in the
+// constructor stalled the render thread at start, Round 8), started low at 0.6
+// of it; then the processor itself times its spin on the render thread every
+// 375 quanta (1 s) and corrects toward the target share, since the main-thread
+// estimate read 0.45–0.62 for a 0.3 target there (QA E8). A negative share
+// instead spins until Date.now has moved that many milliseconds, which
+// overloads any CPU. (A forced 192 kHz context was dropped:
 // whether it overloads depends on the runner, and CI's did not.)
 const BURNER = `class QaBurner extends AudioWorkletProcessor {
   constructor(options) {
-    super(); this.share = options.processorOptions.share; this.perMs = options.processorOptions.perMs; this.sink = 0;
+    super(); this.share = options.processorOptions.share; this.perMs = options.processorOptions.perMs * 0.6;
+    this.sink = 0; this.spent = 0; this.quanta = 0;
   }
   process() {
     if (this.share < 0) { const start = Date.now(); while (Date.now() - start < -this.share) {} return true; }
-    const count = this.share * 1000 * 128 / sampleRate * this.perMs, start = Date.now();
+    const quantumMs = 1000 * 128 / sampleRate;
+    const count = this.share * quantumMs * this.perMs, start = Date.now();
     let sink = this.sink; for (let i = 0; i < count; i++) sink += Math.sqrt(i + sink % 7);
     this.sink = sink;
-    // Achieved spin, summed in Date.now ticks (unbiased over many quanta).
-    this.spent = (this.spent || 0) + Date.now() - start; this.quanta = (this.quanta || 0) + 1;
-    if (this.quanta % 375 === 0) this.port.postMessage({ share: this.spent / (this.quanta * 1000 * 128 / sampleRate) });
+    // Achieved spin per 1 s window, summed in Date.now ticks (unbiased over many
+    // quanta), and the correction toward the target share.
+    this.spent += Date.now() - start;
+    if (++this.quanta === 375) {
+      const achieved = this.spent / (this.quanta * quantumMs);
+      // Damped (square root) so one noisy window cannot swing the next.
+      if (achieved > 0) this.perMs *= Math.sqrt(Math.max(0.25, Math.min(4, this.share / achieved)));
+      this.port.postMessage({ share: achieved });
+      this.spent = 0; this.quanta = 0;
+    }
     return true;
   }
 }
@@ -331,7 +342,7 @@ async function burn(page: Page, share: number): Promise<void> {
             perMs = iterations / (Date.now() - start);
           }
           const burner = new AudioWorkletNode(context, "qa-burner", { numberOfInputs: 0, numberOfOutputs: 1, processorOptions: { share: extra, perMs: perMs + sink * 0 } });
-          burner.port.onmessage = (event: MessageEvent<{ share: number }>) => { (window as Window & { qaBurnerShare?: number }).qaBurnerShare = event.data.share; };
+          burner.port.onmessage = (event: MessageEvent<{ share: number }>) => { const scope = window as Window & { qaBurnerShares?: number[] }; (scope.qaBurnerShares ??= []).push(event.data.share); };
           const silent = context.createGain(); silent.gain.value = 0;
           Reflect.apply(nativeConnect, burner, [silent]); Reflect.apply(nativeConnect, silent, [context.destination]);
         });
@@ -375,11 +386,13 @@ test("a burner at +0.3 of each quantum stays under real time and plays 30 s with
   await burn(page, 0.3);
   await playHeaviest(page, "live-burner-warm.wav");
   await page.waitForTimeout(30_000);
-  // The burner really spun about 0.3 of each quantum (P2-3, Round 8b).
-  const achieved = await page.evaluate(() => (window as Window & { qaBurnerShare?: number }).qaBurnerShare ?? 0);
+  // The burner really spun about 0.3 of each quantum on the render thread (QA E8).
+  // Mean over the last 10 one-second windows, once the correction has settled.
+  const achieved = await page.evaluate(() => { const shares = ((window as Window & { qaBurnerShares?: number[] }).qaBurnerShares ?? []).slice(-10); return shares.length ? shares.reduce((a, b) => a + b, 0) / shares.length : 0; });
   test.info().annotations.push({ type: "burner-share", description: achieved.toFixed(3) });
   console.log(`burner achieved share ${achieved.toFixed(3)}`);
   expect(achieved, "achieved burner share of a quantum").toBeGreaterThanOrEqual(0.25);
+  expect(achieved, "achieved burner share of a quantum").toBeLessThanOrEqual(0.35);
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
   await expect(page.getByText(OVERLOAD, { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Pause", exact: true }).click();

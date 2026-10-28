@@ -16,7 +16,7 @@ const SOAK_SECONDS = Number(process.env.AURIALIS_LIVE_SOAK_SECONDS ?? "30");
  * the worst run QA called clean lagged 234 ms in 150 s (1.6 ms/s). A kernel too
  * slow to keep up lags at (load − 1) s per second, 50 ms/s at a 1.05 load, and
  * the overload stop (playbackStats, else the worklet's watch) follows within
- * about 5–6 s (measured 5.2–5.4 s in e2e/live-overload.spec.ts).
+ * about 5–6 s (measured 4.9–5.5 s in e2e/live-overload.spec.ts).
  * Host stalls on an overloaded machine (915 ms in 30 s at load average 65, with
  * 0 slow kernel calls) also fail it: rerun those. */
 const DRIFT_MS_PER_AUDIO_SECOND = 5, DRIFT_MS_MAX = 250;

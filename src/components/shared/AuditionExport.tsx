@@ -130,7 +130,6 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
     pending.current?.abort();
     pending.current = null;
   }
-  /** `gesture` is false for the auto-play after a render, which is not one. */
   /** `gesture` is false for the auto-play after a render, which is not one. The
    * resume and play() start in the same turn as the click, then are awaited. */
   async function play(gesture = true) {

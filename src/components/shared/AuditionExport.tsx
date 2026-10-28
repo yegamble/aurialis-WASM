@@ -148,7 +148,9 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
     } catch (cause) {
       // A refused or interrupted start (NotAllowedError, AbortError) keeps the
       // held file: stay Ready, and the next click plays it.
-      playingNow.current = !element.paused;
+      // No media event follows a refused start, so report the state ourselves
+      // (the Media Session would otherwise stay "playing", Round 8f).
+      changed(!element.paused);
       setNotice(cause instanceof DOMException && cause.name === "NotAllowedError"
         ? "The browser did not allow the audition to start. Press Play audition to try again."
         : "The audition did not start. Press Play audition to try again.");

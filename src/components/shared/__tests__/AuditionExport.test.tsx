@@ -266,6 +266,23 @@ describe("Audition export (V1-10 owner ruling)", () => {
     expect(playSpy).toHaveBeenCalledTimes(2);
   });
 
+  it("a start interrupted by our own pause (A/B, Space) is not reported as a failure (Round 8f P2-1)", async () => {
+    vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: wav, truePeakDbtp: null });
+    let handle: AuditionHandle | null = null;
+    mount(base(), false, vi.fn(), (next) => { handle = next; });
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pause audition" }));
+    let rejectPlay: ((reason: unknown) => void) | undefined;
+    playSpy.mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectPlay = reject; }));
+    fireEvent.click(screen.getByRole("button", { name: "Play audition" }));
+    expect((handle as AuditionHandle | null)?.playing()).toBe(true);
+    (handle as AuditionHandle | null)?.pause();
+    await act(async () => { rejectPlay?.(new DOMException("interrupted by pause()", "AbortError")); await Promise.resolve(); await Promise.resolve(); });
+    expect(screen.queryByText(/did not start/u)).toBeNull();
+    expect((handle as AuditionHandle | null)?.playing()).toBe(false);
+    expect(screen.getByRole("button", { name: "Play audition" })).toBeTruthy();
+  });
+
   it("live played and paused again during the render: the audition still waits, Ready (Q-S1)", async () => {
     const complete = heldRender();
     const view = mount();

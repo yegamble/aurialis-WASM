@@ -108,6 +108,10 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
   const [playing, setPlaying] = useState(false);
   const [notice, setNotice] = useState("");
   const playingNow = useRef(false);
+  // Bumped by each start and by each pause we ask for, so a start that our own
+  // pause (A/B, Space, Pause, an edit) interrupts is not reported as a failure.
+  const attempt = useRef(0);
+  function stop() { attempt.current++; audio.current?.pause(); }
   const [heldKey, setHeldKey] = useState("");
   const key = auditionKey(track, delivery);
   const stale = phase.kind === "ready" && heldKey !== key;
@@ -117,7 +121,7 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
   latest.current = { key, livePlaying, volume, onHeld, onPlayingChange };
 
   function release() {
-    audio.current?.pause();
+    stop();
     audio.current?.removeAttribute("src");
     audio.current?.load();
     if (held.current) { URL.revokeObjectURL(held.current.url); held.current.memory.dispose(); }
@@ -135,6 +139,7 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
   async function play(gesture = true) {
     const element = audio.current;
     if (!element || !held.current || held.current.key !== latest.current.key) return;
+    const ticket = ++attempt.current;
     try {
       const resumed = prepareVolume(element, latest.current.volume, fallbackGain, gesture);
       if (!resumed) return;
@@ -151,6 +156,7 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
       // No media event follows a refused start, so report the state ourselves
       // (the Media Session would otherwise stay "playing", Round 8f).
       changed(!element.paused);
+      if (ticket !== attempt.current) return;
       setNotice(cause instanceof DOMException && cause.name === "NotAllowedError"
         ? "The browser did not allow the audition to start. Press Play audition to try again."
         : "The audition did not start. Press Play audition to try again.");
@@ -162,7 +168,7 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
     play: () => play(),
     // Mark it paused at once: the media "pause" event is a later task, and a
     // play/pause key pressed before it must already see the audition stopped.
-    pause: () => { playingNow.current = false; audio.current?.pause(); },
+    pause: () => { playingNow.current = false; stop(); },
     position: () => ({ position: audio.current?.currentTime ?? 0, duration: audio.current && Number.isFinite(audio.current.duration) ? audio.current.duration : 0 }),
   });
   handle.current.play = () => play();
@@ -174,12 +180,12 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
   useEffect(() => { applyVolume(audio.current, volume, fallbackGain); }, [volume]);
   useEffect(() => () => { void fallbackGain.current?.context.close().catch(() => undefined); fallbackGain.current = null; }, []);
   // Never let stale audio keep playing after an edit.
-  useEffect(() => { if (stale) audio.current?.pause(); }, [stale]);
+  useEffect(() => { if (stale) stop(); }, [stale]);
   // Live played at any point during a render (even if paused again before it
   // finished): the finished audition then waits, Ready (Q-S1).
   const liveDuringRender = useRef(false);
   useEffect(() => {
-    if (livePlaying) audio.current?.pause();
+    if (livePlaying) stop();
     if (livePlaying && pending.current) liveDuringRender.current = true;
   }, [livePlaying]);
 
@@ -227,7 +233,7 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
   const action: { label: string; icon: "x" | "pause" | "play"; disabled: boolean; run: () => void } = phase.kind === "rendering"
     ? { label: "Cancel audition render", icon: "x", disabled: false, run: cancel }
     : phase.kind === "ready" && !stale
-      ? { label: playing ? "Pause audition" : "Play audition", icon: playing ? "pause" : "play", disabled: false, run: () => { if (playing) audio.current?.pause(); else void play(); } }
+      ? { label: playing ? "Pause audition" : "Play audition", icon: playing ? "pause" : "play", disabled: false, run: () => { if (playing) stop(); else void play(); } }
       : { label: stale ? "Re-render audition" : "Audition export", icon: "play", disabled: !sourceBlob, run: () => void render() };
   function changed(next: boolean) { playingNow.current = next; setPlaying(next); latest.current.onPlayingChange?.(next); }
   return <section className="flex flex-wrap items-center gap-2" aria-label="Audition export">

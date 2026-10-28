@@ -26,10 +26,13 @@ const UNDERRUN_SHARE = 0.01;
 // three or more separate bursts and at least 2% underrun across those fifteen
 // (300 ms every 5 s, 1 s every 6 s, 60 ms every 3 s; a full window keeps this
 // independent of where the glitches fall). So three or more separate glitches
-// within about 15 s stop playback; a single glitch never does, however long or
-// however it splits across windows (QA measured a 1 s startup burst on a loaded
-// host). Accepted limit: sparse small glitches under 2% over 15 s (70 ms every
-// 4 s) never stop.
+// within about 15 s stop playback. A single glitch spanning at most two judged
+// windows (under about 1 s) never does, however it splits (QA measured a 1 s
+// startup burst on a loaded host); a dropout of about 2 s or more always does
+// (three bad seconds in a row). Accepted limits: sparse small glitches under 2%
+// over 15 s (70 ms every 4 s) never stop, and glitches 8 or more judged windows
+// apart never stop. A real 1 s stall plus its recovery uses about two windows,
+// so the wall-clock spacing that escapes depends on the host.
 const WINDOW_SECONDS = 0.9, STRIKES = 3, RECENT = 5, RECENT_SHARE = 0.03, BURSTS = 2, LONG = 15, LONG_SHARE = 0.02, LONG_BURSTS = 3;
 
 type JudgedWindow = { underrun: number; seconds: number; bad: boolean };
@@ -47,7 +50,8 @@ function judge(windows: readonly JudgedWindow[], minBursts: number, share: numbe
  * Chromium records 12–19 underrun events while the stream starts. Three bad
  * windows in a row, two separate bursts with over 3% underrun in the last five
  * windows, or three separate bursts with at least 2% over the last fifteen, are
- * an overload. One glitch, however long and however it splits, is not.
+ * an overload. One glitch spanning at most two windows (under about 1 s) is
+ * not, however it splits; one dropout of about 2 s or more always is.
  */
 export function createUnderrunWatch() {
   let previous: PlaybackStatsLike | null = null, windows = 0, strikes = 0;

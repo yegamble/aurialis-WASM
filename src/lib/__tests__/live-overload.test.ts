@@ -28,12 +28,19 @@ describe("playbackStats underrun watch (V1-10 Round 4)", () => {
     expect(run([200, 0, 200, 0, 200, 0]).length).toBeGreaterThan(0);
     expect(run([0, 200, 0, 200, 0, 200])[0]).toBeLessThanOrEqual(4);
   });
-  it("tolerates one glitch however long or split (Round 7 revised R-1)", () => {
+  it("tolerates one glitch spanning at most two judged windows, however it splits (Round 7 revised R-1)", () => {
     for (const ms of [85, 91, 100, 120, 150, 250, 300]) expect(run([0, 0, ms, 0, 0, 0, 0, 0]), `${String(ms)} ms`).toEqual([]);
     expect(run([0, 0, 41, 12, 0, 0, 0, 0]), "41/12 straddle").toEqual([]);
     expect(run([0, 0, 60, 40, 0, 0, 0, 0]), "60+40 straddle").toEqual([]);
     expect(run([0, 120, 0, 0, 0, 0, 0]), "120 ms in the first judged window").toEqual([]);
     expect(run([0, 0, 500, 503, 0, 0, 0, 0]), "one ~1 s burst across two windows").toEqual([]);
+  });
+  it("stops one dropout that covers three judged windows: three strikes (Round 8c)", () => {
+    // Just over 1 s can reach three windows; about 2 s or more always does.
+    expect(run([0, 0, 50, 1000, 50, 0, 0, 0]).length, "50 + 1000 + 50 ms").toBeGreaterThan(0);
+    expect(run([0, 0, 1000, 1000, 1000, 0, 0, 0]).length, "one 3 s dropout").toBeGreaterThan(0);
+    const threeEveryTen = Array.from({ length: 40 }, (_, index) => (index >= 2 && (index - 2) % 10 < 3 ? 1000 : 0));
+    expect(run(threeEveryTen).length, "3 s every 10 s").toBeGreaterThan(0);
   });
   it("stops on repeated glitches within the 8 s bound: 60/60/0 and 200 ms every 2 s", () => {
     // Index 0 is the warm-up window; a stop at judged window n is n + 2 s after Play.
@@ -75,8 +82,16 @@ describe("playbackStats underrun watch (V1-10 Round 4)", () => {
   });
   it("accepts the limit: 70 ms every 4 s (under 2% over 15 s) never stops, wherever it falls", () => {
     for (const at of [1, 2, 3, 4]) expect(run(sparse(120, 4, 70, at)), `from window ${String(at)}`).toEqual([]);
-    // Glitches 8 s or more apart never reach three within fifteen windows, whatever their size.
-    for (const every of [8, 10]) expect(run(sparse(120, every, 1000)), `1 s every ${String(every)} s`).toEqual([]);
+    // Glitches spanning at most two windows and 8 or more judged windows apart
+    // never reach three within fifteen windows.
+    for (const every of [8, 10]) expect(run(sparse(120, every, 1000)), `1 s every ${String(every)} windows`).toEqual([]);
+  });
+  // On a real host a 1 s stall stretches its window and adds a bad recovery
+  // window (Round 8b traces), so it uses about two windows per stall.
+  const stallAndRecovery = (every: number, at: number) => [0, 0, ...Array.from({ length: 60 }, (_, index) => ((index + at) % every === 0 ? 1000 : (index + at) % every === 1 ? 200 : 0))];
+  it("counts judged windows, not seconds: a stall plus recovery every 7 windows stops, every 8 never does (Round 8c)", () => {
+    expect(run(stallAndRecovery(7, 0))[0], "1 s + 200 ms every 7 windows").toBeLessThanOrEqual(17);
+    for (let at = 0; at < 8; at++) expect(run(stallAndRecovery(8, at)), `1 s + 200 ms every 8 windows from ${String(at)}`).toEqual([]);
   });
   it("stops sparse glitches at the same time wherever they fall", () => {
     for (const at of [1, 2, 3, 4, 5]) expect(run(sparse(40, 5, 300, at))[0], `300 ms every 5 s from ${String(at)}`).toBeLessThanOrEqual(16);

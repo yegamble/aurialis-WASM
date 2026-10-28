@@ -1261,6 +1261,23 @@ Chair ruling 2026-10-27 from V1-10 Round E QA, which also folds in the V1-10 Rou
 - QA-4, race cost. Under `-race` the live meter EBU tests shorten (steady tone 5 s, gating 3/12/3 s, two-level LRA 8 s); the five-level LRA case keeps EBU's 20 s, and the non-race run keeps every full length. Measured with `go test -race -run TestLiveMeter ./internal/audio/dsp`: 290 s before (load average 84–140) and 106 s after (158–175).
 - QA-5. The CPU gate margin is thin: QA measured 0.480–0.492 mean load against 0.5. Any further per-sample live work needs a fresh soak.
 - P2 lines (ledger): a gain crossfade when the limiter, true peak or bypass turns off under gain reduction; one shared FFT; the `MasterPlayback.test.tsx` timeouts under load.
-- Merged V1-10 `302181b` (README, `cspell.json` and `tasks.md` conflicts resolved; the worklet's slack timing and `renderQuantum` merged cleanly with the source-end code).
+- Merged V1-10 `302181b` and then `a386720` (README, `cspell.json` and `tasks.md` conflicts resolved; the worklet's slack timing and `renderQuantum` merged cleanly with the source-end code).
+- R1 under V1-10's `playbackStats` watch (heaviest chain, 48 kHz, 30 s soak; interleaved against the V1-10 head `302181b`; load average 9–88):
+  - Base, 12 runs: mean load 0.359–0.471 (average 0.447); 2 runs failed on 1–2 device underruns after warm-up.
+  - V1-13, 12 runs: mean load 0.303–0.488 (average 0.468 over 11). 4 failed in the first four pairs: underruns of 6, 2 and 4, and one stop by the overload message at 9 s. The last eight pairs had 0 underruns.
+  - Paired runs 7–12, at similar load: base 0.462–0.467 against V1-13 0.475–0.488, about +0.016, the meter and guard cost estimated earlier. Every completed run is under 0.5, but the margin is thin (QA-5).
+  - At `a386720` both builds failed to complete at load average 200–230. That rerun is still owed on a quieter host.
+- Race cost (`go test -race -count=1 ./...` packages, same window, local; V1-13 vs the V1-10 head):
+  - `internal/audio/dsp`: 615 s vs 605 s, after the QA-4 trims and the short-file transform.
+  - `internal/mastering`: 540 s vs 586 s.
+  - `internal/audio/truepeakref`: 101 s (new package).
+  - `wasm/dsp`: 414 s vs 173 s before the race trims; afterwards 200 s vs 119 s of CPU time at load 160–220.
+  - Non-race CI steps now run the full meter, ceiling and loud-end matrices (127 s locally at load 190).
+- Round E 2 gates (local, load average 38–200):
+  - gofmt, `go vet`, golangci-lint (0 issues), identypo, tsc, ESLint (after one test fix), knip and cspell pass.
+  - `bash scripts/build.sh` and `test:wasm` pass. The FFmpeg meter comparison passes with 0.0057 dB peak error.
+  - Vitest `--maxWorkers=2` passes. `MasterPlayback.test.tsx` times out at load above 160 on both this branch and the V1-10 head (P2).
+  - Playwright `mastering-targets`, `live-export`, `release-artifacts` and `live-playback`: 26/26.
+  - Race: every package passes except `internal/server`'s 5 s wall-clock deadline test under load, which the V1-10 head also fails.
 
 Status: **implemented — open, awaiting merge** (`fix/v1-13-true-peak-ceiling`).

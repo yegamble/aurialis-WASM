@@ -1030,7 +1030,8 @@ function MasterView({ trackId }: { trackId: string }) {
             onPause={() => { stopScrub(false); live.current?.pause(); }}
             // A/B is a live control: while the audition plays it pauses the
             // audition and sets live's A/B, without starting live (Q-S3).
-            onOriginal={(original) => { if (audition.current?.playing()) audition.current.pause(); live.current?.setBypass(original); }}
+            // ...and hands the play/pause keys back to live (Round 8b Q-S2).
+            onOriginal={(original) => { if (audition.current?.playing()) audition.current.pause(); lastPlayed.current = "live"; live.current?.setBypass(original); }}
             onVolume={(volume) => { live.current?.setVolume(volume); }}
             onRestart={() => { seekSeconds(0); }}
             onForward={forward}

@@ -329,6 +329,10 @@ describe("master live playback lifecycle", () => {
     expect(instance.controller.setBypass).toHaveBeenLastCalledWith(true);
     expect(instance.controller.play).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "B Original" }).getAttribute("aria-pressed")).toBe("true");
+    // After A/B, the play/pause key starts live (with B applied), not the audition (Round 8b Q-S2).
+    fireEvent.keyDown(document.body, { key: " ", code: "Space" });
+    await waitFor(() => { expect(instance.controller.play).toHaveBeenCalledOnce(); });
+    expect(screen.getByRole("button", { name: "Play audition" })).toBeTruthy();
     // Export downloads the same held file instead of rendering it again.
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
     fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));

@@ -127,6 +127,28 @@ test("keyboard focus stays on the audition button through render, cancel, play a
   expect(await focused()).toBe("Pause audition");
 });
 
+// Round 8b Q-S2 (QA E7 e7-ab-space): A/B during the audition hands the
+// play/pause keys back to live; Space then starts live with B applied.
+test("after A/B during the audition, Space starts live with B applied, not the audition", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await upload96(page);
+  // The 4 s source would end before a loaded host checks it; loop it.
+  await page.getByRole("button", { name: "Repeat track", exact: true }).click();
+  await page.getByRole("button", { name: "Audition export", exact: true }).click();
+  await expect.poll(() => playingAt(page), { timeout: 30_000 }).toBeGreaterThan(0.2);
+  await page.getByRole("button", { name: "B Original", exact: true }).click();
+  await expect.poll(() => playingAt(page)).toBe(0);
+  await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur(); });
+  await page.keyboard.press("Space");
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true", { timeout: 30_000 });
+  await page.waitForTimeout(1000);
+  expect(await playingAt(page)).toBe(0);
+  await expect(page.getByRole("button", { name: "B Original", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Play audition", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+});
+
 // Round 6 REQUIRED-1: the audition follows the Playback volume, like live.
 test("Audition export follows the Playback volume on start and on every move", async ({ page }) => {
   test.setTimeout(120_000);

@@ -46,33 +46,36 @@ function applyVolume(element: HTMLAudioElement | null, volume: number, fallback:
 }
 
 /**
- * Before playing: set the element's volume, and where it does not stick (iOS
- * Safari ignores HTMLMediaElement.volume), route the element once through a
- * GainNode on a resumed context, with the element itself at 1. Building and
- * resuming that context needs a user gesture, so without one (auto-play after
- * a render) this returns false where the route is missing or suspended, and the
- * audition stays Ready for a click. Other browsers never get a Web Audio path.
+ * Before playing, synchronously (S-1, Round 8: WebKit's user activation does not
+ * survive an await): set the element's volume, and where it does not stick (iOS
+ * Safari ignores HTMLMediaElement.volume) route the element once through a
+ * GainNode with the element itself at 1, and start resuming its context. The
+ * probe uses a value other than 1, so a slider left at 1 still reveals an
+ * ignored volume (S-2). Building or resuming that route needs a user gesture,
+ * so without one (auto-play after a render) this returns null where the route
+ * is missing or suspended, and the audition stays Ready for a click. Other
+ * browsers never get a Web Audio path. Returns the pending resume, if any.
  * The iOS path is unverified on a real device (no WebKit/iOS project).
  */
-async function prepareVolume(element: HTMLAudioElement, volume: number, fallback: Fallback, gesture: boolean): Promise<boolean> {
+function prepareVolume(element: HTMLAudioElement, volume: number, fallback: Fallback, gesture: boolean): Promise<void> | null {
   const level = clampVolume(volume);
   if (!fallback.current) {
+    const probe = level === 1 ? 0.5 : level;
+    element.volume = probe;
+    const ignored = Math.abs(element.volume - probe) >= 0.001;
     element.volume = level;
-    if (Math.abs(element.volume - level) < 0.001 || typeof AudioContext === "undefined") return true;
-    if (!gesture) return false;
+    if (!ignored || typeof AudioContext === "undefined") return Promise.resolve();
+    if (!gesture) return null;
     const context = new AudioContext();
     const gain = context.createGain();
     context.createMediaElementSource(element).connect(gain).connect(context.destination);
     fallback.current = { context, gain };
   }
   const { context, gain } = fallback.current;
-  if (context.state !== "running") {
-    if (!gesture) return false;
-    await context.resume();
-  }
   gain.gain.value = level;
   element.volume = 1;
-  return true;
+  if (context.state === "running") return Promise.resolve();
+  return gesture ? context.resume() : null;
 }
 
 /**
@@ -128,13 +131,17 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
     pending.current = null;
   }
   /** `gesture` is false for the auto-play after a render, which is not one. */
+  /** `gesture` is false for the auto-play after a render, which is not one. The
+   * resume and play() start in the same turn as the click, then are awaited. */
   async function play(gesture = true) {
     const element = audio.current;
     if (!element || !held.current || held.current.key !== latest.current.key) return;
     try {
-      if (!(await prepareVolume(element, latest.current.volume, fallbackGain, gesture))) return;
+      const resumed = prepareVolume(element, latest.current.volume, fallbackGain, gesture);
+      if (!resumed) return;
       onStart();
-      await element.play();
+      const started = element.play();
+      await Promise.all([resumed, started]);
       setNotice("");
     } catch (cause) {
       // A refused or interrupted start (NotAllowedError, AbortError) keeps the
@@ -202,7 +209,8 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
   }
 
   const status = phase.kind === "rendering"
-    ? `Rendering the export (${format})${phase.progress === null ? "…" : ` — ${String(Math.round(phase.progress))}%`}`
+    // Announced in quarters, not on every percent (P2-1); the bar shows the rest.
+    ? `Rendering the export (${format})${phase.progress === null ? "…" : ` — ${String(Math.floor(phase.progress / 25) * 25)}%`}`
     : stale
       ? "Settings changed after this audition was rendered, so it no longer matches the export. Re-render to hear the current export."
       : phase.kind === "ready"
@@ -216,10 +224,11 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
       : { label: stale ? "Re-render audition" : "Audition export", icon: "play", disabled: !sourceBlob, run: () => void render() };
   function changed(next: boolean) { playingNow.current = next; setPlaying(next); latest.current.onPlayingChange?.(next); }
   return <section className="flex flex-wrap items-center gap-2" aria-label="Audition export">
-    {phase.kind === "rendering" && <progress className="w-full max-w-60" max={100} {...(phase.progress === null ? {} : { value: phase.progress })} aria-label="Audition export render progress" />}
     {/* One button whose label and action change, so keyboard focus stays on it
         through render, cancel, play and re-render (WCAG 2.4.3). */}
     <Button variant="secondary" icon={<Icon name={action.icon} />} disabled={action.disabled} onClick={action.run}>{action.label}</Button>
+    {/* After the button, so it does not move while focused (P2-2). */}
+    {phase.kind === "rendering" && <progress className="w-full max-w-60" max={100} {...(phase.progress === null ? {} : { value: phase.progress })} aria-label="Audition export render progress" />}
     <p className="disclosure min-w-0 basis-full" role={phase.kind === "error" ? "alert" : "status"}>{status}</p>
     <audio ref={audio} className="audition-export hidden" preload="auto"
       onPlay={() => { changed(true); }} onPause={() => { changed(false); }} onEnded={() => { changed(false); }} />

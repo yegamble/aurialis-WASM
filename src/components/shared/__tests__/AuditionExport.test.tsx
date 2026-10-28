@@ -175,6 +175,82 @@ describe("Audition export (V1-10 owner ruling)", () => {
     expect(created).toHaveBeenCalledOnce();
     expect(sources).toHaveBeenCalledOnce();
   });
+  /** An iOS-like element whose .volume never sticks, and a recording AudioContext. */
+  function iosMock() {
+    const volume = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "volume");
+    Object.defineProperty(HTMLMediaElement.prototype, "volume", { configurable: true, get: () => 1, set: () => undefined });
+    onTestFinished(() => { if (volume) Object.defineProperty(HTMLMediaElement.prototype, "volume", volume); });
+    const gain = { gain: { value: 1 }, connect: vi.fn(() => ({})) };
+    const calls: string[] = [];
+    const contexts: { state: string }[] = [];
+    vi.stubGlobal("AudioContext", class {
+      destination = {}; state = "suspended";
+      constructor() { contexts.push(this); }
+      createGain() { return gain; }
+      createMediaElementSource() { return { connect: vi.fn(() => gain) }; }
+      resume() { calls.push("resume"); this.state = "running"; return Promise.resolve(); }
+      close() { return Promise.resolve(); }
+    });
+    playSpy.mockImplementation(function (this: HTMLMediaElement) { calls.push("play"); this.dispatchEvent(new Event("play")); return Promise.resolve(); });
+    return { gain, calls, contexts };
+  }
+  it("starts resume and play() synchronously in the click, before any await (Round 8 S-1)", async () => {
+    const { calls } = iosMock();
+    vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: wav, truePeakDbtp: null });
+    mount();
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    await screen.findByText(/^Ready: the exact export file/u);
+    fireEvent.click(screen.getByRole("button", { name: "Play audition" }));
+    // No await between the click and these: both ran in the click's own turn.
+    expect(calls).toEqual(["resume", "play"]);
+    expect(await screen.findByRole("button", { name: "Pause audition" })).toBeTruthy();
+  });
+  it("builds the iOS route even with the slider at 1, and later moves change the gain (S-2)", async () => {
+    const { gain, contexts } = iosMock();
+    vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: wav, truePeakDbtp: null });
+    const onStart = vi.fn();
+    const view = render(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying={false} onStart={onStart} />);
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    await screen.findByText(/^Ready: the exact export file/u);
+    fireEvent.click(screen.getByRole("button", { name: "Play audition" }));
+    await screen.findByRole("button", { name: "Pause audition" });
+    expect(contexts).toHaveLength(1);
+    expect(gain.gain.value).toBe(1);
+    view.rerender(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={0.4} livePlaying={false} onStart={onStart} />);
+    expect(gain.gain.value).toBeCloseTo(0.4, 6);
+  });
+  it("auto-play with an existing but suspended route stays Ready and never resumes outside a click (M4)", async () => {
+    const { calls, contexts } = iosMock();
+    vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: wav, truePeakDbtp: null });
+    const view = mount();
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    await screen.findByText(/^Ready: the exact export file/u);
+    fireEvent.click(screen.getByRole("button", { name: "Play audition" }));
+    await screen.findByRole("button", { name: "Pause audition" });
+    const context = contexts[0]; if (!context) throw new Error("Missing route");
+    context.state = "suspended";
+    calls.length = 0;
+    const edited = { ...base(), advanced: { ...base().advanced, input: 3 } };
+    view.rerender(<AuditionExport track={edited} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying={false} onStart={view.onStart} />);
+    fireEvent.click(screen.getByRole("button", { name: "Re-render audition" }));
+    expect(await screen.findByText(/^Ready: the exact export file/u)).toBeTruthy();
+    expect(calls).toEqual([]);
+  });
+  it("the live-during-render latch resets: the next render after a latched one auto-plays (M8)", async () => {
+    let complete = heldRender();
+    const view = mount();
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    view.rerender(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying onStart={view.onStart} />);
+    view.rerender(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying={false} onStart={view.onStart} />);
+    await complete();
+    expect(playSpy).not.toHaveBeenCalled();
+    complete = heldRender();
+    const edited = { ...base(), advanced: { ...base().advanced, input: 3 } };
+    view.rerender(<AuditionExport track={edited} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying={false} onStart={view.onStart} />);
+    fireEvent.click(screen.getByRole("button", { name: "Re-render audition" }));
+    await complete();
+    expect(playSpy).toHaveBeenCalledOnce();
+  });
   it.each(["NotAllowedError", "AbortError"])("keeps a held audition Ready when play() rejects with %s, and the next click plays (S-3)", async (name) => {
     vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: wav, truePeakDbtp: null });
     playSpy.mockImplementationOnce(() => Promise.reject(new DOMException("refused", name)));

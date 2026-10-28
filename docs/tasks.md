@@ -1237,7 +1237,7 @@ Round E evidence:
   - Real underruns from host contention. In one run, three separate ~100 ms underruns came at about 10.5, 11.7 and 15.8 s (213 → 315 → 416 → 533 ms cumulative), so the 15-window rule fired.
   - In another, at load average 303, about 1 s of underrun accrued every 2 s.
   - Passing runs show only the startup underrun (101–277 ms) and nothing after. That confirms 29c9621 removed the startup storm.
-  - The burner now reports its achieved share. One run on this host read 0.517 for a requested 0.3: wall-clock spin time grows with preemption. The test requires at least 0.25.
+  - The burner now reports its achieved share. One run on this host read 0.517 for a requested 0.3: the main-thread estimate overshot. QA E8 below replaces this with calibration on the render thread.
 - DA E8 REQUIRED-1. "1 s every 6 s stops in 14.2 s" cannot come from the 15-window rule, which first judges about 17 s in. The stop was real, though, and came from another rule. With `--repeat-each=5` at load average 37–83 (the host was never below 8), it stopped at 14.0–14.4 s in four runs and at 21.1 s in one.
   - The playbackStats traces explain it. Each 1 s stall (about 996 ms of underrun) is followed by about 200 ms of recovery underrun in the next window, and the stall stretches that window to about 2.2 s. So the second stall already falls within five windows, and the 5-window two-burst rule fires at about 14 s.
   - On CI (run 40690786541, 22.4 s for the test) the 15-window rule fired at about 21 s.
@@ -1251,6 +1251,23 @@ Round E evidence:
 
   New unit rows pin `LONG_BURSTS = 3` (two 500 ms glitches never stop), the inclusive bound (exact binary fractions), every phase of 1 s every 6 s, and 1 s every 8 or 10 s never stopping. Unit stop times now read "about 17 s after Play". The duplicated doc comment in `AuditionExport.tsx` is gone.
 - CI run 40701436023 (`ef39cb5`) failed one case: A/B then Space. Space arrived before the media pause event's task, so the keys still saw the audition playing. Pausing now clears the playing flag at once (`92322ab`), and the e2e waits for Play audition first. That run printed `sparse 1 s every 6 s fired after 21175 ms` (the 15-window rule) and `burner achieved share 0.331`.
+- QA E8 (on `55bf1ca`):
+  - REQUIRED, burner. The processor now calibrates itself on the render thread. It starts at 0.6 of the main-thread estimate, times its own spin every 375 quanta (1 s) and corrects toward 0.3 with a damped (square-root) step. The test asserts that the mean of the last ten 1 s windows lies in 0.25–0.35. QA's repro (`-g "0.3 of each quantum" --repeat-each=4 --workers=1`), at load average 23–26, passed 4/4 with shares 0.299, 0.299, 0.302 and 0.302. An undamped first try passed 3/4 (0.257, 0.351, 0.293, 0.262).
+  - Sparse case. No 16 s lower bound: not every measured run reached 16 s. Locally, at `--repeat-each=5`, stops came at 14.0–14.4 s in four runs (the 5-window rule) and at 21.1 s in one (the 15-window rule). CI read 21.2 s (the 15-window rule). The e2e keeps its 12–25 s bounds.
+  - QA's `e7-ab-space` repro passes on the rebuilt branch. After Space, live plays with B Original still pressed and the audition idle.
+  - SHOULD-1 (docs). Architecture and the ledger now say plainly that 1 s of silence every 10 s (10% silence) never stops playback. They also say that one long glitch plus a small click a few seconds later can stop it; a new unit row pins 300 ms then an 11 ms click 3 s later.
+  - 30 s soak, three runs:
+
+    | Run | Load at start | Device underruns after warm-up | Drift | Mean load | Slow calls / max call |
+    | --- | --- | --- | --- | --- | --- |
+    | 1 | 7.72 | 0 | +1 ms | 0.465 | 0 / 2 ms |
+    | 2 | 8.09 | 0 | −4 ms | 0.468 | 0 / 2 ms |
+    | 3 | 14.09 | 0 | −6 ms | 0.439 | 0 / 2 ms |
+
+    Only run 1 started below 8; the host did not stay quiet longer.
+  - New ledger P2 lines:
+    - Shift+ArrowRight past the end with Repeat on stops instead of wrapping. This predates V1-10: `main` has the same `seek()`, and QA's seek-end probe reproduced it on the branch.
+    - The Vitest `DeepProposalPanel` load-timeout flake.
 - Round 8b gates (2026-10-28):
   - Local: `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass. Vitest 753/753; one run hit the known V1-11 `MasterPlayback` flake, which passed 3/3 on rerun.
   - Playwright `--workers=1` after `bash scripts/build.sh`: `audition-export` 10/10, with the A/B-Space case 4/4 on `--repeat-each=4`; `live-overload` 13/13.

@@ -1043,3 +1043,333 @@ Evidence (`unit`, in-process HTTP handler): `TestExportRenderWithTruePeakAlgorit
 [PR #29](https://github.com/yegamble/aurialis-WASM/pull/29) adds a `cloudflare-deploy` CI job. After `CI Passed`, each push to `main` deploys the verified `browser-build` artifact, without rebuilding, to the `aurialis-wasm` Worker on both custom domains. The job then smoke-tests both domains. Deploys are serialized and record their Worker version id. Branch previews come from Cloudflare Workers Builds, configured in the dashboard. It builds every non-`main` branch into a Worker Preview and comments its URL on the pull request. Its production deploy command is `wrangler versions upload`, so it never changes production. The first GitHub Actions preview attempt hit three failures in turn: an empty token secret, a token with an IP-address restriction, and a config missing the `previews` block. The block was added; the Actions preview job was then replaced by Workers Builds. `cloudflare-rollback.yml` rolls production back to a chosen version id. `wrangler.jsonc` now names `aurialis-wasm` and declares both domains. It sets `workers_dev: false`, which closes the production `workers.dev` origin, and `preview_urls: true`.
 
 **Status: open — awaiting merge.** Local evidence covers a wrangler `--dry-run` deploy, `wrangler types --check`, the three CI-artifact structure tests, YAML parsing, cspell on docs, and the smoke script passing against both live domains. Repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are owner-set. No preview or production deploy has run from CI yet.
+
+## V1-10 Live playback renders the export algorithm — 2026-10-27
+
+Live playback, its meters and the Equal-loudness A/B measurement now render algorithm 2, the export's lookahead true-peak limiter, so what you hear is what you export. Branch `fix/v1-10-live-export-path`.
+
+**CPU budget, measured first.** The gate was a mean kernel time per 128-frame quantum of at most a third of the quantum (2.67 ms at 48 kHz). The heaviest chain the UI can enable together was used: five +2 dB EQ bands, De-Harsh, three-band multiband, the compressor with auto release, 60% saturation, 130% width with mono bass and M/S gains, and the limiter. Repair is excluded because the UI cannot enable it. Apple M2, compiled WASI reactor in Node 26 V8 through the restricted browser host (`node wasm/dsp/bench-live.mjs public/wasm/aurialis-realtime.wasm 20`, a script deleted in Round 8), range over the Warm, Tube and Transformer models:
+
+| Rate | Algorithm 1 mean load (p99) | Algorithm 2 mean load (p99) | Algorithm 2 latency |
+| --- | --- | --- | --- |
+| 44.1 kHz | 0.093–0.119 (≤ 0.131) | 0.130–0.155 (≤ 0.178) | 112 frames |
+| 48 kHz | 0.103–0.131 (≤ 0.156) | 0.144–0.172 (≤ 0.220) | 118 frames |
+| 96 kHz | 0.201–0.265 (≤ 0.456) | 0.279–0.346 (≤ 0.428) | 190 frames |
+
+Native Go (`go test ./wasm/dsp -run '^$' -bench BenchmarkLiveBlock`) measured 0.063–0.071 at 48 kHz with algorithm 2 and 0 allocs/op. The true-peak FIR alone (`BenchmarkTruePeakDetector` built with `GOOS=wasip1`, run in V8) costs 0.8–1.2 µs per frame, about 0.04–0.06 load at 48 kHz. A first commit removed a per-tap wrap test from that FIR (bit-identical, pinned by `TestTruePeakDetectorMatchesRingWalk`); it cut the limiter's added cost from about 130 to 100 µs per quantum.
+
+**Decision.** Within budget at 44.1 and 48 kHz: the worst model keeps 5.8× headroom on the mean and 4.5× on p99. Live moved to algorithm 2, and the "Audition export" fallback was not built. At 96 kHz with every module on, algorithm 2 sits at the line (2.9× mean), against 3.8× for algorithm 1. Correction (Round E 2): these headroom figures come from the Node V8 bench, which reads about 2.5× less load than the real worklet. The acceptance gate is the real worklet's mean load of at most 0.5 (2× headroom). There QA measured the heaviest chain at 0.346–0.469 at 48 kHz (2.1–2.9×) and 0.652 at 96 kHz (1.53×, load average 16; 0.934 at load average 305), so 96 kHz fails and live is capped at 48 kHz.
+
+A real-browser check timed the kernel inside the real worklet (headless Chromium, a test-only timing tap, 48 kHz, heaviest chain). Other jobs held this machine at load average 8–22, and readings swung from run to run: algorithm 2 measured 0.35–0.48 and algorithm 1 0.16–0.37. Every run had 0 ring underruns, no quantum over its deadline and under 1 ms of audio-clock drift.
+
+Assumptions for slower devices: load scales with single-thread speed. A device with half an M2 core's speed would run the heaviest 48 kHz chain near 0.34 (2.9×) by the bench, and near 0.7–0.94 by the real-worklet figures, over the 0.5 gate; typical chains run well below that. There is no automatic fallback to algorithm 1 on a device that cannot keep up (open).
+
+**How.** The ABI 2 algorithm slot and `aurialis_schedule_begin` accept 2; ABI 1 cannot carry it. `liveParams`/`liveScript` were identity aliases of `exportParams`/`exportScript` (removed in Round E; callers use the export functions). An applied script is validated and compiled as authored, and its baseline is converted by the same `exportChain` before it reaches the worklet. The worklet reads `aurialis_latency_frames` after every accepted settings, detach or schedule transaction and reads processed audio that many frames ahead of the dry ring. A and B then play the same source frame, so the playhead and end-of-track math are unchanged. The Go meter reads the engine output after the true-peak limiter. The limiter panel is now titled True-peak limiter, and the copy no longer says live meters run the preview limiter.
+
+**Evidence.**
+- `unit` (Go): `TestLivePlaybackRendersTheExport` drives the ABI 2 vector through 128-frame quanta with the worklet's read-ahead, on a dense 12 s mix at 44.1, 48 and 96 kHz. It found residual −∞ dB against `RenderBuffer` (bit-identical) and a LUFS delta of 0.0000 (live meter within 0.0004). The live TP meter equals the export's: hot limiter −1.21/−1.11/−1.22 dBTP, every module −1.006/−0.997/−1.196 dBTP, against a −1 dBTP ceiling.
+- `unit` (Go): `TestLiveDeepScriptRendersTheExport` installs a script with gain and width moves through the schedule bridge; residual −∞ dB, 0.0000 LU. `TestVersionedControlsSelectTheExportAlgorithm` checks latency round(1.5 ms × rate) + 46, bit-exact delayed passthrough and drain. The heard-A matched A/B test now measures algorithm 2.
+- `wasm-bridge`: `verify-realtime.mjs` checks the same latency, passthrough and drain in the compiled reactor at 44.1, 48 and 96 kHz.
+- `unit` (Vitest): the worklet read-ahead alignment and its latency bound; ABI 2 carries algorithm 2; the player publishes it; the match measures `liveParams`/`liveScript`.
+- `playwright-a11y-responsive` (`e2e/live-export.spec.ts`): K-weighted speaker output over one 8 s loop vs the exported 32-bit WAV differed by −0.009 LU. The live TP meter read −1.2 dBTP against a delivered −1.24 dBTP (ceiling −1). The device-capture specs now offset the raw ring by the lookahead, and their native oracles render the live chain.
+- Sustained run (`e2e/live-export.spec.ts`, heaviest chain, 48 kHz, real worklet with a test-only kernel timing tap): `AURIALIS_LIVE_SOAK_SECONDS=600` ran locally once for 600 s of audio (225,375 quanta). It had 0 ring underruns, 0 quanta over the 2.67 ms deadline (longest kernel call 2 ms by `Date.now`) and the audio clock within 40 ms of the wall clock. Mean kernel load was 0.41 while other jobs held the machine at load average 8–33. CI runs the same test for 30 s by default and fails on any ring underrun, more than 250 ms of clock drift or a mean load above 0.75.
+
+**Open.** No runtime fallback exists for devices that cannot sustain algorithm 2 (see Round E for the 96 kHz margin). One export-path margin is unrelated to live: with every module on but saturation at 0.6% (noise hats keep their near-Nyquist energy), the BS.1770 4× meter read −0.75 dBTP at 48 kHz on export and live alike, where an independent 32× reconstruction read −1.00 dBTP.
+
+**Round E corrections, 2026-10-27.**
+- REQUIRED-1, one algorithm. The algorithm 1 offline preview is removed: **Render offline preview** and **Download offline preview**, `processPreview` and its JS/WASM loader, the applied-script preview render (`serverRenderScript`, then unused) and the second full render after **Set target loudness**. Set target loudness keeps its export-parameter measurement (V1-01), reports "Target set. Export measures …" and marks the project mastered; a finished export now marks it too, as the preview did. Live playback is the preview. The `js/wasm` module stays for the browser build's offline job worker and the WASM oracle scripts. The float WAV writer moved to the test fixtures (`canonicalWAV`). No native route was used only by the preview.
+- REQUIRED-2, rates. When the device rate differed from the source, the browser resampled A before the limiter (QA: 48 kHz source on a 44.1 kHz device −0.138 LU, live TP −0.8 against the export's −1.24 dBTP; on 96 kHz −0.189 LU). `openLiveContext` in `live-playback.ts` now opens the AudioContext at the source rate, so the engine processes the samples the export processes and the browser resamples only after the engine. If the browser rejects the rate, or the source is above 96 kHz, the context opens at the device rate; the state reports `liveSampleRate` and the page reads "This device plays A at 44.1 kHz, not the source's 48 kHz, so live A is resampled before processing and may differ slightly from the export." The Set target loudness summary, the Advanced disclosure, the guide and README condition the claim the same way. 88.2 and 96 kHz sources now run live at their own rate.
+- SHOULD (a). The stall error named no cause. It now reads "Playback can't keep up on this device with these modules on. Turn off heavy modules such as Multiband compressor, De-Harsh or Saturation, then press Play. Sources at 88.2 kHz and above cost about twice as much to play." The guide's troubleshooting table repeats it.
+- SHOULD (b), soak gauge. Chromium exposes no `performance.now` in AudioWorkletGlobalScope (the evidence reports `clock: "date"`), so kernel calls are timed in whole milliseconds. The tap now reports that resolution, counts `slow` calls certainly over the 2.67 ms deadline and `maybeSlow` calls that cannot be ruled out (any reading of 2 ms or more), and takes audio time from `currentFrame`. The fixed 250 ms drift limit became 5 ms per audio second (150 ms at 30 s): quiet-host runs lagged −4 to +2 ms in 30 s, −2 ms in 150 s and under 40 ms in 600 s; QA's worst clean run lagged 234 ms in 150 s (1.6 ms/s); a kernel over its deadline lags at (load − 1) s per second. One 30 s run at load average 65 lagged 915 ms with 0 slow calls and 0 ring underruns, a host stall that also fails the limit.
+- SHOULD (c). `liveParams`/`liveScript` are removed; live playback, the A/B match and the oracles call `exportParams`/`exportScript`.
+- SHOULD (d), headroom. Superseded by Round E 2: the 2.7–2.9× figure here was the Node V8 bench; on the real worklet 96 kHz measured 1.53×, under the 2× gate, so live is capped at 48 kHz. There is still no runtime fallback: nothing sheds modules or drops to algorithm 1 when a device falls behind; the stall message tells the listener what to turn off. Device measurements on a mid-range Android phone and a 96 kHz interface are P2.
+
+Round E evidence:
+- `playwright-a11y-responsive` (`e2e/live-export.spec.ts`). Speaker loudness now comes from an audio-thread K-weighted tap. The ScriptProcessor probe lost buffers under host load and swung 0.02–0.25 LU between identical runs. Both sides are measured past one loop of warm-up: the source holds the loop twice and the export is measured over its second half. Unpinned (the stub changes only the browser's default rate): 48 kHz on a 44.1 kHz device ran its context at 48 kHz and 44.1 kHz on 48 kHz at 44.1 kHz. Over nine runs at load average 25–65, the 48 kHz cases (pinned and on 44.1 kHz) measured ΔLU −0.0015 to +0.0001 with live TP −1.2 against −1.24 dBTP, and 44.1 kHz on 48 kHz ΔLU −0.0014 to +0.0003 with −0.9 against −0.85. Forced fallback (the browser rejects the source rate): 48→44.1 kHz −0.127 LU, live TP −0.8 against −1.24; 44.1→48 kHz +0.053 LU, −1.1 against −0.85; 48→96 kHz −0.180 LU. A committed case checks that fallback shows the resampling note.
+- Export finding, not live. The 44.1 kHz dense loop with every module on delivers −0.85 dBTP by the 4× meter against the −1 dBTP ceiling (48 kHz: −1.24); live reads the same −0.9. This is V1-13's question (export true-peak accuracy), so only the pinned 48 kHz case gates the ceiling; the unpinned cases gate live against export.
+- Soak (heaviest chain, 48 kHz): 30 s three times, 0 ring underruns, 0 slow calls, maybeSlow 15–23%, mean load 0.40–0.46, drift −4, −4 and +915 ms (the host stall above); 150 s 0 underruns, 0 slow, mean load 0.44, drift −2 ms.
+- `unit` (Vitest): the context opens at the source rate, falls back when the rate is rejected, stays at the device rate above 96 kHz, and the Master page shows the note and conditions the summary; Set target loudness renders no audio and marks the project mastered; no offline preview control remains; the stall message.
+- Gates (local, 2026-10-27, load average 15–165 from concurrent agents): no Go changed. `tsc` and the browser-test `tsc`, ESLint, knip and cspell (396 files) pass; Vitest `--maxWorkers=2` 695 passed; `bash scripts/build.sh` (both WASM builds) and `pnpm run test:wasm` pass. Native Playwright (`--workers=1`) `live-playback`, `live-export` (pinned, unpinned, fallback and the 30 s soak), `matched-ab`, `transport`, `a11y-responsive`, `mastering-targets`, `deep-workstation`, `workflow-regressions`, `cancellation`, `shared-settings`, `deep-live-oracle` and `finite-playback`: 62 of 64 passed at load average about 150; the two failures (`deep-live-oracle` 48000→192000, whose Apply landed after its 1.4 s capture, and a `deep-workstation` download that hit the 60 s timeout) both passed on a rerun at load average 25. `pnpm run build:browser`, then browser `matched-ab`, `workflows` and `local-audio`: 17 passed.
+
+**Round E 2 corrections (Devil's Advocate: not verified on `f44cdc3`), 2026-10-27.** These supersede the Round E notes above where they differ.
+- R1, overload. The kernel runs inside `process()`, so the processed ring cannot run dry from CPU load: the old stall message only ever saw tag or generation faults, and the soak's 0 ring underruns said nothing about CPU (the 915 ms lag run had 0). The worklet now has a deadline watch: after a warm-up window, each 1 s of audio is "late" if the audio clock lost more than 10% to the wall clock, or "heavy" if the kernel took more than 90% of it (Date.now, summed). A window is also bad when any kernel call certainly overran its quantum (beyond the quantum plus the clock's 1 ms tick), so a 60 ms hitch every second, which averages out of the lag and load (QA F-4), fires too. Two bad windows in a row stop playback with "Playback can't keep up on this device with the current processing. Turn off some processing modules, or close other busy apps or tabs, then press Play." A single host stall or a pause gap does not fire it. Missing processed audio keeps its own message, which names a buffer fault rather than CPU. The soak now requires `slow === 0`, its drift limit is min(250 ms, 5 ms per audio second), and it no longer gates on ring underruns, which are structurally 0 (kept as evidence only). DevTools `Emulation.setCPUThrottlingRate` does not reach the AudioWorklet thread: at 20× the kernel load stayed 0.47 with no clock lag. The e2e overload case therefore forces a 192 kHz context, which makes the unmodified heaviest chain cost about four times its 48 kHz load; playback stops with the overload message, not the fault message. (Round 4: dropped, because whether it overloads depends on the runner.)
+- R2, copy. `api.md`, `architecture.md`, README, the Elevated-check comment and the sample-peak caption ("dBFS · live") no longer describe algorithm 1 for live playback or a preview.
+- R3, rate cap. The CPU gate is a real-worklet mean load of at most 0.5 (2× headroom; the Chair first stated 3× and corrected it). QA measured the heaviest chain at 0.652 at 96 kHz (1.53×, load average 16; 0.934 at load average 305) against 0.346–0.469 at 48 kHz; the earlier 2.7–2.9× was the Node V8 bench, about 2.5× low. So live runs at the source rate only up to 48 kHz. 88.2 and 176.4 kHz play live at 44.1 kHz, and 96 and 192 kHz at 48 kHz (`liveContextRate`, `live-rate.ts`); exports keep the source rate. The app always requests that rate, so a high-rate interface cannot lift the cap. The note reads, for example, "Aurialis plays this 96 kHz source at 48 kHz to stay within its live CPU budget; the export keeps the source's 96 kHz." The device wording is kept for a real refusal. Measured (heaviest chain, two runs each): 96→48 kHz ΔLU +0.174, live TP −1.2 against the export's −1.08 dBTP; 88.2→44.1 kHz ΔLU +0.139, −1.0 against −1.24. The e2e gates them at 0.25 LU and +0.35 dB.
+- S1, no early rate claim. The status and Advanced copy make no rate claim before the context exists, unless the source is above the cap; the cap note shows before Play.
+- S2. The troubleshooting table matches the new overload and fault messages.
+- S4. Set target loudness no longer marks the project mastered; only a finished export does. Clearing "mastered" after a later edit is P2.
+- S6. The workflow regression's export after Set target loudness must keep every source frame.
+- QA F-5, race cost. `go test -race` on `wasm/dsp` took 360 s in CI (57 s on `main`); `TestLivePlaybackRendersTheExport` alone took 502 s locally. Under the detector (`raceEnabled`, the `internal/mastering` build-tag pattern) it now runs 48 kHz only on a 3 s mix, and the Deep script parity runs 3 s instead of 8. A new CI step runs both full-length without the detector (27 s locally). The whole package under `-race` now takes 115 s locally.
+- QA F-6. The leftover `DELTAS` debug log is gone, and the `liveParams` sentence above is in the past tense.
+- Round E 2 gates (local, 2026-10-27, load average 13–370 from concurrent agents):
+  - Go (only `wasm/dsp` tests and CI changed): `gofmt -l` empty; `go vet`, golangci-lint v2.15.0 (0 issues) and identypo pass; `go test` passes, and `go test -race` on `wasm/dsp` passes in 115 s.
+  - TypeScript: `bash scripts/build.sh`, `test:wasm`, `tsc` and the browser-test `tsc`, ESLint, knip and cspell (400 files) pass. Vitest `--maxWorkers=2` 706 passed. One earlier run had a single `DeepProposalPanel` failure at load average 117, which passed 3 of 3 alone and on the full rerun.
+  - Native Playwright (`--workers=1`): `live-playback`, `live-export` (pinned, unpinned, capped, fallback, overload and the 30 s soak), `matched-ab`, `transport`, `a11y-responsive`, `mastering-targets`, `deep-workstation`, `workflow-regressions`, `cancellation`, `shared-settings`, `deep-live-oracle` and `finite-playback` passed 67 of 67. The worklet-touching seven were rerun after the missed-deadline rule (36 of 36); in that soak `slow` was 0, mean load 0.42 and drift +1 ms.
+  - Same-rate ΔLU (Round E 2 runs): −0.001 to +0.0003; 44.1 kHz −0.0001.
+  - Browser build: `matched-ab`, `workflows` and `local-audio` 16 of 17. Browser `matched-ab` measured −0.98 dB at load average about 100 and then passed 6 of 6 at load average 17; its speaker probe is still the ScriptProcessor one (P2).
+
+**Round 4 (Devil's Advocate: not verified on `c03ed1e`; owner ruling), 2026-10-27.**
+- Owner ruling, Audition export. Live playback of 88.2–192 kHz sources reads about +0.14 to +0.17 LU off the export, and a disclosed 0.25 LU tolerance was rejected as the answer. Where live runs below the source rate (the 48 kHz cap, or a browser refusing the rate), **Audition export** appears beside the transport.
+  - It renders through the Export path (`renderDelivery` with `exportRender`, the Export dialog's format, the source rate) and plays that WAV Blob through one `<audio>` element.
+  - Only the Blob is kept, charged to `reserveBrowserAudioMemory` while retained, and nothing is decoded into an AudioBuffer.
+  - Any change to settings, script, source or format makes it stale: it stops, says so and offers **Re-render audition**.
+  - Rendering shows progress (browser-build job progress, indeterminate natively) and can be canceled. Live and the audition pause each other.
+  - The Release check's retained WAV was considered for reuse. It renders the same file but also inspects and measures it, so the audition reuses only its renderer (`renderDelivery`).
+  - The capped note now says live may differ by about 0.2 LU and points to Audition export.
+  - The V1-10 criteria cell carries the owner ruling.
+- S1. The watch's lag bound is now 3% of a 2 s window (60 ms), so load outside the kernel counts. The soak measured 2 s window lag in headless Chromium at 0 ms in every window; real devices render in bursts of one output buffer (about 10–40 ms). Two e2e cases at 48 kHz use a test-only burner AudioWorkletNode spinning on the same render thread:
+  - +0.6 of each quantum (total about 1.05, kernel about 0.45) stopped playback with the overload message. It was later replaced: on CI neither it nor the forced 192 kHz context overloaded, so the firing burner now spins 2–3 ms of every 2.67 ms quantum by Date.now, which overloads any CPU.
+  - +0.3 plays 30 s with no message (CI). On this shared host at load average 160–200 it now stops, because playbackStats reports real device underruns under that contention.
+- S2 (superseded in part by the QA ruling below). The worklet measures its clock step at construction. The lag bound is at least two steps, and the fallback slack rule is off when the step exceeds half the slack. A unit test with a 100 ms fake clock and 2.5% real lag does not false-stop, and fails without the widening.
+- S3. An AudioContext `statechange` or a `devicechange` posts `rewatch`, which restarts the watch with a warm-up window.
+- S4. New settings restart the watch, so a module switched on mid-play is not judged on its transition. A unit test shows no false stop through the transition, and that sustained overload afterwards still fires; it fails without the reset.
+- S5. Capped cases require live TP ≤ ceiling + 0.1.
+- S6. "Integer ratio for the 44.1/48 kHz families" is now in `live-rate.ts` and `architecture.md`.
+- S7. The ring-overrun error now uses the buffer-fault message, and fires only if the generation is unchanged after READ is loaded, so a seek race cannot trip it (unit-tested both ways).
+- `bench-live.mjs` now labels its output a relative V8 benchmark, not a browser load. (Round 8: deleted, since nothing used it and its figures read about 2.5× low against the real worklet.)
+- QA Round E 3, F-1 (BLOCKER) and F-2. A single kernel call over quantum + 1 ms used to mark a window bad. The output buffer (about 10.6 ms) absorbs a 4–8 ms call, so clean playback stopped: Chromium's `underrunEvents` stayed 12→12, and on CI the soak and five `simple-styles` tests with an export rendering stopped. Meanwhile a 60 ms stall once a second outside the kernel (378 real underruns) was missed, because the render thread catches up on the clock. Chair ruling, implemented:
+  - Primary: `live-overload.ts` samples `AudioContext.playbackStats` once a second on the main thread. After a warm-up window, two consecutive seconds over 1% underrun duration fire.
+  - Fallback (no playbackStats): the worklet counts a miss only when a whole callback, or the gap before it, overruns the quantum by more than the output's slack, max(outputLatency, 2 × baseLatency, 10 ms), plus a clock step.
+  - The clock-lag rule is unchanged.
+  - The soak gates on 0 device underruns after warm-up plus drift; `slow` is informational (one run read slow 1, maxMs 4 and 0 underruns).
+  - The overload alert has no Restore source.
+  - `e2e/live-overload.spec.ts` carries QA's cases. A 5 or 8 ms kernel call once a second, and an export rendered during Simple playback, keep playing for 25 s. 4 ms before the kernel every quantum, and 60 ms once a second before or after it, fire in 4.1–4.8 s. With playbackStats hidden, 60 ms once a second fires and 8 ms keeps playing.
+- QA F-5. The `export-params` test title no longer says live stays on algorithm 1. The AI Repair lane reads "Not available yet".
+- Round 4 gates (2026-10-27; the local host sat at load average 35–280 from concurrent agents):
+  - CI run 40572976220 on `f53ce0c`: all jobs green, including Playwright shards 1–3 and the responsive and WCAG gate. Run 40567586962 on `1be60e4` failed only the forced 192 kHz case and the calibrated +0.6 burner, which did not overload the runner; both were replaced.
+  - Local: `gofmt -l` empty, `go vet` passes (no Go changed this round). `test:wasm`, `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass. Vitest `--maxWorkers=2` 726 passed. `bash scripts/build.sh` passes.
+  - Local Playwright: `live-overload` 8/8 (fires in 4.1–4.8 s), `audition-export` 4/4, `simple-styles` 9/9 and `live-export` 10/10 (before the burner change). The full native list ran 81/90 at load average 150–280; the failures were page-load and capture timeouts, plus the forced 192 kHz Deep oracle case, where playbackStats reported real underruns under that contention. Browser build: `audition-export`, `matched-ab`, `workflows` and `local-audio` 17/18, and the timed-out Deep live-apply case passed on rerun.
+
+**Round 5 (Devil's Advocate: not verified on `302181b`), 2026-10-27.**
+- R-1. A finished audition render used to play whatever it rendered and pause live, even after an edit or a live Play during the render. It now reads the latest settings key and live state from refs. After an edit the result stays stale and silent; after live Play it waits, Ready, without taking over the transport. Covered by unit tests (both fail without the check) and e2e cases that hold the render request.
+- R-2. The V1-10 criteria cell again lists, for sources ≤ 48 kHz, residual ≤ −60 dB, a LUFS difference ≤ 0.1, live TP ≤ ceiling + 0.1 and no device underruns in 10 min, with the owner-ruled capped clause as written. The 600 s soak (device-underrun gate and drift):
+  - Attempt 1: load average 44–208. The overload message stopped playback at 488 s on real device underruns (playbackStats).
+  - Attempt 2: load average 45–195. It stopped at 93 s, the same way.
+  - Attempt 3: load average 11–42. It stopped at 119 s. A diagnostic run showed the playbackStats judge firing on one host stall that fell across a second boundary (41 ms, then 12 ms of real underrun), while the worklet watch had no bad window. The judge now needs three consecutive seconds over 1%, not two. The QA stall cases now fire in 5.3–6.1 s, up from 4.1–4.8, and every keeps-playing case still holds.
+  - Attempt 4, after that change, at load average 16–59: passed. 600 s of audio, 0 device underruns after warm-up, drift +10 ms (limit 250), mean kernel load 0.47. `slow` was 573 calls with a maximum of 7 ms; it is informational only and the output buffer absorbed them.
+- S-1. A device change re-reads the fallback slack. The docs say Firefox and Safari may fall back to the 10 ms floor. Local engine runs of the keeps-playing cases in `live-overload.spec.ts`:
+  - Firefox: 4/4.
+  - WebKit: the unpatched export-during-playback case passed. The three cases that patch the worklet never started playback, because WebKit did not load the test's blob-URL patched module (a harness limit, not the app).
+  - Adding these projects to CI stays P2.
+- S-2. The docs say new settings restart only the worklet's watch.
+- S-3. Audition memory is reserved for the file once it exists. While a fresh audition is held, Export downloads that same Blob; natively it sends no second render request (unit and e2e).
+- S-4. Media keys and the page's play/pause key drive whichever player was started last, and the Media Session reports the audition while it plays (unit test).
+- S-5. The resampled note now gives the same "about 0.2 LU" as the cap note and the guide. Measured on the fallback: −0.13, +0.05 and −0.18 LU.
+- S-6. With playbackStats hidden, the 2–3 ms-per-quantum burner still fires (e2e). The docs describe coarse-clock mode: the slack rule turns off, and the lag and load rules remain.
+- Not done, as the Devil's Advocate advised: turning off the worklet's lag and load rules where playbackStats exists, and dropping the 5 ms keeps-playing case.
+- Round 5 gates (local, load average 11–200):
+  - `gofmt -l` empty; no Go changed.
+  - TypeScript and unit tests: `test:wasm`, `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass; Vitest 731 passed. Unit and live-playback tests passed again after the three-second change.
+  - Native Playwright: `audition-export`, `live-overload`, `live-export`, `live-playback`, `transport`, `a11y-responsive` and `simple-styles` 54/54 before the change; `live-overload` 8/8 after it.
+  - CI on the pushed head is recorded in the PR.
+
+**Round 6 (Devil's Advocate: not verified on `a386720`), 2026-10-27.** The Chair accepted the three-strike rule.
+- REQUIRED-1, audition volume. The audition element ignored the Playback volume, so at 0.1 it played about 20 dB louder than live. It now follows the slider on start and on every move. Where `HTMLMediaElement.volume` does not stick (iOS Safari), the element is routed once through a GainNode; other browsers get no second Web Audio path. Covered by unit tests, including that fallback, and an e2e (0.1, then 0.6). The guide, architecture and README say the audition is the exact export, so Equal-loudness A/B does not apply to it.
+- S-1. Live loading counts as playing. A render that finishes during a cold live start leaves the audition Ready and does not pause live. The `MasterPlayback` unit test pins this and fails without the change. (Round 7: the cold-Play e2e passed with the fix reverted, so it was dropped.)
+- S-2. The playbackStats judge also fires on more than 3% underrun summed over the last three windows. That catches 60/60/0 ms and 200 ms every 2 s; the 53 ms straddling stall (about 1.8%) still does not fire. Unit-tested, and both patterns are in `live-overload.spec.ts`.
+- S-3. Every stop in `live-overload.spec.ts` must come within 8 s. Measured in Round 6: 5.2–5.4 s for all five stop cases.
+- S-4. The Audition = Export check is no longer circular. A fresh Export is rendered before any audition exists, and the audition's Blob must match it; a second Export must hand over the held file (natively, no render request). This runs in both the native and browser-build suites.
+- P2 fixes:
+  - The architecture now says roughly the first 2 s after each start are never judged.
+  - The stop-time comment in `live-export.spec.ts` now reads about 5–6 s.
+  - The soak holds mean load ≤ 0.5 when it runs 600 s or more.
+- New P2 ledger lines: audition seeking and Media Session seek; `heaviestChain` checking only two stages; `devicechange` slack timing.
+- 600 s soak, started at load average 7.1 (below the 8 cores; it ranged 5–20 during the run): passed. 0 device underruns after warm-up, drift +4 ms, mean kernel load 0.29 (gate 0.5), slow 0, max call 2 ms.
+- Round 6 gates (2026-10-28):
+  - Local: `gofmt -l` empty (no Go changed). `bash scripts/build.sh`, `test:wasm`, `tsc` and the browser-test `tsc`, ESLint, knip and cspell (407 files) pass. Vitest 736/736.
+  - Full native Playwright (`--workers=1`): 157/159 at load average 14–145. The forced 192 kHz Deep oracle case (stopped by the overload message on real underruns) and `deep-recovery`'s late-ACK case both passed on rerun at load average 10.
+  - CI run 40660379878 on `9bd290f`: green.
+
+**Round 7 (Devil's Advocate E6: not verified on `8d2a0b8`), 2026-10-28.**
+- R-1, revised by the Chair after QA E6. Round 6's 3% sum rule stopped playback on one isolated dropout of 91 ms or more. A first fix, two bad windows out of the last three, still fired on one ~1 s startup burst spanning two windows, which QA saw stop the +0.3 burner case once. The sum rule now needs, over the last five windows, at least two separate bursts (runs of adjacent windows over 1%, with a good window between them) and more than 3% underrun in total. Three bad seconds in a row still stop playback.
+  - The trade-off, documented: one long glitch is tolerated; repeated glitches stop playback, including two separate 80 ms dropouts a few seconds apart.
+  - Unit rows that must not fire: isolated 85, 91, 100, 120, 150, 250 and 300 ms stalls; the 41/12 ms and 60+40 ms straddles; 120 ms in the first judged window; one ~1 s burst across two windows.
+  - Unit rows that must fire: 60/60/0 ms and 200 ms every 2 s.
+  - Native e2e: one 120 ms and one 250 ms stall about 6 s in keep playing. QA's one-shot probe (53, 100, 150 and 250 ms, and two 40 ms stalls 2 s apart) also keeps playing.
+  - The +0.3 burner case passed 4/4 with `--repeat-each=4` at load average 8–23.
+  - The five stop cases in `live-overload.spec.ts` stopped in 5.0–5.5 s in Round 7 (bound 8 s).
+  - P2-2: a duration that runs backwards resets the watch, warm-up included.
+- R-2. The iOS volume fallback is built only in a Play click: detect that `.volume` does not stick, build the context and the MediaElementSource once, await `resume()`, set the element to 1 and play. The volume effect only moves an existing gain. Auto-play after a render that would need the route stays Ready. Unit tests cover:
+  - no context on mount or on a volume change;
+  - resume on a suspended context;
+  - one source under `<StrictMode>`;
+  - auto-play not building the route.
+
+  The docs say the iOS path is unverified on a real device.
+- S-1. The cold-Play e2e was dropped; the unit test pins the behavior.
+- S-2. `architecture.md`, `tasks.md` and the code comments are re-synced.
+- S-3. A `play()` rejection keeps the held audition Ready with a short note, and the next click plays (unit-tested for NotAllowedError and AbortError).
+- P2-4. `heaviestChain` asserts that EQ, De-Harsh, multiband, compressor with auto release, saturation, stereo with mono bass and the limiter all survive reload. That ledger P2 line is retired. With every stage confirmed on, a 120 s heaviest-chain soak (load average 18–46, above the 8 cores, so not the 600 s run) measured mean kernel load 0.42, 0 device underruns after warm-up and drift −4 ms; QA's own 120 s run at load average 40–66 measured 0.43.
+- Q-S1 (QA E6). Live Play then Pause during a held render let the finished audition auto-play. A latch now records that live played during the render, and the audition waits, Ready. Covered by a unit test and QA's audition-probe P3 as an e2e.
+- Q-S2. Focus fell to the body after Enter, Cancel or Re-render, because each state had its own button. One button now changes its label and action, so focus stays on it (WCAG 2.4.3). Covered by a unit test that checks the same DOM node, and an e2e that checks `activeElement` after each transition.
+- Q-S3. Pressing A/B while the audition plays now pauses the audition and sets live's A/B without starting live (unit test).
+- Round 7 gates (2026-10-28):
+  - Local: `gofmt -l` empty (no Go changed). `bash scripts/build.sh`, `test:wasm`, `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass. Vitest 743/743.
+  - Full native Playwright (`--workers=1`): 162/162 at load average 15–18.
+  - Load stayed above the 8 cores, so the 600 s soak was not rerun; the 120 s run above is the evidence.
+  - CI run 40676565609 on `5949b83`: green.
+
+**Round 8 (Devil's Advocate E7: not verified on `5d22b20`), 2026-10-28.**
+- REQUIRED-1. Bursts five or more windows apart never stopped playback at any size: 300 ms or 900 ms every 5 s, and 1 s every 6 s. A long-horizon rule now judges the last fifteen windows once that many have been judged: three or more separate bursts and at least 2% underrun stop playback. One shared `judge()` serves both horizons. Requiring the full fifteen makes the outcome independent of where the glitches fall. The 2% bound is inclusive, so exactly 2% stops; a unit row of exact binary fractions pins this (a strict bound fails it). Before, the 60 ms every 3 s case reached 2% only through floating-point rounding.
+  - The rule in words: three or more separate glitches within about 15 s stop playback; a single glitch spanning at most two judged windows (under about 1 s) never does (corrected in Round 8c: a dropout of about 2 s or more always does).
+  - Unit rows, across every phase: 1 s every 6 s (one window, or 500+500 ms) stops by about 20 s after Play; 300 ms and 900 ms every 5 s, and 60 ms every 3 s, stop about 17 s after Play. 60/60/0 ms and 200 ms every 2 s are unchanged. Every earlier must-not-fire row still passes.
+  - Accepted limit, in idealized 1 s windows (unit rows; Round 8d drops wall-clock claims): 70 ms every 4 windows does not stop, wherever it falls, and one-window glitches 8 or 10 windows apart do not stop. The long rule needs about 17 s of uninterrupted playback after every Play, seek, device change or state change, because each resets the watch; dense or sustained overload is still caught about five 1 s ticks after a reset, longer when the main thread is busy. Small glitches count toward the three: one 300 ms glitch plus two 11 ms glitches within 15 s stop playback.
+  - Native e2e: a 1 s stall every 6 s stops in about 21 s on CI (15-window rule) and in about 14 s on the local host, where a post-stall recovery underrun lets the 5-window rule fire first (see Round 8b). The other stop cases stop in 4.9–5.5 s. The 120 and 250 ms one-shot keeps-playing cases still pass.
+  - The +0.3 burner case failed once at `--repeat-each=4`. Its processor calibrated in its constructor and stalled the render thread for about 200 ms at start, causing real startup underruns. Calibration moved to the main thread, and all three burner cases then passed 4/4.
+- S-1. The iOS route's click now starts `resume()` and `play()` in the same turn and awaits both, since WebKit's activation may not survive an await. A unit test pins the synchronous order.
+- S-2. The stick probe uses 0.5 when the slider is at 1, so the route is built at any level (unit test).
+- P2-1. The render progress is announced in quarters.
+- P2-2. The progress bar sits after the focused button.
+- P2-3. Architecture and tasks now carry the same re-measured stop times.
+- P2-4. The remaining iOS limit is that the path is unverified on a real device.
+- P2-6. Unit tests pin M4 (auto-play leaves a suspended route alone and calls no resume) and M8 (the latch resets).
+- P2-7. The deep-recovery probe flake is on the ledger's audio-thread-tap P2 line.
+- `wasm/dsp/bench-live.mjs` is deleted (unused).
+- P2-5 is a new ledger line only.
+- Round 8 gates (2026-10-28):
+  - Local: `gofmt -l` empty (no Go changed). `bash scripts/build.sh`, `test:wasm`, `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass. Vitest 750/750.
+  - Full native Playwright (`--workers=1`): 163/163 at load average 6–127.
+  - CI run 40687001724 on `bf788e3`: green.
+
+**Round 8b (QA E7, Devil's Advocate E8 on `55bf1ca`), 2026-10-28.**
+- Q-S2. A/B paused the audition but left it as the last player, so Space or a media key resumed the processed audition while B Original showed as pressed. A/B now hands the play/pause keys back to live; Space then starts live with B applied. Covered by a unit test and by QA's e7-ab-space e2e, which fails without the fix. The source is looped there so it cannot end first.
+- +0.3 burner on this host (`--repeat-each=8` at load average 35–55): 5/8. Not loosened, as ruled. playbackStats traces of the failures:
+  - Real underruns from host contention. In one run, three separate ~100 ms underruns came at about 10.5, 11.7 and 15.8 s (213 → 315 → 416 → 533 ms cumulative), so the 15-window rule fired.
+  - In another, at load average 303, about 1 s of underrun accrued every 2 s.
+  - Passing runs show only the startup underrun (101–277 ms) and nothing after. That confirms 29c9621 removed the startup storm.
+  - The burner now reports its achieved share. One run on this host read 0.517 for a requested 0.3: the main-thread estimate overshot. QA E8 below replaces this with calibration on the render thread.
+- DA E8 REQUIRED-1. "1 s every 6 s stops in 14.2 s" cannot come from the 15-window rule, which first judges about 17 s in. The stop was real, though, and came from another rule. With `--repeat-each=5` at load average 37–83 (the host was never below 8), it stopped at 14.0–14.4 s in four runs and at 21.1 s in one.
+  - The playbackStats traces explain it. Each 1 s stall (about 996 ms of underrun) is followed by about 200 ms of recovery underrun in the next window, and the stall stretches that window to about 2.2 s. So the second stall already falls within five windows, and the 5-window two-burst rule fires at about 14 s.
+  - On CI (run 40690786541, 22.4 s for the test) the 15-window rule fired at about 21 s.
+  - Shorter stalls (300 or 500 ms every 5–6 s) caused no device underrun at all in headless Chromium, so no e2e can isolate the 15-window rule. The exact unit rows prove it.
+  - The e2e therefore required 12–25 s (raised to 13 s, when the second stall starts, in Round 8c), not the ruled 16 s lower bound. It prints the figure for CI evidence, and its comment records the reasoning.
+  - Tasks, architecture and the ledger give both figures.
+- DA E8 SHOULD-1 and P2. The docs add three statements:
+  - Glitches 8 s or more apart never stop playback (false as written; Round 8c corrects it).
+  - The long rule needs about 17 s of uninterrupted playback after each reset.
+  - Small glitches count toward the three.
+
+  New unit rows pin `LONG_BURSTS = 3` (two separate one-window 500 ms bursts do not stop), the inclusive bound (exact binary fractions), every phase of 1 s every 6 s, and one-window 1 s bursts every 8 or 10 windows not stopping (idealized windows; Round 8d). Unit stop times now read "about 17 s after Play". The duplicated doc comment in `AuditionExport.tsx` is gone.
+- CI run 40701436023 (`ef39cb5`) failed one case: A/B then Space. Space arrived before the media pause event's task, so the keys still saw the audition playing. Pausing now clears the playing flag at once (`92322ab`), and the e2e waits for Play audition first. That run printed `sparse 1 s every 6 s fired after 21175 ms` (the 15-window rule) and `burner achieved share 0.331`.
+- QA E8 (on `55bf1ca`):
+  - REQUIRED, burner. The processor now calibrates itself on the render thread. It starts at 0.6 of the main-thread estimate, times its own spin every 375 quanta (1 s) and corrects toward 0.3 with a damped (square-root) step. The test asserts that the mean of the last ten 1 s windows lies in 0.25–0.35. QA's repro (`-g "0.3 of each quantum" --repeat-each=4 --workers=1`), at load average 23–26, passed 4/4 with shares 0.299, 0.299, 0.302 and 0.302. An undamped first try passed 3/4 (0.257, 0.351, 0.293, 0.262).
+  - Sparse case. No 16 s lower bound: not every measured run reached 16 s. Locally, at `--repeat-each=5`, stops came at 14.0–14.4 s in four runs (the 5-window rule) and at 21.1 s in one (the 15-window rule). CI read 21.2 s (the 15-window rule). The e2e kept its 12–25 s bounds (13–25 s in Round 8c, 7–25 s since Round 8e).
+  - QA's `e7-ab-space` repro passes on the rebuilt branch. After Space, live plays with B Original still pressed and the audition idle.
+  - SHOULD-1 (docs). Architecture and the ledger now say plainly that 1 s of silence every 10 s (10% silence) never stops playback. That was false; Round 8d removes it. They also say that one long glitch plus a small click a few seconds later can stop it; a new unit row pins 300 ms then an 11 ms click 3 s later.
+  - 30 s soak, three runs:
+
+    | Run | Load at start | Device underruns after warm-up | Drift | Mean load | Slow calls / max call |
+    | --- | --- | --- | --- | --- | --- |
+    | 1 | 7.72 | 0 | +1 ms | 0.465 | 0 / 2 ms |
+    | 2 | 8.09 | 0 | −4 ms | 0.468 | 0 / 2 ms |
+    | 3 | 14.09 | 0 | −6 ms | 0.439 | 0 / 2 ms |
+
+    Only run 1 started below 8; the host did not stay quiet longer.
+  - New ledger P2 lines:
+    - Shift+ArrowRight past the end with Repeat on stops instead of wrapping. This predates V1-10: `main` has the same `seek()`, and QA's seek-end probe reproduced it on the branch.
+    - The Vitest `DeepProposalPanel` load-timeout flake.
+- Round 8b gates (2026-10-28):
+  - Local: `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass. Vitest 753/753; one run hit the known V1-11 `MasterPlayback` flake, which passed 3/3 on rerun.
+  - Playwright `--workers=1` after `bash scripts/build.sh`: `audition-export` 10/10, with the A/B-Space case 4/4 on `--repeat-each=4`; `live-overload` 13/13.
+  - After QA E8 (load average 21–49), on a fresh `bash scripts/build.sh`:
+    - `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass.
+    - Vitest `--maxWorkers=2`: 753/753.
+    - Playwright `--workers=1`: `audition-export` plus `live-overload` 23/23, with the sparse case at 21.2 s (the 15-window rule). The three burner cases 3/3, with share 0.301. The 30 s soak passed.
+
+**Round 8c (Devil's Advocate E9 on `1aa9305`), 2026-10-28.**
+- REQUIRED-1. Two claims were false because of the three-strike rule: "a single glitch never stops playback, however long" and "glitches 8 s or more apart never stop, whatever their size". A dropout that covers three judged windows stops playback. That is possible just over 1 s and certain from about 2 s.
+  - `live-overload.ts`, architecture and the ledger then said that a single glitch spanning at most two judged windows (under about 1 s) never stops playback, and that a dropout of about 2 s or more always does. Round 8d replaces both claims with what holds by construction.
+  - New unit rows stop: 50 + 1000 + 50 ms, one 3 s dropout, and 3 s every 10 s.
+- SHOULD-1. The rules count judged windows, not seconds. On a real host a 1 s stall stretches its window to about 2.2 s and adds a bad recovery window, so it uses about two windows. The limit then read: glitches 8 or more judged windows apart never stop, and the wall-clock spacing that escapes depends on the host (Round 8d keeps only the window statement, as a unit row). That is the same reason the 6 s case stops at about 14 s locally and about 21 s on CI.
+  - Unit rows: a 1 s stall plus 200 ms of recovery every 7 windows stops by 17. Every 8 windows, it does not stop, from all eight phases (idealized windows).
+  - The claim that 1 s every 10 s (10% silence) never stops was false; QA E9 measured a stop (Round 8d).
+- P2-1. `92322ab` is now pinned.
+  - The MasterPlayback unit row defers the media "pause" event to a later task, then presses Space in the same task as A/B.
+  - The e2e clicks B and dispatches Space in one `evaluate`.
+  - Mutation check: with `playingNow.current = false` removed, the unit row fails (live `play` called 0 times) and the e2e fails (`data-playing` "false").
+- P2-2. The second stall starts about 13 s after Play, so the sparse e2e's lower bound became 13 s (lowered to 7 s in Round 8e).
+- P2-3. The burner test proves its correction loop ran: more than ten windows, a last share different from the first, and more than one spin rate. One run read 0.327 over 30 windows, starting from 0.190.
+- P2-4. The Round 8 unit stop time for 1 s every 6 s now reads about 20 s after Play.
+- Round 8c gates (2026-10-28, load average 10–66):
+  - Static: `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass.
+  - Vitest `--maxWorkers=2`: 755/755. One earlier run hit the known V1-11 `MasterPlayback` equal-loudness flake; that file then passed 3/3.
+  - Playwright `--workers=1`, after `bash scripts/build.sh`:
+    - `audition-export` plus `live-overload`: 22/23. The sparse case stopped at 21.1 s.
+    - The miss: "60 ms after the kernel every 375 quanta" stopped at 16.1 s against its 8 s bound, at load average about 66. No rule logic changed this round. The case passed 4/4 on rerun at load 12–17 (6.5–7.3 s per run). The bound was not loosened.
+    - The A/B-Space case: 4/4 at `--repeat-each=4`.
+    - The three burner cases and the 30 s soak: 4/4.
+
+**Round 8d (Devil's Advocate E10, QA E9 on the Round 8c head), 2026-10-28.**
+- The false claim. "1 s every 10 s never stops" was false. QA's `sparse-gap` probe stopped once at 34.4 s on a real host (QA E9's fuller set: 3 of 10 runs; see Round 8e): one stall left three bad windows (994 ms over 1.96 s, 197 ms over 2.19 s, then 24 ms over 1.03 s, which is 2.3%), so three strikes fired. About 1 in 15 recorded stalls has this shape (corrected in Round 8g: 3 of 86 recorded stalls (3 of 53 in the 1 s every 10 s runs); no first stall did). This is the third round of false overload claims, and all of them described idealized windows as host behavior.
+- Ruling 1. `live-overload.ts`, architecture, the ledger V1-10 row and tasks now state only:
+  - The three rules. Three bad judged seconds in a row stop playback. So do two separate bursts with over 3% underrun in the last five, and three separate bursts with 2% or more in the last fifteen.
+  - What holds by construction: a glitch confined to two judged seconds cannot trigger the first rule alone.
+  - Every universal "never stops" or "always stops" claim about wall-clock patterns is gone. In its place (as reworded in Round 8f): in QA E9's runs on one host, a ~1 s stall spanned one to three judged windows; a stall stops playback on its own when it leaves three windows in a row over 1% (Round 8g corrects the count: 3 of 86 recorded stalls (3 of 53 in the 1 s every 10 s runs); no first stall did). Sparse glitches spaced well apart may never stop playback.
+  - Examples are labelled either as unit rows in idealized 1 s windows or as measured on one host.
+  - Earlier rounds' claims in this file are marked as false or rephrased in idealized windows.
+- Ruling 2. A unit row pins QA's shape: 994, 197 and 24 ms in consecutive windows stops.
+- Ruling 3. The e2e stop bound is now 10 s: five 1 s ticks plus main-thread timer delay. The DA's jitter simulation gave a p99 of 8.3–9.4 s at load 12–17. The docs now say "about five 1 s ticks after a reset, longer when the main thread is busy".
+- Ruling 4. The burner test required the mean of the last ten windows to be closer to 0.3 than the first window, and still required more than one spin rate (Round 8e removed the first-window comparison and, undisclosed, the at-least-ten-windows check; Round 8f restores the latter). One local run read 0.300, with the first window at 0.202.
+- Ruling 5. The sparse e2e's comment notes that a first stall reaching a third window fires early by three strikes and fails the 13 s bound (Round 8e lowers it to 7 s).
+- Ruling 6. No new 2.5 s e2e was added; the claim it would test is removed instead.
+- Round 8d gates (2026-10-28, load average 5–13):
+  - Static: `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass.
+  - Vitest `--maxWorkers=2`: 755/755.
+  - Playwright `--workers=1`, after `bash scripts/build.sh`:
+    - `audition-export` plus `live-overload`: 23/23. The sparse case stopped at 14.1 s.
+    - The three burner cases: 3/3.
+
+**Round 8e (Chair), 2026-10-28.** Two flake risks flagged in Round 8d are removed.
+- Sparse case. Either rule may fire, and each is correct. A first stall whose recovery reaches a third window fires by three strikes at about 8–9 s (3 of 86 recorded stalls (3 of 53 in the 1 s every 10 s runs); no first stall did; Round 8g). The floor is now 7 s, just after the first stall begins at about 6 s. The 25 s upper bound stays.
+- Burner. The "closer to 0.3 than the first window" assert is gone, since it could flake whenever the first window landed near 0.3. The distinct spin-rate assert, which catches a missing correction loop, and the 0.25–0.35 bound on the last-ten mean stay. The edit also dropped the at-least-ten-windows check without saying so; Round 8f restores it.
+- QA E9 (on the Round 8c and 8d heads), verdict NOT VERIFIED on docs only. QA independently closed the burner check (a Chromium trace measured 0.300–0.305) and the Space-after-B check.
+  - R-1, docs: the measured examples showed too few stops. Architecture, the ledger V1-10 row and this file now give QA's native runs on one host, replayed through the rules to within 0.4 s:
+    - 1 s every 10 s of audio: stopped in 3 of 10 runs, at 25.1, 34.4 and 64.2 s, by three in a row.
+    - 1 s every 8 s: 4 of 4, at about 27.3 s (fifteen-window rule).
+    - 1 s every 7 s: 4 of 4, at about 24.3 s.
+    - A single 1 s stall and a single 500 ms stall: 0 of 3 each.
+  - The cause: a 1 s stall's recovery sometimes leaves about 12 ms in a 1.02 s third window, just over 1%. New unit rows 994/227/12 ms and 1708/105/12 ms must stop. The rule is unchanged.
+  - P2-1, fixed: A/B could miss a starting audition. The audition counted as playing only from the media "play" event, a later task, so Play audition and B in one task left it playing with B pressed. `play()` now sets the flag before it starts, and a rejected start clears it to the element's state. Unit rows cover Play then A/B in one task, and a refused start. QA's V5 is now an e2e; it failed before the fix, with the audition at 1.81 s.
+  - New ledger P2 lines: the burner's `playHeaviest` timeout at load 48–62, and one 10-window mean at 0.265.
+- Round 8e gates (2026-10-28, load average 5–14; each gate judged on its own exit status):
+  - Static: `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) all exit 0.
+  - Vitest `--maxWorkers=2`: 755/755.
+  - Playwright `--workers=1`, after `bash scripts/build.sh`:
+    - `live-overload` plus `audition-export`: 24/24. The sparse case stopped at 14.1 s.
+    - The V5 case: 4/4 at `--repeat-each=4`.
+    - The three burner cases: 3/3, share 0.298 (first window 0.211).
+
+**Round 8f (Devil's Advocate E11 on the Round 8e head), 2026-10-28.** Every `802b88d` mutation was caught; two items were REQUIRED.
+- REQUIRED-2, a regression from `802b88d`: after a refused audition start, the Media Session stayed "playing".
+  - The cause: `play()` marks the audition playing, then `onStart` pauses live, whose update set the session to "playing". A refused start fires no media event, so the catch reset only the flag.
+  - The fix: the catch now goes through `changed()`, which tells the workstation.
+  - The new MasterPlayback row stubs `navigator.mediaSession`, refuses a Play audition and requires `playbackState === "paused"`. It failed before the fix with "playing". The audition tests share a `heldAudition()` setup.
+- REQUIRED-1, docs and comments. "On a real host a ~1 s stall spans two or three judged seconds" was unlabelled and contradicted by the 1.18 s-in-3.18 s example, and "when its recovery reaches a third, it stops" skipped the 1% condition. `live-overload.ts`, its unit rows, architecture, the ledger V1-10 row and this file now say: in QA E9's runs on one host, a ~1 s stall spanned one to three judged windows; a stall stops playback on its own when it leaves three windows in a row over 1%.
+  - The ledger row's Round 4–6 sentence ("5.2–5.4 s … over 3% summed over three windows") is labelled as history under retired rules.
+  - The other measured figures in the code (the 5–8 ms call, the 41/12 ms straddle, the 12–19 startup events) now say they were measured.
+- SHOULD-1. The burner e2e again requires at least ten windows. Round 8e had dropped that check without saying so.
+- P2-1. A/B, Space, Pause or an edit during a pending audition start showed "The audition did not start". Every start and every pause we ask for now bumps an attempt counter, and a rejected start that is no longer the latest attempt stays silent. A unit row covers it, and fails with the check removed.
+- P2-2. The sparse e2e comment says "QA E9's host", not "a real host".
+- P2-3. The unit test no longer cites the retired 3-window sum.
+- Round 8f gates (2026-10-28, load average 6–25; each gate judged on its own exit status):
+  - Static: `tsc` and the browser-test `tsc`, ESLint, knip and cspell all exit 0.
+  - Vitest `--maxWorkers=2`: 757/757.
+  - Playwright `--workers=1`, after `bash scripts/build.sh`:
+    - `audition-export` plus `live-overload`: 24/24. The sparse case stopped at 13.9 s.
+    - The three burner cases: 3/3, share 0.328 (first window 0.173).
+
+**Round 8g (Devil's Advocate E12 on the Round 8f head: VERIFIED), 2026-10-28.** Tests and docs only; no runtime code changed.
+- SHOULD-2. Three new `AuditionExport` unit rows hold `play()` pending and then interrupt it, each by a different path, before rejecting it with AbortError: the Pause audition button, an edit that is then undone, and live starting to play. None may show "did not start". Before this round, mutations M5, M7 and M8 survived. Each row now fails when its path is reverted to `audio.current?.pause()`; I ran each mutation to check.
+- SHOULD-1. The ledger V1-10 row's "Round 4–6 history" parenthetical now closes right after the 600 s soak (Round 5), so the current rules and QA E9's figures sit outside it. The parentheses balance.
+- P2:
+  - Architecture and the ledger row say "three judged windows (about 1 s each) in a row" instead of "three consecutive seconds" or "three bad seconds in a row".
+  - The architecture sentence on a refused or interrupted start adds "unless our own pause or edit interrupted it".
+  - The five-window rule reads "over up to the last five windows".
+  - The 60/60/0 ms unit row now asserts the stop at second 4, with 4.0% over three judged windows. Its 200 ms comment uses the five-window rule.
+- QA E10 (on the Round 8f head): VERIFIED.
+  - SHOULD-1. QA replayed all 25 traces through the rules. "About 1 of 15 stalls" did not match the data.
+  - What the replay found: 3 of 86 recorded stalls left three bad windows in a row (3 of 53 in the 1 s every 10 s runs), and no first stall did. Of the first stalls, 19 spanned two windows and 6 spanned one. Later stalls spanned one window 38 times, two 20 times and three 3 times.
+  - Architecture, the ledger V1-10 row, this file and the sparse e2e comment now give those figures. The 7 s floor stays.
+  - P2-1. A new ledger watch line covers the "without playbackStats, a 60 ms stall once a second" case. It failed once in about 14 runs at load average 8.8, then passed 3/3 and 8/8. It is the worklet slack rule's false negative, outside the V1-10 diff.
+  - P2-2 (the Play/Pause double-click within 3–16 ms): no action, as ruled.
+- Round 8g gates (2026-10-28, load average about 7; each gate judged on its own exit status): `tsc` and the browser-test `tsc`, ESLint, knip and cspell all exit 0, and Vitest `--maxWorkers=2` passes 760/760, both before and after the QA E10 edits.

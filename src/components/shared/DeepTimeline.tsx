@@ -31,7 +31,7 @@ export function DeepTimeline({ script, selectedId, onSelect, playheadRatio = 0 }
         {lanes.map((lane, index) => <div className="lane" key={lane}>
           <strong>{lane}</strong>
           <div className="relative h-[44px] min-w-0 rounded-lg bg-paper-deep" >
-            {lane === "AI Repair" ? <span className="px-3 text-xs leading-[44px]">Unavailable in algorithm 1</span> : script.moves.filter((move) => automationLane(move.target) === lane).map((move) => {
+            {lane === "AI Repair" ? <span className="px-3 text-xs leading-[44px]">Not available yet</span> : script.moves.filter((move) => automationLane(move.target) === lane).map((move) => {
               const first = move.points[0]; const last = move.points.at(-1); if (!first || !last) return null;
               return <span key={move.id} aria-hidden="true" className="absolute top-3 h-5 min-w-px rounded-full border border-ink/30" style={{ left: String(first.frame / script.source.frames * 100) + "%", width: String((last.frame - first.frame) / script.source.frames * 100) + "%", backgroundColor: colors.at(index), opacity: move.muted ? 0.3 : 0.8 }} />;
             })}

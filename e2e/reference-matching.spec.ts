@@ -5,7 +5,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { decode } from "./audio-fixture";
 import { meanOutputLevel, observeOutput, outputLevel } from "./live-output";
 import { meanRenderOutput, observeRenderOutput } from "./render-output";
-import { captureDevice, capturedDevice, capturedProgress } from "./device-capture";
+import { captureDevice, capturedDevice, capturedProgress, exportLatencyFrames } from "./device-capture";
+import { exportChain } from "../src/lib/engine-params";
 import type { AdvancedParams, Track } from "../src/lib/types";
 
 /** Independent physical-band tones; no application EQ is used to make the reference. */
@@ -121,9 +122,11 @@ for (const deviceRate of [44100, 48000]) test(`measured Reference changes real l
   await expect.poll(async () => (await capturedProgress(page))?.frames ?? 0).toBe(262144);
   const capture = await capturedDevice(page); if (!capture) throw new Error("Missing actual device input/output capture");
   expect(capture.deviceRate).toBe(deviceRate); expect(capture.missing).toBe(0);
-  const deviceRender = await request.post("/api/master/render", { multipart: { file: { name: "actual-device-input.wav", mimeType: "audio/wav", buffer: capturedWav(capture.deviceLeft, capture.deviceRight, deviceRate) }, params: JSON.stringify(job.referenceProposal.params), bitDepth: "32" } });
+  const deviceRender = await request.post("/api/master/render", { multipart: { file: { name: "actual-device-input.wav", mimeType: "audio/wav", buffer: capturedWav(capture.deviceLeft, capture.deviceRight, deviceRate) }, params: JSON.stringify(exportChain(job.referenceProposal.params as { limiter: object; ditherBits: number })), bitDepth: "32" } });
   expect(deviceRender.ok()).toBe(true); const deviceExpected = decode(await deviceRender.body());
-  const pcmError = [maxError(capture.outputLeft, deviceExpected.left), maxError(capture.outputRight, deviceExpected.right)];
+  // Live renders the export chain (V1-10): its raw ring trails the latency-compensated render by the lookahead.
+  const latency = exportLatencyFrames(deviceRate), aligned = deviceExpected.left.length - latency;
+  const pcmError = [maxError(capture.outputLeft.slice(latency), deviceExpected.left.slice(0, aligned)), maxError(capture.outputRight.slice(latency), deviceExpected.right.slice(0, aligned))];
   const expectedDb = rmsDb(deviceExpected.left, deviceExpected.right, deviceExpected.left.length - deviceRate);
   const sourceRateDb = rmsDb(expected.left, expected.right);
   await info.attach("reference-rms-window", { body: JSON.stringify({ deviceRate, sourceRate: 48000, live, callbackWindows, callbackMedian, expectedDb, sourceRateDb, pcmError, capturedFrames: capture.frames, missing: capture.missing, output: await outputLevel(page), params: job.referenceProposal.params }), contentType: "application/json" });

@@ -1,1 +1,1 @@
-export { captureDevice as captureDeepDevice, capturedProgress, capturedDevice } from "./device-capture";
+export { captureDevice as captureDeepDevice, capturedProgress, capturedDevice, exportLatencyFrames } from "./device-capture";

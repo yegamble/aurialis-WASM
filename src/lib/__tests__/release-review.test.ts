@@ -1,7 +1,7 @@
 import { Blob as NativeBlob } from "node:buffer";
 import { createHash, webcrypto } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { measureAudio, previewWAV, renderDelivery } from "../browser-engine";
+import { measureAudio, renderDelivery } from "../browser-engine";
 import { CD_DELIVERY, DEFAULT_DELIVERY, type DeliveryFormat } from "../delivery-format";
 import { engineParams, exportParams, exportRender } from "../engine-params";
 import { reserveBrowserAudioMemory } from "../browser-jobs";
@@ -9,7 +9,7 @@ import type { ScriptV2 } from "../deep-mastering";
 import { collectReleaseReview, readReleaseReport, releaseBindingHash, reserveReleaseReviewMemory } from "../release-review";
 import { normalizeHydratedState, reduceStoreState } from "../store";
 import type { MeasuredAudioMetrics, Track } from "../types";
-import { testStore } from "./fixtures";
+import { canonicalWAV, testStore } from "./fixtures";
 
 vi.mock("../browser-engine", async (original) => ({ ...await original<typeof import("../browser-engine")>(), measureAudio: vi.fn(), renderDelivery: vi.fn() }));
 const bits = (bitDepth: 16 | 24 | 32): DeliveryFormat => ({ ...DEFAULT_DELIVERY, bitDepth });
@@ -27,13 +27,13 @@ const base = testStore.tracks[0]; if (!base) throw new Error("Missing source");
 const track: Track = { ...base, duration: 1 / 48000, sourceIdentity: identity, sourceRevision: 4 };
 const metrics: MeasuredAudioMetrics = { integratedLufs: -20, shortTermLufs: -20, truePeakDbtp: -6, samplePeakDbfs: -6, dynamicRangeDb: 0, correlation: 1, lowBassCorrelation: 1, dcLeftDbfs: -120, dcRightDbfs: -120, clippingSamples: 0, gainReductionDb: 0 };
 const signal = () => new AbortController().signal;
-function source(right = 1.25) { return previewWAV({ sampleRate: 48000, left: Float32Array.of(-0), right: Float32Array.of(right) }); }
+function source(right = 1.25) { return canonicalWAV({ sampleRate: 48000, left: Float32Array.of(-0), right: Float32Array.of(right) }); }
 function script(): ScriptV2 { return { version: "2.0", source: identity, revision: 1, profile: "Warm Analog", summary: "Test plan", chainParams: engineParams(track.advanced),
   sections: [{ id: "section-1", name: "Section 1", roleHint: "unknown", startFrame: 0, endFrame: 1, confidence: 0 }],
   moves: [{ id: "move-1", sectionId: "section-1", reason: "Test gain", target: "inputGainDb", operation: "add", points: [{ frame: 0, value: 0 }, { frame: 1, value: 0 }], fadeFrames: 0, muted: false }], findings: [], beforeMetrics: metrics }; }
 beforeEach(() => {
   vi.stubGlobal("Blob", NativeBlob); vi.stubGlobal("crypto", webcrypto);
-  vi.mocked(renderDelivery).mockImplementation(() => delivered(previewWAV({ sampleRate: 48000, left: Float32Array.of(0.5), right: Float32Array.of(0.5) })));
+  vi.mocked(renderDelivery).mockImplementation(() => delivered(canonicalWAV({ sampleRate: 48000, left: Float32Array.of(0.5), right: Float32Array.of(0.5) })));
   vi.mocked(measureAudio).mockResolvedValue({ sampleRate: 48000, frames: 1, duration: 1 / 48000, beforeMetrics: metrics, afterMetrics: metrics });
 });
 afterEach(() => { vi.clearAllMocks(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
@@ -85,7 +85,7 @@ describe("encoded release artifacts and saved receipts", () => {
     });
     vi.mocked(renderDelivery).mockImplementation(() => {
       expect(memory.update).toHaveBeenLastCalledWith(104);
-      return delivered(previewWAV({ sampleRate: 48000, left: Float32Array.of(0.5), right: Float32Array.of(0.5) }));
+      return delivered(canonicalWAV({ sampleRate: 48000, left: Float32Array.of(0.5), right: Float32Array.of(0.5) }));
     });
     vi.mocked(measureAudio).mockImplementation(() => {
       expect(memory.update).toHaveBeenLastCalledWith(104);

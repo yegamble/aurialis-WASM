@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdvancedParams } from "../audio-dsp";
 import { createLivePlayback } from "../live-playback";
+import { OVERLOAD_MESSAGE } from "../live-overload";
 import * as automation from "../live-automation";
 import { engineParams } from "../browser-engine";
 import type { ScriptV2 } from "../deep-mastering";
@@ -8,7 +9,10 @@ import type { ScriptV2 } from "../deep-mastering";
 const source = () => ({ sampleRate: 48000, left: new Float32Array(48000), right: new Float32Array(48000) });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 
-function graphHarness(autoReady = true, autoArm = true, autoAutomation = false) {
+/** How the stub browser answers a requested AudioContext rate: ignore it and
+ * run at the 48 kHz device rate, honour it, or reject it like an unsupported rate. */
+type RatePolicy = "device" | "honor" | "reject";
+function graphHarness(autoReady = true, autoArm = true, autoAutomation = false, rates: RatePolicy = "device") {
   const contexts: Context[] = [];
   const nodes: Node[] = [];
   const worker = vi.fn();
@@ -34,6 +38,8 @@ function graphHarness(autoReady = true, autoArm = true, autoAutomation = false) 
     module: WebAssembly.Module;
     entropy: Uint8Array;
     clockOriginMs: number;
+    watchSlackMs: number | null;
+    controlAbiVersion: number;
   };
   class Node {
     port = new Port();
@@ -60,7 +66,14 @@ function graphHarness(autoReady = true, autoArm = true, autoAutomation = false) 
     createAnalyser = () => ({ ...endpoint(), fftSize: 4096, smoothingTimeConstant: 0, minDecibels: -120, maxDecibels: 0 });
     createBuffer = () => ({ copyToChannel: vi.fn() });
     createBufferSource = vi.fn(() => ({ ...endpoint(), buffer: null, loop: false, onended: null, start: vi.fn(), stop: vi.fn() }));
-    constructor() { contexts.push(this); }
+    listeners = new Map<string, () => void>();
+    addEventListener = vi.fn((type: string, listener: () => void) => { this.listeners.set(type, listener); });
+    removeEventListener = vi.fn((type: string) => { this.listeners.delete(type); });
+    constructor(readonly options: AudioContextOptions = {}) {
+      if (options.sampleRate !== undefined && rates === "reject") throw new DOMException("The sample rate is not supported.", "NotSupportedError");
+      if (options.sampleRate !== undefined && rates === "honor") this.sampleRate = options.sampleRate;
+      contexts.push(this);
+    }
   }
   vi.stubGlobal("crossOriginIsolated", true);
   vi.stubGlobal("AudioContext", Context);
@@ -288,6 +301,10 @@ describe("per-track live audio lifecycle", () => {
     expect(options.clockOriginMs).toBeGreaterThan(0);
     expect(Array.from(publication)).toEqual([2, 1, 0, 0]);
     expect(values[3]).toBe(settings.input);
+    // V1-10: live playback renders the export algorithm and its true-peak limiter.
+    expect(options.controlAbiVersion).toBe(2);
+    expect(new Float64Array(options.controls, 16, 82)[81]).toBe(2);
+    expect(values[50]).toBe(1);
     controller.setParams({ ...settings, input: 6 });
     expect(Array.from(publication)).toEqual([4, 2, 0, 0]);
     expect(values[3]).toBe(6);
@@ -446,6 +463,74 @@ describe("per-track live audio lifecycle", () => {
     expect(meters).toHaveBeenLastCalledWith(expect.objectContaining({ peakDbfs: -120, rmsDbfs: -120 }));
     expect(errors).toHaveBeenCalledTimes(1);
     controller.dispose();
+  });
+  it("runs the live engine at the source rate, so A is processed at the export's rate (V1-10)", async () => {
+    const { contexts } = graphHarness(true, true, false, "honor");
+    const controller = createLivePlayback({ sampleRate: 44100, left: new Float32Array(44100), right: new Float32Array(44100) }, createDefaultAdvancedParams());
+    await controller.play();
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]?.options).toMatchObject({ sampleRate: 44100, latencyHint: "interactive" });
+    expect(controller.getState().liveSampleRate).toBe(44100);
+    controller.dispose();
+  });
+  it("falls back to the device rate when the browser rejects the source rate and reports it", async () => {
+    const { contexts } = graphHarness(true, true, false, "reject");
+    const controller = createLivePlayback({ sampleRate: 88200, left: new Float32Array(8820), right: new Float32Array(8820) }, createDefaultAdvancedParams());
+    await controller.play();
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]?.options.sampleRate).toBeUndefined();
+    expect(controller.getState()).toMatchObject({ playing: true, liveSampleRate: 48000 });
+    controller.dispose();
+  });
+  it.each([[96000, 48000], [192000, 48000], [88200, 44100], [176400, 44100]])("caps a %i Hz source at %i Hz, an integer ratio inside the 2x real-worklet CPU budget", async (sourceRate, liveRate) => {
+    const { contexts } = graphHarness(true, true, false, "honor");
+    const frames = sourceRate / 100;
+    const controller = createLivePlayback({ sampleRate: sourceRate, left: new Float32Array(frames), right: new Float32Array(frames) }, createDefaultAdvancedParams());
+    await controller.play();
+    expect(contexts[0]?.options.sampleRate).toBe(liveRate);
+    expect(controller.getState().liveSampleRate).toBe(liveRate);
+    controller.dispose();
+  });
+  it("stops with the overload message on sustained device underruns from playbackStats, and leaves short hitches to it", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const { contexts, nodes } = graphHarness();
+    const stats = { underrunDuration: 0.03, underrunEvents: 15, totalDuration: 0 };
+    vi.stubGlobal("AudioContext", class extends (globalThis.AudioContext as unknown as new () => object) { playbackStats = stats; });
+    const errors = vi.fn();
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams(), { onError: errors });
+    await controller.play();
+    const node = nodes[0]; if (!contexts[0] || !node) throw new Error("Missing graph");
+    // The worklet's fallback slack rule is off: playbackStats sees real underruns.
+    expect(node.options.processorOptions.watchSlackMs).toBeNull();
+    for (let second = 0; second < 5 && !errors.mock.calls.length; second++) { stats.totalDuration += 1; stats.underrunDuration += 0.06; vi.advanceTimersByTime(1000); }
+    expect(errors).toHaveBeenCalledWith(new Error(OVERLOAD_MESSAGE));
+    expect(controller.getState()).toMatchObject({ playing: false, error: OVERLOAD_MESSAGE });
+    controller.dispose();
+  });
+  it("gives the worklet the output's slack where playbackStats is missing", async () => {
+    const { nodes } = graphHarness();
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams());
+    await controller.play();
+    expect(nodes[0]?.options.processorOptions.watchSlackMs).toBe(10);
+    controller.dispose();
+  });
+  it("rewatches the worklet's deadline watch on a context state change or an audio device change", async () => {
+    const devices = new EventTarget();
+    vi.stubGlobal("navigator", { mediaDevices: devices });
+    const { contexts, nodes } = graphHarness();
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams());
+    await controller.play();
+    const context = contexts[0], node = nodes[0]; if (!context || !node) throw new Error("Missing graph");
+    context.listeners.get("statechange")?.();
+    devices.dispatchEvent(new Event("devicechange"));
+    expect(node.port.postMessage.mock.calls.filter(([message]) => message.type === "rewatch")).toHaveLength(2);
+    // The new device's latency is re-read for the fallback slack rule (S-1).
+    expect(node.port.postMessage).toHaveBeenCalledWith({ type: "rewatch", slackMs: 10 });
+    controller.dispose();
+    expect(context.removeEventListener).toHaveBeenCalledWith("statechange", expect.any(Function));
+    node.port.postMessage.mockClear();
+    devices.dispatchEvent(new Event("devicechange"));
+    expect(node.port.postMessage).not.toHaveBeenCalled();
   });
   it("rejects unsupported source layouts and leaves settings immutable", () => {
     const settings = createDefaultAdvancedParams();

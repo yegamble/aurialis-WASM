@@ -47,29 +47,21 @@ func denseMix(rate float64, seconds int) ([]float32, []float32) {
 }
 
 // V1-11 Round E REQUIRED-1: the match must be measured on what the worklet
-// plays. The UI measures the live (algorithm 1) settings with an offline render
-// and applies the attenuate-only offset after the streaming engine. With heavy
-// limiting the heard A and B must agree within ±0.5 LU, where an export-path
-// (algorithm 2 true-peak limiter) measurement missed by up to about 2 LU.
+// plays. The UI measures the live settings with an offline render and applies
+// the attenuate-only offset after the streaming engine. Since V1-10 the live
+// settings are the export settings (algorithm 2), so with heavy limiting the
+// heard A and B must agree within ±0.5 LU after the match.
 func TestMatchedABHoldsOnHeavilyLimitedLivePlayback(t *testing.T) {
 	const rate = 48000.0
 	left, right := denseMix(rate, 12)
 	source := dsp.MeasureStereo(left, right, rate)
 	for _, drive := range []float64{12, 15, 18} {
 		live := dsp.DefaultParams()
-		live.InputGainDB = drive
-		live.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: -1, TargetLUFS: -14, ReleaseMS: 80}
+		live.AlgorithmVersion, live.InputGainDB = dsp.TruePeakAlgorithmVersion, drive
+		live.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: -1, TargetLUFS: -14, ReleaseMS: 80, TruePeak: true}
 
-		// Heard A: the shared engine in 128-frame worklet quanta.
-		bridge := NewBridge(rate)
-		if !bridge.SetParams(live) {
-			t.Fatal("live params rejected")
-		}
-		heardL, heardR := make([]float32, len(left)), make([]float32, len(left))
-		for start := 0; start < len(left); start += 128 {
-			end := min(start+128, len(left))
-			bridge.ProcessBlock(left[start:end], right[start:end], heardL[start:end], heardR[start:end])
-		}
+		// Heard A: the worklet's ABI, quanta and latency compensation.
+		heardL, heardR, _ := livePlayback(t, rate, left, right, live)
 		heard := dsp.MeasureStereo(heardL, heardR, rate)
 
 		// What measureRender returns for the live settings: the offline render.
@@ -82,13 +74,7 @@ func TestMatchedABHoldsOnHeavilyLimitedLivePlayback(t *testing.T) {
 		if math.Abs(matchedError) > 0.5 {
 			t.Fatalf("+%.0f dB drive: heard A − B %.2f LU after the match", drive, matchedError)
 		}
-
-		exportParams := live
-		exportParams.AlgorithmVersion, exportParams.Limiter.TruePeak = dsp.TruePeakAlgorithmVersion, true
-		_, _, exported := dsp.RenderBuffer(left, right, rate, exportParams)
-		exportProcessed, exportOriginal := matchOffsets(exported.IntegratedLUFS, source.IntegratedLUFS)
-		t.Logf("+%.0f dB drive: heard A − B %.3f LU with the live measurement; %.3f LU had A been measured on export (offset %.2f dB)",
-			drive, matchedError, (heard.IntegratedLUFS+exportProcessed)-(source.IntegratedLUFS+exportOriginal), math.Min(processedDB, originalDB))
+		t.Logf("+%.0f dB drive: heard A − B %.4f LU after the match (offset %.2f dB)", drive, matchedError, math.Min(processedDB, originalDB))
 	}
 }
 

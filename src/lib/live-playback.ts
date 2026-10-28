@@ -1,6 +1,9 @@
 import { MAX_SOURCE_FRAMES } from "./audio-limits";
-import { engineParams, type StereoPCM } from "./browser-engine";
+import type { StereoPCM } from "./browser-engine";
+import { exportParams } from "./engine-params";
 import { usesBrowserAudio } from "./browser-jobs";
+import { liveContextRate } from "./live-rate";
+import { createUnderrunWatch, OVERLOAD_MESSAGE, readPlaybackStats } from "./live-overload";
 import { prepareLiveAutomation, verifiedSourceVector } from "./live-automation";
 import { sameSource } from "./library";
 import type { ScriptV2 } from "./deep-mastering";
@@ -23,7 +26,31 @@ export type LivePlaybackState = {
   parameterVersion: number;
   appliedVersion: number;
   error: string | null;
+  /** Rate the live engine runs at once its context exists: liveContextRate
+   * of the source, or the device rate if the browser refuses that. */
+  liveSampleRate?: number;
 };
+
+/** Fallback overload rule for browsers without playbackStats: the worklet
+ * counts a missed deadline only when a callback overruns (or a gap between
+ * callbacks exceeds) the audio the output already holds. Null where
+ * playbackStats reports real underruns instead. */
+function watchSlackMs(context: AudioContext): number | null {
+  if (readPlaybackStats(context)) return null;
+  const output = Number.isFinite(context.outputLatency) ? context.outputLatency : 0;
+  const base = Number.isFinite(context.baseLatency) ? context.baseLatency : 0;
+  return 1000 * Math.max(output, 2 * base, 0.01);
+}
+
+/** Open the context at liveContextRate so live DSP processes the samples the
+ * export processes (or an integer-ratio rate above 48 kHz). A browser that
+ * rejects the rate gets its device rate. */
+function openLiveContext(sourceRate: number): AudioContext {
+  // Browsers reject unsupported rates differently (NotSupportedError, SyntaxError);
+  // any real fault recurs below and propagates.
+  try { return new AudioContext({ latencyHint: "interactive", sampleRate: liveContextRate(sourceRate) }); }
+  catch { return new AudioContext({ latencyHint: "interactive" }); }
+}
 
 /** One static, attenuate-only A/B monitor gain pair in dB (V1-11). Never part of export. */
 export type LoudnessMatchGains = { processedDb: number; originalDb: number };
@@ -129,7 +156,7 @@ export function createLivePlayback(
   let publicationToken = 0;
   let activePublication: AbortController | undefined;
   const publications = new Map<number, { resolve: (revision: number) => void; reject: (error: Error) => void; canCommit: () => boolean; commitSent: boolean }>();
-  let currentParams = engineParams(settings);
+  let currentParams = exportParams(settings);
   let serializedSettings = JSON.stringify(currentParams);
   let state: LivePlaybackState = {
     position: 0, duration: source.left.length / source.sampleRate,
@@ -152,6 +179,25 @@ export function createLivePlayback(
   let splitter: ChannelSplitterNode | undefined;
   let merger: ChannelMergerNode | undefined;
   let initialization: Promise<void> | undefined;
+  let unwatchDevice: (() => void) | undefined;
+  // Primary overload signal where the browser reports it (Chromium's
+  // playbackStats): sustained device underruns, sampled once a second.
+  const underruns = createUnderrunWatch();
+  let underrunTimer: ReturnType<typeof setInterval> | undefined;
+  function stopUnderrunWatch(): void {
+    if (underrunTimer !== undefined) clearInterval(underrunTimer);
+    underrunTimer = undefined;
+  }
+  function startUnderrunWatch(): void {
+    stopUnderrunWatch(); underruns.reset();
+    const context = audio;
+    if (!context || !readPlaybackStats(context)) return;
+    underrunTimer = setInterval(() => {
+      if (disposed || audio !== context || !state.playing) return;
+      const stats = readPlaybackStats(context);
+      if (stats && underruns.sample(stats)) fail(new Error(OVERLOAD_MESSAGE));
+    }, 1000);
+  }
   let rejectInitialization: ((reason: Error) => void) | undefined;
   let bootTimeout: ReturnType<typeof setTimeout> | undefined;
   let disposed = false;
@@ -238,6 +284,8 @@ export function createLivePlayback(
     buffer = undefined; splitter = undefined; merger = undefined;
     leftAnalyser = undefined; rightAnalyser = undefined;
     initialization = undefined;
+    unwatchDevice?.(); unwatchDevice = undefined;
+    stopUnderrunWatch();
   }
   function fail(error: unknown): void {
     if (disposed) return;
@@ -273,7 +321,7 @@ export function createLivePlayback(
     playTicket++; sourceTicket++; wantsPlayback = false; automaticRepeat = false;
     for (const arm of arms.values()) arm.reject(new DOMException("Playback paused.", "AbortError")); arms.clear();
     const position = positionAt();
-    stopSource();
+    stopSource(); stopUnderrunWatch();
     worklet?.port.postMessage({ type: "hold" });
     state = { ...state, position, playing: false, loading: false };
     cancelAnimationFrame(spectrumFrame);
@@ -313,6 +361,7 @@ export function createLivePlayback(
     setSourceEndFrame(looping ? Infinity : source.left.length);
     state = { ...state, position: sourceOffset, playing: true, loading: false, error: null };
     cancelAnimationFrame(spectrumFrame); spectrumFrame = requestAnimationFrame(spectrum);
+    startUnderrunWatch();
   }
   function spectrum(time: number): void {
     if (disposed || !state.playing || !audio || !leftAnalyser || !rightAnalyser) return;
@@ -383,8 +432,16 @@ export function createLivePlayback(
         : "Live playback requires cross-origin isolation. Restart the Aurialis server and reload.");
     // Called synchronously from play(), before its first await, preserving the
     // user's activation for AudioContext creation/resume in Brave and Safari.
-    const context = new AudioContext({ latencyHint: "interactive" });
+    const context = openLiveContext(source.sampleRate);
     audio = context;
+    // A device switch or a context interruption stalls callbacks that are not
+    // this graph's load: restart the worklet's deadline watch with a warm-up.
+    const rewatch = () => { if (audio !== context) return; underruns.reset(); worklet?.port.postMessage({ type: "rewatch", slackMs: watchSlackMs(context) }); };
+    const devices = (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
+    context.addEventListener("statechange", rewatch);
+    devices?.addEventListener("devicechange", rewatch);
+    unwatchDevice = () => { context.removeEventListener("statechange", rewatch); devices?.removeEventListener("devicechange", rewatch); };
+    state = { ...state, liveSampleRate: context.sampleRate };
     const resumed = context.resume();
     const sharedHeader = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 8);
     const sharedStream = new SharedArrayBuffer(24);
@@ -419,7 +476,7 @@ export function createLivePlayback(
         channelCount: 2, channelCountMode: "explicit", outputChannelCount: [2],
         processorOptions: { header: sharedHeader, stream: sharedStream, tags: sharedTags, samples: sharedSamples, delayBlocks,
           module: compiledModule, controls: sharedControls, controlAbiVersion: 2, entropy: crypto.getRandomValues(new Uint8Array(256)),
-          clockOriginMs: Math.max(1, performance.now()) } });
+          clockOriginMs: Math.max(1, performance.now()), watchSlackMs: watchSlackMs(context) } });
       worklet = node;
       node.port.onmessage = (event: MessageEvent<unknown>) => {
         if (disposed || worklet !== node || !isRecord(event.data)) return;
@@ -526,14 +583,14 @@ export function createLivePlayback(
     async detachScript(next, signal, canCommit = () => true) {
       activePublication?.abort();
       if (!canCommit()) throw new DOMException("The source or settings changed.", "AbortError");
-      if (!installedScript) { desiredScript = undefined; currentParams = engineParams(next); serializedSettings = JSON.stringify(currentParams); controls?.publish(currentParams, ++state.parameterVersion); return; }
+      if (!installedScript) { desiredScript = undefined; currentParams = exportParams(next); serializedSettings = JSON.stringify(currentParams); controls?.publish(currentParams, ++state.parameterVersion); return; }
       await ensureInitialized(); signal.throwIfAborted();
       const context = audio; if (!context) throw new Error("The audio graph is unavailable.");
       await context.resume();
       try {
         signal.throwIfAborted();
         if (!canCommit()) throw new DOMException("The source or settings changed before detach.", "AbortError");
-        const params = engineParams(next), version = state.parameterVersion + 1;
+        const params = exportParams(next), version = state.parameterVersion + 1;
         controls?.publish(params, version);
         await requestPublication({ type: "detach", controls: packLiveControls(params, 2), version }, signal, canCommit);
         signal.throwIfAborted();
@@ -591,7 +648,7 @@ export function createLivePlayback(
     setParams(next) {
       if (disposed) return;
       if (installedScript) throw new Error("Attached automation requires a complete baseline and schedule transaction.");
-      const params = engineParams(next);
+      const params = exportParams(next);
       const serialized = JSON.stringify(params);
       if (serialized === serializedSettings) return;
       const version = state.parameterVersion + 1;

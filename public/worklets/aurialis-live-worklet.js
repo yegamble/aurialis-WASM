@@ -9,6 +9,41 @@ const LEGACY_CONTROL_COUNT = 81;
 // Go-owned loudness snapshot: momentary, short-term, integrated (LUFS), range
 // (LU), true-peak hold, recent true peak (dBTP), recent gain reduction (dB).
 const METER_VALUES = 7, NO_READING = -200;
+// Deadline watch. The kernel runs inside process(), so the processed ring can
+// never run dry from CPU load; overload shows instead as an audio clock that
+// falls behind the wall clock, and as kernel time close to the audio rendered.
+// The main thread's playbackStats watch (Chromium) is the primary signal; it
+// sees real device underruns. Here, each WATCH_SECONDS window after the first
+// (warm-up) is bad when the audio clock lost more than WATCH_LAG of it (60 ms
+// per 2 s) or the kernel took more than WATCH_LOAD of it; where playbackStats
+// is missing, also when a callback or the gap before it overran the output's
+// slack (see process()): a short hitch the buffer absorbs is not a miss.
+// The lag rule sees load outside the kernel too (other nodes on the render
+// thread). Measured 2 s window lag in headless Chromium was 0 ms in every
+// window; real devices render in bursts of one output buffer (about 10–40 ms),
+// so 60 ms stays above that jitter while a render thread at 1.05× falls 100 ms
+// behind per window. Two bad windows in a row fire, so one host stall or a
+// burst of buffered callbacks never does, and clock drift (ppm) is far below.
+const WATCH_SECONDS = 2, WATCH_LAG = 0.03, WATCH_LOAD = 0.9, WATCH_STRIKES = 2;
+const OVERLOAD_MESSAGE = "Playback can't keep up on this device with the current processing. Turn off some processing modules, or close other busy apps or tabs, then press Play.";
+const FAULT_MESSAGE = "Live playback lost its processed audio (an internal buffer fault, not a CPU limit). Press Play to restart, and reload the page if it happens again.";
+// No AudioWorkletGlobalScope in Chromium has performance.now; Date.now ticks in
+// whole milliseconds, which sums without bias over a window.
+const wallNow = typeof performance === "object" && performance !== null && typeof performance.now === "function"
+  ? () => performance.now() : () => Date.now();
+/** The wall clock's step: the gap between its second and third distinct
+ * readings, Infinity if it never moves twice within a bounded spin. Browsers
+ * that resist fingerprinting tick in 16–100 ms. */
+function measureClockStep() {
+  let previous = wallNow(), changes = 0;
+  for (let spin = 0; spin < 2_000_000; spin++) {
+    const now = wallNow();
+    if (now === previous) continue;
+    if (++changes === 2) return now - previous;
+    previous = now;
+  }
+  return Infinity;
+}
 class AurialisLiveProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
@@ -23,6 +58,9 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.tags = new Int32Array(config.tags);
     this.samples = new Float32Array(config.samples);
     this.delay = config.delayBlocks;
+    // Frames the engine delays processed audio (the export algorithm's true-peak
+    // lookahead). A is read this far ahead of B so both play the same source frame.
+    this.latency = 0;
     this.generation = Atomics.load(this.header, GENERATION);
     this.sequence = 0;
     this.startTime = 0;
@@ -46,6 +84,13 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.controlVersion = 0;
     this.failed = false;
     this.missing = 0;
+    // A coarse clock widens the lag bound to two steps.
+    this.clockStep = measureClockStep();
+    // Fallback missed-deadline rule (browsers without playbackStats): the
+    // output's slack in ms, or null where the main thread watches real
+    // underruns instead, or the clock is too coarse to time against it.
+    this.setSlack(config.watchSlackMs);
+    this.resetWatch();
     this.sum = 0;
     this.peak = 0;
     this.ll = 0;
@@ -69,10 +114,17 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         this.sequence = 0;
         this.endTime = Infinity;
         this.missing = 0;
+        this.resetWatch();
         this.sum = this.peak = this.ll = this.rr = this.lr = this.frames = 0;
         if (message.type === "arm") this.port.postMessage({ type: "stream-armed", generation: this.generation });
       } else if (message.type === "hold") {
         this.active = false;
+        this.resetWatch();
+      } else if (message.type === "rewatch") {
+        // The device or context changed: its first callbacks are not this graph's
+        // load, and a new device brings its own output latency (the slack).
+        if ("slackMs" in message) this.setSlack(message.slackMs);
+        this.resetWatch();
       } else if (message.type === "bind-source") {
         if (this.active || this.scheduleAttached || !this.numericSchedule || !(message.source instanceof Float64Array) || message.source.length !== 11) throw new Error("The source cannot be bound to this audio graph.");
         this.sourceVector.set(message.source);
@@ -138,10 +190,8 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       if (exports.aurialis_control_count(this.controlAbiVersion) !== this.controlCount
         || exports.aurialis_algorithm_supported(1) !== 1)
         throw new Error("The live audio engine and settings capabilities do not match.");
-      if (exports.aurialis_latency_frames() !== 0)
-        throw new Error("The live audio engine requires unsupported latency compensation.");
       if (this.controlAbiVersion === 2 && (typeof exports.aurialis_control_buffer_v2 !== "function"
-        || typeof exports.aurialis_set_controls_v2 !== "function"))
+        || typeof exports.aurialis_set_controls_v2 !== "function" || exports.aurialis_algorithm_supported(2) !== 1))
         throw new Error("The live audio engine is missing its versioned settings interface.");
       this.numericSchedule = typeof exports.aurialis_schedule_abi === "function" && exports.aurialis_schedule_abi() === 1
         && ["aurialis_schedule_source_buffer", "aurialis_schedule_bind_source", "aurialis_schedule_begin", "aurialis_schedule_move_buffer", "aurialis_schedule_stage_move", "aurialis_schedule_commit", "aurialis_schedule_revision", "aurialis_schedule_seek", "aurialis_schedule_detach", "aurialis_schedule_set_looping"].every(name => typeof exports[name] === "function");
@@ -152,6 +202,23 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     } catch (error) {
       this.fail(error);
     }
+  }
+  setSlack(slack) {
+    this.slackMs = typeof slack === "number" && Number.isFinite(slack) && slack > 0 && this.clockStep < slack / 2 ? slack : null;
+  }
+  resetWatch() {
+    this.watchWall = null; this.watchFrame = 0; this.watchKernel = 0; this.watchMisses = 0; this.watchWindows = 0; this.watchStrikes = 0; this.watchLastStart = null;
+  }
+  /** Close a watch window after each processed quantum; true once overload is confirmed. */
+  watchDeadline() {
+    const now = wallNow(), frame = Math.round(currentTime * sampleRate) + QUANTUM;
+    if (this.watchWall === null) { this.watchWall = now; this.watchFrame = frame; this.watchKernel = 0; this.watchMisses = 0; return false; }
+    const audioMs = (frame - this.watchFrame) * 1000 / sampleRate;
+    if (audioMs < WATCH_SECONDS * 1000) return false;
+    const late = now - this.watchWall - audioMs > Math.max(WATCH_LAG * audioMs, 2 * this.clockStep), heavy = this.watchKernel > WATCH_LOAD * audioMs;
+    this.watchStrikes = ++this.watchWindows > 1 && (late || heavy || this.watchMisses > 0) ? this.watchStrikes + 1 : 0;
+    this.watchWall = now; this.watchFrame = frame; this.watchKernel = 0; this.watchMisses = 0;
+    return this.watchStrikes >= WATCH_STRIKES;
   }
   fail(error) {
     if (this.failed) return;
@@ -213,8 +280,23 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       ? this.kernel.aurialis_set_controls_v2(this.controlCount) : this.kernel.aurialis_set_controls();
     if (accepted !== 1) throw new Error("The live audio engine rejected these settings.");
     this.refreshBuffers();
+    this.readLatency();
     this.controlVersion = version;
+    // New settings (a module switched on) change the load: restart the watch
+    // with a warm-up window instead of judging the transition.
+    this.resetWatch();
     return true;
+  }
+  readLatency() {
+    // The processed ring can only be read ahead within what is already rendered.
+    const latency = this.kernel.aurialis_latency_frames();
+    if (!Number.isInteger(latency) || latency < 0 || latency > this.delay * QUANTUM)
+      throw new Error("The live audio engine reported an unsupported latency.");
+    this.latency = latency;
+  }
+  slotRendered(sequence) {
+    const slot = (sequence - 1) % SLOTS;
+    return Atomics.load(this.tags, 2 * SLOTS + slot) === sequence && Atomics.load(this.tags, 3 * SLOTS + slot) === this.generation;
   }
   synchronizeStart() {
     if (!this.streamHeader) return;
@@ -239,6 +321,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       this.refreshBuffers(); this.controls.set(detach.controls);
       const accepted = this.controlAbiVersion === 2 ? this.kernel.aurialis_set_controls_v2(this.controlCount) : this.kernel.aurialis_set_controls();
       if (accepted !== 1) throw new Error("The static baseline could not be restored.");
+      this.readLatency();
       this.controlVersion = detach.version;
       this.port.postMessage({ type: "automation-ack", token: detach.token, revision: 0 });
     }
@@ -267,7 +350,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         pending.commitStarted = true;
         if (this.kernel.aurialis_schedule_commit() !== 1 || this.kernel.aurialis_schedule_revision() !== pending.revision) throw new Error("The audio engine did not acknowledge the complete schedule.");
         this.scheduleAttached = true;
-        this.refreshBuffers(); this.controlVersion = pending.version;
+        this.refreshBuffers(); this.readLatency(); this.controlVersion = pending.version;
         this.pendingSchedule = null;
         this.port.postMessage({ type: "automation-ack", token: pending.token, revision: pending.revision });
       }
@@ -295,7 +378,21 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.ready = true;
     this.port.postMessage({ type: "ready" });
   }
+  /** Fallback missed deadlines: a whole callback, or the gap since the previous
+   * one, overrunning the quantum by more than the output's slack (plus one
+   * clock step). A shorter overrun is absorbed by the output buffer. */
   process(inputs, outputs) {
+    if (this.slackMs === null) return this.renderQuantum(inputs, outputs);
+    const start = wallNow();
+    const result = this.renderQuantum(inputs, outputs);
+    if (this.active && !this.failed && this.watchWall !== null) {
+      const quantumMs = 1000 * QUANTUM / sampleRate, bound = this.slackMs + this.clockStep;
+      if (wallNow() - start - quantumMs > bound || (this.watchLastStart !== null && start - this.watchLastStart - quantumMs > bound)) this.watchMisses++;
+      this.watchLastStart = start;
+    } else this.watchLastStart = null;
+    return result;
+  }
+  renderQuantum(inputs, outputs) {
     const output = outputs[0];
     if (!output || output.length < 2) return true;
     const outL = output[0], outR = output[1];
@@ -316,8 +413,11 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       outL.fill(0); outR.fill(0); return true;
     }
     if (sequence - Atomics.load(this.header, READ) >= SLOTS) {
+      // A seek resets READ with a new generation; only a ring fault in this
+      // generation is reported.
+      if (this.generation !== Atomics.load(this.header, GENERATION)) { outL.fill(0); outR.fill(0); return true; }
       this.failed = true;
-      this.port.postMessage({ type: "error", message: "The live audio buffer could not keep up." });
+      this.port.postMessage({ type: "error", message: FAULT_MESSAGE });
       outL.fill(0); outR.fill(0); return true;
     }
     try {
@@ -331,8 +431,11 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       Atomics.store(this.tags, slot, sequence);
       Atomics.store(this.tags, SLOTS + slot, this.generation);
       Atomics.store(this.header, WRITE, sequence);
+      const kernelStart = wallNow();
       if (this.kernel.aurialis_live_process() !== QUANTUM)
         throw new Error("The live audio engine rejected an audio block.");
+      const kernelMs = wallNow() - kernelStart;
+      this.watchKernel += kernelMs;
       this.refreshBuffers();
       if (this.generation !== Atomics.load(this.header, GENERATION)) {
         outL.fill(0); outR.fill(0); return true;
@@ -349,18 +452,30 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       this.fail(error);
       outL.fill(0); outR.fill(0); return true;
     }
+    if (this.watchDeadline()) {
+      this.failed = true;
+      this.port.postMessage({ type: "error", message: OVERLOAD_MESSAGE });
+      outL.fill(0); outR.fill(0); return true;
+    }
+    // B (dry) for this quantum is stream frame (expected - 1) * QUANTUM onward.
+    // The engine renders A for that source frame `latency` frames later, so A
+    // is read that far ahead in the processed ring: A and B, the playhead and
+    // the meters then share one clock and switching is never offset.
     const expected = sequence - this.delay;
     const outputSlot = (expected - 1 + SLOTS) % SLOTS, outputOffset = outputSlot * QUANTUM;
-    const available = expected > 0 && Atomics.load(this.tags, 2 * SLOTS + outputSlot) === expected
-      && Atomics.load(this.tags, 3 * SLOTS + outputSlot) === this.generation;
+    const wetStart = (expected - 1) * QUANTUM + this.latency;
+    const wetFirst = Math.floor(wetStart / QUANTUM) + 1, wetLast = Math.floor((wetStart + QUANTUM - 1) / QUANTUM) + 1;
+    const available = expected > 0 && this.slotRendered(wetFirst) && this.slotRendered(wetLast);
     if (expected > 0 && !available) {
       Atomics.add(this.header, UNDERRUNS, 1);
       if (++this.missing > Math.ceil(sampleRate * 0.2 / QUANTUM)) {
         this.failed = true;
-        this.port.postMessage({ type: "error", message: "Live processing stalled. Pause and restart playback." });
+        // Processed audio is missing although the kernel ran: a tag or generation
+        // fault, not CPU load (the deadline watch reports that).
+        this.port.postMessage({ type: "error", message: FAULT_MESSAGE });
       }
     } else this.missing = 0;
-    if (available) Atomics.store(this.header, APPLIED, Atomics.load(this.tags, 4 * SLOTS + outputSlot));
+    if (available) Atomics.store(this.header, APPLIED, Atomics.load(this.tags, 4 * SLOTS + (wetFirst - 1) % SLOTS));
     const targetMix = this.original ? 1 : 0;
     const step = 1 / (sampleRate * 0.008);
     const volumeStep = 1 / (sampleRate * 0.01);
@@ -373,8 +488,9 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       this.matchOriginal += Math.max(-volumeStep, Math.min(volumeStep, this.targetMatchOriginal - this.matchOriginal));
       const dryL = expected > 0 ? this.samples[outputOffset + i] : 0;
       const dryR = expected > 0 ? this.samples[FRAMES + outputOffset + i] : 0;
-      const wetL = available ? this.samples[2 * FRAMES + outputOffset + i] : 0;
-      const wetR = available ? this.samples[3 * FRAMES + outputOffset + i] : 0;
+      const wetIndex = (wetStart + i) % FRAMES;
+      const wetL = available ? this.samples[2 * FRAMES + wetIndex] : 0;
+      const wetR = available ? this.samples[3 * FRAMES + wetIndex] : 0;
       const audible = blockFrame + i < endFrame;
       const wet = 1 - this.mix, dry = this.mix;
       // Meters read the selected A or B at monitor volume, before the static

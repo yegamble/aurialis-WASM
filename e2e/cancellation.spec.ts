@@ -87,7 +87,7 @@ test("closing the export dialog cancels its pending render and keeps the source 
     await canceled;
     await expect(dialog).toBeHidden();
     await expect(page).toHaveURL(new RegExp(`/master/${id}$`));
-    await expect(page.getByRole("button", { name: "Render offline preview", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Export", exact: true })).toBeEnabled();
   } finally {
     held.release();
   }

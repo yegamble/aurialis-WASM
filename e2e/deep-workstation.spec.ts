@@ -6,7 +6,7 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 import { proposalChanges } from "../src/lib/proposal-changes";
 import type { MeasuredAudioMetrics, Track } from "../src/lib/types";
 import { uploadProject } from "./workflow-fixture";
-import { captureDeepDevice, capturedDevice, capturedProgress } from "./deep-capture";
+import { captureDeepDevice, capturedDevice, capturedProgress, exportLatencyFrames } from "./deep-capture";
 async function project(page: Page): Promise<Track> { const track = await page.evaluate(() => (JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as { tracks: Track[] }).tracks[0]); if (!track) throw new Error("Missing project"); return track; }
 
 test("actual measured Deep proposal preserves audio settings and its populated editor passes six widths", async ({ page }, info) => {
@@ -187,7 +187,9 @@ test("muted and explicitly soloed proposals drive the same live and native expor
   await page.getByRole("button", { name: "Apply Deep proposal", exact: true }).click(); await expect.poll(async () => !!(await project(page)).deepMastering?.applied).toBe(true);
   await page.getByRole("button", { name: "Play", exact: true }).click(); await expect.poll(async () => (await capturedProgress(page))?.frames ?? 0).toBeGreaterThanOrEqual(65536); await page.getByRole("button", { name: "Pause", exact: true }).click();
   const capture = await capturedDevice(page); if (!capture) throw new Error("Missing muted live capture"); const muted = await exportFloat(page), pcm = decode(muted); let maximum = 0;
-  for (let index = 0; index < 65536; index++) maximum = Math.max(maximum, Math.abs((pcm.left[index] ?? 0) - (capture.outputLeft[index] ?? 0)), Math.abs((pcm.right[index] ?? 0) - (capture.outputRight[index] ?? 0)));
+  // Live renders the export chain; its raw ring trails the export by the lookahead (V1-10).
+  const latency = exportLatencyFrames(48000);
+  for (let index = 0; index < 65536 - latency; index++) maximum = Math.max(maximum, Math.abs((pcm.left[index] ?? 0) - (capture.outputLeft[latency + index] ?? 0)), Math.abs((pcm.right[index] ?? 0) - (capture.outputRight[latency + index] ?? 0)));
   expect(maximum).toBeLessThan(1e-6);
   await select.selectOption("manual-width"); await page.getByRole("button", { name: "Unmute draft move", exact: true }).click(); await page.getByRole("button", { name: "Close move editor", exact: true }).click();
   await select.selectOption("manual-gain"); await page.getByRole("button", { name: "Solo in proposal", exact: true }).click(); await page.getByRole("button", { name: "Close move editor", exact: true }).click();

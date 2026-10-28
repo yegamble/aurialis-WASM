@@ -44,7 +44,7 @@ function PredictedLevels({ deep, soloed }: { deep: DeepMasteringState; soloed: b
     <h3>Predicted export levels</h3>
     <dl className="grid gap-2 text-xs sm:grid-cols-3">{rows.map((row) => <div className="min-w-0 rounded-xl border border-line bg-paper p-3" key={row.label}><dt>{row.label}</dt><dd className="tabular-nums"><strong className="text-sm">{row.value}</strong><br />{row.detail}{"note" in row && row.note && <><br /><strong>{row.note}</strong></>}</dd></div>)}</dl>
     {prediction.compressorAverageGainReductionDb !== undefined && prediction.limiterPeakGainReductionDb !== undefined && <p className="disclosure tabular-nums">Compressor average reduction {db(prediction.compressorAverageGainReductionDb)} dB · export limiter peak reduction {db(prediction.limiterPeakGainReductionDb)} dB.</p>}
-    <p className="disclosure">Measured by rendering this draft through the export true-peak limiter at the source rate, before rate conversion or dither. Crest is true peak to RMS. Live meters use the preview limiter and can read higher.</p>
+    <p className="disclosure">Measured by rendering this draft through the export true-peak limiter at the source rate, before rate conversion or dither. Crest is true peak to RMS. Live playback renders the same limiter.</p>
   </section>;
 }
 

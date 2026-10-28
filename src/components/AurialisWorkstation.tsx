@@ -6,11 +6,7 @@ import {
   measureAudio,
   normalizeSimpleAudio,
   exportLevelSummary,
-  processPreview,
-  previewWAV,
   renderDelivery,
-  serverRenderScript,
-  readCanonicalWAV,
   sourcePeaks,
   type StereoPCM,
 } from "@/lib/browser-engine";
@@ -25,6 +21,9 @@ import { EQBandControls, LimiterReleaseControl } from "./shared/EQBandControls";
 import { RealTransport } from "./shared/RealTransport";
 import { useLoudnessMatch } from "@/lib/use-loudness-match";
 import { ReleaseReview } from "./shared/ReleaseReview";
+import { AuditionExport, auditionKey, type AuditionHandle, type HeldAudition } from "./shared/AuditionExport";
+import { liveRateNote, liveRateStatus } from "@/lib/live-rate";
+import { OVERLOAD_MESSAGE } from "@/lib/live-overload";
 import { createLivePlayback, type LiveMeter, type LivePlaybackController, type LivePlaybackState, type LiveSpectrum } from "@/lib/live-playback";
 import { usePathname } from "next/navigation";
 import { navigateWorkspace, useWorkspacePath, workspaceRoute, type WorkstationRoute } from "@/lib/workspace-navigation";
@@ -599,9 +598,11 @@ function MasterView({ trackId }: { trackId: string }) {
   const forwardAction = useRef<() => void>(() => undefined);
   const [processing, setProcessing] = useState(false);
   const [source, setSource] = useState<StereoPCM | null>(null);
-  const [preview, setPreview] = useState<StereoPCM | null>(null);
-  const [renderedKey, setRenderedKey] = useState("");
   const live = useRef<LivePlaybackController | null>(null);
+  // Audition export (capped or resampled live): its held file and its player.
+  const audition = useRef<AuditionHandle | null>(null);
+  const auditionHeld = useRef<HeldAudition | null>(null);
+  const lastPlayed = useRef<"live" | "audition">("live");
   const deepPlayback = useDeepPlayback(track, live);
   const playbackControls = useRef<ReturnType<typeof bindPlaybackControls> | null>(null);
   const { session: scrub, stopScrub, onScrub } = useTransportScrub(live, { available: () => !handoverActive.current, resume: () => { void play(); }, advance: (next) => { playbackControls.current?.update(next, true); } });
@@ -613,6 +614,10 @@ function MasterView({ trackId }: { trackId: string }) {
   const [sourceLoading, setSourceLoading] = useState(true);
   const [sourceAttempt, setSourceAttempt] = useState(0);
   const ab = playback?.original ? "B" : "A";
+  // Live DSP runs at the source rate up to 48 kHz (V1-10); above that, or where
+  // the browser refuses the rate, say so — and claim nothing before Play.
+  const liveRate = source ? liveRateStatus(source.sampleRate, playback?.liveSampleRate) : { kind: "pending" as const };
+  const liveNote = liveRateNote(liveRate);
   const playheadRatio = playback?.duration ? playback.position / playback.duration : 0;
   const [activeBandId, setActiveBandId] = useState<EQBandId>("low");
   const [exportOpen, setExportOpen] = useState(false);
@@ -635,7 +640,6 @@ function MasterView({ trackId }: { trackId: string }) {
     [],
   );
   const settingsKey = useMemo(() => track ? appliedRevisionKey(track) ?? masteringSettingsKey(track.advanced) : "", [track]);
-  const fresh = renderedKey === settingsKey && preview !== null;
   const rateChoices = track ? exportRateChoices(track.sampleRate, source?.left.length ?? track.sourceIdentity?.frames ?? Math.round(track.duration * track.sampleRate)) : [];
   // A choice that is unavailable for this track falls back to the source rate.
   const delivery = availableDelivery(exportFormat, rateChoices);
@@ -674,7 +678,7 @@ function MasterView({ trackId }: { trackId: string }) {
         onState: (next) => {
           if (!active) return;
           setPlayback(next);
-          controls?.update(next);
+          controls?.update(mediaState(controller));
           if (!next.playing) { setMeter(null); setSpectrum(null); }
         },
         onMeter: (next) => { if (active && live.current?.getState().playing) setMeter(next); },
@@ -686,11 +690,12 @@ function MasterView({ trackId }: { trackId: string }) {
       setPlayback(controller.getState());
       setLiveError("");
       controls = bindPlaybackControls(track?.title || "Untitled track", {
-        getState: controller.getState,
+        getState: () => mediaState(controller),
         available: () => active && live.current === controller && !handoverActive.current,
-        play: () => { stopScrub(false); return controller.play(); },
-        pause: () => { stopScrub(false); controller.pause(); },
-        seek: (seconds) => { stopScrub(false); controller.seek(seconds); },
+        // Media keys drive whichever player the listener last started (S-4).
+        play: () => { stopScrub(false); if (lastPlayed.current === "audition" && audition.current?.canPlay()) return audition.current.play(); lastPlayed.current = "live"; return controller.play(); },
+        pause: () => { stopScrub(false); if (audition.current?.playing()) audition.current.pause(); else controller.pause(); },
+        seek: (seconds) => { stopScrub(false); if (!audition.current?.playing()) controller.seek(seconds); },
         restart: () => { stopScrub(false); controller.seek(0); },
         forward: () => { forwardAction.current(); },
         onError: (error) => { if (active) setLiveError(error instanceof Error ? error.message : "Playback could not start."); },
@@ -717,9 +722,15 @@ function MasterView({ trackId }: { trackId: string }) {
     catch (error) { setLiveError(error instanceof Error ? error.message : "The audio settings could not be applied."); }
   }, [liveSettings, track?.deepMastering?.applied]);
 
+  /** The Media Session's view: the audition while it plays, else live playback. */
+  function mediaState(controller: LivePlaybackController): LivePlaybackState {
+    const state = controller.getState();
+    return audition.current?.playing() ? { ...state, ...audition.current.position(), playing: true } : state;
+  }
   async function play() {
     const controller = live.current;
     if (!controller) return;
+    lastPlayed.current = "live";
     setLiveError("");
     stopScrub(false);
     try { await controller.play(); }
@@ -759,9 +770,7 @@ function MasterView({ trackId }: { trackId: string }) {
     let cancelled = false;
     const controller = new AbortController();
     setSource(null);
-    setPreview(null);
     setSourceBlob(null);
-    setRenderedKey("");
     setMessage("");
     setSourceError("");
     setSourceLoading(true);
@@ -802,41 +811,6 @@ function MasterView({ trackId }: { trackId: string }) {
     };
   }, [track?.id, track?.sourceRevision, sourceAttempt]);
 
-  async function renderPreview(params: AdvancedParams = track?.advanced ?? createDefaultAdvancedParams(), pending?: AbortController, ready = "Preview ready. Playback uses the shared Go DSP engine.") {
-    if (!track || !source) return;
-    if (!pending) renderAbort.current?.abort();
-    const controller = pending ?? new AbortController();
-    renderAbort.current = controller;
-    renderSettings.current = appliedRevisionKey(track) ?? masteringSettingsKey(params);
-    setProcessing(true);
-    setMessage(
-      track.deepMastering?.applied ? "Rendering the applied script on this device…" : "Rendering the imported audio on this device…",
-    );
-    try {
-      const pcm = track.deepMastering?.applied && sourceBlob
-        ? await readCanonicalWAV(await serverRenderScript(sourceBlob, track.deepMastering.applied, 32, controller.signal))
-        : await processPreview(source, params, controller.signal);
-      if (controller.signal.aborted) return;
-      setPreview(pcm);
-      setRenderedKey(appliedRevisionKey(track) ?? masteringSettingsKey(params));
-      live.current?.setBypass(false);
-      setMessage(track.deepMastering?.applied ? "Preview ready. The applied script uses the common Go DSP engine." : ready);
-      dispatch({
-        type: "UPDATE_TRACK",
-        id: track.id,
-        patch: { status: "mastered" },
-      });
-    } catch (error) {
-      if (!controller.signal.aborted)
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "Preview failed. Please retry.",
-        );
-    } finally {
-      if (!controller.signal.aborted) setProcessing(false);
-    }
-  }
   async function applySimpleDirection() {
     if (!track || !sourceBlob) return;
     if (track.deepMastering?.applied) { setMessage("Detach Deep automation before applying static target-loudness normalization. Your applied script remains active."); return; }
@@ -854,7 +828,10 @@ function MasterView({ trackId }: { trackId: string }) {
       const next = { ...expected, input: measured.input };
       renderSettings.current = masteringSettingsKey(next);
       dispatch({ type: "APPLY_NORMALIZED_GAIN", id: track.id, expected, input: next.input });
-      await renderPreview(next, controller, `Preview ready. ${exportLevelSummary(measurement.afterMetrics)}`);
+      // Live playback is the preview: it already plays the export chain, so no
+      // second WAV is rendered. Only a finished export marks the project mastered.
+      const heard = source ? liveRateStatus(source.sampleRate, live.current?.getState().liveSampleRate) : { kind: "pending" as const };
+      setMessage(`Target set. ${exportLevelSummary(measurement.afterMetrics, heard)}`);
     } catch (error) {
       if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "Could not prepare this master.");
     } finally {
@@ -871,7 +848,9 @@ function MasterView({ trackId }: { trackId: string }) {
     setMessage("Rendering WAV from the imported source…");
     try {
       const { bitDepth, dither } = delivery, outputRate = deliveredRate(delivery, track.sampleRate);
-      const { blob, truePeakDbtp } = await renderDelivery(
+      // A fresh audition already holds this exact file: hand it over (S-3).
+      const auditioned = auditionHeld.current?.key === auditionKey(track, delivery) ? auditionHeld.current : null;
+      const { blob, truePeakDbtp } = auditioned ?? await renderDelivery(
         sourceBlob,
         exportRender(track),
         bitDepth,
@@ -887,6 +866,7 @@ function MasterView({ trackId }: { trackId: string }) {
       setTimeout(() => {
         URL.revokeObjectURL(url);
       }, 1000);
+      dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { status: "mastered" } });
       setMessage(
         `Exported ${bitDepth === 32 ? "32-bit float" : `${String(bitDepth)}-bit PCM`} WAV${bitDepth === 32 ? "" : dither ? " with TPDF dither" : " without dither"} at ${outputRate === track.sampleRate ? "the source rate" : `${String(outputRate / 1000)} kHz (converted from ${String(track.sampleRate / 1000)} kHz)`} ${track.deepMastering?.applied ? "from applied revision " + String(track.deepMastering.applied.revision) : "using the same Go DSP parameters"}.${truePeakDbtp === null ? "" : ` Delivered true peak ${truePeakDbtp.toFixed(2)} dBTP at ${formatRate(outputRate)}.`}`,
       );
@@ -1013,7 +993,7 @@ function MasterView({ trackId }: { trackId: string }) {
             <div>
               <span>Sample peak</span>
               <strong>{levels?.peak ?? "—"}</strong>
-              <small>dBFS · preview</small>
+              <small>dBFS · live</small>
             </div>
             <div>
               <span>RMS level</span>
@@ -1048,7 +1028,10 @@ function MasterView({ trackId }: { trackId: string }) {
             sourceReady={source !== null && live.current !== null}
             onPlay={play}
             onPause={() => { stopScrub(false); live.current?.pause(); }}
-            onOriginal={(original) => { live.current?.setBypass(original); }}
+            // A/B is a live control: while the audition plays it pauses the
+            // audition and sets live's A/B, without starting live (Q-S3).
+            // ...and hands the play/pause keys back to live (Round 8b Q-S2).
+            onOriginal={(original) => { if (audition.current?.playing()) audition.current.pause(); lastPlayed.current = "live"; live.current?.setBypass(original); }}
             onVolume={(volume) => { live.current?.setVolume(volume); }}
             onRestart={() => { seekSeconds(0); }}
             onForward={forward}
@@ -1058,34 +1041,27 @@ function MasterView({ trackId }: { trackId: string }) {
             {...(nextTrack ? { nextTrackTitle: nextTrack.title || "Untitled track" } : {})}
             handover={handover}
           />
+          {liveNote && <p className="disclosure" role="status">{liveNote}</p>}
+          {(liveRate.kind === "capped" || liveRate.kind === "resampled") && <AuditionExport key={track.id} track={track} sourceBlob={sourceBlob} delivery={delivery}
+            volume={playback?.volume ?? 1} livePlaying={(playback?.playing ?? false) || (playback?.loading ?? false)} onStart={() => { lastPlayed.current = "audition"; stopScrub(false); live.current?.pause(); }}
+            onHeld={(held) => { auditionHeld.current = held; }} onHandle={(handle) => { audition.current = handle; }}
+            onPlayingChange={() => { const controller = live.current; if (controller) playbackControls.current?.update(mediaState(controller), true); }} />}
           {track.mode === "deep" && track.deepMastering && <DeepTimeline script={track.deepMastering.proposal} selectedId={deepMoveId} onSelect={selectDeepMove} playheadRatio={playheadRatio} />}
           <LiveSpectrumChart frame={spectrum} playing={playback?.playing ?? false} />
           {sourceError && <div className="flex flex-wrap items-center gap-3" role="alert">
             <p className="disclosure">{sourceError}</p>
             <Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry source</Button><Button variant="secondary" onClick={() => { setRestoreOpen(true); }}>Restore source</Button>
           </div>}
-          {liveError && <div className="flex flex-wrap items-center gap-3" role="alert"><p className="disclosure">{liveError}</p><Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry playback</Button><Button variant="secondary" onClick={() => { setRestoreOpen(true); }}>Restore source</Button></div>}
+          {liveError && <div className="flex flex-wrap items-center gap-3" role="alert"><p className="disclosure">{liveError}</p><Button variant="secondary" onClick={() => { setSourceAttempt((attempt) => attempt + 1); }}>Retry playback</Button>{liveError !== OVERLOAD_MESSAGE && <Button variant="secondary" onClick={() => { setRestoreOpen(true); }}>Restore source</Button>}</div>}
           <div className="render-actions">
-            <Button
-              disabled={!source || processing}
-              onClick={() => void renderPreview()}
-              icon={<Icon name={processing ? "refresh-cw" : "play"} />}
-            >
-              {processing ? "Rendering…" : "Render offline preview"}
-            </Button>
-            {fresh && <Button variant="secondary" onClick={() => {
-              const url = URL.createObjectURL(previewWAV(preview));
-              const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${track.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-offline-preview.wav`; anchor.click();
-              setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
-            }}>Download offline preview</Button>}
             <span className="disclosure">
               {track.deepMastering?.applied
                 ? "Playback and export use the acknowledged applied revision. Draft edits wait for Apply; pending baseline edits wait for acknowledgment."
-                : fresh
-                  ? "Offline preview matches your settings. It and live meters use the preview limiter, so peaks can read higher than the export. Live playback updates independently."
-                  : track.mode === "simple"
-                    ? "Simple and Advanced share these settings. Set target loudness to measure the requested level; export uses the current settings."
-                    : "Playback responds to your controls immediately. Render an offline preview for a full-track check; export always uses current settings."}
+                : track.mode === "simple"
+                  ? "Simple and Advanced share these settings. Set target loudness to measure the requested level; export uses the current settings."
+                  : liveRate.kind === "source"
+                    ? "Playback responds to your controls immediately and runs the export chain, so what you hear is what you export."
+                    : "Playback responds to your controls immediately and runs the export chain."}
             </span>
           </div>
           <p className="disclosure" role="status">
@@ -1473,7 +1449,7 @@ function AdvancedControls({
 
       </DSPModule>
       <FrequencyDynamicsControls track={track} />
-      <DSPModule title="Sample-peak limiter">
+      <DSPModule title="True-peak limiter">
       <label className="check-row">
         <input
           type="checkbox"

@@ -8,7 +8,7 @@ export async function verifyElevatedChange(source: Blob, track: Track, change: S
   const identity = track.sourceIdentity;
   if (!identity) throw new Error("Restore the matching source in Library before checking Elevated.");
   await verifyCanonicalSource(source, identity, signal);
-  // Measure what export delivers (algorithm 2 true-peak limiter), not the live preview limiter.
+  // Measure what export delivers and live playback plays: algorithm 2, the true-peak limiter.
   const measured = await measureAudio(source, exportParams(change.advanced), signal);
   signal.throwIfAborted();
   if (measured.sampleRate !== identity.sampleRate || measured.frames !== identity.frames

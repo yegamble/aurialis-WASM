@@ -4,14 +4,6 @@ import { decode, fixture } from "./audio-fixture";
 import { denseFixture, uploadProject } from "./workflow-fixture";
 import type { AdvancedParams } from "../src/lib/types";
 
-async function previewPCM(page: Page) {
-  const waiting = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Download offline preview", exact: true }).click();
-  const download = await waiting;
-  const path = await download.path();
-  if (!path) throw new Error("Missing offline preview download");
-  return decode(await readFile(path));
-}
 async function exportPCM(page: Page) {
   await page.getByRole("button", { name: "Export", exact: true }).click();
   const dialog = page.getByRole("dialog");
@@ -61,26 +53,27 @@ test("EQ handles support keyboard and dragging without changing other bands or m
   }
 });
 
-test("first Simple apply previews exactly the settings exported from the uploaded source", async ({ page }) => {
+// Live playback is the preview (V1-10): Set target loudness only measures the
+// export chain and never renders a second, differently limited WAV.
+test("Set target loudness measures the export chain without rendering a preview WAV", async ({ page }) => {
   test.setTimeout(120_000);
   await uploadProject(page);
+  const renders: { accept: string | null }[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && request.url().endsWith("/api/master/render")) renders.push({ accept: request.headers()["accept"] ?? null });
+  });
   await page.getByRole("tab", { name: "simple", exact: true }).click();
   await page.getByRole("button", { name: "Set target loudness", exact: true }).click();
-  await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
-  await expect(page.getByText("Offline preview matches your settings. It and live meters use the preview limiter, so peaks can read higher than the export. Live playback updates independently.", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Download offline preview", exact: true })).toBeEnabled();
+  await expect(page.getByText(/^Target set\. Export measures /u)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("button", { name: /offline preview/u })).toHaveCount(0);
+  expect(renders.length).toBeGreaterThan(0);
+  expect(renders.every((render) => render.accept === "application/json"), JSON.stringify(renders)).toBe(true);
   await page.getByRole("button", { name: "Open", exact: true }).click();
   await expect(page.getByRole("button", { name: "Export", exact: true }), "current canonical settings remain exportable after a Simple change").toBeEnabled();
-  await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled();
-  await page.getByRole("button", { name: "Set target loudness", exact: true }).click();
-  await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
-  await expect(page.getByText("Offline preview matches your settings. It and live meters use the preview limiter, so peaks can read higher than the export. Live playback updates independently.", { exact: true })).toBeVisible();
-  const preview = await previewPCM(page);
   const exported = await exportPCM(page);
-  expect(preview.left).toHaveLength(exported.left.length);
-  for (const channel of ["left", "right"] as const) {
-    expect(Math.max(...preview[channel].map((sample, index) => Math.abs(sample - (exported[channel][index] ?? Infinity))))).toBeLessThan(1e-5);
-  }
+  // uploadProject's default source: a 1 s, 48 kHz tone; the export keeps every frame.
+  expect(exported.left.length).toBe(decode(fixture(1000, 1)).left.length);
+  expect(exported.right.length).toBe(exported.left.length);
 });
 
 test("re-applying an unchanged Simple direction never compounds EQ or other settings", async ({ page }) => {

@@ -32,7 +32,6 @@ async function snapshot(page: Page, id: string) {
     track: await savedTrack(page, id), output, meanRmsDbfs,
     version: Number(await page.locator(".transport").getAttribute("data-parameter-version")),
     applied: Number(await page.locator(".transport").getAttribute("data-applied-version")),
-    fresh: await page.getByRole("button", { name: "Download offline preview", exact: true }).count() === 1,
   };
 }
 
@@ -124,8 +123,6 @@ test("Simple and Advanced share one audible settings snapshot without changing s
   try {
     await observeOutput(page);
     const id = await uploadProject(page, "qa-shared-settings.wav", 16);
-    await page.getByRole("button", { name: "Render offline preview", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Download offline preview", exact: true })).toBeVisible({ timeout: 30_000 });
     await page.getByRole("button", { name: "Repeat track", exact: true }).click();
     await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");
     const requests: string[] = [];
@@ -143,14 +140,12 @@ test("Simple and Advanced share one audible settings snapshot without changing s
         expect(after.applied).toBe(before.applied);
         expect(after.output.generation).toBe(before.output.generation);
         expect(after.output.instanceId).toBe(before.output.instanceId);
-        expect(after.fresh).toBe(before.fresh);
         await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
         expect(Math.abs(after.meanRmsDbfs - before.meanRmsDbfs)).toBeLessThan(0.12);
         await expect(page.getByRole("button", { name: "Export", exact: true })).toBeEnabled();
       }
     };
     const neutral = await snapshot(page, id);
-    expect(neutral.fresh).toBe(true);
     await views(neutral, ["simple", "advanced"]);
     await page.getByRole("slider", { name: "Input gain", exact: true }).fill("6");
     await page.getByRole("tab", { name: "Mid", exact: true }).click();
@@ -160,7 +155,6 @@ test("Simple and Advanced share one audible settings snapshot without changing s
     expect(manual.track.advanced.input).toBe(6);
     expect(manual.track.advanced.eqBands[2].gainDb).toBe(3);
     expect(manual.track.simpleCustom).toBe(true);
-    expect(manual.fresh).toBe(false);
     await views(manual, ["simple", "advanced", "simple"]);
     await customSelections(page);
 

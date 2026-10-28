@@ -62,24 +62,33 @@ export function engineParams(advanced: AdvancedParams) {
   };
 }
 
-/** DSP algorithm for offline exports: the lookahead true-peak limiter, which
- * algorithm 2 selects with limiter.truePeak. Live playback stays on algorithm 1
- * because the worklet cannot absorb the limiter's latency. */
+/** DSP algorithm for exports and live playback: the lookahead true-peak
+ * limiter, which algorithm 2 selects with limiter.truePeak. The live worklet
+ * compensates its latency (V1-10). */
 export const EXPORT_ALGORITHM_VERSION = 2;
 
 function withExportLimiter<T extends { limiter: object }>(params: T): T & { algorithmVersion: number } {
   return { ...params, limiter: { ...params.limiter, truePeak: true }, algorithmVersion: EXPORT_ALGORITHM_VERSION };
 }
 
+/** What export and live playback both render (V1-10): what you hear is what
+ * you export. Dither follows the export's bit depth after the render, and the
+ * worklet mixes B Original and the equal-loudness offset outside the engine. */
 export function exportParams(advanced: AdvancedParams) {
   return withExportLimiter(engineParams(advanced));
 }
 
-/** Copy of an applied script whose render uses the export algorithm. Dither
- * is left to the export's bit depth, as the Go prediction (exportScriptV2) renders. */
+/** Engine settings as export renders them: the export algorithm, with dither
+ * left to the export's bit depth, as the Go prediction (exportScriptV2) renders. */
+export function exportChain<T extends { limiter: object; ditherBits: number }>(params: T): T & { algorithmVersion: number } {
+  return { ...withExportLimiter(params), ditherBits: 0 };
+}
+
+/** Copy of an applied script whose render uses the export algorithm; live
+ * playback installs this same copy. */
 export function exportScript<T extends { chainParams: { limiter: object; ditherBits: number } }>(script: T): T {
   const copy = structuredClone(script);
-  return { ...copy, chainParams: { ...withExportLimiter(copy.chainParams), ditherBits: 0 } };
+  return { ...copy, chainParams: exportChain(copy.chainParams) };
 }
 
 /** What one master renders for delivery: its applied Deep script, else its settings. */

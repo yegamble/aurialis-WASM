@@ -64,5 +64,11 @@ export async function captureDevice(page: Page, deviceRate: number, delayArmMs =
     };
   }, { rate: deviceRate, delay: delayArmMs });
 }
+/** Frames the export algorithm's true-peak lookahead delays processed audio at
+ * a device rate: the 1.5 ms attack plus 46 frames of detector support
+ * (internal/audio/dsp/truepeak.go, pinned by the Go and compiled-reactor
+ * contract checks). Captured outputs are the raw processed ring; the worklet
+ * plays it this many frames ahead so A lines up with B (V1-10). */
+export function exportLatencyFrames(rate: number): number { return Math.round(rate * 0.0015) + 46; }
 export function capturedProgress(page: Page) { return page.evaluate(() => (window as CapturedWindow).qaDeviceProgress ?? null); }
 export function capturedDevice(page: Page) { return page.evaluate(() => (window as CapturedWindow).snapshotDeviceCapture?.() ?? null); }

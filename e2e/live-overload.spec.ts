@@ -93,11 +93,11 @@ for (const waitMs of [120, 250]) {
 // its window to ~2.2 s, so the second stall already falls within five windows
 // and the 5-window two-burst rule fires at about 14 s. Shorter stalls (300 or
 // 500 ms) cause no device underrun at all in headless Chromium, so no e2e can
-// isolate the 15-window rule; the exact unit rows prove it. The second stall
-// starts about 13 s after Play (6 s of audio, the 1 s stall, 6 s more), so the
-// 13 s lower bound rejects any stop before it. If the first stall's recovery
-// reaches a third window (about 1 in 15 stalls on a real host, QA E9), rule 1
-// (three strikes) fires at about 9 s and this lower bound fails.
+// isolate the 15-window rule; the exact unit rows prove it. Any rule may fire,
+// and each is correct: if the first stall's recovery reaches a third window
+// (about 1 in 15 stalls on a real host, QA E9), three strikes fire at about
+// 8–9 s. The first stall begins about 6 s after Play, so the 7 s floor only
+// proves the stop came after a stall began (Round 8e).
 test("a 1 s stall every 6 s stops with the can't-keep-up message", async ({ page }) => {
   test.setTimeout(120_000);
   await hitch(page, 1000, 2250, "after");
@@ -106,7 +106,7 @@ test("a 1 s stall every 6 s stops with the can't-keep-up message", async ({ page
   const elapsed = Date.now() - started;
   test.info().annotations.push({ type: "fired-after-ms", description: String(elapsed) });
   console.log(`sparse 1 s every 6 s fired after ${String(elapsed)} ms`);
-  expect(elapsed, "fired after (ms)").toBeGreaterThanOrEqual(13_000);
+  expect(elapsed, "fired after (ms)").toBeGreaterThanOrEqual(7_000);
   expect(elapsed, "fired after (ms)").toBeLessThanOrEqual(25_000);
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
 });

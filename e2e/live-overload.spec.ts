@@ -15,8 +15,8 @@ type Where = "before" | "inside" | "after";
 
 /** Spin `waitMs` every `everyQuanta` quanta; with `skipEvery`, leave out every
  * skipEvery-th of those stalls (60/60/0 ms is skipEvery 3). */
-async function hitch(page: Page, waitMs: number, everyQuanta: number, where: Where, skipEvery = 0): Promise<void> {
-  const burn = `let qaN = 0; function qaBurn() { if (++qaN % ${String(everyQuanta)} === 0 && (${String(skipEvery)} === 0 || (qaN / ${String(everyQuanta)}) % ${String(skipEvery)} !== 0)) { const s = Date.now(); while (Date.now() - s < ${String(waitMs)}) {} } }`;
+async function hitch(page: Page, waitMs: number, everyQuanta: number, where: Where, skipEvery = 0, onlyOnce = false): Promise<void> {
+  const burn = `let qaN = 0; function qaBurn() { if (++qaN % ${String(everyQuanta)} === 0 && (!${String(onlyOnce)} || qaN === ${String(everyQuanta)}) && (${String(skipEvery)} === 0 || (qaN / ${String(everyQuanta)}) % ${String(skipEvery)} !== 0)) { const s = Date.now(); while (Date.now() - s < ${String(waitMs)}) {} } }`;
   const replace: [string, string] = where === "before" ? [WRITE, `${WRITE} qaBurn();`]
     : where === "inside" ? [KERNEL, `${KERNEL}\n      qaBurn();`] : [AFTER, `qaBurn(); ${AFTER}`];
   await page.addInitScript(({ burn, replace }) => {
@@ -70,6 +70,17 @@ for (const waitMs of [5, 8]) {
     await hitch(page, waitMs, 375, "inside");
     await play(page, `hitch-${String(waitMs)}.wav`);
     await keepsPlaying(page, 25);
+  });
+}
+
+// One isolated stall is a glitch, not an overload (Round 7 R-1): a single 120 or
+// 250 ms spin about 6 s in must leave playback running.
+for (const waitMs of [120, 250]) {
+  test(`one ${String(waitMs)} ms stall about 6 s in keeps playing`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await hitch(page, waitMs, 2250, "after", 0, true);
+    await play(page, `single-${String(waitMs)}.wav`);
+    await keepsPlaying(page, 20);
   });
 }
 

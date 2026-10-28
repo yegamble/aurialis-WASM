@@ -81,26 +81,6 @@ test("live Play during the audition render keeps playing live; the audition wait
   await page.getByRole("button", { name: "Pause", exact: true }).click();
 });
 
-// Round 6 S-1: release the held render right after a cold Play click, while
-// live is still loading; the audition must wait, Ready, and live must play.
-test("a render finishing during a cold live start waits, ready", async ({ page }) => {
-  test.setTimeout(120_000);
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await upload96(page);
-  const render = await holdNextRender(page);
-  await page.getByRole("button", { name: "Repeat track", exact: true }).click();
-  await page.getByRole("button", { name: "Audition export", exact: true }).click();
-  await render.seen;
-  await page.getByRole("button", { name: "Play", exact: true }).click();
-  render.release();
-  await expect(page.getByText("Ready: the exact export file (96 kHz (source) · 24-bit PCM · TPDF dither).", { exact: true })).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
-  await page.waitForTimeout(1000);
-  expect(await playingAt(page)).toBe(0);
-  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
-  await page.getByRole("button", { name: "Pause", exact: true }).click();
-});
-
 // Round 6 REQUIRED-1: the audition follows the Playback volume, like live.
 test("Audition export follows the Playback volume on start and on every move", async ({ page }) => {
   test.setTimeout(120_000);

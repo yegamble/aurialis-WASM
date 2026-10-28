@@ -154,7 +154,9 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
     canPlay: () => held.current !== null && held.current.key === latest.current.key,
     playing: () => playingNow.current,
     play: () => play(),
-    pause: () => { audio.current?.pause(); },
+    // Mark it paused at once: the media "pause" event is a later task, and a
+    // play/pause key pressed before it must already see the audition stopped.
+    pause: () => { playingNow.current = false; audio.current?.pause(); },
     position: () => ({ position: audio.current?.currentTime ?? 0, duration: audio.current && Number.isFinite(audio.current.duration) ? audio.current.duration : 0 }),
   });
   handle.current.play = () => play();

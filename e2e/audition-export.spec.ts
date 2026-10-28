@@ -139,6 +139,7 @@ test("after A/B during the audition, Space starts live with B applied, not the a
   await expect.poll(() => playingAt(page), { timeout: 30_000 }).toBeGreaterThan(0.2);
   await page.getByRole("button", { name: "B Original", exact: true }).click();
   await expect.poll(() => playingAt(page)).toBe(0);
+  await expect(page.getByRole("button", { name: "Play audition", exact: true })).toBeVisible();
   await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur(); });
   await page.keyboard.press("Space");
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true", { timeout: 30_000 });

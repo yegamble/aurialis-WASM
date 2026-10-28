@@ -84,9 +84,9 @@ describe("playbackStats underrun watch (V1-10 Round 4)", () => {
     }
     expect(fired).toBe(true);
   });
-  it("in idealised 1 s windows, 70 ms every 4 windows (under 2% over fifteen) does not stop, wherever it falls", () => {
+  it("in idealized 1 s windows, 70 ms every 4 windows (under 2% over fifteen) does not stop, wherever it falls", () => {
     for (const at of [1, 2, 3, 4]) expect(run(sparse(120, 4, 70, at)), `from window ${String(at)}`).toEqual([]);
-    // In idealised windows, a one-window glitch every 8 or 10 windows never puts
+    // In idealized windows, a one-window glitch every 8 or 10 windows never puts
     // three bursts in fifteen windows. A real host's windows differ (see the
     // 994/197/24 ms row), so this says nothing about wall-clock spacing.
     for (const every of [8, 10]) expect(run(sparse(120, every, 1000)), `1 s every ${String(every)} windows`).toEqual([]);

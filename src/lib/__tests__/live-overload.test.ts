@@ -21,8 +21,9 @@ describe("playbackStats underrun watch (V1-10 Round 4)", () => {
     // 4 ms every quantum: the device misses most of each second.
     expect(run([500, 500, 500, 500])[0]).toBe(4);
   });
-  it("fires on periodic dropouts that skip a second, by the 3-window sum (Round 6 S-2)", () => {
-    // 60/60/0 ms repeating: never three bad seconds in a row, but 4% of 3 s.
+  it("fires on periodic dropouts that skip a second: two separate bursts over 3% in the last five windows", () => {
+    // 60/60/0 ms repeating: never three bad windows in a row, but two separate
+    // bursts and 4.8% of the last five windows.
     expect(run([60, 60, 0, 60, 60, 0, 60, 60, 0]).length).toBeGreaterThan(0);
     // 200 ms every 2 s: 6.7–13% of any 3 s.
     expect(run([200, 0, 200, 0, 200, 0]).length).toBeGreaterThan(0);
@@ -90,12 +91,13 @@ describe("playbackStats underrun watch (V1-10 Round 4)", () => {
   it("in idealized 1 s windows, 70 ms every 4 windows (under 2% over fifteen) does not stop, wherever it falls", () => {
     for (const at of [1, 2, 3, 4]) expect(run(sparse(120, 4, 70, at)), `from window ${String(at)}`).toEqual([]);
     // In idealized windows, a one-window glitch every 8 or 10 windows never puts
-    // three bursts in fifteen windows. A real host's windows differ (see the
+    // three bursts in fifteen windows. Measured windows differ (see the
     // 994/197/24 ms row), so this says nothing about wall-clock spacing.
     for (const every of [8, 10]) expect(run(sparse(120, every, 1000)), `1 s every ${String(every)} windows`).toEqual([]);
   });
-  // On a real host a 1 s stall stretches its window and adds a bad recovery
-  // window (Round 8b traces), so it uses about two windows per stall.
+  // A shape seen in the Round 8b traces on one host: a 1 s stall stretched its
+  // window and left a bad recovery window. In QA E9's runs a ~1 s stall spanned
+  // one to three judged windows; this row models the two-window case.
   const stallAndRecovery = (every: number, at: number) => [0, 0, ...Array.from({ length: 60 }, (_, index) => ((index + at) % every === 0 ? 1000 : (index + at) % every === 1 ? 200 : 0))];
   it("counts judged windows, not seconds: a two-window stall plus recovery every 7 windows stops, every 8 does not (Round 8c)", () => {
     expect(run(stallAndRecovery(7, 0))[0], "1 s + 200 ms every 7 windows").toBeLessThanOrEqual(17);

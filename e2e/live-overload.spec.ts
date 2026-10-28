@@ -95,7 +95,7 @@ for (const waitMs of [120, 250]) {
 // 500 ms) cause no device underrun at all in headless Chromium, so no e2e can
 // isolate the 15-window rule; the exact unit rows prove it. Any rule may fire,
 // and each is correct: if the first stall's recovery reaches a third window
-// (about 1 in 15 stalls on a real host, QA E9), three strikes fire at about
+// (about 1 in 15 stalls on QA E9's host), three strikes fire at about
 // 8–9 s. The first stall begins about 6 s after Play, so the 7 s floor only
 // proves the stop came after a stall began (Round 8e).
 test("a 1 s stall every 6 s stops with the can't-keep-up message", async ({ page }) => {

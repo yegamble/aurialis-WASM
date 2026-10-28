@@ -13,8 +13,9 @@ export function readPlaybackStats(context: BaseAudioContext): PlaybackStatsLike 
 }
 
 /** Share of a ~1 s window the device may spend in underrun before it counts as
- * bad: 1% (10 ms per second). A 60 ms dropout per second is 6%; one 5–8 ms
- * kernel call per second is absorbed by the output buffer and adds nothing. */
+ * bad: 1% (10 ms per second). A 60 ms dropout per second is 6%. Measured in
+ * headless Chromium (QA Round E 3): one 5–8 ms kernel call per second was
+ * absorbed by the output buffer and added no underrun. */
 const UNDERRUN_SHARE = 0.01;
 // Three rules, each over judged windows (about 1 s each; a window is bad over
 // 1% underrun):
@@ -24,12 +25,12 @@ const UNDERRUN_SHARE = 0.01;
 // 3. Three separate bursts and 2% or more underrun in the last fifteen, judged
 //    only once fifteen windows exist (so the result does not depend on phase).
 // By construction, a glitch confined to at most two judged windows cannot
-// trigger rule 1 alone (a stall straddling a second boundary, measured 41 ms
-// then 12 ms at load average 40, does not stop playback). Wall-clock patterns
-// are not windows: on a real host a ~1 s stall spans two or three judged
-// windows, and when its recovery reaches a third it stops playback on its own
-// (seen in about 1 of 15 stalls, QA E9). Sparse glitches spaced well apart may
-// never stop playback. Unit rows and measured examples are in
+// trigger rule 1 alone (QA measured one stall straddling a second boundary as
+// 41 ms then 12 ms, at load average 40). Wall-clock patterns
+// are not windows: in QA E9's runs on one host, a ~1 s stall spanned one to
+// three judged windows. A stall stops playback on its own when it leaves three
+// windows in a row over 1%. Sparse glitches spaced well apart may never stop
+// playback. Unit rows and measured examples are in
 // `__tests__/live-overload.test.ts` and docs/architecture.md.
 const WINDOW_SECONDS = 0.9, STRIKES = 3, RECENT = 5, RECENT_SHARE = 0.03, BURSTS = 2, LONG = 15, LONG_SHARE = 0.02, LONG_BURSTS = 3;
 
@@ -45,7 +46,7 @@ function judge(windows: readonly JudgedWindow[], minBursts: number, share: numbe
 /**
  * Judge sustained device underruns from successive playbackStats samples
  * (about one per second). The first window after (re)start is a warm-up:
- * Chromium records 12–19 underrun events while the stream starts. Three bad
+ * Chromium recorded 12–19 underrun events while the stream started (measured). Three bad
  * windows in a row, two separate bursts with over 3% underrun in the last five
  * windows, or three separate bursts with at least 2% over the last fifteen, are
  * an overload. A glitch confined to two windows cannot trigger the first rule

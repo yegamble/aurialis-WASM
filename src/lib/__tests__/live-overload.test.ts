@@ -43,6 +43,23 @@ describe("playbackStats underrun watch (V1-10 Round 4)", () => {
     // The trade-off: two separate 80 ms dropouts within five seconds also stop.
     expect(run([0, 0, 80, 0, 0, 80, 0]).length).toBeGreaterThan(0);
   });
+  /** `seconds` windows with `ms` of underrun in every `every`-th window (from `at`). */
+  const sparse = (seconds: number, every: number, ms: number, at = 2) => Array.from({ length: seconds }, (_, index) => (index >= at && (index - at) % every === 0 ? ms : 0));
+  it("stops on three or more separate glitches within about 15 s (Round 8 REQUIRED-1)", () => {
+    // run() index n is about n + 1 s after Play (one baseline tick first).
+    expect(run(sparse(40, 6, 950))[0], "1 s every 6 s").toBeLessThanOrEqual(19);
+    expect(run(Array.from({ length: 40 }, (_, index) => (index >= 2 && ((index - 2) % 6 === 0 || (index - 2) % 6 === 1) ? 500 : 0)))[0], "1 s every 6 s as 500+500").toBeLessThanOrEqual(19);
+    expect(run(sparse(40, 5, 300))[0], "300 ms every 5 s").toBeLessThanOrEqual(16);
+    expect(run(sparse(40, 5, 900))[0], "900 ms every 5 s").toBeLessThanOrEqual(16);
+    expect(run(sparse(60, 3, 60))[0], "60 ms every 3 s").toBeLessThanOrEqual(25);
+  });
+  it("accepts the limit: 70 ms every 4 s (under 2% over 15 s) never stops, wherever it falls", () => {
+    for (const at of [1, 2, 3, 4]) expect(run(sparse(120, 4, 70, at)), `from window ${String(at)}`).toEqual([]);
+  });
+  it("stops sparse glitches at the same time wherever they fall", () => {
+    for (const at of [1, 2, 3, 4, 5]) expect(run(sparse(40, 5, 300, at))[0], `300 ms every 5 s from ${String(at)}`).toBeLessThanOrEqual(16);
+    for (const at of [1, 2, 3]) expect(run(sparse(60, 3, 60, at))[0], `60 ms every 3 s from ${String(at)}`).toBeLessThanOrEqual(25);
+  });
   it("restarts with a warm-up when the context's duration runs backwards", () => {
     const watch = createUnderrunWatch();
     const sample = (total: number, under: number) => watch.sample({ totalDuration: total, underrunDuration: under, underrunEvents: 0 });

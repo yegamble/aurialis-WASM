@@ -22,23 +22,37 @@ const UNDERRUN_SHARE = 0.01;
 // Periodic dropouts that skip a second (60/60/0 ms, or 200 ms every 2 s) are
 // caught over the last five windows: at least two separate bursts (runs of
 // adjacent bad windows with a good window between them) and over 3% underrun
-// in total. One long glitch is tolerated, even a 1 s burst split across two
-// windows (QA measured one at startup on a loaded host); repeated glitches stop
-// playback, including two separate 80 ms dropouts a few seconds apart.
-const WINDOW_SECONDS = 0.9, STRIKES = 3, RECENT = 5, RECENT_SHARE = 0.03, BURSTS = 2;
+// in total. Sparser glitches are caught once fifteen windows have been judged:
+// three or more separate bursts and at least 2% underrun across those fifteen
+// (300 ms every 5 s, 1 s every 6 s, 60 ms every 3 s; a full window keeps this
+// independent of where the glitches fall). So three or more separate glitches
+// within about 15 s stop playback; a single glitch never does, however long or
+// however it splits across windows (QA measured a 1 s startup burst on a loaded
+// host). Accepted limit: sparse small glitches under 2% over 15 s (70 ms every
+// 4 s) never stop.
+const WINDOW_SECONDS = 0.9, STRIKES = 3, RECENT = 5, RECENT_SHARE = 0.03, BURSTS = 2, LONG = 15, LONG_SHARE = 0.02, LONG_BURSTS = 3;
+
+type JudgedWindow = { underrun: number; seconds: number; bad: boolean };
+/** At least `minBursts` separate bursts (runs of adjacent bad windows) and more
+ * than `share` underrun across `windows` (at least `share` when `inclusive`). */
+function judge(windows: readonly JudgedWindow[], minBursts: number, share: number, inclusive = false): boolean {
+  const bursts = windows.filter((window, index) => window.bad && !windows[index - 1]?.bad).length;
+  const sum = windows.reduce((total, window) => ({ underrun: total.underrun + window.underrun, seconds: total.seconds + window.seconds }), { underrun: 0, seconds: 0 });
+  return bursts >= minBursts && (inclusive ? sum.underrun >= share * sum.seconds : sum.underrun > share * sum.seconds);
+}
 
 /**
  * Judge sustained device underruns from successive playbackStats samples
  * (about one per second). The first window after (re)start is a warm-up:
  * Chromium records 12–19 underrun events while the stream starts. Three bad
- * windows in a row, or at least two separate bursts with more than 3% underrun
- * in total over the last five windows, are an overload. One glitch, however long
- * and however it splits across windows, is not.
+ * windows in a row, two separate bursts with over 3% underrun in the last five
+ * windows, or three separate bursts with at least 2% over the last fifteen, are
+ * an overload. One glitch, however long and however it splits, is not.
  */
 export function createUnderrunWatch() {
   let previous: PlaybackStatsLike | null = null, windows = 0, strikes = 0;
-  let recent: { underrun: number; seconds: number; bad: boolean }[] = [];
-  function reset(): void { previous = null; windows = 0; strikes = 0; recent = []; }
+  let history: JudgedWindow[] = [];
+  function reset(): void { previous = null; windows = 0; strikes = 0; history = []; }
   return {
     reset,
     /** True once the overload is confirmed. */
@@ -53,11 +67,9 @@ export function createUnderrunWatch() {
       if (++windows === 1) return false;
       const bad = underrun > UNDERRUN_SHARE * seconds;
       strikes = bad ? strikes + 1 : 0;
-      recent = [...recent, { underrun, seconds, bad }].slice(-RECENT);
-      const sum = recent.reduce((total, window) => ({ underrun: total.underrun + window.underrun, seconds: total.seconds + window.seconds }), { underrun: 0, seconds: 0 });
-      const bursts = recent.filter((window, index) => window.bad && !recent[index - 1]?.bad).length;
-      const periodic = bursts >= BURSTS && sum.underrun > RECENT_SHARE * sum.seconds;
-      return strikes >= STRIKES || periodic;
+      history = [...history, { underrun, seconds, bad }].slice(-LONG);
+      return strikes >= STRIKES || judge(history.slice(-RECENT), BURSTS, RECENT_SHARE)
+        || (history.length === LONG && judge(history, LONG_BURSTS, LONG_SHARE, true));
     },
   };
 }

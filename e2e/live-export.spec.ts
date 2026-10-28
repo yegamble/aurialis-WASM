@@ -125,6 +125,16 @@ async function heaviestChain(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
   await expect(page.getByRole("slider", { name: "Input gain", exact: true })).toHaveValue("6");
   await expect(page.getByRole("checkbox", { name: "Enable limiter", exact: true })).toBeChecked();
+  // Every stage it enables must still be on after reload (Round 7 P2-4), as the
+  // project the live chain was built from saved it.
+  const loaded = await page.evaluate(() => (JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as { tracks: Track[] }).tracks[0]?.advanced);
+  expect(loaded, "the reloaded project").toBeDefined();
+  expect({
+    eq: loaded?.eqEnabled !== false && loaded?.eqBands.every((band) => band.enabled !== false && band.gainDb === 2),
+    deHarsh: loaded?.deHarsh.enabled, multiband: loaded?.multiband.enabled, compressor: loaded?.compressor.enabled,
+    autoRelease: loaded?.compressor.autoRelease, saturation: loaded?.saturationModule.enabled && loaded.saturationModule.drive === 60,
+    stereo: loaded?.stereo.enabled && loaded.stereo.width === 130, monoBass: loaded?.stereo.monoBass, limiter: loaded?.limiter.enabled,
+  }).toEqual({ eq: true, deHarsh: true, multiband: true, compressor: true, autoRelease: true, saturation: true, stereo: true, monoBass: true, limiter: true });
 }
 
 async function exportFloat(page: Page): Promise<{ wav: Buffer; status: string }> {

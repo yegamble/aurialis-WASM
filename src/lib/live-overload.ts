@@ -16,23 +16,21 @@ export function readPlaybackStats(context: BaseAudioContext): PlaybackStatsLike 
  * bad: 1% (10 ms per second). A 60 ms dropout per second is 6%; one 5–8 ms
  * kernel call per second is absorbed by the output buffer and adds nothing. */
 const UNDERRUN_SHARE = 0.01;
-// Three bad seconds in a row: one host stall that straddles a second boundary
-// (measured: 41 ms then 12 ms, at load average 40) is two bad seconds and must
-// not stop playback; a sustained 60 ms-per-second dropout is bad every second.
-// Periodic dropouts that skip a second (60/60/0 ms, or 200 ms every 2 s) are
-// caught over the last five windows: at least two separate bursts (runs of
-// adjacent bad windows with a good window between them) and over 3% underrun
-// in total. Sparser glitches are caught once fifteen windows have been judged:
-// three or more separate bursts and at least 2% underrun across those fifteen
-// (300 ms every 5 s, 1 s every 6 s, 60 ms every 3 s; a full window keeps this
-// independent of where the glitches fall). So three or more separate glitches
-// within about 15 s stop playback. A single glitch spanning at most two judged
-// windows (under about 1 s) never does, however it splits (QA measured a 1 s
-// startup burst on a loaded host); a dropout of about 2 s or more always does
-// (three bad seconds in a row). Accepted limits: sparse small glitches under 2%
-// over 15 s (70 ms every 4 s) never stop, and glitches 8 or more judged windows
-// apart never stop. A real 1 s stall plus its recovery uses about two windows,
-// so the wall-clock spacing that escapes depends on the host.
+// Three rules, each over judged windows (about 1 s each; a window is bad over
+// 1% underrun):
+// 1. Three bad windows in a row.
+// 2. Two separate bursts (runs of adjacent bad windows) and over 3% underrun
+//    in the last five windows.
+// 3. Three separate bursts and 2% or more underrun in the last fifteen, judged
+//    only once fifteen windows exist (so the result does not depend on phase).
+// By construction, a glitch confined to at most two judged windows cannot
+// trigger rule 1 alone (a stall straddling a second boundary, measured 41 ms
+// then 12 ms at load average 40, does not stop playback). Wall-clock patterns
+// are not windows: on a real host a ~1 s stall spans two or three judged
+// windows, and when its recovery reaches a third it stops playback on its own
+// (seen in about 1 of 15 stalls, QA E9). Sparse glitches spaced well apart may
+// never stop playback. Unit rows and measured examples are in
+// `__tests__/live-overload.test.ts` and docs/architecture.md.
 const WINDOW_SECONDS = 0.9, STRIKES = 3, RECENT = 5, RECENT_SHARE = 0.03, BURSTS = 2, LONG = 15, LONG_SHARE = 0.02, LONG_BURSTS = 3;
 
 type JudgedWindow = { underrun: number; seconds: number; bad: boolean };
@@ -50,8 +48,8 @@ function judge(windows: readonly JudgedWindow[], minBursts: number, share: numbe
  * Chromium records 12–19 underrun events while the stream starts. Three bad
  * windows in a row, two separate bursts with over 3% underrun in the last five
  * windows, or three separate bursts with at least 2% over the last fifteen, are
- * an overload. One glitch spanning at most two windows (under about 1 s) is
- * not, however it splits; one dropout of about 2 s or more always is.
+ * an overload. A glitch confined to two windows cannot trigger the first rule
+ * alone.
  */
 export function createUnderrunWatch() {
   let previous: PlaybackStatsLike | null = null, windows = 0, strikes = 0;

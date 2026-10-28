@@ -1162,3 +1162,20 @@ Round E evidence:
   - TypeScript and unit tests: `test:wasm`, `tsc` and the browser-test `tsc`, ESLint, knip and cspell (408 files) pass; Vitest 731 passed. Unit and live-playback tests passed again after the three-second change.
   - Native Playwright: `audition-export`, `live-overload`, `live-export`, `live-playback`, `transport`, `a11y-responsive` and `simple-styles` 54/54 before the change; `live-overload` 8/8 after it.
   - CI on the pushed head is recorded in the PR.
+
+**Round 6 (Devil's Advocate: not verified on `a386720`), 2026-10-27.** The Chair accepted the three-strike rule.
+- REQUIRED-1, audition volume. The audition element ignored the Playback volume, so at 0.1 it played about 20 dB louder than live. It now follows the slider on start and on every move. Where `HTMLMediaElement.volume` does not stick (iOS Safari), the element is routed once through a GainNode; other browsers get no second Web Audio path. Covered by unit tests, including that fallback, and an e2e (0.1, then 0.6). The guide, architecture and README say the audition is the exact export, so Equal-loudness A/B does not apply to it.
+- S-1. Live loading counts as playing. A render that finishes during a cold live start leaves the audition Ready and does not pause live (unit test, which fails without the change, and an e2e that releases the held render right after Play).
+- S-2. The playbackStats judge also fires on more than 3% underrun summed over the last three windows. That catches 60/60/0 ms and 200 ms every 2 s; the 53 ms straddling stall (about 1.8%) still does not fire. Unit-tested, and both patterns are in `live-overload.spec.ts`.
+- S-3. Every stop in `live-overload.spec.ts` must come within 8 s. Measured: 5.2–5.4 s for all five stop cases.
+- S-4. The Audition = Export check is no longer circular. A fresh Export is rendered before any audition exists, and the audition's Blob must match it; a second Export must hand over the held file (natively, no render request). This runs in both the native and browser-build suites.
+- P2 fixes:
+  - The architecture now says roughly the first 2 s after each start are never judged.
+  - The stop-time comment in `live-export.spec.ts` now reads about 5–6 s.
+  - The soak holds mean load ≤ 0.5 when it runs 600 s or more.
+- New P2 ledger lines: audition seeking and Media Session seek; `heaviestChain` checking only two stages; `devicechange` slack timing.
+- 600 s soak, started at load average 7.1 (below the 8 cores; it ranged 5–20 during the run): passed. 0 device underruns after warm-up, drift +4 ms, mean kernel load 0.29 (gate 0.5), slow 0, max call 2 ms.
+- Round 6 gates (2026-10-28):
+  - Local: `gofmt -l` empty (no Go changed). `bash scripts/build.sh`, `test:wasm`, `tsc` and the browser-test `tsc`, ESLint, knip and cspell (407 files) pass. Vitest 736/736.
+  - Full native Playwright (`--workers=1`): 157/159 at load average 14–145. The forced 192 kHz Deep oracle case (stopped by the overload message on real underruns) and `deep-recovery`'s late-ACK case both passed on rerun at load average 10.
+  - CI run 40660379878 on `9bd290f`: green.

@@ -155,6 +155,26 @@ test("after A/B during the audition, Space starts live with B applied, not the a
   await page.getByRole("button", { name: "Pause", exact: true }).click();
 });
 
+// QA E9 P2-1 (probe V5): Play audition and B in one task, before the media
+// "play" event. A/B must still pause the starting audition, so B is not shown
+// pressed while the processed audition plays.
+test("Play audition and B in the same task leave the audition paused with B applied", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await upload96(page);
+  await page.getByRole("button", { name: "Audition export", exact: true }).click();
+  await expect.poll(() => playingAt(page), { timeout: 30_000 }).toBeGreaterThan(0.2);
+  await page.getByRole("button", { name: "Pause audition", exact: true }).click();
+  await expect.poll(() => playingAt(page)).toBe(0);
+  const play = await page.getByRole("button", { name: "Play audition", exact: true }).elementHandle();
+  const original = await page.getByRole("button", { name: "B Original", exact: true }).elementHandle();
+  await page.evaluate(([first, second]) => { (first as HTMLButtonElement).click(); (second as HTMLButtonElement).click(); }, [play, original]);
+  await page.waitForTimeout(1000);
+  expect(await playingAt(page), "audition position while playing (0 = paused)").toBe(0);
+  await expect(page.getByRole("button", { name: "B Original", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Play audition", exact: true })).toBeVisible();
+});
+
 // Round 6 REQUIRED-1: the audition follows the Playback volume, like live.
 test("Audition export follows the Playback volume on start and on every move", async ({ page }) => {
   test.setTimeout(120_000);

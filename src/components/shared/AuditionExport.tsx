@@ -138,6 +138,9 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
     try {
       const resumed = prepareVolume(element, latest.current.volume, fallbackGain, gesture);
       if (!resumed) return;
+      // Playing from the moment play() starts: the media "play" event is a later
+      // task, and A/B or a key in the same task must already see it (QA E9).
+      playingNow.current = true;
       onStart();
       const started = element.play();
       await Promise.all([resumed, started]);
@@ -145,6 +148,7 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
     } catch (cause) {
       // A refused or interrupted start (NotAllowedError, AbortError) keeps the
       // held file: stay Ready, and the next click plays it.
+      playingNow.current = !element.paused;
       setNotice(cause instanceof DOMException && cause.name === "NotAllowedError"
         ? "The browser did not allow the audition to start. Press Play audition to try again."
         : "The audition did not start. Press Play audition to try again.");

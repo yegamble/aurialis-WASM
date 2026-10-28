@@ -7,7 +7,7 @@ import { DEFAULT_DELIVERY, deliveryRequest } from "@/lib/delivery-format";
 import { exportRender } from "@/lib/engine-params";
 import { testStore } from "@/lib/__tests__/fixtures";
 import type { Track } from "@/lib/types";
-import { AuditionExport, auditionKey } from "../AuditionExport";
+import { AuditionExport, auditionKey, type AuditionHandle } from "../AuditionExport";
 
 function base(): Track {
   const track = testStore.tracks[0];
@@ -20,8 +20,8 @@ const urls = { create: vi.fn(() => "blob:audition"), revoke: vi.fn() };
 let pause: MockInstance<() => void>;
 let playSpy: MockInstance<() => Promise<void>>;
 
-function mount(track = base(), livePlaying = false, onStart = vi.fn()) {
-  const view = render(<AuditionExport track={track} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying={livePlaying} onStart={onStart} />);
+function mount(track = base(), livePlaying = false, onStart = vi.fn(), onHandle?: (handle: AuditionHandle | null) => void) {
+  const view = render(<AuditionExport track={track} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying={livePlaying} onStart={onStart} {...(onHandle ? { onHandle } : {})} />);
   const element = () => { const audio = document.querySelector<HTMLAudioElement>("audio.audition-export"); if (!audio) throw new Error("Missing audition element"); return audio; };
   return { ...view, element, onStart };
 }
@@ -254,9 +254,12 @@ describe("Audition export (V1-10 owner ruling)", () => {
   it.each(["NotAllowedError", "AbortError"])("keeps a held audition Ready when play() rejects with %s, and the next click plays (S-3)", async (name) => {
     vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: wav, truePeakDbtp: null });
     playSpy.mockImplementationOnce(() => Promise.reject(new DOMException("refused", name)));
-    mount();
+    let handle: AuditionHandle | null = null;
+    mount(base(), false, vi.fn(), (next) => { handle = next; });
     fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
     expect(await screen.findByText(/^Ready: the exact export file .*Press Play audition to try again\.$/u)).toBeTruthy();
+    // Counted as playing from play() on, and cleared again by the rejection (QA E9).
+    expect((handle as AuditionHandle | null)?.playing()).toBe(false);
     expect(screen.getByRole("button", { name: "Play audition" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Play audition" }));
     expect(await screen.findByRole("button", { name: "Pause audition" })).toBeTruthy();

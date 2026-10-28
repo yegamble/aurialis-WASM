@@ -307,7 +307,7 @@ describe("master live playback lifecycle", () => {
       for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(URL, key, descriptor); else Reflect.deleteProperty(URL, key); }
     });
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
-    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("play")); return Promise.resolve(); });
+    const mediaPlay = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("play")); return Promise.resolve(); });
     const mediaPause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("pause")); });
     vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
     const rendered = canonicalWAV({ ...pcm, sampleRate: 96000 });
@@ -335,6 +335,14 @@ describe("master live playback lifecycle", () => {
     await waitFor(() => { expect(instance.controller.play).toHaveBeenCalledOnce(); });
     expect(await screen.findByRole("button", { name: "Play audition" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "B Original" }).getAttribute("aria-pressed")).toBe("true");
+    // Play audition then A/B in the same task, before the media "play" event:
+    // A/B still pauses the starting audition (QA E9 P2-1).
+    mediaPlay.mockImplementation(function (this: HTMLMediaElement) { setTimeout(() => { this.dispatchEvent(new Event("play")); }, 0); return Promise.resolve(); });
+    mediaPause.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Play audition" }));
+    fireEvent.click(screen.getByRole("button", { name: "A Processed" }));
+    expect(mediaPause).toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: "Play audition" })).toBeTruthy();
     // Export downloads the same held file instead of rendering it again.
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
     fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));

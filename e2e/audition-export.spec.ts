@@ -81,6 +81,52 @@ test("live Play during the audition render keeps playing live; the audition wait
   await page.getByRole("button", { name: "Pause", exact: true }).click();
 });
 
+// Q-S1 (QA audition-probe P3): live Play, then Pause, during the held render.
+// The finished audition must not auto-play after the listener paused.
+test("live Play then Pause during the audition render: the audition waits, ready", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await upload96(page);
+  const render = await holdNextRender(page);
+  await page.getByRole("button", { name: "Audition export", exact: true }).click();
+  await render.seen;
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
+  render.release();
+  await expect(page.getByText("Ready: the exact export file (96 kHz (source) · 24-bit PCM · TPDF dither).", { exact: true })).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(2000);
+  expect(await playingAt(page)).toBe(0);
+});
+
+// Q-S2: keyboard focus follows the one audition button through every state.
+test("keyboard focus stays on the audition button through render, cancel, play and re-render", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 375, height: 800 });
+  await upload96(page);
+  const focused = () => page.evaluate(() => (document.activeElement instanceof HTMLButtonElement ? document.activeElement.textContent?.trim() : document.activeElement?.tagName) ?? "");
+  const render = await holdNextRender(page);
+  await page.getByRole("button", { name: "Audition export", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await render.seen;
+  expect(await focused()).toBe("Cancel audition render");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Audition render canceled.", { exact: true })).toBeVisible();
+  expect(await focused()).toBe("Audition export");
+  render.release();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => playingAt(page), { timeout: 30_000 }).toBeGreaterThan(0.1);
+  expect(await focused()).toBe("Pause audition");
+  await page.keyboard.press("Enter");
+  await expect.poll(focused).toBe("Play audition");
+  await page.getByRole("slider", { name: "Input gain", exact: true }).fill("3");
+  await page.getByRole("button", { name: "Re-render audition", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => playingAt(page), { timeout: 30_000 }).toBeGreaterThan(0.1);
+  expect(await focused()).toBe("Pause audition");
+});
+
 // Round 6 REQUIRED-1: the audition follows the Playback volume, like live.
 test("Audition export follows the Playback volume on start and on every move", async ({ page }) => {
   test.setTimeout(120_000);

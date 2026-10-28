@@ -1300,7 +1300,7 @@ Round E evidence:
     - The three burner cases and the 30 s soak: 4/4.
 
 **Round 8d (Devil's Advocate E10, QA E9 on `bcadaab`), 2026-10-28.**
-- The false claim. "1 s every 10 s never stops" was false. QA's `sparse-gap` probe stopped once at 34.4 s on a real host: one stall left three bad windows (994 ms over 1.96 s, 197 ms over 2.19 s, then 24 ms over 1.03 s, which is 2.3%), so three strikes fired. About 1 in 15 recorded stalls has this shape. This is the third round of false overload claims, and all of them described idealized windows as host behaviour.
+- The false claim. "1 s every 10 s never stops" was false. QA's `sparse-gap` probe stopped once at 34.4 s on a real host: one stall left three bad windows (994 ms over 1.96 s, 197 ms over 2.19 s, then 24 ms over 1.03 s, which is 2.3%), so three strikes fired. About 1 in 15 recorded stalls has this shape. This is the third round of false overload claims, and all of them described idealized windows as host behavior.
 - Ruling 1. `live-overload.ts`, architecture, the ledger V1-10 row and tasks now state only:
   - The three rules. Three bad judged seconds in a row stop playback. So do two separate bursts with over 3% underrun in the last five, and three separate bursts with 2% or more in the last fifteen.
   - What holds by construction: a glitch confined to two judged seconds cannot trigger the first rule alone.

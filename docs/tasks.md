@@ -1491,4 +1491,49 @@ Chair ruling 2026-10-27 from V1-10 Round E QA, which also folds in the V1-10 Rou
   - Playwright `mastering-targets`, `live-export`, `release-artifacts` and `live-playback`: 26/26.
   - Race: every package passes except `internal/server`'s 5 s wall-clock deadline test under load, which the V1-10 head also fails.
 
+**Final round after V1-10 merged (main `7ebdee4`), 2026-10-28.**
+- `origin/main` is merged in (`c1f83ad`). The README, `tasks.md` and ledger conflicts keep both stories, and V1-10's overload wording is unchanged. The ledger drops the V1-10 Round E P2 line that V1-13 folds in.
+- Integration with V1-10's final live path is intact: the source-end, resume and tail exports, the drained-tail playback and the content-hashed engine and worklet URLs all sit beside the overload watch, `renderQuantum` and Audition export.
+- Fix found by the full suite: `finite-playback` 44100/129→96000 compared the speaker with the engine's continuous output. The native oracle now drains the same tail at the capture's end frame and returns the speaker PCM (`78286ca`).
+- R1, the real-worklet CPU gate (heaviest chain, 48 kHz, 30 s). Each run started only when the 1-minute load average was below 8, with the load recorded at the start, alternating with main `7ebdee4`:
+
+| Pair | main mean load (start load) | V1-13 mean load (start load) |
+| --- | --- | --- |
+| 1 | 0.296 (7.88) | 0.326 (7.61) |
+| 2 | 0.308 (6.78) | 0.388 (6.05) |
+| 3 | 0.413 (7.63) | 0.465 (6.61) |
+| 4 | 0.417 (7.15) | 0.460 (7.69) |
+| 5 | 0.451 (7.54) | 0.478 (7.63) |
+| 6 | 0.404 (7.02) | 0.460 (7.67) |
+
+  - Main averaged 0.382 and V1-13 0.430. Every pair was higher on V1-13 (+0.027 to +0.080, mean +0.048).
+  - All 12 runs passed with 0 device underruns after warm-up, 0 slow calls and drift of 5 ms or less.
+  - The 120 s soak (`AURIALIS_LIVE_SOAK_SECONDS=120`) passed on both: V1-13 0.389 at start load 7.86, main 0.351 at 6.66, 0 underruns.
+  - The gate (≤ 0.5) holds, but V1-13's highest run, 0.478, leaves 0.022. Any further per-sample live work needs a fresh soak (QA-5).
+- `internal/server` `TestRenderOutlivesBaseDeadlineWithinExportBudget` under `-race` at load average 8–11: 3 of 3 passed (2.26–2.40 s against its 5 s budget). The earlier failures were load-only.
+- Race, `go test -race -count=1 ./...` at load average 3–5 (per package):
+
+| Package | Time |
+| --- | --- |
+| `internal/audio/dsp` | 245 s |
+| `internal/mastering` | 215 s |
+| `wasm/dsp` | 151 s |
+| `internal/server` | 41 s |
+| `internal/audio/truepeakref` | 39 s |
+| `internal/audio/steminfer` | 25 s |
+| `internal/audio` | 18 s |
+| `internal/browserjobs` | 14 s |
+| `internal/jobs` | 6 s |
+| `internal/audio/automation` | 3 s |
+| `internal/audio/automator` | 3 s |
+| `cmd/aurialis` | 2 s |
+
+- Gates via `quiet.sh`, each judged on its own exit status:
+  - Go: gofmt (no output), `go mod verify`, `go vet`, golangci-lint v2.15.0 (0 issues), identypo and govulncheck (no vulnerabilities) pass.
+  - Both WASM builds, `bash scripts/build.sh` and `test:wasm` pass; FFmpeg meters 0.0057 dB.
+  - TypeScript: `tsc`, the browser-test `tsc`, ESLint, knip and cspell (418 files) pass. `typecheck:worker` needs the browser build's generated `asset-policy.json` and fails the same way on main.
+  - Vitest `--maxWorkers=2`: 762/762.
+  - Newman (`pnpm run test:backend:postman`) passes.
+  - Full native Playwright (`--workers=1`): 164 of 165 before the oracle fix, then 165 of 165 after it (19.4 min, load average 7–18).
+
 Status: **implemented — open, awaiting merge** (`fix/v1-13-true-peak-ceiling`).

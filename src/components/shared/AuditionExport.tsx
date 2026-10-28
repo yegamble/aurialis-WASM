@@ -161,11 +161,18 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
   useEffect(() => () => { void fallbackGain.current?.context.close().catch(() => undefined); fallbackGain.current = null; }, []);
   // Never let stale audio keep playing after an edit.
   useEffect(() => { if (stale) audio.current?.pause(); }, [stale]);
-  useEffect(() => { if (livePlaying) audio.current?.pause(); }, [livePlaying]);
+  // Live played at any point during a render (even if paused again before it
+  // finished): the finished audition then waits, Ready (Q-S1).
+  const liveDuringRender = useRef(false);
+  useEffect(() => {
+    if (livePlaying) audio.current?.pause();
+    if (livePlaying && pending.current) liveDuringRender.current = true;
+  }, [livePlaying]);
 
   async function render() {
     if (!sourceBlob) return;
     cancel(); release();
+    liveDuringRender.current = latest.current.livePlaying;
     const controller = new AbortController();
     pending.current = controller;
     const renderedKey = key;
@@ -185,7 +192,7 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
       latest.current.onHeld?.({ key: renderedKey, blob, truePeakDbtp });
       // An edit during the render leaves it stale, and live Play during the render
       // keeps the transport: in either case it waits, ready, without playing.
-      if (renderedKey === latest.current.key && !latest.current.livePlaying) await play(false);
+      if (renderedKey === latest.current.key && !latest.current.livePlaying && !liveDuringRender.current) await play(false);
     } catch (cause) {
       if (pending.current === controller) pending.current = null;
       setPhase(controller.signal.aborted
@@ -202,20 +209,17 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
         ? `${playing ? "Playing" : "Ready:"} the exact export file (${format}).${notice && !playing ? ` ${notice}` : ""}`
         : phase.message;
 
+  const action: { label: string; icon: "x" | "pause" | "play"; disabled: boolean; run: () => void } = phase.kind === "rendering"
+    ? { label: "Cancel audition render", icon: "x", disabled: false, run: cancel }
+    : phase.kind === "ready" && !stale
+      ? { label: playing ? "Pause audition" : "Play audition", icon: playing ? "pause" : "play", disabled: false, run: () => { if (playing) audio.current?.pause(); else void play(); } }
+      : { label: stale ? "Re-render audition" : "Audition export", icon: "play", disabled: !sourceBlob, run: () => void render() };
   function changed(next: boolean) { playingNow.current = next; setPlaying(next); latest.current.onPlayingChange?.(next); }
   return <section className="flex flex-wrap items-center gap-2" aria-label="Audition export">
-    {phase.kind === "rendering"
-      ? <>
-        <progress className="w-full max-w-60" max={100} {...(phase.progress === null ? {} : { value: phase.progress })} aria-label="Audition export render progress" />
-        <Button variant="secondary" icon={<Icon name="x" />} onClick={cancel}>Cancel audition render</Button>
-      </>
-      : phase.kind === "ready" && !stale
-        ? <Button variant="secondary" icon={<Icon name={playing ? "pause" : "play"} />} onClick={() => { if (playing) audio.current?.pause(); else void play(); }}>
-          {playing ? "Pause audition" : "Play audition"}
-        </Button>
-        : <Button variant="secondary" icon={<Icon name="play" />} disabled={!sourceBlob} onClick={() => void render()}>
-          {stale ? "Re-render audition" : "Audition export"}
-        </Button>}
+    {phase.kind === "rendering" && <progress className="w-full max-w-60" max={100} {...(phase.progress === null ? {} : { value: phase.progress })} aria-label="Audition export render progress" />}
+    {/* One button whose label and action change, so keyboard focus stays on it
+        through render, cancel, play and re-render (WCAG 2.4.3). */}
+    <Button variant="secondary" icon={<Icon name={action.icon} />} disabled={action.disabled} onClick={action.run}>{action.label}</Button>
     <p className="disclosure min-w-0 basis-full" role={phase.kind === "error" ? "alert" : "status"}>{status}</p>
     <audio ref={audio} className="audition-export hidden" preload="auto"
       onPlay={() => { changed(true); }} onPause={() => { changed(false); }} onEnded={() => { changed(false); }} />

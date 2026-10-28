@@ -187,6 +187,33 @@ describe("Audition export (V1-10 owner ruling)", () => {
     expect(playSpy).toHaveBeenCalledTimes(2);
   });
 
+  it("live played and paused again during the render: the audition still waits, Ready (Q-S1)", async () => {
+    const complete = heldRender();
+    const view = mount();
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    view.rerender(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying onStart={view.onStart} />);
+    view.rerender(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying={false} onStart={view.onStart} />);
+    await complete();
+    expect(screen.getByText(/^Ready: the exact export file/u)).toBeTruthy();
+    expect(playSpy).not.toHaveBeenCalled();
+    expect(view.onStart).not.toHaveBeenCalled();
+  });
+  it("keeps one focusable button through render, cancel, play and re-render (Q-S2)", async () => {
+    const complete = heldRender();
+    const view = mount();
+    const button = screen.getByRole("button", { name: "Audition export" });
+    button.focus();
+    fireEvent.click(button);
+    expect(screen.getByRole("button", { name: "Cancel audition render" })).toBe(button);
+    await complete();
+    expect(screen.getByRole("button", { name: "Pause audition" })).toBe(button);
+    expect(document.activeElement).toBe(button);
+    const edited = { ...base(), advanced: { ...base().advanced, input: 3 } };
+    view.rerender(<AuditionExport track={edited} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying={false} onStart={view.onStart} />);
+    expect(screen.getByRole("button", { name: "Re-render audition" })).toBe(button);
+    expect(document.activeElement).toBe(button);
+  });
+
   it("pauses when live playback starts and revokes its Blob URL on unmount", async () => {
     vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: wav, truePeakDbtp: null });
     const view = mount();

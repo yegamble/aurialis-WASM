@@ -37,12 +37,31 @@ export async function upload96(page: Page): Promise<void> {
   await expect(page.getByText(/^Aurialis plays this 96 kHz source live at 48 kHz/u)).toBeVisible();
 }
 
-/** Audition export plays, and its Blob is byte-identical to the Export download.
- * Natively Export also sends no second render: it hands over the held file. */
+/** Export through the dialog at its default format and return the WAV bytes. */
+async function exportWav(page: Page): Promise<Buffer> {
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const pending = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Render & download WAV", exact: true }).click();
+  const download = await pending;
+  const path = await download.path();
+  if (!path) throw new Error("Missing export download");
+  await expect(dialog.getByRole("status")).toContainText("Exported");
+  await page.keyboard.press("Escape");
+  return readFile(path);
+}
+
+/** A fresh Export (rendered before any audition exists) equals the audition's
+ * Blob byte for byte, so the comparison is not circular (Round 6 S-4). A second
+ * Export then hands over the held file: natively it sends no render request. */
 export async function verifyAuditionMatchesExport(page: Page, native = false): Promise<{ digest: string; size: number }> {
   await countDecodes(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await upload96(page);
+  const fresh = await exportWav(page);
+  // 24-bit, 96 kHz, every source frame.
+  expect(fresh.length).toBe(44 + SECONDS * RATE * 6);
+  const freshDigest = createHash("sha256").update(fresh).digest("hex");
   await page.getByRole("button", { name: "Audition export", exact: true }).click();
   await expect.poll(() => playingAt(page), { timeout: 30_000 }).toBeGreaterThan(0.3);
   await expect(page.getByText("Playing the exact export file (96 kHz (source) · 24-bit PCM · TPDF dither).", { exact: true })).toBeVisible();
@@ -56,22 +75,14 @@ export async function verifyAuditionMatchesExport(page: Page, native = false): P
   // Memory: one media element streams the Blob; nothing decoded it into an AudioBuffer.
   expect(audition.mediaElements).toBe(1);
   expect(audition.decodes).toBe(0);
+  expect(audition.size).toBe(fresh.length);
+  expect(audition.digest, "the audition plays the bytes a fresh Export wrote").toBe(freshDigest);
   await page.getByRole("button", { name: "Pause audition", exact: true }).click();
 
   let renders = 0;
   page.on("request", (request) => { if (request.method() === "POST" && request.url().endsWith("/api/master/render")) renders++; });
-  await page.getByRole("button", { name: "Export", exact: true }).click();
-  const dialog = page.getByRole("dialog");
-  const pending = page.waitForEvent("download");
-  await dialog.getByRole("button", { name: "Render & download WAV", exact: true }).click();
-  const download = await pending;
-  const path = await download.path();
-  if (!path) throw new Error("Missing export download");
-  const exported = await readFile(path);
-  // 24-bit, 96 kHz, every source frame: the same bytes the audition played.
-  expect(exported.length).toBe(44 + SECONDS * RATE * 6);
-  expect(audition.size).toBe(exported.length);
-  expect(audition.digest).toBe(createHash("sha256").update(exported).digest("hex"));
+  const handedOver = await exportWav(page);
+  expect(createHash("sha256").update(handedOver).digest("hex")).toBe(freshDigest);
   if (native) expect(renders, "Export reused the held audition file").toBe(0);
   return { digest: audition.digest, size: audition.size };
 }

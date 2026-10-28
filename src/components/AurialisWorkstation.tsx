@@ -1029,7 +1029,10 @@ function MasterView({ trackId }: { trackId: string }) {
             sourceReady={source !== null && live.current !== null}
             onPlay={play}
             onPause={() => { stopScrub(false); live.current?.pause(); }}
-            onOriginal={(original) => { live.current?.setBypass(original); }}
+            // A/B is a live control: while the audition plays it pauses the
+            // audition and sets live's A/B, without starting live (Q-S3).
+            // ...and hands the play/pause keys back to live (Round 8b Q-S2).
+            onOriginal={(original) => { if (audition.current?.playing()) audition.current.pause(); lastPlayed.current = "live"; live.current?.setBypass(original); }}
             onVolume={(volume) => { live.current?.setVolume(volume); }}
             onRestart={() => { seekSeconds(0); }}
             onForward={forward}
@@ -1041,7 +1044,7 @@ function MasterView({ trackId }: { trackId: string }) {
           />
           {liveNote && <p className="disclosure" role="status">{liveNote}</p>}
           {(liveRate.kind === "capped" || liveRate.kind === "resampled") && <AuditionExport key={track.id} track={track} sourceBlob={sourceBlob} delivery={delivery}
-            livePlaying={playback?.playing ?? false} onStart={() => { lastPlayed.current = "audition"; stopScrub(false); live.current?.pause(); }}
+            volume={playback?.volume ?? 1} livePlaying={(playback?.playing ?? false) || (playback?.loading ?? false)} onStart={() => { lastPlayed.current = "audition"; stopScrub(false); live.current?.pause(); }}
             onHeld={(held) => { auditionHeld.current = held; }} onHandle={(handle) => { audition.current = handle; }}
             onPlayingChange={() => { const controller = live.current; if (controller) playbackControls.current?.update(mediaState(controller), true); }} />}
           {track.mode === "deep" && track.deepMastering && <DeepTimeline script={track.deepMastering.proposal} selectedId={deepMoveId} onSelect={selectDeepMove} playheadRatio={playheadRatio} />}

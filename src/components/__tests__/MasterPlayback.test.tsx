@@ -34,6 +34,25 @@ function mount() { return render(<StoreProvider><AurialisWorkstation route="mast
 async function ready() { await waitFor(() => { expect(screen.getByRole<HTMLButtonElement>("button", { name: "A Processed" }).disabled).toBe(false); }, { timeout: 10000 }); }
 function savedTrack() { const saved = JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as typeof testStore; const track = saved.tracks[0]; if (!track) throw new Error("No persisted track"); return track; }
 function latest() { const instance = instances.at(-1); if (!instance) throw new Error("No live controller was constructed"); return instance; }
+/** A 96 kHz track whose audition renders and plays through stubbed media (held file "blob:held"). */
+function heldAudition() {
+  localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1).map((track) => ({ ...track, sampleRate: 96000 })) }));
+  mocks.getAudio.mockResolvedValue(canonicalWAV({ ...pcm, sampleRate: 96000 }));
+  const originals = (["createObjectURL", "revokeObjectURL"] as const).map((key) => [key, Object.getOwnPropertyDescriptor(URL, key)] as const);
+  Object.defineProperty(URL, "createObjectURL", { configurable: true, value: () => "blob:held" });
+  Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: () => undefined });
+  onTestFinished(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 1100));
+    for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(URL, key, descriptor); else Reflect.deleteProperty(URL, key); }
+  });
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+  const mediaPlay = vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("play")); return Promise.resolve(); });
+  const mediaPause = vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("pause")); });
+  vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+  const rendered = canonicalWAV({ ...pcm, sampleRate: 96000 });
+  const delivery = vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: rendered, truePeakDbtp: -1.1 });
+  return { mediaPlay, mediaPause, delivery };
+}
 
 beforeEach(() => {
   vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
@@ -297,21 +316,7 @@ describe("master live playback lifecycle", () => {
   }, 30000);
 
   it("Export hands over the held audition file, and the play/pause key drives the audition (V1-10 S-3, S-4)", async () => {
-    localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1).map((track) => ({ ...track, sampleRate: 96000 })) }));
-    mocks.getAudio.mockResolvedValue(canonicalWAV({ ...pcm, sampleRate: 96000 }));
-    const originals = (["createObjectURL", "revokeObjectURL"] as const).map((key) => [key, Object.getOwnPropertyDescriptor(URL, key)] as const);
-    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: () => "blob:held" });
-    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: () => undefined });
-    onTestFinished(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 1100));
-      for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(URL, key, descriptor); else Reflect.deleteProperty(URL, key); }
-    });
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
-    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("play")); return Promise.resolve(); });
-    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(function (this: HTMLMediaElement) { this.dispatchEvent(new Event("pause")); });
-    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
-    const rendered = canonicalWAV({ ...pcm, sampleRate: 96000 });
-    const delivery = vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: rendered, truePeakDbtp: -1.1 });
+    const { mediaPlay, mediaPause, delivery } = heldAudition();
     mount(); await ready();
     const instance = latest();
     fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
@@ -323,11 +328,71 @@ describe("master live playback lifecycle", () => {
     fireEvent.keyDown(document.body, { key: " ", code: "Space" });
     expect(await screen.findByRole("button", { name: "Pause audition" })).toBeTruthy();
     expect(instance.controller.play).not.toHaveBeenCalled();
+    // A real media element fires "pause" in a later task; a key pressed in the
+    // same task as A/B must already see the audition stopped (92322ab, Round 8c).
+    mediaPause.mockImplementation(function (this: HTMLMediaElement) { setTimeout(() => { this.dispatchEvent(new Event("pause")); }, 0); });
+    // A/B while the audition plays pauses it and sets live's bypass, without starting live (Q-S3).
+    fireEvent.click(screen.getByRole("button", { name: "B Original" }));
+    expect(instance.controller.setBypass).toHaveBeenLastCalledWith(true);
+    expect(instance.controller.play).not.toHaveBeenCalled();
+    // Then, before the pause event, the play/pause key starts live (with B applied), not the audition (Round 8b Q-S2).
+    fireEvent.keyDown(document.body, { key: " ", code: "Space" });
+    await waitFor(() => { expect(instance.controller.play).toHaveBeenCalledOnce(); });
+    expect(await screen.findByRole("button", { name: "Play audition" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "B Original" }).getAttribute("aria-pressed")).toBe("true");
+    // Play audition then A/B in the same task, before the media "play" event:
+    // A/B still pauses the starting audition (QA E9 P2-1).
+    mediaPlay.mockImplementation(function (this: HTMLMediaElement) { setTimeout(() => { this.dispatchEvent(new Event("play")); }, 0); return Promise.resolve(); });
+    mediaPause.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Play audition" }));
+    fireEvent.click(screen.getByRole("button", { name: "A Processed" }));
+    expect(mediaPause).toHaveBeenCalled();
+    expect(await screen.findByRole("button", { name: "Play audition" })).toBeTruthy();
     // Export downloads the same held file instead of rendering it again.
     fireEvent.click(screen.getByRole("button", { name: "Export" }));
     fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));
     await within(screen.getByRole("dialog")).findByText(/^Exported 24-bit PCM WAV/u);
     expect(delivery).toHaveBeenCalledOnce();
+  }, 30000);
+
+  it("a refused audition start leaves the Media Session paused (Round 8f REQUIRED-2)", async () => {
+    const session = { metadata: null, playbackState: "none", setPositionState: vi.fn(), setActionHandler: vi.fn() };
+    vi.stubGlobal("navigator", { mediaSession: session });
+    const { mediaPlay } = heldAudition();
+    mount(); await ready();
+    const instance = latest();
+    // Live emits on pause, as the real controller does.
+    vi.mocked(instance.controller.pause).mockImplementation(() => { instance.state = { ...instance.state, loading: false, playing: false }; instance.callbacks.onState?.(instance.state); });
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Pause audition" }));
+    await screen.findByRole("button", { name: "Play audition" });
+    mediaPlay.mockImplementationOnce(() => Promise.reject(new DOMException("refused", "NotAllowedError")));
+    fireEvent.click(screen.getByRole("button", { name: "Play audition" }));
+    expect(await screen.findByText(/did not allow the audition to start/u)).toBeTruthy();
+    expect(session.playbackState).toBe("paused");
+  }, 30000);
+
+  it("treats live loading as playing: an audition finishing during a cold start waits, ready (Round 6 S-1)", async () => {
+    localStorage.setItem("aurialis-state-v1", JSON.stringify({ ...testStore, tracks: testStore.tracks.slice(0, 1).map((track) => ({ ...track, sampleRate: 96000 })) }));
+    mocks.getAudio.mockResolvedValue(canonicalWAV({ ...pcm, sampleRate: 96000 }));
+    const originals = (["createObjectURL", "revokeObjectURL"] as const).map((key) => [key, Object.getOwnPropertyDescriptor(URL, key)] as const);
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: () => "blob:held" });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: () => undefined });
+    onTestFinished(() => { for (const [key, descriptor] of originals) { if (descriptor) Object.defineProperty(URL, key, descriptor); else Reflect.deleteProperty(URL, key); } });
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    let finish: (() => void) | undefined;
+    vi.spyOn(engine, "renderDelivery").mockImplementation(() => new Promise((resolve) => { finish = () => { resolve({ blob: canonicalWAV({ ...pcm, sampleRate: 96000 }), truePeakDbtp: null }); }; }));
+    mount(); await ready();
+    const instance = latest();
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    // A cold live Play: the controller is still loading, not yet playing.
+    act(() => { instance.state = { ...instance.state, loading: true, playing: false }; instance.callbacks.onState?.(instance.state); });
+    await act(async () => { finish?.(); await Promise.resolve(); await Promise.resolve(); });
+    expect(await screen.findByText(/^Ready: the exact export file/u)).toBeTruthy();
+    expect(instance.controller.pause).not.toHaveBeenCalled();
+    expect(play).not.toHaveBeenCalled();
   }, 30000);
 
   it("lowers a saved ceiling above −1 dBTP with a visible, dismissible note", async () => {

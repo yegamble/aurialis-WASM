@@ -13,8 +13,10 @@ const KERNEL = "if (this.kernel.aurialis_live_process() !== QUANTUM)\n        th
 const AFTER = "this.refreshBuffers();\n      if (this.generation !== Atomics.load(this.header, GENERATION)) {";
 type Where = "before" | "inside" | "after";
 
-async function hitch(page: Page, waitMs: number, everyQuanta: number, where: Where): Promise<void> {
-  const burn = `let qaN = 0; function qaBurn() { if (++qaN % ${String(everyQuanta)} === 0) { const s = Date.now(); while (Date.now() - s < ${String(waitMs)}) {} } }`;
+/** Spin `waitMs` every `everyQuanta` quanta; with `skipEvery`, leave out every
+ * skipEvery-th of those stalls (60/60/0 ms is skipEvery 3). */
+async function hitch(page: Page, waitMs: number, everyQuanta: number, where: Where, skipEvery = 0, onlyOnce = false): Promise<void> {
+  const burn = `let qaN = 0; function qaBurn() { if (++qaN % ${String(everyQuanta)} === 0 && (!${String(onlyOnce)} || qaN === ${String(everyQuanta)}) && (${String(skipEvery)} === 0 || (qaN / ${String(everyQuanta)}) % ${String(skipEvery)} !== 0)) { const s = Date.now(); while (Date.now() - s < ${String(waitMs)}) {} } }`;
   const replace: [string, string] = where === "before" ? [WRITE, `${WRITE} qaBurn();`]
     : where === "inside" ? [KERNEL, `${KERNEL}\n      qaBurn();`] : [AFTER, `qaBurn(); ${AFTER}`];
   await page.addInitScript(({ burn, replace }) => {
@@ -71,20 +73,64 @@ for (const waitMs of [5, 8]) {
   });
 }
 
-// Real underruns must stop playback within a few seconds: every quantum 4 ms
-// late, or a 60 ms stall once a second on either side of the kernel (QA F-2,
-// missed before because the render thread catches up on the clock).
-for (const [waitMs, every, where] of [[4, 1, "before"], [60, 375, "before"], [60, 375, "after"]] as const) {
-  test(`${String(waitMs)} ms ${where} the kernel every ${String(every)} quanta stops with the can't-keep-up message`, async ({ page }) => {
+// One isolated stall is a glitch, not an overload (Round 7 R-1): a single 120 or
+// 250 ms spin about 6 s in must leave playback running.
+for (const waitMs of [120, 250]) {
+  test(`one ${String(waitMs)} ms stall about 6 s in keeps playing`, async ({ page }) => {
     test.setTimeout(120_000);
-    await hitch(page, waitMs, every, where);
-    const started = await play(page, `stall-${String(waitMs)}-${where}.wav`);
+    await hitch(page, waitMs, 2250, "after", 0, true);
+    await play(page, `single-${String(waitMs)}.wav`);
+    await keepsPlaying(page, 20);
+  });
+}
+
+// Repeated but sparse glitches (Round 8): a 1 s stall every 6 s must stop
+// playback. The stall is counted in quanta, so each cycle is 6 s of audio plus
+// the 1 s stall: 7 s of wall clock, and the third stall falls near 21 s, hence
+// the 25 s bound. Which rule fires depends on the host (Round 8b traces): on CI
+// the 15-window rule fires at about 21 s; on the local macOS host each 1 s stall
+// is followed by a ~200 ms recovery underrun in the next window and stretches
+// its window to ~2.2 s, so the second stall already falls within five windows
+// and the 5-window two-burst rule fires at about 14 s. Shorter stalls (300 or
+// 500 ms) cause no device underrun at all in headless Chromium, so no e2e can
+// isolate the 15-window rule; the exact unit rows prove it. Any rule may fire,
+// and each is correct: if the first stall's recovery reaches a third window,
+// three strikes fire at about 8–9 s. On QA E9's host 3 of 86 recorded stalls
+// (3 of 53 in the 1 s every 10 s runs) left three bad windows, and no first
+// stall did. The first stall begins about 6 s after Play, so the 7 s floor only
+// proves the stop came after a stall began (Round 8e).
+test("a 1 s stall every 6 s stops with the can't-keep-up message", async ({ page }) => {
+  test.setTimeout(120_000);
+  await hitch(page, 1000, 2250, "after");
+  const started = await play(page, "sparse-1s-6s.wav");
+  await expect(page.getByText(OVERLOAD_MESSAGE, { exact: true })).toBeVisible({ timeout: 40_000 });
+  const elapsed = Date.now() - started;
+  test.info().annotations.push({ type: "fired-after-ms", description: String(elapsed) });
+  console.log(`sparse 1 s every 6 s fired after ${String(elapsed)} ms`);
+  expect(elapsed, "fired after (ms)").toBeGreaterThanOrEqual(7_000);
+  expect(elapsed, "fired after (ms)").toBeLessThanOrEqual(25_000);
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
+});
+
+// Real underruns must stop playback within 10 s: every quantum 4 ms late, a
+// 60 ms stall once a second on either side of the kernel (QA F-2, missed before
+// because the render thread catches up on the clock), and periodic dropouts that
+// skip a second (Round 6 S-2): 60/60/0 ms, and 200 ms every 2 s.
+for (const [waitMs, every, where, skip] of [[4, 1, "before", 0], [60, 375, "before", 0], [60, 375, "after", 0], [60, 375, "after", 3], [200, 750, "after", 0]] as const) {
+  test(`${String(waitMs)} ms ${where} the kernel every ${String(every)} quanta${skip ? `, skipping every ${String(skip)}rd,` : ""} stops with the can't-keep-up message`, async ({ page }) => {
+    test.setTimeout(120_000);
+    await hitch(page, waitMs, every, where, skip);
+    const started = await play(page, `stall-${String(waitMs)}-${String(every)}-${where}-${String(skip)}.wav`);
     await expect(page.getByText(OVERLOAD_MESSAGE, { exact: true })).toBeVisible({ timeout: 20_000 });
     const elapsed = Date.now() - started;
     await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
     await expect(page.getByText(/buffer fault/u)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Restore source", exact: true })).toHaveCount(0);
     test.info().annotations.push({ type: "fired-after-ms", description: String(elapsed) });
+    // Five 1 s playbackStats ticks (warm-up plus up to four judged windows) plus
+    // main-thread timer delay, which grows under host load (DA E10 jitter
+    // simulation: p99 8.3–9.4 s at load average 12–17; measured 6.5–7.3 s).
+    expect(elapsed, "fired after (ms)").toBeLessThanOrEqual(10_000);
   });
 }
 

@@ -15,7 +15,8 @@ const SOAK_SECONDS = Number(process.env.AURIALIS_LIVE_SOAK_SECONDS ?? "30");
  * 30 s. Quiet-host runs lagged −4 to +2 ms in 30 s and under 40 ms in 600 s;
  * the worst run QA called clean lagged 234 ms in 150 s (1.6 ms/s). A kernel too
  * slow to keep up lags at (load − 1) s per second, 50 ms/s at a 1.05 load, and
- * the worklet's own deadline watch stops playback within about 3 s of that.
+ * the overload stop (playbackStats, else the worklet's watch) follows within
+ * about 5–6 s (measured 4.9–5.5 s in e2e/live-overload.spec.ts).
  * Host stalls on an overloaded machine (915 ms in 30 s at load average 65, with
  * 0 slow kernel calls) also fail it: rerun those. */
 const DRIFT_MS_PER_AUDIO_SECOND = 5, DRIFT_MS_MAX = 250;
@@ -124,6 +125,16 @@ async function heaviestChain(page: Page): Promise<void> {
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
   await expect(page.getByRole("slider", { name: "Input gain", exact: true })).toHaveValue("6");
   await expect(page.getByRole("checkbox", { name: "Enable limiter", exact: true })).toBeChecked();
+  // Every stage it enables must still be on after reload (Round 7 P2-4), as the
+  // project the live chain was built from saved it.
+  const loaded = await page.evaluate(() => (JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as { tracks: Track[] }).tracks[0]?.advanced);
+  expect(loaded, "the reloaded project").toBeDefined();
+  expect({
+    eq: loaded?.eqEnabled !== false && loaded?.eqBands.every((band) => band.enabled !== false && band.gainDb === 2),
+    deHarsh: loaded?.deHarsh.enabled, multiband: loaded?.multiband.enabled, compressor: loaded?.compressor.enabled,
+    autoRelease: loaded?.compressor.autoRelease, saturation: loaded?.saturationModule.enabled && loaded.saturationModule.drive === 60,
+    stereo: loaded?.stereo.enabled && loaded.stereo.width === 130, monoBass: loaded?.stereo.monoBass, limiter: loaded?.limiter.enabled,
+  }).toEqual({ eq: true, deHarsh: true, multiband: true, compressor: true, autoRelease: true, saturation: true, stereo: true, monoBass: true, limiter: true });
 }
 
 async function exportFloat(page: Page): Promise<{ wav: Buffer; status: string }> {
@@ -281,27 +292,37 @@ const OVERLOAD = "Playback can't keep up on this device with the current process
 
 // Load outside the kernel (V1-10 Round 4): a test-only "burner" AudioWorkletNode
 // in the same context busy-waits on the same render thread, while the app's
-// worklet and kernel are untouched. A share spins a calibrated fraction of every
-// 128-frame quantum (calibrated twice against Date.now, the second after JIT
-// warm-up); a negative share instead spins until Date.now has moved that many
-// milliseconds, which overloads any CPU. (A forced 192 kHz context was dropped:
+// worklet and kernel are untouched. A share spins a fraction of every 128-frame
+// quantum. A first estimate comes from the main thread (calibrating in the
+// constructor stalled the render thread at start, Round 8), started low at 0.6
+// of it; then the processor itself times its spin on the render thread every
+// 375 quanta (1 s) and corrects toward the target share, since the main-thread
+// estimate read 0.45–0.62 for a 0.3 target there (QA E8). A negative share
+// instead spins until Date.now has moved that many milliseconds, which
+// overloads any CPU. (A forced 192 kHz context was dropped:
 // whether it overloads depends on the runner, and CI's did not.)
 const BURNER = `class QaBurner extends AudioWorkletProcessor {
   constructor(options) {
-    super(); this.share = options.processorOptions.share;
-    let sink = 0;
-    for (let pass = 0; pass < 2; pass++) {
-      let iterations = 0; const start = Date.now();
-      while (Date.now() - start < 100) { for (let i = 0; i < 1000; i++) sink += Math.sqrt(i + sink % 7); iterations += 1000; }
-      this.perMs = iterations / (Date.now() - start);
-    }
-    this.sink = sink;
+    super(); this.share = options.processorOptions.share; this.perMs = options.processorOptions.perMs * 0.6;
+    this.sink = 0; this.spent = 0; this.quanta = 0;
   }
   process() {
     if (this.share < 0) { const start = Date.now(); while (Date.now() - start < -this.share) {} return true; }
-    const count = this.share * 1000 * 128 / sampleRate * this.perMs;
+    const quantumMs = 1000 * 128 / sampleRate;
+    const count = this.share * quantumMs * this.perMs, start = Date.now();
     let sink = this.sink; for (let i = 0; i < count; i++) sink += Math.sqrt(i + sink % 7);
-    this.sink = sink; return true;
+    this.sink = sink;
+    // Achieved spin per 1 s window, summed in Date.now ticks (unbiased over many
+    // quanta), and the correction toward the target share.
+    this.spent += Date.now() - start;
+    if (++this.quanta === 375) {
+      const achieved = this.spent / (this.quanta * quantumMs);
+      // Damped (square root) so one noisy window cannot swing the next.
+      if (achieved > 0) this.perMs *= Math.sqrt(Math.max(0.25, Math.min(4, this.share / achieved)));
+      this.port.postMessage({ share: achieved, perMs: this.perMs });
+      this.spent = 0; this.quanta = 0;
+    }
+    return true;
   }
 }
 registerProcessor("qa-burner", QaBurner);`;
@@ -318,7 +339,14 @@ async function burn(page: Page, share: number): Promise<void> {
         burning.add(context);
         const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
         void context.audioWorklet.addModule(url).finally(() => { URL.revokeObjectURL(url); }).then(() => {
-          const burner = new AudioWorkletNode(context, "qa-burner", { numberOfInputs: 0, numberOfOutputs: 1, processorOptions: { share: extra } });
+          let perMs = 0, sink = 0;
+          for (let pass = 0; pass < 2; pass++) {
+            let iterations = 0; const start = Date.now();
+            while (Date.now() - start < 100) { for (let i = 0; i < 1000; i++) sink += Math.sqrt(i + sink % 7); iterations += 1000; }
+            perMs = iterations / (Date.now() - start);
+          }
+          const burner = new AudioWorkletNode(context, "qa-burner", { numberOfInputs: 0, numberOfOutputs: 1, processorOptions: { share: extra, perMs: perMs + sink * 0 } });
+          burner.port.onmessage = (event: MessageEvent<{ share: number; perMs: number }>) => { const scope = window as Window & { qaBurner?: { share: number; perMs: number }[] }; (scope.qaBurner ??= []).push(event.data); };
           const silent = context.createGain(); silent.gain.value = 0;
           Reflect.apply(nativeConnect, burner, [silent]); Reflect.apply(nativeConnect, silent, [context.destination]);
         });
@@ -362,6 +390,19 @@ test("a burner at +0.3 of each quantum stays under real time and plays 30 s with
   await burn(page, 0.3);
   await playHeaviest(page, "live-burner-warm.wav");
   await page.waitForTimeout(30_000);
+  // The burner really spun about 0.3 of each quantum on the render thread (QA E8).
+  // Mean over the last 10 one-second windows, once the correction has settled.
+  const windows = await page.evaluate(() => (window as Window & { qaBurner?: { share: number; perMs: number }[] }).qaBurner ?? []);
+  const last = windows.slice(-10), achieved = last.reduce((sum, window) => sum + window.share, 0) / Math.max(1, last.length);
+  test.info().annotations.push({ type: "burner-share", description: achieved.toFixed(3) });
+  console.log(`burner achieved share ${achieved.toFixed(3)} over ${String(windows.length)} windows (first ${windows[0]?.share.toFixed(3) ?? "none"})`);
+  // The correction loop ran: at least ten windows reported, the spin rate was
+  // adjusted (a burner without the loop keeps one rate), and the mean of the
+  // last ten windows is 0.25–0.35.
+  expect(windows.length, "burner windows reported").toBeGreaterThanOrEqual(10);
+  expect(new Set(windows.map((window) => window.perMs)).size, "distinct spin rates").toBeGreaterThan(1);
+  expect(achieved, "achieved burner share of a quantum").toBeGreaterThanOrEqual(0.25);
+  expect(achieved, "achieved burner share of a quantum").toBeLessThanOrEqual(0.35);
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
   await expect(page.getByText(OVERLOAD, { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Pause", exact: true }).click();
@@ -402,8 +443,9 @@ test(`the export algorithm keeps up live for ${String(SOAK_SECONDS)} s with ever
   // gauge: the kernel runs inside process(), so the ring cannot run dry from load.
   expect(evidence.deviceUnderrunsAfterWarmUp, JSON.stringify(evidence)).toBe(0);
   expect(Math.abs(evidence.clockDriftMs), JSON.stringify(evidence)).toBeLessThanOrEqual(evidence.driftLimitMs);
-  // The budget gate is mean load ≤ 0.5 on a quiet machine (docs/tasks.md V1-10). Shared CI
-  // and agent hosts swing 2x, so this only catches gross regressions.
-  expect(evidence.meanLoad, JSON.stringify(evidence)).toBeLessThanOrEqual(0.75);
+  // The budget gate is a real-worklet mean load ≤ 0.5 (docs/tasks.md V1-10). The
+  // 600 s run is the budget evidence and holds that gate; the short CI run only
+  // catches gross regressions, since shared CI and agent hosts swing about 2x.
+  expect(evidence.meanLoad, JSON.stringify(evidence)).toBeLessThanOrEqual(SOAK_SECONDS >= 600 ? 0.5 : 0.75);
 });
 });

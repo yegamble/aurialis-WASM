@@ -85,12 +85,17 @@ for (const waitMs of [120, 250]) {
 }
 
 // Repeated but sparse glitches (Round 8): a 1 s stall every 6 s must stop
-// playback through the 15-window rule. The stall is counted in quanta, so each
-// cycle is 6 s of audio plus the 1 s stall: 7 s of wall clock. The rule needs
-// a baseline tick, a warm-up window and fifteen judged windows (about 17 s), and
-// the third stall falls near 21 s, so the bound is 25 s. The lower bound (16 s)
-// proves the 15-window rule fired, not one of the faster rules.
-test("a 1 s stall every 6 s stops with the can't-keep-up message through the 15-window rule", async ({ page }) => {
+// playback. The stall is counted in quanta, so each cycle is 6 s of audio plus
+// the 1 s stall: 7 s of wall clock, and the third stall falls near 21 s, hence
+// the 25 s bound. Which rule fires depends on the host (Round 8b traces): on CI
+// the 15-window rule fires at about 21 s; on the local macOS host each 1 s stall
+// is followed by a ~200 ms recovery underrun in the next window and stretches
+// its window to ~2.2 s, so the second stall already falls within five windows
+// and the 5-window two-burst rule fires at about 14 s. Shorter stalls (300 or
+// 500 ms) cause no device underrun at all in headless Chromium, so no e2e can
+// isolate the 15-window rule; the exact unit rows prove it. The lower bound only
+// rejects a stop before the second stall.
+test("a 1 s stall every 6 s stops with the can't-keep-up message", async ({ page }) => {
   test.setTimeout(120_000);
   await hitch(page, 1000, 2250, "after");
   const started = await play(page, "sparse-1s-6s.wav");
@@ -98,7 +103,7 @@ test("a 1 s stall every 6 s stops with the can't-keep-up message through the 15-
   const elapsed = Date.now() - started;
   test.info().annotations.push({ type: "fired-after-ms", description: String(elapsed) });
   console.log(`sparse 1 s every 6 s fired after ${String(elapsed)} ms`);
-  expect(elapsed, "fired after (ms)").toBeGreaterThanOrEqual(16_000);
+  expect(elapsed, "fired after (ms)").toBeGreaterThanOrEqual(12_000);
   expect(elapsed, "fired after (ms)").toBeLessThanOrEqual(25_000);
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
 });

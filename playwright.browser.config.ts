@@ -19,7 +19,9 @@ export default defineConfig({
   },
   projects: [{ name: "chromium-static-browser", use: { ...devices["Desktop Chrome"] } }],
   ...(externalBaseURL ? {} : { webServer: {
-    command: "bash scripts/serve-browser-e2e.sh",
+    command: "exec bash scripts/serve-browser-e2e.sh",
+    // TERM runs the launcher trap that owns Wrangler and proxy child groups.
+    gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },
     url: "http://127.0.0.1:3928/",
     reuseExistingServer: false,
     timeout: 60_000,

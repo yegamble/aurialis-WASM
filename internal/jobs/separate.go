@@ -49,10 +49,20 @@ var stemStyles = map[string]stemStyle{
 
 // SetSeparator installs the stem separator. Without one, SubmitSeparate
 // returns ErrSeparationUnavailable.
-func (m *Manager) SetSeparator(separate SeparateFunc) {
+func (m *Manager) SetSeparator(separate SeparateFunc) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.closed {
+		return ErrMemoryCapacity
+	}
+	if separate != nil && m.modelBytes == 0 {
+		if ModelMemoryAllowance > MaxProcessMemoryBytes-m.processBytesLocked() {
+			return ErrMemoryCapacity
+		}
+		m.modelBytes = ModelMemoryAllowance
+	}
 	m.separate = separate
+	return nil
 }
 
 type stemAudio struct {
@@ -63,11 +73,12 @@ type stemAudio struct {
 // separationReservation is steminfer.JobBytes: the separator's working memory,
 // the input copy and the float stems retained afterwards.
 func separationReservation(buf *audio.Buffer, stems int) (int64, error) {
-	return steminfer.JobBytes(buf.SampleRate, buf.Frames, stems)
+	bytes, err := steminfer.JobBytes(buf.SampleRate, buf.Frames, stems)
+	return bytes + pcmExtraCapacity(buf), err
 }
 
 // SubmitSeparate enqueues a 2..6 stem separation job.
-func (m *Manager) SubmitSeparate(buf *audio.Buffer, stemCount int) (*Job, error) {
+func (m *Manager) SubmitSeparate(buf *audio.Buffer, stemCount int, credits ...*MemoryReservation) (*Job, error) {
 	names, err := steminfer.StemNames(stemCount)
 	if err != nil {
 		return nil, errors.New("stem count must be between 2 and 6")
@@ -93,7 +104,7 @@ func (m *Manager) SubmitSeparate(buf *audio.Buffer, stemCount int) (*Job, error)
 		m.mu.Unlock()
 		return nil, ErrSeparationUnavailable
 	}
-	if err := m.admitReservationLocked(job, reservation); err != nil {
+	if err := m.admitReservationLocked(job, reservation, credits...); err != nil {
 		m.mu.Unlock()
 		return nil, err
 	}
@@ -106,8 +117,7 @@ func (m *Manager) SubmitSeparate(buf *audio.Buffer, stemCount int) (*Job, error)
 		m.mu.Unlock()
 		return snapshot, nil
 	default:
-		m.stemUsedBytes -= job.reservedBytes
-		delete(m.jobs, id)
+		m.rollbackAdmissionLocked(job, credits)
 		m.mu.Unlock()
 		return nil, ErrQueueFull
 	}

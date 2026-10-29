@@ -116,7 +116,9 @@ func New(cfg Config) *Server {
 		postTimeout:  postRequestTimeout,
 		exportBudget: exportBudget,
 	}
-	s.jobs.SetSeparator(cfg.Separator)
+	if err := s.jobs.SetSeparator(cfg.Separator); err != nil {
+		s.cfg.Separator = nil
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -215,6 +217,14 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 				writeErrorJSON(w, http.StatusServiceUnavailable, "busy", "One audio request is already running; retry after it completes")
 				return
 			}
+			if r.ContentLength < 0 || r.ContentLength <= s.cfg.MaxUploadBytes {
+				prepared, reservation, ok := s.reserveRequest(w, r)
+				if !ok {
+					return
+				}
+				defer reservation.Release()
+				r = prepared
+			}
 			var cancel context.CancelFunc
 			r, cancel = s.withPostDeadline(w, r)
 			defer cancel()
@@ -307,6 +317,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"maxAudioFileBytes":          min(MaxAudioFileBytes, s.cfg.MaxUploadBytes),
 		"maxConcurrentAudioRequests": 1,
 		"jobMemoryBudgetBytes":       jobs.MaxMemoryBytes,
+		"processMemoryBudgetBytes":   jobs.MaxProcessMemoryBytes,
+		"modelMemoryAllowanceBytes":  jobs.ModelMemoryAllowance,
 		"profiles": []string{
 			"Warm Analog",
 			"Punchy Commercial",
@@ -413,6 +425,9 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request, exp
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_audio", err.Error())
 		return nil, false
 	}
+	if !resizeRequest(w, r, pcmCapacity(buf)+4*1024*1024) {
+		return nil, false
+	}
 	return buf, true
 }
 
@@ -482,13 +497,16 @@ func (s *Server) handleSeparate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, err := s.jobs.SubmitSeparate(buf, stemCount)
+	job, err := s.jobs.SubmitSeparate(buf, stemCount, requestMemory(r))
 	switch {
 	case errors.Is(err, jobs.ErrSeparationUnavailable):
 		writeErrorJSON(w, http.StatusServiceUnavailable, "stems_unavailable", err.Error())
 		return
+	case errors.Is(err, jobs.ErrMemoryCapacity):
+		writeMemoryCapacity(w)
+		return
 	case errors.Is(err, jobs.ErrQueueFull):
-		writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", err.Error())
+		writeAdmissionError(w, err)
 		return
 	case err != nil:
 		writeErrorJSON(w, http.StatusRequestEntityTooLarge, "too_long", err.Error())
@@ -553,17 +571,17 @@ func (s *Server) handleAnalyzeDeep(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		job, submitErr := s.jobs.SubmitAnalyzeDeepV2(buf, profile)
+		job, submitErr := s.jobs.SubmitAnalyzeDeepV2(buf, profile, requestMemory(r))
 		if submitErr != nil {
-			writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", submitErr.Error())
+			writeAdmissionError(w, submitErr)
 			return
 		}
 		s.writeAdmittedJob(w, r, job)
 		return
 	}
-	job, err := s.jobs.SubmitAnalyzeDeep(buf, profile)
+	job, err := s.jobs.SubmitAnalyzeDeep(buf, profile, requestMemory(r))
 	if err != nil {
-		writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", err.Error())
+		writeAdmissionError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, job)
@@ -645,6 +663,9 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 	outputRate := buf.SampleRate
 	if export.Converts(buf.SampleRate) {
 		outputRate = export.SampleRate
+	}
+	if !resizeRequest(w, r, renderMemoryBytes(buf, outputRate)) {
+		return
 	}
 	r, cancelExport, inBudget := s.withExportBudget(w, r, s.exportBudget(len(buf.Left), buf.SampleRate, outputRate))
 	defer cancelExport()
@@ -820,17 +841,22 @@ func (s *Server) handleDownloadStem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wavBytes, ok := s.jobs.StemWAV(id, stemName)
+	response, ok, err := s.jobs.LeaseStemWAV(id, stemName)
+	if err != nil {
+		writeMemoryCapacity(w)
+		return
+	}
 	if !ok {
 		writeErrorJSON(w, http.StatusNotFound, "stem_not_found", fmt.Sprintf("Stem %q for job %q not found", stemName, id))
 		return
 	}
 
+	defer response.Release()
 	w.Header().Set("Content-Type", "audio/wav")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.wav"`, stemName))
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(wavBytes) // #nosec G705 -- canonical PCM stem WAV; fixed audio/wav and nosniff headers
+	_, _ = w.Write(response.Bytes) // #nosec G705 -- canonical PCM stem WAV; fixed audio/wav and nosniff headers
 }
 
 func (s *Server) handleStaticOrSPA(w http.ResponseWriter, r *http.Request) {
@@ -963,9 +989,9 @@ func (s *Server) handleAnalyzeFeatures(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio analysis request canceled or timed out")
 		return
 	}
-	job, err := s.jobs.SubmitAnalyzeFeatures(buf)
+	job, err := s.jobs.SubmitAnalyzeFeatures(buf, requestMemory(r))
 	if err != nil {
-		writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", err.Error())
+		writeAdmissionError(w, err)
 		return
 	}
 	if r.Context().Err() != nil {

@@ -28,6 +28,21 @@ test.describe("Responsive Viewports (320px-1440px), COOP/COEP & WCAG 2.2 AA", ()
   test("mobile level meters can be scrolled with the keyboard", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 640 })
     await uploadProject(page)
+    const peakNote = page.getByText("Live estimate; the export check is authoritative", { exact: true })
+    await peakNote.scrollIntoViewIfNeeded()
+    await expect(peakNote).toBeVisible()
+    const peakText = await peakNote.evaluate((element) => {
+      const tile = element.parentElement
+      if (!tile) throw new Error("Missing True peak tile")
+      const box = tile.getBoundingClientRect(), range = document.createRange()
+      range.selectNodeContents(element)
+      return Array.from(range.getClientRects(), (line) => ({
+        textWithinTile: line.left >= box.left && line.right <= box.right + 1 && line.top >= box.top && line.bottom <= box.bottom + 1,
+        lineWidth: line.width, tileWidth: box.width,
+      }))
+    })
+    expect(peakText.length, "True peak disclosure must render text").toBeGreaterThan(0)
+    expect(peakText.every((line) => line.textWithinTile), JSON.stringify(peakText)).toBe(true)
     for (const name of ["Live loudness of the processed output", "Measured audio levels"]) {
       const meters = page.getByRole("region", { name, exact: true })
       await meters.focus()

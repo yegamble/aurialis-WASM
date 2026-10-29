@@ -91,6 +91,15 @@ jobs:
           print(json.dumps(metadata, sort_keys=True))
           PY
 
+      - name: Check native matrix correctness and bounded cancellation
+        shell: bash
+        env:
+          GOMAXPROCS: "2"
+        run: |
+          set -euo pipefail
+          go test -run '^Test(PackedMatrix|Gonum)' -count=1 -v -timeout=2m ./internal/audio/steminfer 2>&1 \
+            | tee "$RUNNER_TEMP/steminfer-evidence/matrix-kernels.log"
+
       - name: Compare full inference window with original model
         id: full-window
         shell: bash

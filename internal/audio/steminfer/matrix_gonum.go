@@ -11,12 +11,19 @@ import (
 )
 
 func matrixBackendName() string {
+	if hasPackedMatrix() {
+		return "packed-avx2-fma"
+	}
 	if !cpu.X86.HasSSE3 {
 		return "portable-go"
 	}
 	return "gonum-sse3"
 }
 func multiplyBackend(dst, left, right []float32, rows, columns, inner int, transposeRight bool) {
+	if hasPackedMatrix() {
+		multiplyPacked(dst, left, right, rows, columns, inner, transposeRight)
+		return
+	}
 	// Gonum's f32.DotUnitary uses SSE3 HADDPS. Check the real CPU even on
 	// baseline GOAMD64=v1 builds; unsupported hardware keeps the scalar path.
 	if !cpu.X86.HasSSE3 {

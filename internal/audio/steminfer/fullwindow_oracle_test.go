@@ -28,8 +28,8 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	if qualification && (directory == "" || os.Getenv("AURIALIS_STEM_MODEL") == "") {
 		t.Fatal("native qualification requires the synthetic oracle and pinned model")
 	}
-	if qualification && matrixBackendName() != "gonum-sse3" {
-		t.Fatalf("qualification did not select SSE3 kernel: %s", matrixBackendName())
+	if qualification && matrixBackendName() != "gonum-sse3" && matrixBackendName() != "packed-avx2-fma" {
+		t.Fatalf("qualification did not select a candidate native kernel: %s", matrixBackendName())
 	}
 	if directory == "" {
 		t.Skip("set the full-window PyTorch oracle directory")

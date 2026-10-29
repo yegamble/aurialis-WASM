@@ -5,7 +5,8 @@ package steminfer
 import "math"
 
 // Backend names this build's matrix kernel: "apple-accelerate" (macOS with
-// cgo), "gonum-sse3" (candidate Linux/Windows amd64 with SSE3), or "portable-go".
+// cgo), "packed-avx2-fma" or "gonum-sse3" (candidate Linux/Windows amd64),
+// or "portable-go".
 // A backend name does not imply that its full-window qualification has passed.
 func Backend() string { return matrixBackendName() }
 

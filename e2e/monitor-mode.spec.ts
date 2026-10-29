@@ -10,7 +10,7 @@ test("Mono and Side monitor actual A/B with matched loudness and leave export un
     expect(result.measurements.some((item) => item.mode === "side" && item.measure !== "render")).toBe(true);
     await info.attach("monitor-speaker-and-export-evidence", { body: JSON.stringify(result), contentType: "application/json" });
   } finally {
-    const runtime = { consoleErrors, alerts: await page.getByRole("alert").allTextContents() };
+    const runtime = { consoleErrors, alerts: (await page.getByRole("alert").allTextContents()).filter(Boolean) };
     if (runtime.consoleErrors.length || runtime.alerts.length) console.log("MONITOR RUNTIME", JSON.stringify(runtime));
     await info.attach("monitor-runtime-state", { body: JSON.stringify(runtime), contentType: "application/json" });
   }

@@ -21,9 +21,9 @@ export interface StemModelStatus {
   downloadedBytes: number;
   totalBytes: number;
   state: StemModelState;
-  /** True when inference uses Apple Accelerate; plain-Go builds report false and are unavailable. */
+  /** True for qualified Apple Accelerate or packed AVX2/FMA inference. */
   accelerated: boolean;
-  /** "apple-accelerate", "portable-go", or "" when the server was started without the model. */
+  /** Qualified Apple/packed kernels, an unavailable fallback, or empty when disabled. */
   backend: string;
   /** The server's GOARCH; the recorded speed was timed on "arm64" (Apple silicon) only. */
   arch: string;

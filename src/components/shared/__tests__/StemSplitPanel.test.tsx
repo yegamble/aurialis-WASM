@@ -41,7 +41,14 @@ describe("Smart Split panel", () => {
     const speed = { windowSeconds: 20, hopSeconds: 10, idleSecondsPerWindow: 32, busySecondsPerWindow: 173 };
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ available: true, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688, state: "cached", accelerated: true, backend: "apple-accelerate", arch: "amd64", speed }))));
     render(<StemSplitPanel audioId="a" title="Song" duration={225} />);
-    expect(await screen.findByText(/^Estimated split time for this 3:45 song: about 74 minutes \(25 model windows at about 178 s each, measured on one hosted Intel Mac\)/u)).toBeTruthy();
+    expect(await screen.findByText(/^Estimated split time for this 3:45 song: roughly 75–100 minutes \(25 model windows at roughly 3–4 minutes each in hosted Intel Mac tests/u)).toBeTruthy();
+  });
+
+  it("can split with a qualified packed backend without reusing Apple timing metadata", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ available: true, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688, state: "cached", accelerated: true, backend: "packed-avx2-fma", arch: "amd64", speed: null }))));
+    render(<StemSplitPanel audioId="a" title="Song" duration={225} />);
+    expect(await screen.findByText(/25 model windows.*127–175 s per window/u)).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Split Song into 4 stems" }).disabled).toBe(false);
   });
 
   it("states browser-build availability once, without a model note or network request", async () => {

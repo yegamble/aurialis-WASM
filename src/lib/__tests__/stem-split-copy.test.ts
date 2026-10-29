@@ -52,10 +52,16 @@ describe("Smart Split estimate", () => {
   });
 
   it("uses the measured hosted Intel window without claiming a full-song timing", () => {
-    expect(stemSplitEstimate(speed, 225, "amd64")).toBe("Estimated split time for this 3:45 song: about 74 minutes (25 model windows at about 178 s each, measured on one hosted Intel Mac). A full song has not been timed there; your computer and its load may differ.");
-    expect(stemSplitEstimate(speed, 348, "amd64")).toContain("about 110 minutes (37 model windows");
-    expect(stemSplitEstimate(speed, 348, "amd64")).toContain("exceeds the 90-minute job limit");
+    expect(stemSplitEstimate(speed, 225, "amd64")).toBe("Estimated split time for this 3:45 song: roughly 75–100 minutes (25 model windows at roughly 3–4 minutes each in hosted Intel Mac tests, including a profiled run). A full song has not been timed there; your computer and its load may differ. This can exceed the 90-minute job limit, which stops the split.");
+    expect(stemSplitEstimate(speed, 348, "amd64")).toContain("roughly 111–148 minutes (37 model windows");
+    expect(stemSplitEstimate(speed, 348, "amd64")).toContain("can exceed the 90-minute job limit");
     expect(stemSplitEstimate(speed, 225, "")).toContain("has not been timed");
+  });
+
+  it("keeps packed native measurements separate from Apple speed metadata", () => {
+    expect(stemSplitEstimate(null, 225, "amd64", "packed-avx2-fma")).toContain("25 model windows");
+    expect(stemSplitEstimate(null, 225, "amd64", "packed-avx2-fma")).toContain("127–175 s per window");
+    expect(stemSplitEstimate(null, 225, "amd64", "packed-avx2-fma")).not.toContain("Intel");
   });
 
   it("offers no estimate without a recorded speed or a known length", () => {

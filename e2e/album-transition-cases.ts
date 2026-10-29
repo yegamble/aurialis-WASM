@@ -19,11 +19,12 @@ async function build(page: Page): Promise<Buffer> {
 
 test("continuous album preserves masters, inserts silence, mixes linear edges and cancels pending work", async ({ page }) => {
   test.setTimeout(180_000);
-  await uploadProject(page, "sequence-first.wav", 1, fixture(330, 1));
+  const firstId = await uploadProject(page, "sequence-first.wav", 1, fixture(330, 1));
   await uploadProject(page, "sequence-second.wav", 1, fixture(550, 1));
   await page.goto("/albums");
   await page.getByRole("button", { name: "New album", exact: true }).click();
   await page.getByRole("link", { name: /Untitled sequence 1/ }).click();
+  const albumUrl = page.url();
   await page.getByRole("button", { name: "sequence first", exact: true }).click();
   await page.getByRole("button", { name: "sequence second", exact: true }).click();
   await page.getByRole("button", { name: "Render album masters", exact: true }).click();
@@ -71,4 +72,24 @@ test("continuous album preserves masters, inserts silence, mixes linear edges an
     await expect(transitions.getByRole("status")).toContainText("cancelled");
     await expect(page.getByRole("button", { name: "Download continuous WAV", exact: true })).toHaveCount(0);
   } finally { release?.(); await page.unrouteAll({ behavior: "wait" }); }
+
+  // Start with real retained Classic masters and a playable continuous result.
+  // A changed project quality must invalidate both ways of reusing those files.
+  await build(page);
+  await page.goto(`/master/${firstId}`);
+  await page.getByRole("button", { name: "Oversampled", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Oversampled", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.goto(albumUrl);
+  await expect(page.getByText(/Saved masters no longer match this sequence or its settings/u)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Download sequence first", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Download sequence second", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Download continuous WAV", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Build continuous WAV", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Render album masters", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Download sequence second", exact: true })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("button", { name: "Download sequence first", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Build continuous WAV", exact: true })).toBeEnabled();
+  const refreshed = decode(await build(page));
+  expect(refreshed.rate).toBe(one.rate);
+  expect(refreshed.left).toHaveLength(one.left.length + two.left.length - frames);
 });

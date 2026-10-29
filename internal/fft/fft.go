@@ -14,7 +14,7 @@ const (
 	// DirectTwiddles evaluates every root directly and multiplies by 1/N on inverse.
 	DirectTwiddles TwiddleStrategy = iota
 	// RecursiveTwiddles prepares roots by stage recurrence and divides by N on inverse.
-	// Shared arithmetic can differ from the former standalone loop by roundoff;
+	// Shared arithmetic can differ from the former standalone loop by rounding error;
 	// compatibility is bounded by 5e-15 times max(1, output peak) in the fixtures.
 	RecursiveTwiddles
 )

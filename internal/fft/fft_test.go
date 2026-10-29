@@ -70,7 +70,7 @@ func TestPreparedPlanPreservesLegacyArithmeticBounds(t *testing.T) {
 					t.Fatal("direct roots changed legacy bit patterns")
 				}
 				if delta > 5e-15*math.Max(1, peak) {
-					t.Fatal("legacy arithmetic changed beyond roundoff bound")
+					t.Fatal("legacy arithmetic changed beyond rounding error bound")
 				}
 
 			}

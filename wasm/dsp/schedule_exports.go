@@ -1,4 +1,4 @@
-//go:build wasm
+//go:build wasm && (!js || aurialis_legacy_probe)
 
 package main
 

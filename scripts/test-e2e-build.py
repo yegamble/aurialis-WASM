@@ -1,3 +1,4 @@
+# cspell:words PPID
 """QA helper failure/signal cleanup; all fake builds stay in owned temp roots."""
 import os
 import hashlib
@@ -17,7 +18,18 @@ class E2EBuildCleanupTests(unittest.TestCase):
         (root / "internal/webui/embedded/build-target-native.json").write_text('{"schema":1,"target":"native"}\n')
         (root / "e2e/support/actual-output-tap.js").write_bytes(b"test-only observer fixture")
         fake_go = root / "fake-bin/go"
-        fake_go.write_text("#!/bin/sh\nexit 0\n")
+        fake_go.write_text("""#!/bin/sh
+while [ "$#" -gt 0 ]; do
+    if [ "$1" = "-o" ]; then
+        shift
+        mkdir -p "$(dirname "$1")"
+        printf fake-output > "$1"
+        exit 0
+    fi
+    shift
+done
+exit 0
+""")
         fake_go.chmod(0o755)
 
     def run_build(self, root):
@@ -44,6 +56,7 @@ class E2EBuildCleanupTests(unittest.TestCase):
                 result = subprocess.run(["bash", str(root / "scripts/build-e2e.sh"), output], env={**os.environ, "PATH": str(root / "fake-bin") + os.pathsep + os.environ["PATH"]}, capture_output=True, timeout=5, check=False)
                 self.assertEqual(result.returncode, expected, result.stderr)
                 self.assertFalse((root / "internal/webui/embedded/__qa/actual-output-tap.js").exists())
+                self.assertFalse((root / "internal/webui/embedded/__qa/aurialis-legacy-probe.wasm").exists())
                 self.assertEqual((root / "aurialis").read_bytes(), b"unchanged production fixture")
 
     def test_browser_target_is_rejected_before_qa_staging(self):
@@ -55,6 +68,7 @@ class E2EBuildCleanupTests(unittest.TestCase):
             result = self.run_build(root)
             self.assertNotEqual(result.returncode, 0)
             self.assertFalse((root / "internal/webui/embedded/__qa/actual-output-tap.js").exists())
+            self.assertFalse((root / "internal/webui/embedded/__qa/aurialis-legacy-probe.wasm").exists())
 
     def test_stale_owned_observer_is_removed_but_user_assets_are_kept(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -63,13 +77,17 @@ class E2EBuildCleanupTests(unittest.TestCase):
             qa = root / "internal/webui/embedded/__qa"
             qa.mkdir()
             asset = b"test-only observer fixture"
+            wasm = b"tagged probe fixture"
             (qa / "actual-output-tap.js").write_bytes(asset)
+            (qa / "aurialis-legacy-probe.wasm").write_bytes(wasm)
             digest = hashlib.sha256(asset).hexdigest()
-            (qa / ".aurialis-build-e2e-owner").write_text(f"aurialis-build-e2e-v1 2147483647 {digest}\n")
+            wasm_digest = hashlib.sha256(wasm).hexdigest()
+            (qa / ".aurialis-build-e2e-owner").write_text(f"aurialis-build-e2e-v2 2147483647 {digest} {wasm_digest}\n")
             (qa / "user-asset.txt").write_text("keep")
             result = self.run_build(root)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse((qa / "actual-output-tap.js").exists())
+            self.assertFalse((qa / "aurialis-legacy-probe.wasm").exists())
             self.assertFalse((qa / ".aurialis-build-e2e-owner").exists())
             self.assertEqual((qa / "user-asset.txt").read_text(), "keep")
 
@@ -84,6 +102,18 @@ class E2EBuildCleanupTests(unittest.TestCase):
             result = self.run_build(root)
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(asset.read_text(), "user-owned")
+
+    def test_unowned_legacy_probe_is_preserved_and_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self.make_fixture(root)
+            qa = root / "internal/webui/embedded/__qa"
+            qa.mkdir()
+            asset = qa / "aurialis-legacy-probe.wasm"
+            asset.write_bytes(b"user-owned probe")
+            result = self.run_build(root)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(asset.read_bytes(), b"user-owned probe")
 
     def test_browser_target_binary_is_rejected_before_server_launch(self):
         with tempfile.TemporaryDirectory() as temporary:

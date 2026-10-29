@@ -11,6 +11,22 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## P2 priority wave — 2026-10-29
+
+Owner requested the highest-priority P2 items with delegated merge after verification. Disk cleanup removed the Go build cache and three obsolete merged review checkouts; available space increased from about 3 GiB to 19 GiB. Source, prior verification evidence, models and evaluation audio were retained.
+
+Round D accepts the bounded wave below. Security and QA found existing browser reservations and serialized native POSTs; Devil's Advocate revised the proposed new native memory broker from REQUIRED to a measured SHOULD follow-up. Browser compressed-size admission and FLAC eager allocation are concrete gaps. Float-headroom policy, native process-wide admission, FFT consolidation and live gain-crossfade work remain separate; useful above-unity source audio must not be clipped by an arbitrary unity clamp.
+
+| ID | Pri | Item | Acceptance | Status |
+|---|---|---|---|---|
+| P2-01 | P2 | Grow FLAC output only after validating decoded frames; do not reserve its untrusted declared duration. | A metadata-only maximum-duration declaration fails with bounded allocation; valid known/unknown-length PCM remains exact; incremental-growth cost measured. | in-progress (codex/p2-flac-allocation) |
+| P2-02 | P2 | Conservatively admit compressed browser source/reference memory. | High-expansion compressed inputs exceed small-device budgets before worker creation; ordinary small files remain usable; unknown shapes use safe limits; cancellation/failure release reservations. | in-progress (codex/p2-browser-admission) |
+| P2-03 | P2 | Invalidate exported/mastered readiness on sound-affecting changes and reject stale export completions. | Export then edit requires a new export; late completion of the older render cannot restore readiness; rename/unapplied draft/rejected actions preserve readiness. | in-progress (codex/p2-mastered-status) |
+
+Evidence so far is source inspection; runtime acceptance and all applicable gates remain required. Three implementers use isolated Git checkouts and non-overlapping files. Final QA, Devil's Advocate, Technical Writer and Product Engineer approval plus protected-branch CI are required before merge.
+
+---
+
 ## v1 release ruling — 2026-10-26 (`/war-room all`, Round D)
 
 **This section supersedes the Active Backlog, Recovery backlog and MUB rows below.** Those rows are kept as history. Seats were product engineer, Devil's Advocate, QA, security and the Grammy veteran, all reviewing `main` at `71e6f1c`. Rounds B/C were skipped because every P0 was reported independently by 3–5 seats with executed evidence. Disputed P1s are ruled below, with dissent recorded.

@@ -311,6 +311,12 @@ func (e *Engine) SetParams(next Params) {
 	}
 	prev := e.params
 	e.params = next
+	if algorithmOf(next) == TruePeakAlgorithmVersion && prev.Limiter.TruePeak != next.Limiter.TruePeak {
+		// The sample limiter does not run during true-peak limiting. Its old
+		// envelope must not duck unrelated audio when that mode returns.
+		e.limEnvLin = 1
+		e.limPrevL, e.limPrevR = [3]float64{}, [3]float64{}
+	}
 	if algorithmOf(prev) != algorithmOf(next) {
 		// Latency changes with the algorithm; never mix delayed and immediate frames.
 		e.truePeak.reset()

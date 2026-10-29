@@ -8,6 +8,7 @@ import (
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
+	"github.com/yegamble/Aurialis-WASM/internal/fft"
 )
 
 func renderedReferenceBassPower(ctx context.Context, source *audio.Buffer, params dsp.Params, edges [6]float64) (float64, error) {
@@ -37,6 +38,7 @@ func renderedReferenceSpectrumContext(ctx context.Context, source *audio.Buffer,
 	hop := size / 4
 	left, right := make([]float32, size), make([]float32, size)
 	scratch := make([]complex128, size)
+	transform := fft.New(size, fft.RecursiveTwiddles)
 	weights := make([]float64, size)
 	weightPower := 0.0
 	for i := range weights {
@@ -68,7 +70,7 @@ func renderedReferenceSpectrumContext(ctx context.Context, source *audio.Buffer,
 				scratch[i] = 0
 			}
 		}
-		fftInPlace(scratch)
+		transform.Transform(scratch, false)
 		powers := referenceWindowBandPowers(scratch, source.SampleRate, weightPower, edges)
 		for band := range total {
 			total[band] += powers[band] * float64(hop)

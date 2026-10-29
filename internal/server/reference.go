@@ -26,9 +26,9 @@ func (s *Server) handleAnalyzeReference(w http.ResponseWriter, r *http.Request) 
 	if r.Context().Err() != nil {
 		return
 	}
-	job, err := s.jobs.SubmitAnalyzeReference(request.source, request.reference, request.baseline, request.options)
+	job, err := s.jobs.SubmitAnalyzeReference(request.source, request.reference, request.baseline, request.options, requestMemory(r))
 	if err != nil {
-		writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", err.Error())
+		writeAdmissionError(w, err)
 		return
 	}
 	s.writeAdmittedJob(w, r, job)
@@ -81,6 +81,17 @@ func (s *Server) readReferenceUpload(w http.ResponseWriter, r *http.Request) (*r
 			if _, parseErr = audio.SanitizeFilename(filename); parseErr != nil {
 				_ = part.Close()
 				writeErrorJSON(w, http.StatusBadRequest, "invalid_audio", "Invalid audio filename")
+				return nil, false
+			}
+			retained := int64(0)
+			if request.source != nil {
+				retained += pcmCapacity(request.source)
+			}
+			if request.reference != nil {
+				retained += pcmCapacity(request.reference)
+			}
+			if !resizeRequest(w, r, s.uploadMemoryBytes()+retained) {
+				_ = part.Close()
 				return nil, false
 			}
 			raw, readErr := io.ReadAll(io.LimitReader(part, MaxAudioFileBytes+1))
@@ -140,6 +151,9 @@ func (s *Server) readReferenceUpload(w http.ResponseWriter, r *http.Request) (*r
 	}
 	if request.source == nil || request.reference == nil {
 		writeErrorJSON(w, http.StatusBadRequest, "missing_file", "source and reference audio parts are required")
+		return nil, false
+	}
+	if !resizeRequest(w, r, pcmCapacity(request.source)+pcmCapacity(request.reference)+4*1024*1024) {
 		return nil, false
 	}
 	return request, true

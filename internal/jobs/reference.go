@@ -18,18 +18,18 @@ func validReferenceGeometry(buf *audio.Buffer) bool {
 	return buf != nil && buf.Frames >= 1 && buf.Frames <= audio.MaxDecodedFrames && len(buf.Left) == buf.Frames && len(buf.Right) == buf.Frames && buf.SampleRate >= 8000 && buf.SampleRate <= 192000 && buf.Channels == 2
 }
 
-func (m *Manager) admitReferenceLocked(job *Job, source, reference *audio.Buffer) error {
+func (m *Manager) admitReferenceLocked(job *Job, source, reference *audio.Buffer, credits ...*MemoryReservation) error {
 	if !validReferenceGeometry(source) || !validReferenceGeometry(reference) {
 		return errors.New("invalid source or reference geometry")
 	}
 	// Both inputs and bounded streaming render/FFT/result
 	// headroom are charged in one lock transaction. No independent admissions can race.
-	reservation := int64(source.Frames)*8 + int64(reference.Frames)*8 + 32*1024*1024
-	return m.admitReservationLocked(job, reservation)
+	reservation := int64(source.Frames)*8 + int64(reference.Frames)*8 + 32*1024*1024 + pcmExtraCapacity(source) + pcmExtraCapacity(reference)
+	return m.admitReservationLocked(job, reservation, credits...)
 }
 
 // SubmitAnalyzeReference admits both reconstructed sources and output scratch atomically.
-func (m *Manager) SubmitAnalyzeReference(source, reference *audio.Buffer, baseline dsp.Params, options mastering.ReferenceOptions) (*Job, error) {
+func (m *Manager) SubmitAnalyzeReference(source, reference *audio.Buffer, baseline dsp.Params, options mastering.ReferenceOptions, credits ...*MemoryReservation) (*Job, error) {
 	if err := dsp.ValidateParams(baseline); err != nil {
 		return nil, err
 	}
@@ -40,7 +40,7 @@ func (m *Manager) SubmitAnalyzeReference(source, reference *audio.Buffer, baseli
 	now := time.Now().UTC()
 	job := &Job{ID: id, JobID: id, Kind: KindAnalyzeReference, Status: StatusQueued, Stage: "Queued for measured reference EQ proposal", CreatedAt: now, UpdatedAt: now}
 	m.mu.Lock()
-	if err := m.admitReferenceLocked(job, source, reference); err != nil {
+	if err := m.admitReferenceLocked(job, source, reference, credits...); err != nil {
 		m.mu.Unlock()
 		return nil, err
 	}
@@ -77,8 +77,7 @@ func (m *Manager) SubmitAnalyzeReference(source, reference *audio.Buffer, baseli
 		m.mu.Unlock()
 		return snapshot, nil
 	default:
-		m.usedBytes -= job.reservedBytes
-		delete(m.jobs, id)
+		m.rollbackAdmissionLocked(job, credits)
 		m.mu.Unlock()
 		return nil, ErrQueueFull
 	}

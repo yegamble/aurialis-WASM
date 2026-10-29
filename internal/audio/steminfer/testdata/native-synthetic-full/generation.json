@@ -1,0 +1,33 @@
+{
+  "kind": "aurialis-synthetic-native-qualification-v1",
+  "fixture": "broadband",
+  "samples": 882000,
+  "privateAudio": false,
+  "originalCheckpointSHA256": "c62820893bbf86d4e734f966bd142d9157cfc8bb8e79e9d8f9ea553f3ff3519f",
+  "oracleJSONSHA256": "55856bba343240c2b9de15c41ec38facd6a40994344b6276706098b550b632af",
+  "oracleBinarySHA256": "6dd83d4c764f5cab925b0363033540f9c67169261df1fca1bde0e5c75ae3c609",
+  "scriptSHA256": "7e9eeabf5faece3038e8d646acc08e3895479ac62e9ee0d895d4c5b1da6fa11b",
+  "torch": "2.8.0",
+  "threads": 2,
+  "host": "macOS-26.5.1-arm64-arm-64bit",
+  "command": "python3 internal/audio/steminfer/testdata/fullwindow_oracle.py --checkpoint <checksum-pinned-original-checkpoint> --out <synthetic-output-directory> --samples 882000 --broadband --threads 2 --query-tile 64 --batch-tile 8",
+  "projection": {
+    "selection": [
+      "source",
+      "pcm.vocal",
+      "pcm.drums",
+      "pcm.bass",
+      "pcm.guitar",
+      "pcm.piano"
+    ],
+    "lossless": true,
+    "uncompressedBytes": 42336000,
+    "binarySHA256": "5e8589f0f4b78f3cea7dec1a0203bab1b951741a28b6ff4e8ce3e44056a90fcc",
+    "compressedBytes": 38082825,
+    "compressedSHA256": "0ea045a5c6faaea44fab4f4efe91a86fcd6cbff1207488fd0e42d77797f338d2",
+    "container": "gzip",
+    "level": 9,
+    "mtime": 0,
+    "filename": ""
+  }
+}

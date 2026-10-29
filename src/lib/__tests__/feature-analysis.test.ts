@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { AudioJobError } from "../audio-jobs";
 import { analyzeSourceFeatures } from "../feature-analysis";
 
 const features = () => ({
@@ -63,6 +64,17 @@ describe("measured source analysis jobs", () => {
       await expect(analyzeSourceFeatures(new Blob(), new AbortController().signal, vi.fn())).rejects.toThrow(/Invalid|invalid/u);
       expect(fetch.mock.calls[1]?.[1]).toMatchObject({ method: "DELETE" });
     }
+  });
+  it.each([
+    ["busy", "busy"], ["queue_full", "queue is full"], ["stems_unavailable", "Smart Split is unavailable"], ["maintenance", "processor is unavailable"],
+  ])("distinguishes 503 %s while retaining diagnostics", async (code, message) => {
+    const fetch = vi.fn().mockResolvedValueOnce(json({ error: code, detail: "server diagnostic" }, 503));
+    vi.stubGlobal("fetch", fetch);
+    const failure = await analyzeSourceFeatures(new Blob(), new AbortController().signal, vi.fn()).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(AudioJobError);
+    expect(failure).toMatchObject({ code, status: 503, detail: "server diagnostic" });
+    expect((failure as Error).message).toContain(message);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
   it("reports busy admission without issuing a poll or a guessed deletion", async () => {
     const fetch = vi.fn().mockResolvedValueOnce(json({ error: "busy" }, 503));

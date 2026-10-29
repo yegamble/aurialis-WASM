@@ -3,8 +3,27 @@ function object(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("Invalid audio job response.");
   return value as Record<string, unknown>;
 }
+/** Structured server diagnostics stay available without putting raw details in the UI. */
+export class AudioJobError extends Error {
+  constructor(readonly status: number, readonly code: string, readonly detail: string) {
+    const message = code === "busy" ? "The local audio processor is busy. Try again after the current task finishes."
+      : code === "queue_full" ? "The audio analysis queue is full. Try again after another job finishes."
+      : code === "stems_unavailable" ? "Smart Split is unavailable in this native Aurialis build (built from source)."
+      : status === 503 ? "The local audio processor is unavailable. Check that the Aurialis server is running, then try again."
+      : `Audio analysis request failed (${String(status)}).`;
+    super(message); this.name = "AudioJobError";
+  }
+}
 async function responseJSON(response: Response): Promise<unknown> {
-  if (!response.ok) throw new Error(response.status === 503 ? "The local audio processor is busy. Try again shortly." : `Audio analysis request failed (${String(response.status)}).`);
+  if (!response.ok) {
+    let code = "", detail = "";
+    try {
+      const data = object(await response.json());
+      if (typeof data.error === "string") code = data.error.slice(0, 128);
+      if (typeof data.detail === "string") detail = data.detail.slice(0, 4096);
+    } catch { /* An unavailable server may return an HTML or empty response. */ }
+    throw new AudioJobError(response.status, code, detail);
+  }
   return response.json() as Promise<unknown>;
 }
 

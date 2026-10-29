@@ -28,6 +28,7 @@ const requiredExports = new Set([
   "aurialis_schedule_begin", "aurialis_schedule_move_buffer", "aurialis_schedule_stage_move",
   "aurialis_schedule_commit", "aurialis_schedule_revision", "aurialis_schedule_seek", "aurialis_schedule_detach", "aurialis_schedule_set_looping",
   "aurialis_meter_buffer", "aurialis_meter_snapshot",
+  "aurialis_set_monitor_mode", "aurialis_monitor_buffer", "aurialis_monitor_process",
 ]);
 for (const entry of WebAssembly.Module.exports(module)) {
   assert.ok(requiredExports.delete(entry.name), `unexpected or repeated reactor export ${entry.name}`);

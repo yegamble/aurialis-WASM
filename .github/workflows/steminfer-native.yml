@@ -40,7 +40,7 @@ jobs:
             runner: macos-15-intel
             cache_role: native-qualification-intel-macos
             qualify: "false"
-            pipeline: "false"
+            pipeline: "true"
             job_timeout: 35
     steps:
       - name: Checkout source and synthetic fixture
@@ -115,6 +115,7 @@ jobs:
           AURIALIS_STEM_FULL_ORACLE: ${{ github.workspace }}/internal/audio/steminfer/testdata/native-synthetic-full
           GOMAXPROCS: "2"
           QUALIFY_NATIVE: ${{ matrix.qualify }}
+          AURIALIS_STEM_OBSERVE_NATIVE: "1"
         run: |
           set -euo pipefail
           if [ "$QUALIFY_NATIVE" = "true" ]; then export AURIALIS_STEM_QUALIFY_NATIVE=1; fi
@@ -165,6 +166,8 @@ jobs:
           model_load = re.search(r"^model load took (.+)$", full_text, re.MULTILINE)
           window_setup = re.search(r"^window setup took (.+)$", full_text, re.MULTILINE)
           backend = re.search(r"^matrix backend (.+)$", full_text, re.MULTILINE)
+          heap = re.search(r"^native qualification peak Go heap=([0-9]+) bytes", full_text, re.MULTILINE)
+          cancellation = re.search(r"^same-model cancellation returned after (.+)$", full_text, re.MULTILINE)
           pipeline_metrics = {}
           for line in pipeline_text.splitlines():
               if line.startswith("backend="):
@@ -183,6 +186,8 @@ jobs:
               "qualificationCandidate": os.environ["QUALIFICATION_CANDIDATE"] == "true",
               "platformReadinessChanged": False,
               "profiledRun": True,
+              "boundedObservationRequested": True,
+              "windowBudgetSeconds": 180 if os.environ["QUALIFICATION_CANDIDATE"] == "true" else None,
               "profileSamplingOverheadIncludedInWindowTiming": True,
               "cpuProfileBytes": profile_bytes,
               "outcomes": {
@@ -197,6 +202,8 @@ jobs:
                   "elapsed": duration.group(1) if duration else None,
                   "lanes": int(duration.group(2)) if duration else None,
                   "expectedHeadCount": 5,
+                  "peakGoHeapBytes": int(heap.group(1)) if heap else None,
+                  "cancellationElapsed": cancellation.group(1) if cancellation else None,
               },
               "sixStemPipeline": {
                   "measurements": pipeline_metrics,

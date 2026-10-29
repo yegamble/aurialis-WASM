@@ -25,7 +25,8 @@ type fullWindowTensor struct {
 func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	directory := os.Getenv("AURIALIS_STEM_FULL_ORACLE")
 	qualification := os.Getenv("AURIALIS_STEM_QUALIFY_NATIVE") == "1"
-	if qualification && (directory == "" || os.Getenv("AURIALIS_STEM_MODEL") == "") {
+	observed := qualification || os.Getenv("AURIALIS_STEM_OBSERVE_NATIVE") == "1"
+	if observed && (directory == "" || os.Getenv("AURIALIS_STEM_MODEL") == "") {
 		t.Fatal("native qualification requires the synthetic oracle and pinned model")
 	}
 	if qualification && matrixBackendName() != "gonum-sse3" && matrixBackendName() != "packed-avx2-fma" {
@@ -54,7 +55,7 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if qualification {
+	if observed {
 		verifyNativeSyntheticOracle(t, metadataBytes, raw)
 	}
 	read := func(name string) []float32 {
@@ -78,7 +79,7 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	t.Logf("window setup took %s", time.Since(setupStarted))
 	names := [5]string{"vocal", "drums", "bass", "guitar", "piano"}
 	stopMemory := func() {}
-	if qualification {
+	if observed {
 		stopMemory = observeNativeQualificationHeap(t, len(raw))
 	}
 	defer stopMemory()
@@ -88,8 +89,10 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	hooks := inferenceHooks{}
 	if qualification {
 		ctx, cancel = context.WithTimeout(ctx, 180*time.Second)
+	}
+	if observed {
 		hooks.progress = func(completed, total int) {
-			t.Logf("native qualification step %d/%d elapsed %s", completed, total, time.Since(started))
+			t.Logf("native inference step %d/%d elapsed %s", completed, total, time.Since(started))
 		}
 	}
 	defer cancel()
@@ -117,11 +120,11 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	}
 	elapsed := time.Since(started)
 	t.Logf("window took %v with %d lanes", elapsed, defaultWorkers())
-	if qualification {
+	if qualification && elapsed > 180*time.Second {
+		t.Errorf("native window took %s, exceeds qualified 180s usable budget", elapsed)
+	}
+	if observed {
 		stopMemory()
-		if elapsed > 180*time.Second {
-			t.Errorf("native window took %s, exceeds qualified 180s usable budget", elapsed)
-		}
 		verifyNativeWindowCancellation(t, runner, source[:samples], source[samples:])
 	}
 }

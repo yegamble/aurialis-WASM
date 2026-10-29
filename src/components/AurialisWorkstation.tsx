@@ -1020,6 +1020,7 @@ function MasterView({ trackId }: { trackId: string }) {
             peaks={peaks}
             playheadRatio={playheadRatio}
             onSeekRatio={seek}
+            repeat={playback?.repeat ?? false}
           />
           <RealTransport
             state={playback}

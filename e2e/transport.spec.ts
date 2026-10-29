@@ -89,3 +89,25 @@ test("mobile meter regions remain above the fixed transport when focused", async
     await page.screenshot({ path: info.outputPath(`meters-${String(width)}.png`) });
   }
 });
+
+
+test("Repeat wraps Forward 10 and Shift+Right while an absolute End seek stops", async ({ page }) => {
+  await uploadProject(page, "repeat-relative.wav", 12);
+  const position = page.getByRole("slider", { name: "Track playback position", exact: true });
+  const transport = page.locator(".transport");
+  await page.getByRole("button", { name: "Repeat track", exact: true }).click();
+  for (const action of ["forward", "key"]) {
+    await position.focus(); await position.press("End");
+    await expect(transport).toHaveAttribute("data-playing", "false");
+    await position.press("ArrowLeft");
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect(transport).toHaveAttribute("data-playing", "true");
+    if (action === "forward") await page.getByRole("button", { name: "Skip forward 10 seconds", exact: true }).click();
+    else { await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); }); await page.keyboard.press("Shift+ArrowRight"); }
+    await expect(transport).toHaveAttribute("data-playing", "true");
+    const seconds = Number(await transport.getAttribute("data-position"));
+    expect(seconds).toBeGreaterThanOrEqual(9); expect(seconds).toBeLessThan(10.5);
+  }
+  await position.focus(); await position.press("End");
+  await expect(transport).toHaveAttribute("data-playing", "false");
+});

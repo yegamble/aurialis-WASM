@@ -66,10 +66,17 @@ func render(ctx context.Context, request Request, buf *audio.Buffer) (*Result, e
 	if request.Measure != "" && (request.Measure != "render" || request.Format != "json") {
 		return nil, errors.New("measure must be \"render\" on a JSON render")
 	}
+	monitor, err := dsp.ParseMonitorMode(request.MonitorMode)
+	if err != nil {
+		return nil, err
+	}
+	if request.MonitorMode != "" && request.Format != "json" {
+		return nil, errors.New("monitorMode is only accepted on a JSON render measurement")
+	}
 	skipSource := request.Measure == "render" && (script != nil || !params.Bypass)
 	var before dsp.Metrics
 	if !skipSource {
-		before, err = dsp.MeasureStereoContext(ctx, buf.Left, buf.Right, float64(buf.SampleRate))
+		before, err = dsp.MeasureMonitorContext(ctx, buf.Left, buf.Right, float64(buf.SampleRate), monitor)
 		if err != nil {
 			return nil, err
 		}
@@ -88,6 +95,14 @@ func render(ctx context.Context, request Request, buf *audio.Buffer) (*Result, e
 	left, right, after, rate, err := mastering.ConvertExportContext(ctx, left, right, buf.SampleRate, deliveredDither, params, after, export)
 	if err != nil {
 		return nil, err
+	}
+	if monitor != dsp.MonitorStereo {
+		reduction := after.GainReductionDB
+		after, err = dsp.MeasureMonitorContext(ctx, left, right, float64(rate), monitor)
+		after.GainReductionDB = reduction
+		if err != nil {
+			return nil, err
+		}
 	}
 	// Report the dither the delivered file carries; a conversion dithers after rendering.
 	params.DitherBits = deliveredDither

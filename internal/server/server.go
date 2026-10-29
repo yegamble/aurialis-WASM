@@ -386,7 +386,7 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request, exp
 				writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Audio file exceeds the decoded-frame storage limit")
 				return nil, false
 			}
-		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "format" || name == "script" || name == "scriptVersion" || ((r.URL.Path == "/api/analyze/deep" || r.URL.Path == "/analyze/deep") && name == "renderQuality") || (exportFields && (name == "sampleRate" || name == "dither" || name == "measure"))) && disposition["filename"] == "" && values[name] == nil:
+		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "format" || name == "script" || name == "scriptVersion" || ((r.URL.Path == "/api/analyze/deep" || r.URL.Path == "/analyze/deep") && name == "renderQuality") || (exportFields && (name == "sampleRate" || name == "dither" || name == "measure" || name == "monitorMode"))) && disposition["filename"] == "" && values[name] == nil:
 			var value []byte
 			fieldLimit := 64 * 1024
 			if name == "script" {
@@ -674,6 +674,11 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_multipart", "measure must be \"render\" on a JSON render")
 		return
 	}
+	monitor, monitorErr := dsp.ParseMonitorMode(r.FormValue("monitorMode"))
+	if monitorErr != nil || (r.Form.Has("monitorMode") && !jsonResponse) {
+		writeErrorJSON(w, http.StatusBadRequest, "invalid_multipart", "monitorMode must be stereo, mono or side on a JSON render measurement")
+		return
+	}
 	outputRate := buf.SampleRate
 	if export.Converts(buf.SampleRate) {
 		outputRate = export.SampleRate
@@ -697,7 +702,7 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 	var beforeMetrics dsp.Metrics
 	var measureErr error
 	if !skipSource {
-		beforeMetrics, measureErr = dsp.MeasureStereoContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate))
+		beforeMetrics, measureErr = dsp.MeasureMonitorContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate), monitor)
 	}
 	if measureErr != nil {
 		writeExportCanceled(w, r, "Audio measurement")
@@ -735,6 +740,15 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 			writeErrorJSON(w, http.StatusBadRequest, "invalid_export_options", convertErr.Error())
 		}
 		return
+	}
+	if monitor != dsp.MonitorStereo {
+		reduction := afterMetrics.GainReductionDB
+		afterMetrics, measureErr = dsp.MeasureMonitorContext(r.Context(), outL, outR, float64(outRate), monitor)
+		afterMetrics.GainReductionDB = reduction
+		if measureErr != nil {
+			writeExportCanceled(w, r, "Audio measurement")
+			return
+		}
 	}
 	// Report the dither the delivered file carries; a conversion dithers after rendering.
 	params.DitherBits = deliveredDither

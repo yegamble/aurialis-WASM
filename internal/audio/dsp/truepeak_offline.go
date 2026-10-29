@@ -30,11 +30,11 @@ const (
 	offlinePeakEdge = 1 << 10
 )
 
-// offlineTruePeak returns the highest reconstructed absolute value of either
+// offlineMonitorTruePeak returns the highest reconstructed absolute value of either
 // channel of the zero-extended file, evaluated on a 4x grid from
 // offlinePeakEdge frames before the first frame to offlinePeakEdge frames
 // after the last. It checks ctx once per block.
-func offlineTruePeak(ctx context.Context, left, right []float32) (float64, error) {
+func offlineMonitorTruePeak(ctx context.Context, left, right []float32, mode MonitorMode) (float64, error) {
 	n := min(len(left), len(right))
 	if n == 0 {
 		return 0, nil
@@ -74,7 +74,8 @@ func offlineTruePeak(ctx context.Context, left, right []float32) (float64, error
 		if at < 0 || at >= n {
 			return 0
 		}
-		return complex(sanitizeSample(float64(left[at])), sanitizeSample(float64(right[at])))
+		l, r := mode.Sample(left[at], right[at])
+		return complex(sanitizeSample(float64(l)), sanitizeSample(float64(r)))
 	}
 	for start := first; start < end; start += block {
 		if err := ctx.Err(); err != nil {

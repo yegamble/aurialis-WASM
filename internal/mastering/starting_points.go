@@ -176,7 +176,9 @@ func CapSectionMove(base dsp.Params, move automation.Move) automation.Move {
 // shared golden testdata/export-transform.golden.json checks both.
 func exportScriptV2(script *ScriptV2) *ScriptV2 {
 	exported := script.Clone()
-	exported.ChainParams.AlgorithmVersion = dsp.TruePeakAlgorithmVersion
+	if exported.ChainParams.AlgorithmVersion != dsp.OversampledAlgorithmVersion {
+		exported.ChainParams.AlgorithmVersion = dsp.TruePeakAlgorithmVersion
+	}
 	exported.ChainParams.Limiter.TruePeak = true
 	exported.ChainParams.DitherBits = 0
 	return exported

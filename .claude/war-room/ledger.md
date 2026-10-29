@@ -17,11 +17,10 @@ Owner clarified that **100% complete includes every P2/P3 and product acceptance
 
 ### Owner-dependent checks
 
-PR [#62](https://github.com/yegamble/aurialis-WASM/pull/62) merged on 2026-10-29 at `9574c60f7f4dbf49d1e42225035c4d3d627bd0bb`, from exact reviewed head `529e722ec6707a25395556bc35414af0fd88371e`. **35 implementation items are verified and merged; C22 and C31 remain blocked on owner evidence. This is not whole-product 100% completion.**
+PR [#62](https://github.com/yegamble/aurialis-WASM/pull/62) merged on 2026-10-29 at `9574c60f7f4dbf49d1e42225035c4d3d627bd0bb`, from exact reviewed head `529e722ec6707a25395556bc35414af0fd88371e`. **36 inventory items are verified, including the owner-accepted unchanged Warm Analog recipe; C31 remains blocked on physical-device evidence. This is not whole-product 100% completion.**
 
 | ID | Remaining item | Acceptance still required | Status |
 |---|---|---|---|
-| C22 | Warm Analog voicing | Measure the proposed 180 Hz adjustment on dense rock/metal and obtain listening review before changing the recipe; the owner/listening question remains pending. | blocked (owner dense rock/metal source and listening decision) |
 | C31 | Physical device qualification | Qualify real playback on Android, Windows with Bluetooth, iOS and a 96 kHz interface, including the requested sustained run and overload behavior. An immutable device-check bundle was delivered to the owner at [4712fb78](https://4712fb78-aurialis-wasm.yegamble.workers.dev/device-check/) from source `fa80ee9`; the actual Go-kernel HTTPS probe passed, but physical-device reports are still pending. | blocked (owner physical-device JSON reports) |
 
 ### Verified & Merged — completion inventory
@@ -55,6 +54,7 @@ Fresh actual-worklet observations: Oversampled 44.1 kHz ran 600.816 s at mean lo
 | C19 | Limiter-off gain cross-fade | Smooth the gain change when limiter or true peak turns off under gain reduction; preserve level and no-splice acceptance. | verified (PR #62, `9574c60`, recorded gates) |
 | C20 | Shared FFT | Consolidate production FFT implementations without changing outputs; measure runtime and allocations. | verified (PR #62, `9574c60`, recorded gates) |
 | C21 | Hot-source finding and Dynamic & Open cap | Explain that a hot clipped source itself needs heavy limiting; measure and rule on the proposed 1 dB Dynamic & Open limiting cap. | verified (PR #62, `9574c60`, recorded gates) |
+| C22 | Warm Analog voicing | Owner-selected dense source rendered in full at 250/180 Hz with the same +1.1 dB/Q1 band and all other recipe controls unchanged. A common 40.35 s excerpt matched within 0.01 LU; the owner chose blinded Sample B, verified as 250 Hz by its retained WAV hash. Retain the existing 250 Hz recipe and decline the 180 Hz proposal; no universal genre preference is claimed. | verified (existing recipe on main `9574c60`, owner blind B acceptance 2026-10-29) |
 | C23 | Saturation and crossover proof | Measure saturation aliasing, design a filter with at least 60 dB stopband, and verify fourth-order Linkwitz–Riley crossover behavior. | verified (PR #62, `9574c60`, recorded gates) |
 | C24 | Offline sample-rate dependence | Compare the same material rendered at 96 kHz and resampled to 48 kHz to determine whether the chain changes with rate. Focused 2-second synthetic comparison: 48 kHz-minus-resampled-96 kHz deltas were neutral 0, EQ −0.00875 LU, compressor +0.06914 LU, saturation +0.04230 LU, stereo 0, limiter −0.03238 LU and full chain +0.13733 LU. Oversampled 3 saturation was +0.01217 LU and full chain +0.09009 LU (crest +0.15058 dB), with the other stage deltas effectively unchanged; no universal rate-invariance claim. | verified (PR #62, `9574c60`, recorded gates) |
 | C25 | Legacy JS bridge footprint | Remove the legacy `aurialisDSP*` bridge and static buffers from production JS/WASM, or isolate them behind a test build, while retaining required offline-job and QA behavior. | verified (PR #62, `9574c60`, recorded gates) |

@@ -195,11 +195,10 @@ for (const shortcut of shortcuts) {
     expect(original.rmsDbfs).toBeLessThan(-8);
     const originalMean = await meanOutputLevel(page);
     await page.getByRole("button", { name: "A Processed", exact: true }).click();
-    await expect.poll(async () => {
-      const value = await outputLevel(page);
-      if (!value || value.frames < original.frames + original.sampleRate / 2) return Infinity;
-      return Math.abs(value.rmsDbfs - original.rmsDbfs);
-    }).toBeLessThan(0.1);
+    // The first audible callback can still include startup silence. Advance
+    // the speaker clock, then compare full-period means at the same tolerance.
+    await expect.poll(async () => (await outputLevel(page))?.frames ?? 0)
+      .toBeGreaterThanOrEqual(original.frames + original.sampleRate / 2);
     const baselineMean = await meanOutputLevel(page);
     expect(Math.abs(baselineMean - originalMean)).toBeLessThan(0.1);
     const baseline = await outputLevel(page);

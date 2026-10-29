@@ -88,6 +88,29 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstub
 const audioRequests = () => vi.mocked(fetch).mock.calls.filter(([input]) => input !== "/api/stems/model");
 
 describe("master live playback lifecycle", () => {
+  it("restores the mastered delivery selection and rejects an old render after changing it", async () => {
+    const { delivery } = heldAudition();
+    const view = mount(); await ready();
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "16-bit PCM" }));
+    fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));
+    await waitFor(() => { expect(savedTrack().status).toBe("mastered"); });
+    expect(savedTrack().exportDelivery?.bitDepth).toBe(16);
+    view.unmount();
+    mount(); await ready();
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "16-bit PCM" }).getAttribute("aria-pressed")).toBe("true");
+    expect(savedTrack().status).toBe("mastered");
+    let finish: (() => void) | undefined;
+    delivery.mockImplementation(() => new Promise((resolve) => { finish = () => { resolve({ blob: canonicalWAV(pcm), truePeakDbtp: -1 }); }; }));
+    fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));
+    await waitFor(() => { expect(finish).toBeDefined(); });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "24-bit PCM" }));
+    await waitFor(() => { expect(savedTrack().status).toBe("ready"); });
+    await act(async () => { finish?.(); await Promise.resolve(); });
+    expect(savedTrack().status).toBe("ready");
+  }, 30000);
+
   it("cannot mark edited settings mastered when an earlier export finishes", async () => {
     const { delivery } = heldAudition();
     let finish: (() => void) | undefined;

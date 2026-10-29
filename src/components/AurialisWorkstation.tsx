@@ -52,7 +52,7 @@ import type {
   Track,
 } from "@/lib/types";
 import { albumRateChoices, albumRateNote, exportRateChoices, formatRate, unavailableRateNote } from "@/lib/export-rates";
-import { availableDelivery, CD_DELIVERY, DEFAULT_DELIVERY, deliveredBytes, deliveredRate, deliveryRequest, deliverySummary, type DeliveryFormat } from "@/lib/delivery-format";
+import { availableDelivery, CD_DELIVERY, DEFAULT_DELIVERY, deliveredBytes, deliveredRate, deliveryRequest, deliverySummary } from "@/lib/delivery-format";
 import { DeliveryFormatControls } from "./shared/DeliveryFormatControls";
 import { MAX_SOURCE_FRAMES } from "@/lib/audio-limits";
 import { Icon, type IconName } from "./shared/Icon";
@@ -626,7 +626,6 @@ function MasterView({ trackId }: { trackId: string }) {
   const [deepEditorOpen, setDeepEditorOpen] = useState(false);
   const selectDeepMove = useCallback((id: string) => { setDeepMoveId(id); setDeepEditorOpen(Boolean(id)); }, []);
   const closeDeepEditor = useCallback(() => { setDeepEditorOpen(false); }, []);
-  const [exportFormat, setExportFormat] = useState<DeliveryFormat>(DEFAULT_DELIVERY);
   const [message, setMessage] = useState("");
   const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
   const renderAbort = useRef<AbortController | null>(null);
@@ -642,7 +641,7 @@ function MasterView({ trackId }: { trackId: string }) {
   const settingsKey = useMemo(() => track ? appliedRevisionKey(track) ?? masteringSettingsKey(track.advanced) : "", [track]);
   const rateChoices = track ? exportRateChoices(track.sampleRate, source?.left.length ?? track.sourceIdentity?.frames ?? Math.round(track.duration * track.sampleRate)) : [];
   // A choice that is unavailable for this track falls back to the source rate.
-  const delivery = availableDelivery(exportFormat, rateChoices);
+  const delivery = availableDelivery(track?.exportDelivery ?? DEFAULT_DELIVERY, rateChoices);
   const currentExport = useRef({ track, delivery });
   currentExport.current = { track, delivery };
   useEffect(() => {
@@ -1146,10 +1145,7 @@ function MasterView({ trackId }: { trackId: string }) {
           rateChoices={rateChoices}
           rateNote={unavailableRateNote(rateChoices, track.sampleRate)}
           onChange={(format) => {
-            if (auditionKey(track, availableDelivery(format, rateChoices)) !== auditionKey(track, delivery)) {
-              dispatch({ type: "INVALIDATE_EXPORT", id: track.id });
-            }
-            setExportFormat(format);
+            dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { exportDelivery: format } });
           }}
         />
         <p className="disclosure">

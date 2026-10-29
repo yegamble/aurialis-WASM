@@ -171,6 +171,8 @@ export type ShortcutUndo = {
 export type SourceIdentity = { pcmHash: string; sampleRate: number; frames: number };
 
 export type Track = {
+  /** Saved Master export selection; older tracks use the default. */
+  exportDelivery?: DeliveryFormat;
   releaseReview?: ReleaseReport;
   deepMastering?: DeepMasteringState;
   sourceAudioId?: string;

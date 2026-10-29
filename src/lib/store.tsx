@@ -506,6 +506,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
     const restored: Track & { script?: unknown } = { ...normalizeSourceMetadata(track), advanced: createDefaultAdvancedParams() };
     delete restored.script;
     delete restored.releaseScore;
+    if (track.exportDelivery !== undefined) restored.exportDelivery = readDeliveryFormat(track.exportDelivery);
     const review = readReleaseReport(track.releaseReview);
     if (review) restored.releaseReview = review;
     else delete restored.releaseReview;

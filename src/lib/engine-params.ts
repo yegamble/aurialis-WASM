@@ -1,3 +1,5 @@
+import { availableDelivery, deliveryRequest, readDeliveryFormat } from "./delivery-format";
+import { exportRateChoices } from "./export-rates";
 import type { ScriptV2 } from "./deep-mastering";
 import type { AdvancedParams, Track } from "./types";
 
@@ -99,6 +101,7 @@ export function exportRender(track: Pick<Track, "advanced" | "deepMastering">): 
 
 /** Source and canonical export payload identity, independent of labels and draft proposals. */
 export function exportTrackKey(track: Track): string {
-  return JSON.stringify([track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0,
+  const format = availableDelivery(readDeliveryFormat(track.exportDelivery), exportRateChoices(track.sampleRate, track.sourceIdentity?.frames ?? Math.round(track.duration * track.sampleRate)));
+  return JSON.stringify([deliveryRequest(format), format.bitDepth, track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0,
     track.sourceIdentity ?? null, track.sampleRate, track.duration, exportRender(track)]);
 }

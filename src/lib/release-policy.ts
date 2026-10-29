@@ -30,9 +30,7 @@ export function releaseChecks(platform: ReleasePlatform, metrics: MeasuredAudioM
   const lossyStreaming = platform === "Spotify" || platform === "SoundCloud" || platform === "Apple Music" || platform === "YouTube";
   const peakLimit = lossyStreaming && metrics.integratedLufs > -14 ? -2 : -1;
   const publishedPeak = target !== null;
-  // Spotify and SoundCloud ask for peaks below their figure; the −2 dBTP lossy rule borrowed
-  // for Apple Music and YouTube keeps that same strict boundary. Other limits allow equality.
-  const strictPeak = platform === "Spotify" || platform === "SoundCloud" || peakLimit === -2;
+  // One inclusive comparison for every working peak threshold.
   // Apple's Digital Masters guidance discourages upsampling, so a rate above the source needs review.
   const upsampled = platform === "Apple Music" && output.sampleRate > sourceRate;
   const format = platform === "CD" ? output.sampleRate === 44100 && output.bitDepth === 16
@@ -45,8 +43,8 @@ export function releaseChecks(platform: ReleasePlatform, metrics: MeasuredAudioM
       guidance: target === null ? "No stereo LUFS requirement is asserted from this profile's source. Choose loudness by listening."
         : `Published working guidance: ${String(target)} LUFS${platform === "Podcast" ? " ±1 LU" : "; the ±1 LU review band is an Aurialis preference"}. No gain is applied by this check.` },
     { name: "Reconstructed true peak", reading: `${metrics.truePeakDbtp.toFixed(2)} dBTP`,
-      status: (strictPeak ? metrics.truePeakDbtp < peakLimit : metrics.truePeakDbtp <= peakLimit) ? "pass" : "review",
-      guidance: `${publishedPeak ? "Published guidance" : "Aurialis working headroom"}: ${strictPeak ? "below " : ""}${String(peakLimit).replace("-", "−")} dBTP${peakLimit === -2 ? " for a master louder than −14 LUFS" : ""}.${peakLimit === -2 && !publishedPeak ? " Lossy streaming encodes of loud masters can overshoot the source peak; this is not a published requirement of this destination." : ""} The true peak is measured within 0.1 dB of a near-ideal reconstruction, except sustained coherent energy within about 1/16384 of the sample rate below Nyquist. This does not certify codec or converter peaks.` },
+      status: metrics.truePeakDbtp <= peakLimit ? "pass" : "review",
+      guidance: `${publishedPeak ? "Published guidance" : "Aurialis working headroom"}: at or below ${String(peakLimit).replace("-", "−")} dBTP${peakLimit === -2 ? " for a master louder than −14 LUFS" : ""}.${peakLimit === -2 && !publishedPeak ? " Lossy streaming encodes of loud masters can overshoot the source peak; this is not a published requirement of this destination." : ""} The true peak is measured within 0.1 dB of a near-ideal reconstruction, except sustained coherent energy within about 1/16384 of the sample rate below Nyquist. This does not certify codec or converter peaks.` },
     { name: "Encoded full-scale frames", reading: String(output.fullScaleFrames), status: output.fullScaleFrames === 0 ? "pass" : "review",
       guidance: `Sample peak ${metrics.samplePeakDbfs.toFixed(2)} dBFS. Counted from the exact encoded samples; full scale does not establish how or when clipping happened.` },
     { name: "Output format", reading: `${String(output.sampleRate / 1000)} kHz · ${String(output.bitDepth)}-bit ${output.bitDepth === 32 ? "float" : "PCM"} · stereo${upsampled ? ` · upsampled from ${String(sourceRate / 1000)} kHz` : ""}`,

@@ -13,7 +13,7 @@ import (
 func TestUnknownNativeRoutesReturn404(t *testing.T) {
 	srv := server.New(server.Config{StaticFS: fstest.MapFS{"index.html": {Data: []byte("home")}, "master/placeholder.html": {Data: []byte("master")}}})
 	defer srv.Close()
-	for _, path := range []string{"/does-not-exist", "/does/not/exist", "/api/unknown", "/unknown.js", "/master/x/extra", "/jobs/unknown"} {
+	for _, path := range []string{"/does-not-exist", "/does/not/exist", "/api/unknown", "/unknown.js", "/master/x/extra", "/master/unknown.js", "/jobs/unknown"} {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, path, nil)
 			req.Host = "127.0.0.1:3000"

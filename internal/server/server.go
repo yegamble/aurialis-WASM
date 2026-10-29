@@ -908,7 +908,7 @@ func resolveStaticCandidates(relPath string) []string {
 	// Map dynamic Next.js 16 App Router routes (/master/track-1, /split/track-1, /albums/album-1, etc.)
 	// to their static export placeholder shell.
 	parts := strings.Split(strings.Trim(relPath, "/"), "/")
-	if len(parts) == 2 {
+	if len(parts) == 2 && path.Ext(parts[1]) == "" {
 		switch parts[0] {
 		case "master", "split", "albums", "reference", "release-check":
 			candidates = append(candidates,

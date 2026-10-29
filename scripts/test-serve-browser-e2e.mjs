@@ -22,6 +22,18 @@ test("QA wrapper requires explicit opt-in before starting children", async () =>
   const [code] = await once(child, "exit"); assert.equal(code, 1); assert.match(error, /AURIALIS_BROWSER_QA=1/u);
 });
 
+test("browser global setup requires opt-in before compiling fixtures", async () => {
+  const previous = process.env.AURIALIS_BROWSER_QA;
+  process.env.AURIALIS_BROWSER_QA = "0";
+  try {
+    const { default: prepareBrowserTests } = await import("./prepare-browser-tests.mjs");
+    await assert.rejects(prepareBrowserTests(), /AURIALIS_BROWSER_QA=1/u);
+  } finally {
+    if (previous === undefined) delete process.env.AURIALIS_BROWSER_QA;
+    else process.env.AURIALIS_BROWSER_QA = previous;
+  }
+});
+
 test("wrapper terminates its owned child groups and descendants, leaving other processes alone", async (t) => {
   const directory = await mkdtemp(path.join(tmpdir(), "aurialis-qa-wrapper-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
@@ -66,7 +78,6 @@ wait "$child"
 test("browser QA wiring keeps production smoke separate and runs HTTP tests after Node setup", async () => {
   const [config, ci, production, packageJSON] = await Promise.all(["playwright.browser.config.ts", ".github/workflows/ci.yml", "scripts/serve-browser.sh", "package.json"].map((file) => readFile(path.join(root, file), "utf8")));
   assert.match(config, /127\.0\.0\.1:3928/u); assert.match(config, /scripts\/serve-browser-e2e.sh/u);
-  assert.match(config, /AURIALIS_BROWSER_QA !== "1"/u);
   assert.match(ci, /AURIALIS_BROWSER_QA=1 pnpm exec playwright test --config playwright.browser.config.ts/u);
   assert.match(ci, /then port=3928; fi/u); assert.match(ci, /AURIALIS_BROWSER_QA=1 bash scripts\/serve-browser-e2e.sh/u);
   const frontend = ci.slice(ci.indexOf("  frontend-quality:"), ci.indexOf("  browser-build:"));

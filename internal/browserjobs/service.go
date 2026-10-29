@@ -102,6 +102,8 @@ func DecodeRequest(raw []byte) (Request, error) {
 		allowed = " operation params options "
 	case "compile":
 		allowed = " operation script deviceRate "
+	case "transition":
+		allowed = " operation bitDepth "
 	default:
 		return request, errors.New("unsupported local audio operation")
 	}
@@ -134,6 +136,9 @@ func Execute(ctx context.Context, raw, source, reference []byte, progress func(i
 			return nil, errors.New("compilation accepts no audio inputs")
 		}
 		return compile(ctx, request)
+	}
+	if request.Operation == "transition" {
+		return transition(ctx, request, source, reference)
 	}
 	if len(source) == 0 || (request.Operation != "reference" && len(reference) != 0) {
 		return nil, errors.New("local audio operation has missing or unexpected input")

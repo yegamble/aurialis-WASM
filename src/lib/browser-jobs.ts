@@ -9,7 +9,7 @@ const LOCAL_FALLBACK = "For this file, use the native Aurialis build (built from
 const RETAINED_NATIVE_HINT = "Download or discard finished audio in this tab, such as album masters or reviewed WAVs, or close other heavy tabs, then try again.";
 
 interface JobRequest {
-  operation: "render" | "features" | "deep" | "reference" | "compile";
+  operation: "render" | "features" | "deep" | "reference" | "compile" | "transition";
   /** "render" skips the source measurement a client already cached (V1-13). */
   measure?: "render";
   params?: string;
@@ -155,6 +155,14 @@ function awaitCancellation<T>(promise: Promise<T>, signal: AbortSignal): Promise
     signal.addEventListener("abort", abort, { once: true });
     void promise.then((value) => { signal.removeEventListener("abort", abort); resolve(value); }, (error: unknown) => { signal.removeEventListener("abort", abort); reject(error instanceof Error ? error : new Error("Local audio processing failed.")); });
   });
+}
+
+/** A bounded Go/WASM edge mix in both builds; no album audio leaves the device. */
+export async function mixAlbumEdges(tail: Blob, head: Blob, bitDepth: 16 | 24 | 32, signal: AbortSignal): Promise<Blob> {
+  const result = await withForegroundAudio(() => execute({ operation: "transition", bitDepth }, tail, head, signal));
+  signal.throwIfAborted();
+  if (!result.audio.byteLength) throw new Error("The album crossfade returned no audio.");
+  return new Blob([result.audio], { type: "audio/wav" });
 }
 
 /** Background jobs (the A/B loudness measurement) yield to anything the user started. */

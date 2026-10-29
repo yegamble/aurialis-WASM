@@ -1,8 +1,10 @@
 package audio
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
+	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
 	"math"
 	"testing"
 )
@@ -56,4 +58,37 @@ func floatAIFC(sample float32) []byte {
 	}
 	binary.BigEndian.PutUint32(raw[4:], uint32(len(raw)-8))
 	return raw
+}
+
+func TestRecoverableFloatHeadroomRemainsFiniteThroughMaximumGain(t *testing.T) {
+	samples := make([]float32, 128)
+	for i := range samples {
+		samples[i] = float32(MaxFloatPCMAmplitude)
+		if i%2 == 1 {
+			samples[i] = -samples[i]
+		}
+	}
+	params := dsp.DefaultParams()
+	params.InputGainDB = 36
+	params.EQEnabled = true
+	for i := range params.Bands {
+		params.Bands[i].Enabled = true
+		params.Bands[i].GainDB = 24
+		params.Bands[i].Q = 20
+	}
+	params.Compressor.Enabled = true
+	params.Compressor.MakeupDB = 36
+	params.Limiter.Enabled = false
+	left, right, _, err := dsp.RenderBufferContext(context.Background(), samples, samples, 48000, params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range left {
+		if math.IsNaN(float64(left[i])) || math.IsInf(float64(left[i]), 0) || math.IsNaN(float64(right[i])) || math.IsInf(float64(right[i]), 0) {
+			t.Fatalf("non-finite output at %d", i)
+		}
+	}
+	if samples[0] != float32(MaxFloatPCMAmplitude) {
+		t.Fatal("render changed input headroom")
+	}
 }

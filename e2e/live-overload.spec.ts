@@ -51,13 +51,14 @@ async function hidePlaybackStats(page: Page): Promise<void> {
   await page.addInitScript(() => { Object.defineProperty(AudioContext.prototype, "playbackStats", { configurable: true, get: () => undefined }); });
 }
 
-async function play(page: Page, name: string): Promise<number> {
+async function play(page: Page, name: string, quality?: "Oversampled"): Promise<number> {
   await page.addInitScript(() => {
     const NativeContext = AudioContext;
     window.AudioContext = class extends NativeContext { constructor(options?: AudioContextOptions) { super({ ...options, sampleRate: 48000 }); } };
   });
   await page.setViewportSize({ width: 1440, height: 900 });
   await uploadProject(page, name, LOOP_SECONDS, "dense");
+  if (quality) await page.getByRole("button", { name: quality, exact: true }).click();
   await page.getByRole("button", { name: "Repeat track", exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
@@ -156,21 +157,24 @@ for (const [waitMs, every, where, skip] of [[4, 1, "before", 0], [60, 375, "befo
 }
 
 // Browsers without playbackStats rely on the worklet's slack rule.
-test("without playbackStats, a 60 ms stall once a second still stops playback", async ({ page }) => {
+for (const quality of [undefined, "Oversampled"] as const) {
+test(`without playbackStats, a 60 ms stall once a second still stops playback (${quality ?? "Classic"})`, async ({ page }) => {
   test.setTimeout(120_000);
   await hidePlaybackStats(page);
   await hitch(page, 60, 375, "after");
-  await play(page, "fallback-stall.wav");
+  await play(page, "fallback-stall.wav", quality);
   await expect(page.getByText(OVERLOAD_MESSAGE, { exact: true })).toBeVisible({ timeout: 20_000 });
   await assertHitches(page);
 });
-test("without playbackStats, an 8 ms call once a second keeps playing", async ({ page }) => {
+test(`without playbackStats, an 8 ms call once a second keeps playing (${quality ?? "Classic"})`, async ({ page }) => {
   test.setTimeout(120_000);
   await hidePlaybackStats(page);
   await hitch(page, 8, 375, "inside");
-  await play(page, "fallback-hitch.wav");
+  await play(page, "fallback-hitch.wav", quality);
   await keepsPlaying(page, 25);
 });
+
+}
 
 // QA F-1 on CI: Simple-style playback stopped while an export rendered.
 test("an export rendered during playback does not stop it", async ({ page }) => {

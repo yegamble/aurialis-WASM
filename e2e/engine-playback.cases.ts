@@ -7,8 +7,8 @@ import { decode, fixture } from "./audio-fixture";
 import { uploadProject } from "./workflow-fixture";
 import { kWeightedLevel, meanOutputLevel, observeOutput, outputLevel } from "./live-output";
 type EngineWindow = Window & { qaEngineContext?: AudioContext };
-for (const sourceRate of [44100, 48000, 96000]) {
-  test(`engine qualification: ${String(sourceRate)} Hz source plays the export chain at its declared live rate`, async ({ page, browserName }, info) => {
+for (const quality of ["Classic", "Oversampled"] as const) for (const sourceRate of [44100, 48000, 96000]) {
+  test(`engine qualification: ${quality} ${String(sourceRate)} Hz source plays the export chain at its declared live rate`, async ({ page, browserName }, info) => {
     await observeOutput(page);
     await page.addInitScript(() => {
       const Native = AudioContext;
@@ -17,6 +17,7 @@ for (const sourceRate of [44100, 48000, 96000]) {
       };
     });
     await uploadProject(page, `engine-${String(sourceRate)}.wav`, 4, fixture(997, 4, sourceRate));
+    await page.getByRole("button", { name: quality, exact: true }).click();
     await page.getByRole("slider", { name: "Input gain", exact: true }).fill("3");
     await page.getByRole("button", { name: "Export", exact: true }).click();
     const dialog = page.getByRole("dialog"); await dialog.getByRole("button", { name: "32-bit Float", exact: true }).click();
@@ -42,12 +43,12 @@ for (const sourceRate of [44100, 48000, 96000]) {
     expect(Math.abs(liveDb - exportDb), `${browserName} actual speaker/export difference`).toBeLessThanOrEqual(sourceRate > 48000 ? 0.25 : 0.1);
     await page.getByRole("button", { name: "Pause", exact: true }).click();
     await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
-    await info.attach("engine-capability-and-speaker-evidence", { body: JSON.stringify({ browserName, sourceRate, capabilities, exportDb, liveDb, deltaDb: liveDb - exportDb }), contentType: "application/json" });
+    await info.attach("engine-capability-and-speaker-evidence", { body: JSON.stringify({ browserName, quality, sourceRate, capabilities, exportDb, liveDb, deltaDb: liveDb - exportDb }), contentType: "application/json" });
   });
 }
 
 
-test("engine qualification: closing Export cancels the active native request or browser worker", async ({ page, context }, info) => {
+for (const quality of ["Classic", "Oversampled"] as const) test(`engine qualification: ${quality} closing Export cancels the active native request or browser worker`, async ({ page, context }, info) => {
   const browserBuild = info.project.metadata.executionTarget === "browser";
   await page.addInitScript(() => {
     const scope = window as Window & { qaCancelWorkers?: number }; scope.qaCancelWorkers = 0;
@@ -59,6 +60,7 @@ test("engine qualification: closing Export cancels the active native request or 
     };
   });
   const id = await uploadProject(page, "engine-cancel.wav", 1);
+  await page.getByRole("button", { name: quality, exact: true }).click();
   let release: () => void = () => undefined;
   const held = new Promise<void>((resolve) => { release = resolve; });
   let capture: (request: Request) => void = () => undefined;

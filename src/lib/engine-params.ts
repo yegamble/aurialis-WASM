@@ -66,7 +66,7 @@ export function engineParams(advanced: AdvancedParams) {
  * limiter, which algorithm 2 selects with limiter.truePeak. The live worklet
  * compensates its latency (V1-10). */
 export const EXPORT_ALGORITHM_VERSION = 2;
-export const OVERSAMPLED_ALGORITHM_VERSION = 3;
+const OVERSAMPLED_ALGORITHM_VERSION = 3;
 
 /** Persisted per-track choice; absent values keep the classic sound. */
 export function renderAlgorithm(quality?: RenderQuality): 2 | 3 {

@@ -37,11 +37,11 @@ describe("Smart Split panel", () => {
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Split Song into 4 stems" }).disabled).toBe(false);
   });
 
-  it("leads with the busy estimate on an Intel Mac build, which was never timed", async () => {
+  it("shows the measured hosted Intel estimate on an Intel Mac build", async () => {
     const speed = { windowSeconds: 20, hopSeconds: 10, idleSecondsPerWindow: 32, busySecondsPerWindow: 173 };
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ available: true, ready: false, downloading: false, downloadedBytes: 0, totalBytes: 176_487_688, state: "cached", accelerated: true, backend: "apple-accelerate", arch: "amd64", speed }))));
     render(<StemSplitPanel audioId="a" title="Song" duration={225} />);
-    expect(await screen.findByText(/^Estimated split time for this 3:45 song: Intel Macs have not been timed, so plan for the slow case\. At the 173 s per window/u)).toBeTruthy();
+    expect(await screen.findByText(/^Estimated split time for this 3:45 song: about 74 minutes \(25 model windows at about 178 s each, measured on one hosted Intel Mac\)/u)).toBeTruthy();
   });
 
   it("states browser-build availability once, without a model note or network request", async () => {

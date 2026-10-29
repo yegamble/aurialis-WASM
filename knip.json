@@ -5,6 +5,7 @@
     "src/app/**/layout.tsx",
     "src/**/__tests__/*.{ts,tsx}",
     "e2e/**/*.spec.ts",
+    "e2e/engine-playback.cases.ts",
     "scripts/*.mjs"
   ],
   "project": [

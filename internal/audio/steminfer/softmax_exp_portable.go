@@ -21,3 +21,5 @@ func normalizeSoftmax(values []float32, sum float64) {
 		values[i] = float32(float64(values[i]) / sum)
 	}
 }
+
+func geluVectorCandidate(_ []float32) bool { return false }

@@ -84,3 +84,51 @@ func maximumFiniteSoftmax(values *float32, count int) float32
 //
 //go:noescape
 func divideSoftmaxFourLanes(values *float32, count int, sum float64)
+
+// geluVectorCandidate uses the same Abramowitz/Stegun 7.1.26 approximation
+// as the separately qualified Apple implementation. This differs from the
+// portable math.Erf path: it is a bounded approximation, not exact GELU.
+// The model's independent 1e-4 / 80 dB qualification gate remains mandatory.
+func geluVectorCandidate(values []float32) bool {
+	if !hasPackedMatrix() {
+		return false
+	}
+	const batch = 1024
+	var t, exponent [batch]float32
+	for first := 0; first < len(values); first += batch {
+		count := min(batch, len(values)-first)
+		v := values[first : first+count]
+		vector := true
+		for i, x := range v {
+			if !finite32(x) {
+				t[i], exponent[i] = 0, 0
+				continue
+			}
+			z := x
+			if z < 0 {
+				z = -z
+			}
+			z *= .7071067811865475244
+			t[i] = 1 / (1 + .3275911*z)
+			exponent[i] = -z * z
+			if exponent[i] < -104 {
+				vector = false
+			}
+		}
+		expSoftmaxValues(exponent[:count], vector)
+		for i, x := range v {
+			if !finite32(x) {
+				v[i] = float32(.5 * float64(x) * (1 + math.Erf(float64(x)/math.Sqrt2)))
+				continue
+			}
+			tt := t[i]
+			polynomial := tt * (.254829592 + tt*(-.284496736+tt*(1.421413741+tt*(-1.453152027+tt*1.061405429))))
+			erf := 1 - polynomial*exponent[i]
+			if x < 0 {
+				erf = -erf
+			}
+			v[i] = .5 * x * (1 + erf)
+		}
+	}
+	return true
+}

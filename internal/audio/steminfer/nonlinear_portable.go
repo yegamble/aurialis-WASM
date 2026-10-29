@@ -15,6 +15,9 @@ func softmaxBackend(values []float32, rows, width int) {
 	}
 }
 func geluBackend(values []float32) {
+	if geluVectorCandidate(values) {
+		return
+	}
 	for i, x := range values {
 		values[i] = float32(.5 * float64(x) * (1 + math.Erf(float64(x)/math.Sqrt2)))
 	}

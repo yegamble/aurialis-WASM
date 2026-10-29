@@ -111,3 +111,37 @@ func TestVectorSoftmaxMaximumAndNormalization(t *testing.T) {
 		}
 	}
 }
+
+func TestVectorGELUCandidateAgainstErf(t *testing.T) {
+	if !hasPackedMatrix() {
+		t.Skip("AVX2/FMA unavailable")
+	}
+	values := make([]float32, 30001)
+	for i := range values {
+		values[i] = float32(i-15000) / 1000
+	}
+	values = append(values, 0, float32(math.Copysign(0, -1)), math.MaxFloat32, -math.MaxFloat32, float32(math.Inf(1)), float32(math.Inf(-1)), float32(math.NaN()))
+	original := append([]float32(nil), values...)
+	geluVectorCandidate(values)
+	var worst float64
+	for i, x := range original {
+		want := .5 * float64(x) * (1 + math.Erf(float64(x)/math.Sqrt2))
+		got := float64(values[i])
+		if math.IsNaN(want) {
+			if !math.IsNaN(got) {
+				t.Fatal("GELU hid NaN")
+			}
+		} else if math.IsInf(want, 0) || x == 0 {
+			if math.Float32bits(values[i]) != math.Float32bits(float32(want)) {
+				t.Fatal("GELU exceptional or signed-zero changed")
+			}
+		} else {
+			difference := math.Abs(got - want)
+			worst = math.Max(worst, difference)
+			if difference > 2e-6 {
+				t.Fatalf("GELU(%g) got%g want%g error%g", x, got, want, difference)
+			}
+		}
+	}
+	t.Logf("GELU approximation maximum absolute error %.9g", worst)
+}

@@ -16,7 +16,7 @@ type ProbeWindow = Window & { qaOutput?: OutputProbe };
 
 /** Test-only tap of the actual node feeding the speakers; no application DSP mocks. */
 export async function observeOutput(page: Page): Promise<void> {
-  const source = await readFile(new URL("./support/live-output-tap.js", import.meta.url), "utf8");
+  const source = await readFile("e2e/support/live-output-tap.js", "utf8");
   await page.route("**/__qa/live-output-tap.js", (route) => route.fulfill({ body: source, contentType: "text/javascript" }));
   await page.addInitScript(() => {
     const NativeContext = AudioContext;

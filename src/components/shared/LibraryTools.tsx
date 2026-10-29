@@ -5,6 +5,7 @@ import { getAudio, saveAudio, discardStagedAudio, storageSummary, newAudioAssetI
 import { audioKey, replacementProject, sameSource } from "@/lib/library";
 import { prepareProjectFile, readStoredSource, SOURCE_ACCEPT } from "@/lib/project-import";
 import { createLivePlayback, type LivePlaybackController, type LivePlaybackState } from "@/lib/live-playback";
+import { useLoudnessMatch } from "@/lib/use-loudness-match";
 import { useTransportScrub } from "@/lib/use-transport-scrub";
 import { useStore } from "@/lib/store";
 import type { Track } from "@/lib/types";
@@ -75,6 +76,10 @@ export function SourceRelink({ track, open, onClose }: { track: Track; open: boo
 }
 
 export function LibraryPreview({ track, onClose }: { track: Track; onClose: () => void }) {
+  const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
+  const match = useLoudnessMatch(track, sourceBlob);
+  const { processedDb, originalDb } = match.gains;
+  const currentMatch = useRef(match.gains); currentMatch.current = match.gains;
   const live = useRef<LivePlaybackController | null>(null);
   const [state, setState] = useState<LivePlaybackState | null>(null);
   const [error, setError] = useState("");
@@ -86,14 +91,15 @@ export function LibraryPreview({ track, onClose }: { track: Track; onClose: () =
       if (!blob) throw new Error("The source is missing. Close preview and restore the audio file.");
       const stored = await readStoredSource(blob, controller.signal); controller.signal.throwIfAborted();
       playback = createLivePlayback(stored.pcm, track.advanced, { onState: (next) => { if (!controller.signal.aborted) setState(next); }, onError: (cause) => { if (!controller.signal.aborted) setError(cause.message); } }, track.sourceIdentity ? { blob: stored.blob, identity: track.sourceIdentity, ...(track.deepMastering?.applied ? { applied: track.deepMastering.applied } : {}) } : undefined);
-      live.current = playback; setState(playback.getState());
+      live.current = playback; playback.setLoudnessMatch(currentMatch.current); setSourceBlob(stored.blob); setState(playback.getState());
     })().catch((cause: unknown) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Preview failed."); });
     return () => { controller.abort(); stopScrub(false); playback?.dispose(); live.current = null; };
   }, [track]);
+  useEffect(() => { live.current?.setLoudnessMatch({ processedDb, originalDb }); }, [processedDb, originalDb]);
   const seek = (seconds: number) => { stopScrub(false); live.current?.seek(seconds); };
   return <Modal open title={`Preview “${track.title}”`} onClose={onClose}>
     <p className="disclosure">Listen through this project’s current processing settings. A/B compares the original source.</p>
     {error && <p role="alert" className="disclosure text-danger">{error}</p>}
-    <RealTransport inline state={state} sourceReady={live.current !== null} onPlay={async () => { try { stopScrub(false); await live.current?.play(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Press Play to retry."); } }} onPause={() => { stopScrub(false); live.current?.pause(); }} onOriginal={(value) => { live.current?.setBypass(value); }} onVolume={(value) => { live.current?.setVolume(value); }} onRestart={() => { seek(0); }} onForward={() => { if (state) seek(relativeSeekPosition(state, 10)); }} onRepeat={(value) => { live.current?.setRepeat(value); }} onScrub={onScrub} />
+    <RealTransport match={{ enabled: match.enabled, text: match.text, onToggle: match.setEnabled }} inline state={state} sourceReady={live.current !== null} onPlay={async () => { try { stopScrub(false); await live.current?.play(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Press Play to retry."); } }} onPause={() => { stopScrub(false); live.current?.pause(); }} onOriginal={(value) => { live.current?.setBypass(value); }} onVolume={(value) => { live.current?.setVolume(value); }} onRestart={() => { seek(0); }} onForward={() => { if (state) seek(relativeSeekPosition(state, 10)); }} onRepeat={(value) => { live.current?.setRepeat(value); }} onScrub={onScrub} />
   </Modal>;
 }

@@ -1,7 +1,7 @@
 /* Test-only audio-thread observer of the actual node feeding the speakers. */
 class LiveOutputTap extends AudioWorkletProcessor {
   constructor() {
-    super(); this.frames = 0; this.blocks = 0; this.measurement = null;
+    super(); this.frames = 0; this.blocks = 0; this.measurement = null; this.left = new Float32Array(1024); this.right = new Float32Array(1024);
     this.port.onmessage = (event) => {
       const { frames, coefficients } = event.data;
       this.measurement = { remaining: frames, frames: 0, squares: 0, coefficients, state: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] };
@@ -11,6 +11,7 @@ class LiveOutputTap extends AudioWorkletProcessor {
     for (const channel of outputs[0] || []) channel.fill(0);
     const input = inputs[0]; if (!input || !input[0]) return true;
     const left = input[0], right = input[1] || left;
+    this.left.set(left, this.blocks % 8 * 128); this.right.set(right, this.blocks % 8 * 128);
     this.frames += left.length;
     const measure = this.measurement;
     if (measure && measure.remaining > 0) {
@@ -30,7 +31,7 @@ class LiveOutputTap extends AudioWorkletProcessor {
       measure.frames += count; measure.remaining -= count;
       if (!measure.remaining) this.port.postMessage({ type: "energy", frames: measure.frames, squares: measure.squares });
     }
-    if (++this.blocks % 8 === 0) this.port.postMessage({ type: "level", frames: this.frames, time: currentTime, left: Array.from(left), right: Array.from(right) });
+    if (++this.blocks % 8 === 0) this.port.postMessage({ type: "level", frames: this.frames, time: currentTime, left: Array.from(this.left), right: Array.from(this.right) });
     return true;
   }
 }

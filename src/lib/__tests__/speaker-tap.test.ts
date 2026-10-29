@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
 
-type Energy = { type: string; frames: number; squares: number };
+type Energy = { type: string; frames: number; squares: number; left?: number[]; right?: number[] };
 type Processor = { port: { onmessage: (event: { data: { frames: number; coefficients: number[][] | null } }) => void }; process: (inputs: Float32Array[][], outputs: Float32Array[][]) => boolean };
 /** Exercise the shipped test observer even when its main-thread reader never drains messages. */
 describe("audio-thread speaker measurement", () => {
@@ -25,5 +25,8 @@ describe("audio-thread speaker measurement", () => {
     }
     // Reader was blocked for all twelve blocks; the audio thread still counted every requested frame once.
     expect(messages.filter((message) => message.type === "energy")).toEqual([{ type: "energy", frames: 1000, squares: expected }]);
+    const snapshot = messages.find((message) => message.type === "level");
+    expect(snapshot?.left).toHaveLength(1024); expect(snapshot?.right).toHaveLength(1024);
+    expect(snapshot?.left).toEqual(Array.from({ length: 1024 }, (_, index) => (index % 17 - 8) / 16));
   });
 });

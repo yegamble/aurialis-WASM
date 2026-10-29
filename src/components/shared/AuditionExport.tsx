@@ -48,7 +48,7 @@ function applyVolume(element: HTMLAudioElement | null, volume: number, fallback:
 
 /**
  * iOS media volume can echo an assigned value without applying audible gain.
- * Route iPhone/iPad playback through Web Audio regardless of that readback;
+ * Route iPhone/iPad playback through Web Audio regardless of that reported value;
  * touch-enabled Macintosh covers iPadOS's desktop browser identity.
  */
 function needsVolumeRoute(): boolean {

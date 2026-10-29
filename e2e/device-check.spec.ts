@@ -42,14 +42,14 @@ test("device bundle retains audition volume changes and whether audio was playin
   await page.getByRole("button", { name: "Audition export", exact: true }).click();
   await expect(page.getByRole("button", { name: "Pause audition", exact: true })).toBeVisible({ timeout: 30_000 });
   await volume.fill("1");
-  await page.getByRole("button", { name: "Pause audition", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Play audition", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Oversampled", exact: true }).click();
+  await volume.fill("0.5");
   const record = await downloadRecord(page);
   expect(record.recordedAudioSeconds).toBe(0);
   expect(record.events).toEqual(expect.arrayContaining([
     expect.objectContaining({ kind: "audition_volume_changed", detail: "volume=0.25; playing=false" }),
     expect.objectContaining({ kind: "audition_playing", detail: "true" }),
     expect.objectContaining({ kind: "audition_volume_changed", detail: "volume=1; playing=true" }),
-    expect.objectContaining({ kind: "audition_playing", detail: "false" }),
+    expect.objectContaining({ kind: "audition_volume_changed", detail: "volume=0.5; playing=false" }),
   ]));
 });

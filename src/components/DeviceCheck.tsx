@@ -69,6 +69,7 @@ export function DeviceCheck() {
     return () => { clearInterval(timer); };
   }, [running]);
   async function prepare() {
+    auditionPlaying.current = false;
     pending.current?.abort(); controller.current?.dispose(); controller.current = null; memory.current?.dispose(); memory.current = null;
     setPrepared(null); setState(null); setRunning(false); setBusy(true); setProgress(0);
     const abort = new AbortController(); pending.current = abort;
@@ -125,8 +126,8 @@ export function DeviceCheck() {
       <p className="disclosure">{browserBuild ? "Generated audio is processed on this device; nothing is uploaded." : "Generated audio uses the native Aurialis build (built from source) and this browser."}</p>
     </section>
     <section className="paper-panel grid gap-4 p-4 md:p-6" aria-label="Ten-minute real-device run">
-      <ChoiceGroup label="Generated source rate" value={rate} options={[{ value: 48000, label: "48 kHz", disabled: busy || running }, { value: 96000, label: "96 kHz", disabled: busy || running }]} onChange={setRate} />
-      <ChoiceGroup label="Render quality" value={quality} options={[{ value: "classic", label: "Classic", disabled: busy || running }, { value: "oversampled", label: "Oversampled", disabled: busy || running }]} onChange={setQuality} />
+      <ChoiceGroup label="Generated source rate" value={rate} options={[{ value: 48000, label: "48 kHz", disabled: busy || running }, { value: 96000, label: "96 kHz", disabled: busy || running }]} onChange={(value) => { if (value !== rate) auditionPlaying.current = false; setRate(value); }} />
+      <ChoiceGroup label="Render quality" value={quality} options={[{ value: "classic", label: "Classic", disabled: busy || running }, { value: "oversampled", label: "Oversampled", disabled: busy || running }]} onChange={(value) => { if (value !== quality) auditionPlaying.current = false; setQuality(value); }} />
       <p className="disclosure">The 96 kHz source still uses Aurialis’s declared live-rate cap. The requested interface rate does not override it. Oversampled must be supported by this exact build; errors are recorded rather than falling back.</p>
       <div className="flex flex-wrap gap-3"><Button disabled={busy || running || !secure} onClick={() => { void prepare(); }}>Prepare 20-second source</Button>{busy && <Button variant="secondary" onClick={() => { pending.current?.abort(); }}>Cancel preparation</Button>}<Button disabled={!ready || busy || running || !secure} onClick={() => { void start(); }}>Start ten-minute run</Button><Button variant="secondary" disabled={!running} onClick={stop}>Stop run</Button></div>
       <progress className="w-full" max={600} value={progress} aria-label="Rendered audio seconds in ten-minute run" /><p role="status">{message}</p>

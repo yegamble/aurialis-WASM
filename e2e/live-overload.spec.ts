@@ -11,13 +11,34 @@ test.beforeEach(async ({ page, browserName }) => { if (browserName === "chromium
 // V1-10 Round 4 (QA Round E 3 cases): the overload message must follow real
 // device underruns. A test-only same-origin response patch of the real worklet
 // spins Date.now for a
-// fixed time at a chosen point of every Nth quantum. Nothing else is replaced.
+// requested minimum time at a chosen point of every Nth quantum. Test-only
+// observations record actual burns and the unchanged watch decisions.
 const LOOP_SECONDS = 8;
 const WRITE = "Atomics.store(this.header, WRITE, sequence);";
 const KERNEL = "if (this.kernel.aurialis_live_process() !== QUANTUM)\n        throw new Error(\"The live audio engine rejected an audio block.\");";
 const AFTER = "this.refreshBuffers();\n      if (this.generation !== Atomics.load(this.header, GENERATION)) {";
 const instrumentedPages = new WeakSet<Page>();
-type HitchWindow = Window & { qaHitch?: { armed: boolean; count: number; quantum: number; waitMs: number; everyQuanta: number } };
+type HitchWindow = Window & {
+  qaHitch?: { armed: boolean; count: number; quantum: number; waitMs: number; everyQuanta: number; lastBurnMs?: number; minBurnMs?: number; maxBurnMs?: number };
+  qaOverload?: { windows: Record<string, unknown>[]; controls: Record<string, unknown>[]; errors: string[] };
+  qaAudioContext?: AudioContext;
+};
+
+// Keep the last bounded observations even when a keep-playing assertion fails
+// before assertHitches. These are real port messages from the intercepted worklet.
+test.afterEach(async ({ page }, info) => {
+  if (!instrumentedPages.has(page)) return;
+  let observation: unknown;
+  try {
+    observation = await page.evaluate(() => {
+      const scope = window as HitchWindow, context = scope.qaAudioContext;
+      return { hitch: scope.qaHitch ?? null, watch: scope.qaOverload ?? null,
+        context: context ? { state: context.state, currentTime: context.currentTime, sampleRate: context.sampleRate,
+          baseLatency: context.baseLatency, outputLatency: context.outputLatency } : null };
+    });
+  } catch (error) { observation = { captureError: String(error) }; }
+  await info.attach("actual-worklet-overload-diagnostics", { body: JSON.stringify(observation), contentType: "application/json" });
+});
 type Where = "before" | "inside" | "after";
 
 /** Spin `waitMs` every `everyQuanta` quanta; with `skipEvery`, leave out every
@@ -26,18 +47,30 @@ async function hitch(page: Page, waitMs: number, everyQuanta: number, where: Whe
   instrumentedPages.add(page);
   await page.addInitScript(() => {
     const Native = AudioWorkletNode;
+    const scope = window as HitchWindow;
+    scope.qaOverload = { windows: [], controls: [], errors: [] };
     window.AudioWorkletNode = class extends Native {
       constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
         super(context, name, options);
-        if (name === "aurialis-live") this.port.addEventListener("message", (event: MessageEvent<{ type: string; count: number; quantum: number; waitMs: number; everyQuanta: number }>) => {
+        if (name === "aurialis-live") this.port.addEventListener("message", (event: MessageEvent<{ type: string; count: number; quantum: number; waitMs: number; everyQuanta: number; lastBurnMs: number; minBurnMs: number; maxBurnMs: number; message: string } & Record<string, unknown>>) => {
           const data = event.data, scope = window as HitchWindow;
           if (data.type === "qa-hitch-armed") scope.qaHitch = { armed: true, count: 0, quantum: 0, waitMs: data.waitMs, everyQuanta: data.everyQuanta };
-          else if (data.type === "qa-hitch" && scope.qaHitch) scope.qaHitch = { ...scope.qaHitch, count: data.count, quantum: data.quantum };
+          else if (data.type === "qa-hitch" && scope.qaHitch) scope.qaHitch = { ...scope.qaHitch, count: data.count, quantum: data.quantum, lastBurnMs: data.lastBurnMs, minBurnMs: data.minBurnMs, maxBurnMs: data.maxBurnMs };
+          else if (data.type === "qa-watch-window" && scope.qaOverload) {
+            scope.qaOverload.windows.push(data);
+            if (scope.qaOverload.windows.length > 64) scope.qaOverload.windows.shift();
+          } else if (data.type === "qa-controls-accepted" && scope.qaOverload) {
+            scope.qaOverload.controls.push(data);
+            if (scope.qaOverload.controls.length > 8) scope.qaOverload.controls.shift();
+          } else if (data.type === "error" && scope.qaOverload) {
+            scope.qaOverload.errors.push(data.message);
+            if (scope.qaOverload.errors.length > 8) scope.qaOverload.errors.shift();
+          }
         });
       }
     };
   });
-  const burn = `let qaN = 0, qaHitches = 0; function qaBurn(processor) { if (++qaN % ${String(everyQuanta)} === 0 && (!${String(onlyOnce)} || qaN === ${String(everyQuanta)}) && (${String(skipEvery)} === 0 || (qaN / ${String(everyQuanta)}) % ${String(skipEvery)} !== 0)) { const s = Date.now(); while (Date.now() - s < ${String(waitMs)}) {} processor.port.postMessage({type:"qa-hitch",count:++qaHitches,quantum:qaN}); } }`;
+  const burn = `let qaN = 0, qaHitches = 0, qaMin = Infinity, qaMax = 0; function qaBurn(processor) { if (++qaN % ${String(everyQuanta)} === 0 && (!${String(onlyOnce)} || qaN === ${String(everyQuanta)}) && (${String(skipEvery)} === 0 || (qaN / ${String(everyQuanta)}) % ${String(skipEvery)} !== 0)) { const s = Date.now(); while (Date.now() - s < ${String(waitMs)}) {} const elapsed = Date.now() - s; qaMin = Math.min(qaMin, elapsed); qaMax = Math.max(qaMax, elapsed); processor.port.postMessage({type:"qa-hitch",count:++qaHitches,quantum:qaN,lastBurnMs:elapsed,minBurnMs:qaMin,maxBurnMs:qaMax}); } }`;
   const replace: [string, string] = where === "before" ? [WRITE, `${WRITE} qaBurn(this);`]
     : where === "inside" ? [KERNEL, `${KERNEL}\n      qaBurn(this);`] : [AFTER, `qaBurn(this); ${AFTER}`];
   await page.route((url) => url.pathname === "/worklets/aurialis-live-worklet.js", async (route) => {
@@ -46,7 +79,12 @@ async function hitch(page: Page, waitMs: number, everyQuanta: number, where: Whe
     if (!source.includes(replace[0]) || !source.includes("const QUANTUM = 128;")) throw new Error("The worklet changed; update the hitch patch.");
     const ready = 'this.port.postMessage({ type: "ready" });';
     if (!source.includes(ready)) throw new Error("The worklet changed; update the hitch arm observer.");
-    source = source.replace(replace[0], replace[1]).replace("const QUANTUM = 128;", `const QUANTUM = 128;${burn}`)
+    const watchEnd = "this.watchWall = now; this.watchFrame = frame; this.watchKernel = 0; this.watchMisses = 0;\n    return this.watchStrikes >= WATCH_STRIKES;";
+    const accepted = "this.controlVersion = version;";
+    if (!source.includes(watchEnd) || !source.includes(accepted)) throw new Error("The worklet changed; update the observational watch/control tap.");
+    source = source.replace(watchEnd, `this.port.postMessage({type:"qa-watch-window", audioMs, wallMs:now-this.watchWall, lagMs:now-this.watchWall-audioMs, lagBoundMs:Math.max(WATCH_LAG*audioMs,2*this.clockStep), kernelMs:this.watchKernel, kernelLoad:this.watchKernel/audioMs, late, heavy, misses:this.watchMisses, strikes:this.watchStrikes, window:this.watchWindows, slackMs:this.slackMs, clockStepMs:Number.isFinite(this.clockStep)?this.clockStep:null, sampleRate, audioTime:currentTime, controlVersion:this.controlVersion}); ${watchEnd}`)
+      .replace(accepted, `${accepted} this.port.postMessage({type:"qa-controls-accepted",version,accepted,abi:this.controlAbiVersion,count:this.controlCount,values:Array.from(this.controls)});`)
+      .replace(replace[0], replace[1]).replace("const QUANTUM = 128;", `const QUANTUM = 128;${burn}`)
       .replace(ready, `${ready} this.port.postMessage({type:"qa-hitch-armed",waitMs:${String(waitMs)},everyQuanta:${String(everyQuanta)}});`);
     await route.fulfill({ response, body: source });
   });
@@ -60,7 +98,7 @@ async function hidePlaybackStats(page: Page): Promise<void> {
 async function play(page: Page, name: string, quality?: "Oversampled"): Promise<number> {
   await page.addInitScript(() => {
     const NativeContext = AudioContext;
-    window.AudioContext = class extends NativeContext { constructor(options?: AudioContextOptions) { super({ ...options, sampleRate: 48000 }); } };
+    window.AudioContext = class extends NativeContext { constructor(options?: AudioContextOptions) { super({ ...options, sampleRate: 48000 }); (window as HitchWindow).qaAudioContext = this; } };
   });
   await page.setViewportSize({ width: 1440, height: 900 });
   await uploadProject(page, name, LOOP_SECONDS, "dense");

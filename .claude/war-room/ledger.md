@@ -11,6 +11,53 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ---
 
+## Full completion inventory — 2026-10-29
+
+Owner clarified that **100% complete includes every P2/P3 and product acceptance item**; zero P0/P1 is not sufficient. C01–C36 are the deduplicated remaining inventory from Round A–D and associated task records. Every row remains **open** until its stated acceptance and required review/evidence land. Hardware or owner dependencies keep their individual row open; they do not block unrelated work or make the whole effort blocked.
+
+| ID | Open item | Acceptance still required | Status |
+|---|---|---|---|
+| C01 | FLAC integer sample range | Define and enforce the supported integer range; reject out-of-range samples without clipping. | open |
+| C02 | Float PCM headroom | Set a product limit (proposed +36 dBFS); reject values outside it rather than clipping, while preserving previously supported above-unity source audio. | open |
+| C03 | Native process memory accounting | Account for shared source, render, conversion and retained-artifact memory across concurrent native requests; prove admission and release. | open |
+| C04 | Parser fuzzing in CI | Add bounded fuzz jobs for WAV, AIFF and gomp3 with reproducible seeds and failure artifacts. | open |
+| C05 | Go/TypeScript limit and error contract | Assert shared limits and named array-element type errors in Go and browser tests. Current array errors already return a specific field message; close only after a regression test pins the contract. | open |
+| C06 | Native unknown routes | Return and test 404 for unknown native routes without treating them as application routes. | open |
+| C07 | Analysis 503 detail | Return actionable, specific detail for rejected or full analysis admission and assert it in API coverage. | open |
+| C08 | Rollback HSTS check | Assert HSTS as well as COEP on both production origins in the rollback smoke. | open |
+| C09 | Local native test guard and cold start | Fail closed if local native Playwright serves browser-target assets; recover safely from a stale QA observer asset and allow a cold build to finish. | open |
+| C10 | Repeat-relative seek | Make Forward and keyboard seek wrap relative to the current position when Repeat is on, including the finite end. | open |
+| C11 | Audition seek and media keys | Route waveform and Media Session seeks to the active export audition, and test position, pause and end behavior. | open |
+| C12 | Device latency settling | Wait for output latency to settle after device change before recalculating the live overload slack. | open |
+| C13 | Library matched A/B | Decide and implement the Equal-loudness A/B control in Library Preview, with matching playback and accessibility coverage. | open |
+| C14 | Deep matched A/B and browser render count | Prove matched A/B on an applied Deep script and count browser export requests to prove audition reuse does not cause a second render. | open |
+| C15 | Actual live controls and audio oracle | Assert the control packet accepted by the worklet, and move speaker assertions from ScriptProcessor capture to the audio-thread energy tap. | open |
+| C16 | Responsive and touch details | Verify mobile meter clearance, Smart Split failure targets at 44 px and the album delivery panel beside the level panel on wide screens. | open |
+| C17 | Deterministic playback tests | Fix or reliably isolate the overload false-negative, burner timing, MasterPlayback and DeepProposalPanel load flakes; retain repeatable evidence under ordinary load. | open |
+| C18 | Shared choices/downloads and repair state | Finish ChoiceGroup and downloadLocalBlob reuse; remove dead repair/legacy state and the unavailable AI Repair lane from the product surface. | open |
+| C19 | Limiter-off gain cross-fade | Smooth the gain change when limiter, true peak or bypass turns off under gain reduction; preserve level and no-splice acceptance. | open |
+| C20 | Shared FFT | Consolidate production FFT implementations without changing outputs; measure runtime and allocations. | open |
+| C21 | Hot-source finding and Dynamic & Open cap | Explain that a hot clipped source itself needs heavy limiting; measure and rule on the proposed 1 dB Dynamic & Open limiting cap. | open |
+| C22 | Warm Analog voicing | Measure the proposed 180 Hz adjustment on dense rock/metal and obtain listening review before changing the recipe. | open |
+| C23 | Saturation and crossover proof | Measure saturation aliasing, design a filter with at least 60 dB stopband, and verify fourth-order Linkwitz–Riley crossover behavior. | open |
+| C24 | Offline sample-rate dependence | Compare the same material rendered at 96 kHz and resampled to 48 kHz to determine whether the chain changes with rate. | open |
+| C25 | Legacy JS bridge footprint | Remove the legacy `aurialisDSP*` bridge and static buffers from production JS/WASM, or isolate them behind a test build, while retaining required offline-job and QA behavior. | open |
+| C26 | Mono/side monitoring | Define and implement accessible mono and side monitoring with keyboard and audio coverage. | open |
+| C27 | Inclusive Release boundary | Decide and test how every destination treats equality at its peak boundary, including exactly −1 dBTP. | open |
+| C28 | Deep 16-bit dither proof | Render an applied Deep script at the source rate to 16-bit; compare default TPDF with `dither=none` in encoded output. | open |
+| C29 | Metal/Jazz distinction proof | Pin the existing distinct Metal/Jazz EQ and compressor behavior in tests and obtain acceptance; do not invent new voicing in the course of proving it. | open |
+| C30 | WebKit and Firefox playback | Run real playback, source-rate, seeking and export checks in WebKit and Firefox. | open |
+| C31 | Physical device qualification | Qualify real playback on Android, Windows with Bluetooth, iOS and a 96 kHz interface, including the requested sustained run and overload behavior. | open |
+| C32 | Intel Mac Split timing | Measure model load and separation estimate on Intel Mac hardware and publish the caveat. | open |
+| C33 | Linux/Windows inference | Select or build a fast inference backend, then qualify actual Smart Split behavior and availability on Linux and Windows. | open |
+| C34 | Dependabot branches | Check compatibility and merge the six outstanding Dependabot updates. | open |
+| C35 | Agent contract documentation | Update repo-map and AGENTS descriptions to match supported FLAC/MP3 input, enabled ScriptV2 automation, deprecated v1 compatibility and unavailable repair targets. | open |
+| C36 | Album transitions | Define product acceptance for continuous album playback, gaps and cross-fades, then implement and verify it. Default track rendering must remain exact. | open |
+
+Historical items not reopened here: the old MUB ceiling tolerance is superseded by the strict V1-13 gate; cached-model readiness is already covered by V1-06; and the array-element type response is already specific, so C05 is contract-test work rather than a fix for generic current behavior. The existing Metal/Jazz recipes already differ; C29 asks for proof and acceptance. The 1 dB cap and voicing changes remain measurement and owner decisions, not approved changes. Prior PR #60 closes only browser compressed-input admission, not C03 native process accounting.
+
+---
+
 ## P2 priority wave — 2026-10-29
 
 Owner requested the highest-priority P2 items with delegated merge after verification. Disk cleanup removed the Go build cache and three obsolete merged review checkouts; available space increased from about 3 GiB to 19 GiB. Source, prior verification evidence, models and evaluation audio were retained.

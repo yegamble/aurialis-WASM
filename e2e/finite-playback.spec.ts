@@ -5,6 +5,8 @@ import { expect, test, type Page } from "@playwright/test";
 import type { Track } from "../src/lib/types";
 import { exportScript } from "../src/lib/engine-params";
 import { capturedDevice, captureDeepDevice, exportLatencyFrames } from "./deep-capture";
+import { fixture } from "./audio-fixture";
+import { uploadProject } from "./workflow-fixture";
 const execute = promisify(execFile);
 type SpeakerCapture = { left: number[]; right: number[]; chunks: { time: number; contextTime: number; begin: number }[]; starts: { when: number; offset: number; looping: boolean }[] };
 type SpeakerWindow = Window & { finiteSpeaker?: SpeakerCapture };
@@ -47,6 +49,87 @@ async function observeFiniteSpeaker(page: Page) {
   });
 }
 async function speakerSnapshot(page: Page) { return page.evaluate(() => (window as SpeakerWindow & { snapshotFiniteSpeaker?: () => SpeakerCapture }).snapshotFiniteSpeaker?.()); }
+
+test("Reset modules never releases delayed unlimited frames after heavy gain reduction", async ({ page }, info) => {
+  await observeFiniteSpeaker(page);
+  const wav = fixture(220, 6);
+  // Source peaks at -3.1 dBFS; +12 dB input needs over 10 dB of limiting.
+  for (let offset = 44; offset < wav.length; offset += 2) wav.writeInt16LE(Math.round(wav.readInt16LE(offset) * 3.5), offset);
+  await uploadProject(page, "reset-under-limiting.wav", 6, wav);
+  await page.getByRole("slider", { name: "Input gain", exact: true }).fill("12");
+  await page.getByRole("checkbox", { name: "Enable limiter", exact: true }).check();
+  await page.getByRole("slider", { name: "Limiter ceiling", exact: true }).fill("-1");
+  await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");
+  const reset = page.getByRole("button", { name: "Reset modules", exact: true });
+  await reset.scrollIntoViewIfNeeded();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect.poll(async () => (await speakerSnapshot(page))?.left.length ?? 0).toBeGreaterThan(48000);
+  const reduction = page.getByRole("region", { name: "Live loudness of the processed output", exact: true }).locator("div").filter({ has: page.getByText("Gain reduction", { exact: true }) }).locator("strong");
+  await expect.poll(async () => Number(await reduction.innerText())).toBeGreaterThan(3);
+  const before = await speakerSnapshot(page);
+  if (!before) throw new Error("Missing speaker capture before Reset modules");
+  await reset.click();
+  await expect(page.getByRole("slider", { name: "Input gain", exact: true })).toHaveValue("0");
+  await expect(page.getByRole("checkbox", { name: "Enable limiter", exact: true })).not.toBeChecked();
+  await expect.poll(async () => (await speakerSnapshot(page))?.left.length ?? 0).toBeGreaterThan(before.left.length + 4800);
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  const after = await speakerSnapshot(page);
+  if (!after) throw new Error("Missing speaker capture after Reset modules");
+  const peak = [...after.left, ...after.right].reduce((maximum, sample) => Math.max(maximum, Math.abs(sample)), 0);
+  const evidence = { sourcePeakDbfs: -3.1, inputGainDb: 12, ceilingDbtp: -1, beforeFrames: before.left.length, afterFrames: after.left.length, peakDbfs: 20 * Math.log10(peak) };
+  await info.attach("reset-speaker-peak", { body: JSON.stringify(evidence, null, 2), contentType: "application/json" });
+  expect(peak, JSON.stringify(evidence)).toBeLessThanOrEqual(10 ** (-1 / 20));
+  const tail = after.left.slice(-1024);
+  expect(Math.max(...tail.map(Math.abs)), "Reset must return to audible source at -3.1 dBFS").toBeCloseTo(0.7, 2);
+});
+
+type LateRepeatWindow = SpeakerWindow & { lateRepeat?: { elapsed: number; duration: number } };
+test("Repeat enabled in the final 80 ms keeps the speaker stream continuous", async ({ page }, info) => {
+  await captureDeepDevice(page, 48000);
+  await observeFiniteSpeaker(page);
+  await page.addInitScript(() => {
+    const nativeStart = AudioBufferSourceNode.prototype.start;
+    AudioBufferSourceNode.prototype.start = function (when = 0, offset = 0, duration?: number) {
+      if (duration === undefined) nativeStart.call(this, when, offset); else nativeStart.call(this, when, offset, duration);
+      if (!(this.context instanceof AudioContext) || (window as SpeakerWindow).finiteSpeaker?.starts.length !== 1 || !this.buffer) return;
+      const context = this.context, length = this.buffer.duration - offset;
+      const timer = setInterval(() => {
+        const elapsed = context.currentTime - when;
+        if (elapsed < length - 0.06) return;
+        clearInterval(timer);
+        (window as LateRepeatWindow).lateRepeat = { elapsed, duration: length };
+        document.querySelector<HTMLButtonElement>('button[aria-label="Repeat track"]')?.click();
+      }, 1);
+    };
+  });
+  await uploadProject(page, "late-repeat.wav", 2, fixture(220, 2));
+  await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as LateRepeatWindow).lateRepeat)).toBeTruthy();
+  const timing = await page.evaluate(() => (window as LateRepeatWindow).lateRepeat);
+  if (!timing) throw new Error("Missing Repeat activation time");
+  expect(timing.duration - timing.elapsed).toBeGreaterThan(0);
+  expect(timing.duration - timing.elapsed).toBeLessThanOrEqual(0.08);
+  await expect(page.getByRole("button", { name: "Repeat track", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(async () => (await speakerSnapshot(page))?.left.length ?? 0).toBeGreaterThan(48000 * 2.5);
+  await expect(page.getByLabel("Playback transport")).toHaveAttribute("data-playing", "true");
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  const speaker = await speakerSnapshot(page);
+  if (!speaker?.starts[0]) throw new Error("Missing Repeat speaker capture");
+  expect(speaker.starts, "late Repeat must resume the current source epoch").toHaveLength(1);
+  const start = speaker.starts[0].when;
+  const boundary = speaker.chunks.find((chunk) => chunk.time >= start + 2)?.begin;
+  if (boundary === undefined) throw new Error("Capture did not reach the source boundary");
+  let minimumRms = Infinity;
+  for (let frame = boundary - 2048; frame < boundary + 4096; frame += 512) {
+    const samples = speaker.left.slice(frame, frame + 512);
+    expect(samples).toHaveLength(512);
+    minimumRms = Math.min(minimumRms, Math.sqrt(samples.reduce((sum, sample) => sum + sample * sample, 0) / samples.length));
+  }
+  await info.attach("late-repeat-speaker", { body: JSON.stringify({ timing, minimumRms, starts: speaker.starts }, null, 2), contentType: "application/json" });
+  expect(minimumRms, "speaker output must remain audible across the original finite end").toBeGreaterThan(0.1);
+});
+
 function verifySpeakerClock(speaker: SpeakerCapture, rate: number, first: number) {
   for (let index = 1; index < speaker.chunks.length; index++) expect(((speaker.chunks[index]?.time ?? 0) - (speaker.chunks[index - 1]?.time ?? 0)) * rate).toBeCloseTo(128, 5);
   const start = speaker.starts.at(-1); if (!start) throw new Error("Missing native source epoch");

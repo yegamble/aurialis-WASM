@@ -35,6 +35,7 @@ export function DeviceCheck() {
   const memory = useRef<ReturnType<typeof reserveBrowserAudioMemory> | null>(null);
   const samples = useRef<Sample[]>([]), events = useRef<{ at: string; kind: string; detail: string }[]>([]);
   const { onScrub } = useTransportScrub(controller, { available: () => controller.current !== null, resume: () => { void controller.current?.play().catch((cause: unknown) => { setMessage(cause instanceof Error ? cause.message : "Playback could not resume."); }); } });
+  const auditionPlaying = useRef(false);
   const started = useRef<{ wall: number; audioMs: number | null } | null>(null);
   function record(kind: string, detail = "") { if (events.current.length < 128) events.current.push({ at: new Date().toISOString(), kind, detail }); }
   useEffect(() => {
@@ -68,6 +69,7 @@ export function DeviceCheck() {
     return () => { clearInterval(timer); };
   }, [running]);
   async function prepare() {
+    auditionPlaying.current = false;
     pending.current?.abort(); controller.current?.dispose(); controller.current = null; memory.current?.dispose(); memory.current = null;
     setPrepared(null); setState(null); setRunning(false); setBusy(true); setProgress(0);
     const abort = new AbortController(); pending.current = abort;
@@ -124,8 +126,8 @@ export function DeviceCheck() {
       <p className="disclosure">{browserBuild ? "Generated audio is processed on this device; nothing is uploaded." : "Generated audio uses the native Aurialis build (built from source) and this browser."}</p>
     </section>
     <section className="paper-panel grid gap-4 p-4 md:p-6" aria-label="Ten-minute real-device run">
-      <ChoiceGroup label="Generated source rate" value={rate} options={[{ value: 48000, label: "48 kHz", disabled: busy || running }, { value: 96000, label: "96 kHz", disabled: busy || running }]} onChange={setRate} />
-      <ChoiceGroup label="Render quality" value={quality} options={[{ value: "classic", label: "Classic", disabled: busy || running }, { value: "oversampled", label: "Oversampled", disabled: busy || running }]} onChange={setQuality} />
+      <ChoiceGroup label="Generated source rate" value={rate} options={[{ value: 48000, label: "48 kHz", disabled: busy || running }, { value: 96000, label: "96 kHz", disabled: busy || running }]} onChange={(value) => { if (value !== rate) auditionPlaying.current = false; setRate(value); }} />
+      <ChoiceGroup label="Render quality" value={quality} options={[{ value: "classic", label: "Classic", disabled: busy || running }, { value: "oversampled", label: "Oversampled", disabled: busy || running }]} onChange={(value) => { if (value !== quality) auditionPlaying.current = false; setQuality(value); }} />
       <p className="disclosure">The 96 kHz source still uses Aurialis’s declared live-rate cap. The requested interface rate does not override it. Oversampled must be supported by this exact build; errors are recorded rather than falling back.</p>
       <div className="flex flex-wrap gap-3"><Button disabled={busy || running || !secure} onClick={() => { void prepare(); }}>Prepare 20-second source</Button>{busy && <Button variant="secondary" onClick={() => { pending.current?.abort(); }}>Cancel preparation</Button>}<Button disabled={!ready || busy || running || !secure} onClick={() => { void start(); }}>Start ten-minute run</Button><Button variant="secondary" disabled={!running} onClick={stop}>Stop run</Button></div>
       <progress className="w-full" max={600} value={progress} aria-label="Rendered audio seconds in ten-minute run" /><p role="status">{message}</p>
@@ -136,8 +138,8 @@ export function DeviceCheck() {
       <h2>Change the output, then check audition volume</h2><p className="disclosure">During playback, switch the actual output in the operating system. Mark the change and name the new route. A browser devicechange event alone does not verify a hardware switch.</p>
       <Button variant="secondary" onClick={() => { record("owner_output_switch", hardware.changedRoute); }}>Mark physical output switch</Button>
       <TextField label="Changed physical output route" value={hardware.changedRoute} onChange={(changedRoute) => { setHardware({ ...hardware, changedRoute }); }} />
-      {prepared && ready && <AuditionExport track={prepared.track} sourceBlob={prepared.blob} delivery={DEFAULT_DELIVERY} volume={volume} livePlaying={state?.playing ?? false} onStart={() => { controller.current?.pause(); setRunning(false); record("audition_started"); }} />}
-      <SliderField label="Audition playback volume" value={volume} defaultValue={.5} min={0} max={1} step={.01} onChange={(value) => { setVolume(value); controller.current?.setVolume(value); }} />
+      {prepared && ready && <AuditionExport track={prepared.track} sourceBlob={prepared.blob} delivery={DEFAULT_DELIVERY} volume={volume} livePlaying={state?.playing ?? false} onStart={() => { controller.current?.pause(); setRunning(false); record("audition_started", `volume=${String(volume)}`); }} onPlayingChange={(playing) => { auditionPlaying.current = playing; record("audition_playing", String(playing)); }} />}
+      <SliderField label="Audition playback volume" value={volume} defaultValue={.5} min={0} max={1} step={.01} onChange={(value) => { setVolume(value); controller.current?.setVolume(value); record("audition_volume_changed", `volume=${String(value)}; playing=${String(auditionPlaying.current)}`); }} />
       <p className="disclosure">On the actual iPhone or iPad, play Audition export, then move Audition playback volume from 25% to 100%. Record what you hear; desktop WebKit is not iOS evidence. Complete this separately from the uninterrupted ten-minute run.</p>
       <ChoiceGroup label="Audition volume observation" value={volumeResult} options={[{ value: "not_checked", label: "Not checked" }, { value: "changed", label: "Volume changed" }, { value: "failed", label: "Did not change" }]} onChange={setVolumeResult} />
       <TextField label="Glitches, interruptions and other observations" value={hardware.observations} onChange={(observations) => { setHardware({ ...hardware, observations }); }} />

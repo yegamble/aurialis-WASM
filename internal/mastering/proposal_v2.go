@@ -83,8 +83,11 @@ func AnalyzeDeepV2Context(ctx context.Context, buf *audio.Buffer, profile Profil
 		return nil, nil, err
 	}
 	if audible {
-		// One explicit, listed gain holds the source loudness within 2 dB of
-		// limiter reduction (V1-09 Round E); the prediction is its export render.
+		// One listed gain holds loudness within the profile's limiting budget;
+		// the prediction is its actual export render.
+		if canonical == ProfileDynamicOpen {
+			prediction.levelMatchLimitDB = MaxDynamicLevelMatchLimiterReductionDB
+		}
 		renders := 0
 		prediction, err = searchLevelMatch(metrics.IntegratedLUFS, script.ChainParams.Limiter.CeilingDBTP, prediction, func(gainDB float64) (ProposalPrediction, error) {
 			script.ChainParams.Compressor.MakeupDB = gainDB

@@ -1,6 +1,6 @@
 /* Test-owned Playwright download paths never come from audio filenames. */
 /* eslint-disable security/detect-non-literal-fs-filename */
-// cspell:words describedby
+// cspell:words describedby spinbutton
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
@@ -173,4 +173,37 @@ export async function verifyMatchedAB(page: Page): Promise<MatchedABEvidence> {
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "Equal-loudness A/B", exact: true })).toHaveAttribute("aria-pressed", "false");
   return evidence;
+}
+
+/** Applied automation uses the same monitor match and leaves its export unchanged. */
+export async function verifyDeepMatchedAB(page: Page): Promise<{ deltaLu: number; exportHash: string }> {
+  await observeOutput(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await uploadProject(page, "matched-ab-deep.wav", 8, "dense");
+  await page.getByRole("tab", { name: "deep", exact: true }).click();
+  await page.getByRole("button", { name: "Analyze Deep proposal", exact: true }).click();
+  await expect(page.getByText("Measured proposal ready. Your applied processing has not changed.", { exact: true })).toBeVisible({ timeout: 60000 });
+  await page.getByRole("combobox", { name: "New move target", exact: true }).selectOption("inputGainDb");
+  await page.getByRole("button", { name: "Add baseline move", exact: true }).click();
+  for (const point of [1, 2]) {
+    const value = page.getByRole("spinbutton", { name: `Point ${String(point)} value`, exact: true });
+    await value.fill("3"); await value.blur();
+  }
+  await page.getByRole("button", { name: "Apply Deep proposal", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as { tracks: { deepMastering?: { applied?: { revision: number } } }[] };
+    return saved.tracks[0]?.deepMastering?.applied?.revision ?? 0;
+  })).toBeGreaterThan(0);
+  const off = await exportHash(page);
+  await page.getByRole("button", { name: "Repeat track", exact: true }).click();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  const toggle = page.getByRole("button", { name: "Equal-loudness A/B", exact: true });
+  await toggle.click();
+  await expect(page.locator(".match-status")).toHaveText(/^(?:[AB] −[\d.]+ dB to match [AB]|A and B already match)$/, { timeout: 60000 });
+  const frames = await page.evaluate(() => 8 * ((window as Window & { qaOutput?: { sampleRate: number } }).qaOutput?.sampleRate ?? 48000));
+  const a = await sideLoudness(page, "A Processed", frames), b = await sideLoudness(page, "B Original", frames);
+  expect(Math.abs(a - b), "applied Deep speaker loudness").toBeLessThanOrEqual(0.5);
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  expect(await exportHash(page), "monitor matching cannot alter a Deep export").toBe(off);
+  return { deltaLu: a - b, exportHash: off };
 }

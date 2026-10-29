@@ -1,3 +1,4 @@
+import { relativeSeekPosition } from "./playback-position";
 import type { LivePlaybackState } from "./live-playback";
 
 // cspell:words contenteditable seekto seekbackward seekforward previoustrack nexttrack
@@ -64,7 +65,7 @@ export function bindPlaybackControls(title: string, actions: PlaybackActions) {
       if (actions.getState().loading) return;
       event.preventDefault();
       const amount = event.altKey ? 0.1 : event.shiftKey ? 10 : 1;
-      seek(actions.getState().position + (event.key === "ArrowLeft" ? -amount : amount));
+      seek(relativeSeekPosition(actions.getState(), event.key === "ArrowLeft" ? -amount : amount));
     }
   }
 
@@ -76,8 +77,8 @@ export function bindPlaybackControls(title: string, actions: PlaybackActions) {
       ["play", play], ["pause", pause],
       ["stop", () => { pause(); seek(0); }],
       ["seekto", (details) => { if (details.seekTime !== undefined) seek(details.seekTime); }],
-      ["seekbackward", (details) => { seek(actions.getState().position - (details.seekOffset ?? 10)); }],
-      ["seekforward", (details) => { seek(actions.getState().position + (details.seekOffset ?? 10)); }],
+      ["seekbackward", (details) => { seek(relativeSeekPosition(actions.getState(), -(details.seekOffset ?? 10))); }],
+      ["seekforward", (details) => { seek(relativeSeekPosition(actions.getState(), details.seekOffset ?? 10)); }],
       ["previoustrack", () => { invoke(actions.restart); }], ["nexttrack", () => { invoke(actions.forward); }],
     ];
     for (const [action, handler] of handlers) {

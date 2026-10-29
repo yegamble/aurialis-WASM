@@ -8,7 +8,7 @@ import { exportRender } from "@/lib/engine-params";
 import { exportTrackKey } from "@/lib/export-identity";
 import type { Track } from "@/lib/types";
 import { Icon } from "./Icon";
-import { Button } from "./Primitives";
+import { Button, SliderField } from "./Primitives";
 
 /** Everything that changes the bytes Export writes; a different key makes an audition stale. */
 export function auditionKey(track: Track, delivery: DeliveryFormat): string {
@@ -24,6 +24,7 @@ export type AuditionHandle = {
   playing: () => boolean;
   play: () => Promise<void>;
   pause: () => void;
+  seek: (seconds: number) => void;
   position: () => { position: number; duration: number };
 };
 
@@ -84,7 +85,7 @@ function prepareVolume(element: HTMLAudioElement, volume: number, fallback: Fall
  * element. Only the Blob is held, never a decoded AudioBuffer; the memory
  * admission charges it once it exists, as for an Export download.
  */
-export function AuditionExport({ track, sourceBlob, delivery, volume, livePlaying, onStart, onHeld, onHandle, onPlayingChange }: {
+export function AuditionExport({ track, sourceBlob, delivery, volume, livePlaying, onStart, onHeld, onHandle, onPlayingChange, onPositionChange }: {
   track: Track;
   sourceBlob: Blob | null;
   delivery: DeliveryFormat;
@@ -98,6 +99,7 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
   onHeld?: (held: HeldAudition | null) => void;
   onHandle?: (handle: AuditionHandle | null) => void;
   onPlayingChange?: (playing: boolean) => void;
+  onPositionChange?: () => void;
 }) {
   const audio = useRef<HTMLAudioElement | null>(null);
   // Only where the element ignores .volume (iOS Safari): element → gain → speakers.
@@ -106,6 +108,8 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
   const pending = useRef<AbortController | null>(null);
   const [phase, setPhase] = useState<Phase>({ kind: "idle", message: "" });
   const [playing, setPlaying] = useState(false);
+  const [position, setPosition] = useState(0);
+  const [duration, setDuration] = useState(track.duration);
   const [notice, setNotice] = useState("");
   const playingNow = useRef(false);
   // Bumped by each start and by each pause we ask for, so a start that our own
@@ -117,8 +121,8 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
   const stale = phase.kind === "ready" && heldKey !== key;
   const format = deliverySummary(delivery, track.sampleRate);
   // What is true now, for a render that completes later (Round 5 R-1).
-  const latest = useRef({ key, livePlaying, volume, onHeld, onPlayingChange });
-  latest.current = { key, livePlaying, volume, onHeld, onPlayingChange };
+  const latest = useRef({ key, livePlaying, volume, onHeld, onPlayingChange, onPositionChange });
+  latest.current = { key, livePlaying, volume, onHeld, onPlayingChange, onPositionChange };
 
   function release() {
     stop();
@@ -162,6 +166,20 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
         : "The audition did not start. Press Play audition to try again.");
     }
   }
+  function updatePosition() {
+    const element = audio.current;
+    if (!element) return;
+    const length = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : track.duration;
+    setDuration(length); setPosition(Math.max(0, Math.min(length, element.currentTime)));
+    latest.current.onPositionChange?.();
+  }
+  function seek(seconds: number) {
+    const element = audio.current;
+    if (!element || !held.current || held.current.key !== latest.current.key || !Number.isFinite(seconds)) return;
+    const length = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : track.duration;
+    element.currentTime = Math.max(0, Math.min(length, seconds));
+    updatePosition();
+  }
   const handle = useRef<AuditionHandle>({
     canPlay: () => held.current !== null && held.current.key === latest.current.key,
     playing: () => playingNow.current,
@@ -169,9 +187,11 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
     // Mark it paused at once: the media "pause" event is a later task, and a
     // play/pause key pressed before it must already see the audition stopped.
     pause: () => { playingNow.current = false; stop(); },
-    position: () => ({ position: audio.current?.currentTime ?? 0, duration: audio.current && Number.isFinite(audio.current.duration) ? audio.current.duration : 0 }),
+    seek: (seconds) => { seek(seconds); },
+    position: () => ({ position: audio.current?.currentTime ?? 0, duration: audio.current && Number.isFinite(audio.current.duration) ? audio.current.duration : track.duration }),
   });
   handle.current.play = () => play();
+  handle.current.seek = seek;
   useEffect(() => {
     onHandle?.(handle.current);
     return () => { onHandle?.(null); pending.current?.abort(); pending.current = null; release(); };
@@ -243,7 +263,8 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
     {/* After the button, so it does not move while focused (P2-2). */}
     {phase.kind === "rendering" && <progress className="w-full max-w-60" max={100} {...(phase.progress === null ? {} : { value: phase.progress })} aria-label="Audition export render progress" />}
     <p className="disclosure min-w-0 basis-full" role={phase.kind === "error" ? "alert" : "status"}>{status}</p>
-    <audio ref={audio} className="audition-export hidden" preload="auto"
+    {phase.kind === "ready" && !stale && <div className="w-full"><SliderField label="Audition position" defaultValue={0} value={position} min={0} max={duration} step={0.1} unit="s" onChange={seek} /></div>}
+    <audio ref={audio} onTimeUpdate={updatePosition} onLoadedMetadata={updatePosition} onSeeked={updatePosition} className="audition-export hidden" preload="auto"
       onPlay={() => { changed(true); }} onPause={() => { changed(false); }} onEnded={() => { changed(false); }} />
   </section>;
 }

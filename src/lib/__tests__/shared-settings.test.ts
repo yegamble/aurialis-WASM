@@ -7,6 +7,14 @@ function source() { const track = testStore.tracks[0]; if (!track) throw new Err
 function selected() { return reduceStoreState(testStore, { type: "UPDATE_SIMPLE", id: source().id, patch: { genre: "Rock", tone: "Punchy", intensity: 72 } }); }
 function trackOf(state: Parameters<typeof reduceStoreState>[0]) { const track = state.tracks[0]; if (!track) throw new Error("Missing track"); return track; }
 
+it("disarms a legacy repair switch on restore and invalidates its old export", () => {
+  const track = source();
+  const restored = normalizeHydratedState({ ...testStore, tracks: [{ ...track, status: "mastered", advanced: { ...track.advanced, repair: { ...track.advanced.repair, enabled: true } } }] });
+  expect(restored?.tracks[0]?.advanced.repair.enabled).toBe(false);
+  expect(restored?.tracks[0]?.status).toBe("ready");
+  expect(restored?.tracks[0]?.importNotice).toContain("repair setting was removed");
+});
+
 describe("one canonical mastering snapshot", () => {
   it("writes explicit Simple directions to the persisted DSP snapshot, bounded by source rate", () => {
     const initial = { ...testStore, tracks: [{ ...source(), sampleRate: 8000 }] };
@@ -42,7 +50,7 @@ describe("one canonical mastering snapshot", () => {
       { type: "UPDATE_INPUT_GAIN", trackId, input: 6 }, { type: "TOGGLE_EQ_ENABLED", trackId, enabled: false },
       { type: "UPDATE_EQ_BAND", trackId, bandId: "mid", patch: { gainDb: 5 } }, { type: "UPDATE_COMPRESSOR", trackId, patch: { attack: 47 } },
       { type: "UPDATE_SATURATION", trackId, patch: { drive: 30 } }, { type: "UPDATE_STEREO", trackId, patch: { width: 130 } },
-      { type: "UPDATE_LIMITER", trackId, patch: { ceiling: -2 } }, { type: "UPDATE_REPAIR", trackId, patch: { enabled: false } },
+      { type: "UPDATE_LIMITER", trackId, patch: { ceiling: -2 } },
       { type: "RESET_ADVANCED", trackId }, { type: "UPDATE_TRACK", id: trackId, patch: { advanced: source().advanced } },
     ];
     for (const action of actions) {

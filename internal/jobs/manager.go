@@ -86,6 +86,7 @@ type Job struct {
 	Stems             []StemDescriptor              `json:"stems,omitempty"`
 
 	stemPCM       map[string]stemAudio
+	downloadPins  int
 	cancel        context.CancelFunc
 	reservedBytes int64
 }
@@ -97,14 +98,16 @@ type workItem struct {
 
 // Manager coordinates bounded worker goroutines and in-memory job state.
 type Manager struct {
-	mu        sync.RWMutex
-	jobs      map[string]*Job
-	queue     chan workItem
-	closed    bool
-	wg        sync.WaitGroup
-	baseCtx   context.Context
-	stopFn    context.CancelFunc
-	usedBytes int64
+	mu           sync.RWMutex
+	jobs         map[string]*Job
+	queue        chan workItem
+	closed       bool
+	wg           sync.WaitGroup
+	baseCtx      context.Context
+	stopFn       context.CancelFunc
+	usedBytes    int64
+	requestBytes int64
+	modelBytes   int64
 
 	// Stem separation runs one job at a time on its own queue and memory pool:
 	// it uses every core, needs far more memory and runs for minutes.
@@ -222,7 +225,7 @@ func (m *Manager) reapLoop() {
 
 func (m *Manager) pruneLocked(now time.Time) {
 	for id, j := range m.jobs {
-		if j.reservedBytes == 0 && now.Sub(j.UpdatedAt) >= Retention {
+		if j.reservedBytes == 0 && j.downloadPins == 0 && now.Sub(j.UpdatedAt) >= Retention {
 			*m.pool(j) -= retainedBytes(j)
 			delete(m.jobs, id)
 		}
@@ -240,7 +243,7 @@ func (m *Manager) releaseReservation(id string) {
 	}
 }
 
-func (m *Manager) admitLocked(job *Job, buf *audio.Buffer) error {
+func (m *Manager) admitLocked(job *Job, buf *audio.Buffer, credits ...*MemoryReservation) error {
 	if m.closed {
 		return errors.New("job manager is closed")
 	}
@@ -254,14 +257,14 @@ func (m *Manager) admitLocked(job *Job, buf *audio.Buffer) error {
 	if job.Kind == KindAnalyzeFeatures || job.Kind == KindAnalyzeDeepV2 {
 		bytesPerFrame = 8 // Input only; features and FFT scratch fit the reserved headroom.
 	}
-	reservation := int64(buf.Frames)*bytesPerFrame + 16*1024*1024
+	reservation := int64(buf.Frames)*bytesPerFrame + 16*1024*1024 + pcmExtraCapacity(buf)
 	if job.Kind == KindAnalyzeDeepV2 {
 		reservation += 16 * 1024 * 1024
 	}
-	return m.admitReservationLocked(job, reservation)
+	return m.admitReservationLocked(job, reservation, credits...)
 }
 
-func (m *Manager) admitReservationLocked(job *Job, reservation int64) error {
+func (m *Manager) admitReservationLocked(job *Job, reservation int64, credits ...*MemoryReservation) error {
 	if m.closed {
 		return errors.New("job manager is closed")
 	}
@@ -275,6 +278,17 @@ func (m *Manager) admitReservationLocked(job *Job, reservation int64) error {
 	}
 	if len(m.jobs) >= MaxRetainedJobs || reservation > limit-*m.pool(job) {
 		return ErrQueueFull
+	}
+	credit, bytes, err := m.transferCreditLocked(credits)
+	if err != nil {
+		return err
+	}
+	if reservation > MaxProcessMemoryBytes-(m.processBytesLocked()-bytes) {
+		return ErrMemoryCapacity
+	}
+	if credit != nil {
+		m.requestBytes -= bytes
+		credit.transferred = true
 	}
 	job.reservedBytes = reservation
 	*m.pool(job) += reservation
@@ -291,7 +305,7 @@ func newJobID() string {
 }
 
 // SubmitAnalyzeDeep enqueues a Deep MasteringScript v1 generation job.
-func (m *Manager) SubmitAnalyzeDeep(buf *audio.Buffer, profile mastering.ProfileID) (*Job, error) {
+func (m *Manager) SubmitAnalyzeDeep(buf *audio.Buffer, profile mastering.ProfileID, credits ...*MemoryReservation) (*Job, error) {
 	id := newJobID()
 	now := time.Now().UTC()
 	job := &Job{
@@ -307,7 +321,7 @@ func (m *Manager) SubmitAnalyzeDeep(buf *audio.Buffer, profile mastering.Profile
 	}
 
 	m.mu.Lock()
-	if err := m.admitLocked(job, buf); err != nil {
+	if err := m.admitLocked(job, buf, credits...); err != nil {
 		m.mu.Unlock()
 		return nil, err
 	}
@@ -354,8 +368,7 @@ func (m *Manager) SubmitAnalyzeDeep(buf *audio.Buffer, profile mastering.Profile
 		m.mu.Unlock()
 		return snapshot, nil
 	default:
-		m.usedBytes -= job.reservedBytes
-		delete(m.jobs, id)
+		m.rollbackAdmissionLocked(job, credits)
 		m.mu.Unlock()
 		return nil, ErrQueueFull
 	}
@@ -415,19 +428,12 @@ func (m *Manager) Get(id string) (*Job, bool) {
 // Stems are kept as float PCM and encoded per download, so retained memory
 // is not doubled by an encoded copy.
 func (m *Manager) StemWAV(jobID, stemName string) ([]byte, bool) {
-	m.mu.RLock()
-	j, ok := m.jobs[jobID]
-	if !ok || j.Status != StatusDone || j.stemPCM == nil {
-		m.mu.RUnlock()
+	response, ok, err := m.LeaseStemWAV(jobID, stemName)
+	if err != nil || !ok {
 		return nil, false
 	}
-	stem, found := j.stemPCM[stemName]
-	m.mu.RUnlock()
-	if !found {
-		return nil, false
-	}
-	wav, err := audio.EncodeWAV(stem.left, stem.right, stem.rate, stemBitDepth)
-	return wav, err == nil
+	defer response.Release()
+	return response.Bytes, true
 }
 
 // Cancel cancels an in-flight or queued job idempotently and frees its stem buffers.
@@ -440,12 +446,14 @@ func (m *Manager) Cancel(id string) (*Job, bool) {
 	}
 	cancelFn := j.cancel
 	if j.Status != StatusCanceled {
-		if j.reservedBytes == 0 {
+		if j.reservedBytes == 0 && j.downloadPins == 0 {
 			*m.pool(j) -= retainedBytes(j)
 		}
 		j.Status = StatusCanceled
 		j.Stage = "Canceled"
-		j.stemPCM = nil
+		if j.downloadPins == 0 {
+			j.stemPCM = nil
+		}
 		j.Stems = nil
 		j.Script = nil
 		j.ScriptV2 = nil
@@ -465,6 +473,9 @@ func (m *Manager) Cancel(id string) (*Job, bool) {
 
 func (m *Manager) cloneJob(j *Job) *Job {
 	cp := *j
+	// Public snapshots must not retain private PCM or a running context.
+	cp.stemPCM = nil
+	cp.cancel = nil
 	cp.ReferenceProposal = j.ReferenceProposal.Clone()
 	if j.ScriptV2 != nil {
 		cp.ScriptV2 = j.ScriptV2.Clone()
@@ -510,12 +521,12 @@ func retainedBytes(job *Job) int64 {
 }
 
 // SubmitAnalyzeFeatures enqueues bounded measured analysis without rendering audio.
-func (m *Manager) SubmitAnalyzeFeatures(buf *audio.Buffer) (*Job, error) {
+func (m *Manager) SubmitAnalyzeFeatures(buf *audio.Buffer, credits ...*MemoryReservation) (*Job, error) {
 	id := newJobID()
 	now := time.Now().UTC()
 	job := &Job{ID: id, JobID: id, Kind: KindAnalyzeFeatures, Status: StatusQueued, Stage: "Queued for measured feature analysis", CreatedAt: now, UpdatedAt: now}
 	m.mu.Lock()
-	if err := m.admitLocked(job, buf); err != nil {
+	if err := m.admitLocked(job, buf, credits...); err != nil {
 		m.mu.Unlock()
 		return nil, err
 	}
@@ -547,8 +558,7 @@ func (m *Manager) SubmitAnalyzeFeatures(buf *audio.Buffer) (*Job, error) {
 		m.mu.Unlock()
 		return snapshot, nil
 	default:
-		m.usedBytes -= job.reservedBytes
-		delete(m.jobs, id)
+		m.rollbackAdmissionLocked(job, credits)
 		m.mu.Unlock()
 		return nil, ErrQueueFull
 	}

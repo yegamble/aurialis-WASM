@@ -37,6 +37,24 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("Audition export (V1-10 owner ruling)", () => {
+  it("seeks the held export by slider and media handle, but rejects stale seeks", async () => {
+    vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: wav, truePeakDbtp: null });
+    let handle: AuditionHandle | null = null;
+    const view = mount(base(), false, vi.fn(), (next) => { handle = next; });
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    await screen.findByRole("button", { name: "Pause audition" });
+    Object.defineProperty(view.element(), "duration", { configurable: true, value: 1 });
+    fireEvent.loadedMetadata(view.element());
+    fireEvent.change(screen.getByRole("slider", { name: "Audition position" }), { target: { value: "0.4" } });
+    expect(view.element().currentTime).toBe(0.4);
+    act(() => { handle?.seek(0.8); });
+    expect(view.element().currentTime).toBe(0.8);
+    const edited = { ...base(), advanced: { ...base().advanced, input: 3 } };
+    view.rerender(<AuditionExport track={edited} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying={false} onStart={view.onStart} />);
+    act(() => { handle?.seek(0.1); });
+    expect(view.element().currentTime).toBe(0.8);
+    expect(screen.queryByRole("slider", { name: "Audition position" })).toBeNull();
+  });
   it("renders the exact Export request and plays that Blob through one media element, holding no decoded buffer", async () => {
     const decoded = vi.fn();
     vi.stubGlobal("AudioContext", vi.fn(() => ({ decodeAudioData: decoded })));

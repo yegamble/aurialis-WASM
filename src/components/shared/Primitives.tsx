@@ -1,5 +1,6 @@
 "use client";
 
+import { relativeSeekPosition } from "@/lib/playback-position";
 import {
   useEffect,
   useId,
@@ -387,6 +388,7 @@ export function Waveform({
   peaks,
   playheadRatio: controlledRatio,
   onSeekRatio,
+  repeat = false,
 }: {
   seed: number;
   duration: number;
@@ -394,6 +396,7 @@ export function Waveform({
   peaks?: number[];
   playheadRatio?: number;
   onSeekRatio?: (ratio: number) => void;
+  repeat?: boolean;
 }) {
   const [internalRatio, setInternalRatio] = useState(0);
   const barsRef = useRef<HTMLDivElement>(null);
@@ -436,10 +439,10 @@ export function Waveform({
     const stepRatio = duration > 0 ? stepSeconds / duration : 0;
     if (event.key === "ArrowRight") {
       event.preventDefault();
-      setRatio(ratio + stepRatio);
+      setRatio(duration > 0 ? relativeSeekPosition({ position: ratio * duration, duration, repeat }, stepSeconds) / duration : ratio + stepRatio);
     } else if (event.key === "ArrowLeft") {
       event.preventDefault();
-      setRatio(ratio - stepRatio);
+      setRatio(duration > 0 ? relativeSeekPosition({ position: ratio * duration, duration, repeat }, -stepSeconds) / duration : ratio - stepRatio);
     } else if (event.key === "Home") {
       event.preventDefault();
       setRatio(0);

@@ -25,6 +25,21 @@ describe("versioned Simple directions", () => {
         }
       }
   });
+  it.each([["Metal", "Rock"], ["Jazz", "Acoustic"]] as const)("retains the authored %s recipe instead of aliasing %s", (genre, parent) => {
+    for (const intensity of [25, 50, 100]) {
+      const chosen = composeSimpleDirection({ ...direction, genre, intensity });
+      const related = composeSimpleDirection({ ...direction, genre: parent, intensity });
+      expect(chosen.eqBands.map((band) => band.gainDb)).not.toEqual(related.eqBands.map((band) => band.gainDb));
+      expect(chosen.compressor.release).toBe(genre === "Metal" ? 180 : 350);
+      expect(chosen.compressor.release).not.toBe(related.compressor.release);
+      if (genre === "Jazz") {
+        expect(chosen.compressor.attack).toBe(45);
+        expect(chosen.compressor.ratio).toBeLessThan(related.compressor.ratio);
+      }
+      expect(chosen.input).toBe(related.input);
+      expect(chosen.compressor.makeup).toBe(0);
+    }
+  });
   it("composes Depth and Presence once regardless of edit order and reapply", () => {
     const first = prepareSimpleChange(track, { genre: "Jazz", depth: true });
     const depthFirst = prepareSimpleChange({ ...track, ...first }, { presence: true });

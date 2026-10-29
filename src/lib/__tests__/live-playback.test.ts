@@ -507,12 +507,44 @@ describe("per-track live audio lifecycle", () => {
     expect(controller.getState()).toMatchObject({ playing: false, error: OVERLOAD_MESSAGE });
     controller.dispose();
   });
+  it.each([false, true])("exposes acknowledged controls and only opt-in kernel diagnostics (enabled=%s)", async (diagnostics) => {
+    const { nodes } = graphHarness();
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams(), {}, undefined, { diagnostics });
+    await controller.play(); const node = nodes[0]; if (!node) throw new Error("Missing graph");
+    expect(node.options.processorOptions).toMatchObject({ diagnostics, requestedAlgorithm: 2 });
+    expect(controller.getDiagnostics().deviceStats).toBeNull();
+    expect(controller.getDiagnostics().acceptedControls).toBeNull();
+    new Int32Array(node.options.processorOptions.header).set([1], 4);
+    expect(controller.getDiagnostics().acceptedControls?.values).toHaveLength(82);
+    node.port.message({ type: "diagnostics", frames: 48000, audioMs: 1000, wallMs: 1005, kernelMs: 300, clockStepMs: 1 });
+    expect(controller.getDiagnostics().kernel).toEqual(diagnostics ? { frames: 48000, audioMs: 1000, wallMs: 1005, kernelMs: 300, clockStepMs: 1 } : null);
+    controller.dispose();
+  });
   it("gives the worklet the output's slack where playbackStats is missing", async () => {
     const { nodes } = graphHarness();
     const controller = createLivePlayback(source(), createDefaultAdvancedParams());
     await controller.play();
     expect(nodes[0]?.options.processorOptions.watchSlackMs).toBe(10);
     controller.dispose();
+  });
+  it("reads settled device latency and cancels superseded or disposed samples", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const devices = new EventTarget(); vi.stubGlobal("navigator", { mediaDevices: devices });
+    const { contexts, nodes } = graphHarness();
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams()); await controller.play();
+    const context = contexts[0], node = nodes[0]; if (!context || !node) throw new Error("Missing graph");
+    devices.dispatchEvent(new Event("devicechange"));
+    Object.defineProperty(context, "outputLatency", { configurable: true, value: 0.08 });
+    await vi.advanceTimersByTimeAsync(250);
+    expect(node.port.postMessage).toHaveBeenLastCalledWith({ type: "rewatch", slackMs: 80 });
+    devices.dispatchEvent(new Event("devicechange"));
+    Object.defineProperty(context, "outputLatency", { configurable: true, value: 0.12 });
+    await vi.advanceTimersByTimeAsync(250);
+    expect(node.port.postMessage).toHaveBeenLastCalledWith({ type: "rewatch", slackMs: 120 });
+    controller.dispose(); node.port.postMessage.mockClear();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(node.port.postMessage).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
   it("rewatches the worklet's deadline watch on a context state change or an audio device change", async () => {
     const devices = new EventTarget();

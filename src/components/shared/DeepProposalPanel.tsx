@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { downloadLocalBlob } from "@/lib/download";
 import { getAudio } from "@/lib/db";
 import { analyzeDeep, compileScript, deepProfiles, deepSourceMatches, readScriptV2, type AutomationMove, type DeepMasteringState, type DeepProfile, type LevelMatch, type ScriptV2 } from "@/lib/deep-mastering";
 import { proposalChanges } from "@/lib/proposal-changes";
@@ -13,9 +14,7 @@ import { DeepMoveEditor } from "./DeepMoveEditor";
 
 function downloadScript(track: Track, script: ScriptV2, suffix: string) {
   const validated = readScriptV2(script, track.sourceIdentity);
-  const url = URL.createObjectURL(new Blob([JSON.stringify(validated, null, 2)], { type: "application/json" }));
-  const anchor = document.createElement("a"); anchor.href = url; anchor.download = (track.title.replace(/[^a-zA-Z0-9_-]/gu, "-") || "aurialis") + "-" + suffix + ".script-v2.json"; anchor.click();
-  setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
+  downloadLocalBlob(new Blob([JSON.stringify(validated, null, 2)], { type: "application/json" }), (track.title.replace(/[^a-zA-Z0-9_-]/gu, "-") || "aurialis") + "-" + suffix + ".script-v2.json");
 }
 
 function db(value: number, digits = 1): string {
@@ -147,7 +146,7 @@ export const DeepProposalPanel = memo(function DeepProposalPanel({ track, source
       <dl className="grid grid-cols-2 gap-2 text-xs"><div><dt>Proposed input</dt><dd>{deep.proposal.chainParams.inputGainDb.toFixed(2)} dB</dd></div><div><dt>Proposed ceiling</dt><dd>{db(deep.proposal.chainParams.limiter.ceilingDbtp, 2)} dBTP</dd></div></dl>
       <PredictedLevels deep={deep} soloed={soloId !== ""} />
       <ProposalChanges current={track.advanced} proposal={deep.proposal} />
-      <div className="flex flex-wrap gap-2"><Button disabled={busy || !sourceReady || !onApply} onClick={() => { void apply(); }}>{soloId ? "Apply solo proposal" : "Apply Deep proposal"}</Button><Button variant="secondary" onClick={() => { downloadScript(track, deep.proposal, "draft"); }}>Download draft Script JSON</Button>{deep.applied && <Button variant="secondary" onClick={() => { if (deep.applied) downloadScript(track, deep.applied, "applied"); }}>Download applied Script JSON</Button>}</div>
+      <div className="flex flex-wrap gap-2"><Button disabled={busy || !sourceReady || !onApply} onClick={() => { void apply(); }}>{soloId ? "Apply solo proposal" : "Apply Deep proposal"}</Button><Button variant="secondary" onClick={() => { try { downloadScript(track, deep.proposal, "draft"); } catch (cause) { setError(cause instanceof Error ? cause.message : "The script could not be downloaded."); } }}>Download draft Script JSON</Button>{deep.applied && <Button variant="secondary" onClick={() => { if (deep.applied) { try { downloadScript(track, deep.applied, "applied"); } catch (cause) { setError(cause instanceof Error ? cause.message : "The script could not be downloaded."); } } }}>Download applied Script JSON</Button>}</div>
       {!onApply && <p className="disclosure">Automation application is awaiting live-engine integration and verification. Drafts can be reviewed, edited and downloaded.</p>}
       {soloId && <p className="disclosure">Solo proposal: Apply will mute the other moves in both live playback and export.</p>}
       {deep.proposal.findings.map((finding) => <div className="rounded-xl border border-line bg-paper-deep p-3" key={finding.id}><strong className="text-sm">{finding.title}</strong><p className="disclosure">{finding.detail}</p><small>{finding.severity === "warning" ? "Review warning" : "Measured observation"} · {finding.lane}</small></div>)}

@@ -8,7 +8,7 @@ import { DEFAULT_ALBUM_LEVEL } from "@/lib/album-levels";
 import { DEFAULT_DELIVERY } from "@/lib/delivery-format";
 import { useStore } from "@/lib/store";
 import type { Track } from "@/lib/types";
-import { Artwork, BottomSheet, Button, buttonClassName, formatTime, Modal, PageTitle, StatusBadge, statusLabel } from "./Primitives";
+import { Artwork, BottomSheet, Button, ChoiceGroup, buttonClassName, formatTime, Modal, PageTitle, StatusBadge, statusLabel } from "./Primitives";
 import { Icon } from "./Icon";
 import { LibraryPreview, SourceRelink, StorageGuidance } from "./LibraryTools";
 import { LegacyLibraryRecovery } from "./LegacyLibraryRecovery";
@@ -67,7 +67,7 @@ export function LibraryView() {
     <div className="library-tools">
       <label className="search-field"><Icon name="search" /><input value={query} aria-label="Search your library" onChange={(event) => { setQuery(event.target.value); }} placeholder="Search your library" /></label>
       <label className="grid min-w-0 gap-1 text-xs">Sort projects<select className="min-h-[44px] max-w-full rounded-xl border border-line-dark bg-paper px-3" aria-label="Sort projects" value={sort} onChange={(event) => { const value = event.target.value; if (value === "recent" || value === "name" || value === "duration") setSort(value); }}><option value="recent">Recently modified</option><option value="name">Name</option><option value="duration">Duration</option></select></label>
-      <div className="filter-row" role="group" aria-label="Filter projects by status">{["All", "Draft", "Ready", "Mastered", "Needs review"].map((item) => <Button key={item} variant="secondary" className={filter === item ? "chip is-active" : "chip"} aria-pressed={filter === item} onClick={() => { setFilter(item); }}>{item}</Button>)}</div>
+      <ChoiceGroup label="Filter projects by status" value={filter} className="filter-row" options={["All", "Draft", "Ready", "Mastered", "Needs review"].map((item) => ({ value: item, label: item }))} onChange={setFilter} />
     </div>
     {message && <p className="disclosure" role="status">{message}</p>}
     {error && <p className="disclosure text-danger" role="alert">{error}</p>}

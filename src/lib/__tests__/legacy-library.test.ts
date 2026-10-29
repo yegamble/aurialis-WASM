@@ -1,7 +1,7 @@
 import { File as NativeFile } from "node:buffer";
 import { IDBDatabase, IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readLegacyWav, scanLegacySources } from "../legacy-library";
+import { readLegacySource, scanLegacySources } from "../legacy-library";
 
 const DATABASE = "aurialis-library-entries-v1";
 let factory: IDBFactory;
@@ -78,7 +78,7 @@ describe("read-only legacy library recovery", () => {
     const file = wav(), key = `a|b.wav|${String(file.size)}|456`;
     await seed([key]); const handles = opfs(file);
     const source = (await scanLegacySources(signal())).sources[0]; if (!source) throw new Error("Missing fixture");
-    const selected = await readLegacyWav(source, signal());
+    const selected = await readLegacySource(source, signal());
     expect(handles.getDirectoryHandle).toHaveBeenCalledWith("library", { create: false });
     expect(handles.getFileHandle).toHaveBeenCalledWith(`${encodeURIComponent(key)}.bin`, { create: false });
     expect(selected.file.name).toBe("a|b.wav"); expect(await selected.file.text()).toBe(await file.text());
@@ -86,28 +86,37 @@ describe("read-only legacy library recovery", () => {
     handles.getFile.mockResolvedValue(new File([await file.arrayBuffer()], "changed.bin", { lastModified: 124 }));
     await expect(selected.verify()).rejects.toThrow("changed during recovery");
   });
-  it("rejects compressed originals after only twelve header bytes and retains their records", async () => {
-    const file = new File(["ID3compressed-original"], "track.bin", { lastModified: 123 });
-    const key = `track.mp3|${String(file.size)}|123`; await seed([key]); opfs(file);
+  it.each(["mp3", "flac"])("hands selected %s snapshots to Go CDR without reading or decoding audio here", async (extension) => {
+    const file = new File(["compressed-source-awaiting-Go-validation"], "track.bin", { lastModified: 123 });
+    const key = `track.${extension}|${String(file.size)}|123`; await seed([key]); opfs(file);
     const source = (await scanLegacySources(signal())).sources[0]; if (!source) throw new Error("Missing fixture");
     const fullRead = vi.spyOn(file, "arrayBuffer");
-    await expect(readLegacyWav(source, signal())).rejects.toThrow("Codec recovery is unavailable");
-    expect(fullRead).not.toHaveBeenCalled(); expect((await scanLegacySources(signal())).sources).toHaveLength(1);
+    const selected = await readLegacySource(source, signal());
+    expect(selected.file.name).toBe(`track.${extension}`); expect(selected.file.size).toBe(file.size);
+    expect(fullRead).not.toHaveBeenCalled(); await selected.verify();
+    expect((await scanLegacySources(signal())).sources).toHaveLength(1);
+  });
+  it("retains unsupported originals without reading their audio", async () => {
+    const file = new File(["unsupported original"], "track.bin", { lastModified: 123 });
+    const key = `track.ogg|${String(file.size)}|123`; await seed([key]); const handles = opfs(file);
+    const source = (await scanLegacySources(signal())).sources[0]; if (!source) throw new Error("Missing fixture");
+    await expect(readLegacySource(source, signal())).rejects.toThrow("unsupported original");
+    expect(handles.getFile).not.toHaveBeenCalled(); expect((await scanLegacySources(signal())).sources).toHaveLength(1);
   });
   it("rejects oversize and changed sources before reading full audio", async () => {
     const oversize = `huge.wav|${String(128 * 1024 * 1024 + 45)}|123`;
     await seed([oversize, "small.wav|20|123"]); const handles = opfs(wav());
     const page = await scanLegacySources(signal()); const huge = page.sources.find((item) => item.key === oversize), small = page.sources.find((item) => item.name === "small.wav");
     if (!huge || !small) throw new Error("Missing fixture");
-    await expect(readLegacyWav(huge, signal())).rejects.toThrow("128 MiB"); expect(handles.getFile).not.toHaveBeenCalled();
-    await expect(readLegacyWav(small, signal())).rejects.toThrow("missing, changed");
+    await expect(readLegacySource(huge, signal())).rejects.toThrow("128 MiB"); expect(handles.getFile).not.toHaveBeenCalled();
+    await expect(readLegacySource(small, signal())).rejects.toThrow("missing, changed");
   });
   it("does not continue a canceled scan or source read", async () => {
     const controller = new AbortController(); controller.abort();
     await expect(scanLegacySources(controller.signal)).rejects.toMatchObject({ name: "AbortError" });
     const file = wav(), key = `track.wav|${String(file.size)}|123`; await seed([key]); const handles = opfs(file);
     const source = (await scanLegacySources(signal())).sources[0]; if (!source) throw new Error("Missing fixture");
-    await expect(readLegacyWav(source, controller.signal)).rejects.toMatchObject({ name: "AbortError" }); expect(handles.getFile).not.toHaveBeenCalled();
+    await expect(readLegacySource(source, controller.signal)).rejects.toMatchObject({ name: "AbortError" }); expect(handles.getFile).not.toHaveBeenCalled();
   });
   it("cancels a pending OPFS read promptly and prevents overlapping browser reads", async () => {
     const file = wav(), key = `track.wav|${String(file.size)}|123`; await seed([key]);
@@ -117,12 +126,12 @@ describe("read-only legacy library recovery", () => {
     const pending = new Promise<FileSystemDirectoryHandle>((resolve) => { release = () => { resolve({} as FileSystemDirectoryHandle); }; });
     const getDirectory = vi.fn(() => { started?.(); return pending; });
     vi.stubGlobal("navigator", { storage: { getDirectory } });
-    const controller = new AbortController(), reading = readLegacyWav(source, controller.signal);
+    const controller = new AbortController(), reading = readLegacySource(source, controller.signal);
     const rejected = expect(reading).rejects.toMatchObject({ name: "AbortError" });
     await observed; controller.abort(); await rejected;
-    await expect(readLegacyWav(source, signal())).rejects.toThrow("still settling"); expect(getDirectory).toHaveBeenCalledTimes(1);
+    await expect(readLegacySource(source, signal())).rejects.toThrow("still settling"); expect(getDirectory).toHaveBeenCalledTimes(1);
     release?.(); await pending; await Promise.resolve();
-    opfs(file); await expect(readLegacyWav(source, signal())).resolves.toHaveProperty("file");
+    opfs(file); await expect(readLegacySource(source, signal())).resolves.toHaveProperty("file");
   });
   it("times out an unresponsive OPFS read without deleting or starting a second read", async () => {
     const file = wav(), key = `track.wav|${String(file.size)}|123`; await seed([key]);
@@ -133,7 +142,7 @@ describe("read-only legacy library recovery", () => {
     const getDirectory = vi.fn(() => { started?.(); return pending; });
     vi.stubGlobal("navigator", { storage: { getDirectory } });
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    const reading = readLegacyWav(source, signal()), rejected = expect(reading).rejects.toThrow("did not respond");
+    const reading = readLegacySource(source, signal()), rejected = expect(reading).rejects.toThrow("did not respond");
     await observed; await vi.advanceTimersByTimeAsync(5000); await rejected;
     expect(getDirectory).toHaveBeenCalledTimes(1);
     release?.(); await pending; await Promise.resolve();

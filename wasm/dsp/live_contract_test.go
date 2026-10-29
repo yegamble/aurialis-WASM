@@ -14,10 +14,10 @@ func TestLiveContractCapabilities(t *testing.T) {
 			t.Fatal("advertised unknown ABI")
 		}
 	}
-	if liveAlgorithmSupported(1) != 1 || liveAlgorithmSupported(2) != 1 {
+	if liveAlgorithmSupported(1) != 1 || liveAlgorithmSupported(2) != 1 || liveAlgorithmSupported(3) != 1 {
 		t.Fatal("missing legacy or export algorithm")
 	}
-	for _, version := range []uint32{0, 3, math.MaxUint32} {
+	for _, version := range []uint32{0, 4, math.MaxUint32} {
 		if liveAlgorithmSupported(version) != 0 {
 			t.Fatal("advertised an unimplemented algorithm")
 		}
@@ -52,7 +52,7 @@ func TestVersionedControlsMatchLegacyAndRejectAtomically(t *testing.T) {
 			t.Fatal("wrong length changed history")
 		}
 	}
-	for _, version := range []float64{0, 3, -1, 1.5, math.NaN(), math.Inf(1)} {
+	for _, version := range []float64{0, 4, -1, 1.5, math.NaN(), math.Inf(1)} {
 		bad := vector
 		bad[81] = version
 		if bad.apply(right, 82) != 0 || *right.engine != before {

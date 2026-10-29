@@ -30,7 +30,8 @@ func (e *Engine) AlgorithmVersion() uint32 { return algorithmOf(e.params) }
 
 // LatencyFrames reports buffered audio frames, excluding filter phase response
 // and any transport delay. The immediate v1 engine buffers no frames; v2 buffers
-// its true-peak lookahead at every setting, including bypass.
+// its true-peak lookahead at every setting, including bypass. Algorithm 3
+// additionally buffers the 64-frame saturation FIR delay at every setting.
 func (e *Engine) LatencyFrames() int {
 	if e.AlgorithmVersion() == OversampledAlgorithmVersion {
 		return e.truePeak.latency + saturationLatency

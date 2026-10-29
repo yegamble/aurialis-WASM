@@ -97,11 +97,11 @@ func TestPolyphaseMatchesIndependentDirectConvolution(t *testing.T) {
 
 func TestOversampledNeutralAndBypassKeepFixedDelayAndSource(t *testing.T) {
 	for _, rate := range []float64{8000, 44100, 48000, 96000, 192000} {
-		for _, bypass := range []bool{false, true} {
+		for _, mode := range []string{"neutral", "bypass", "original"} {
 			p := DefaultParams()
 			p.AlgorithmVersion = OversampledAlgorithmVersion
-			p.Bypass = bypass
-			if bypass {
+			p.Bypass, p.ABOriginal = mode == "bypass", mode == "original"
+			if mode != "neutral" {
 				p.InputGainDB = 18
 				p.Saturation = SaturationParams{Enabled: true, Character: SatTube, Amount: 100}
 			}
@@ -122,7 +122,7 @@ func TestOversampledNeutralAndBypassKeepFixedDelayAndSource(t *testing.T) {
 				}
 				for i := range left {
 					if outL[i] != left[i] || outR[i] != right[i] {
-						t.Fatalf("rate %g bypass %t frames %d sample %d: %g != %g", rate, bypass, frames, i, outL[i], left[i])
+						t.Fatalf("rate %g mode %s frames %d sample %d: %g != %g", rate, mode, frames, i, outL[i], left[i])
 					}
 				}
 				if e.Drain(outL, outR) != 0 {

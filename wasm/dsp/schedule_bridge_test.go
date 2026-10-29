@@ -130,26 +130,29 @@ func TestWriteAutomationParityFixture(t *testing.T) {
 		Left, Right, OutputLeft, OutputRight []float32
 	}
 	fixtures := []fixture{}
-	for _, rate := range []int{8000, 44100, 48000, 192000} {
-		source, params, schedule := scheduleFixture(t, rate)
-		for _, seek := range []int64{0, 123, 24000} {
-			processor, err := automator.New(dsp.NewEngine(float64(rate)), params, schedule)
-			if err != nil {
-				t.Fatal(err)
+	for _, algorithm := range []uint32{dsp.LegacyAlgorithmVersion, dsp.OversampledAlgorithmVersion} {
+		for _, rate := range []int{8000, 44100, 48000, 192000} {
+			source, params, schedule := scheduleFixture(t, rate)
+			params.AlgorithmVersion = algorithm
+			for _, seek := range []int64{0, 123, 24000} {
+				processor, err := automator.New(dsp.NewEngine(float64(rate)), params, schedule)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := processor.SeekSourceFrame(seek); err != nil {
+					t.Fatal(err)
+				}
+				const count = 4096
+				item := fixture{Seek: seek, Rate: rate, SourceRate: source.rate, Frames: source.frames, Params: params, Moves: schedule.NumericMoves(), Left: make([]float32, count), Right: make([]float32, count), OutputLeft: make([]float32, count), OutputRight: make([]float32, count)}
+				for i := range count {
+					item.Left[i] = float32(i*73%997-498) / 1024
+					item.Right[i] = float32(i*31%991-495) / 1024
+				}
+				for start := 0; start < count; start += 128 {
+					processor.ProcessBlock(item.Left[start:start+128], item.Right[start:start+128], item.OutputLeft[start:start+128], item.OutputRight[start:start+128])
+				}
+				fixtures = append(fixtures, item)
 			}
-			if err := processor.SeekSourceFrame(seek); err != nil {
-				t.Fatal(err)
-			}
-			const count = 4096
-			item := fixture{Seek: seek, Rate: rate, SourceRate: source.rate, Frames: source.frames, Params: params, Moves: schedule.NumericMoves(), Left: make([]float32, count), Right: make([]float32, count), OutputLeft: make([]float32, count), OutputRight: make([]float32, count)}
-			for i := range count {
-				item.Left[i] = float32(i*73%997-498) / 1024
-				item.Right[i] = float32(i*31%991-495) / 1024
-			}
-			for start := 0; start < count; start += 128 {
-				processor.ProcessBlock(item.Left[start:start+128], item.Right[start:start+128], item.OutputLeft[start:start+128], item.OutputRight[start:start+128])
-			}
-			fixtures = append(fixtures, item)
 		}
 	}
 	for _, pair := range []struct{ source, device int }{{8001, 44100}, {48000, 44100}, {48000, 192000}} {

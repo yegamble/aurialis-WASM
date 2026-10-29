@@ -78,7 +78,17 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	}
 	defer stopMemory()
 	started := time.Now()
-	err = runner.predict(context.Background(), source[:samples], source[samples:], []int{0, 1, 2, 3, 4}, func(head int, left, right []float32) error {
+	ctx := context.Background()
+	cancel := func() {}
+	hooks := inferenceHooks{}
+	if qualification {
+		ctx, cancel = context.WithTimeout(ctx, 180*time.Second)
+		hooks.progress = func(completed, total int) {
+			t.Logf("native qualification step %d/%d elapsed %s", completed, total, time.Since(started))
+		}
+	}
+	defer cancel()
+	err = runner.predict(ctx, source[:samples], source[samples:], []int{0, 1, 2, 3, 4}, func(head int, left, right []float32) error {
 		expected := read("pcm." + names[head])
 		var worst, errorEnergy, signalEnergy float64
 		for channel, got := range [2][]float32{left, right} {
@@ -96,7 +106,7 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 			t.Errorf("%s drifted from the original model: max %.3g, SNR %.1f dB", names[head], worst, snr)
 		}
 		return nil
-	}, inferenceHooks{})
+	}, hooks)
 	if err != nil {
 		t.Fatal(err)
 	}

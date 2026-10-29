@@ -170,14 +170,11 @@ func FuzzCompressedDecode(f *testing.F) {
 		if err != nil {
 			f.Fatal(err)
 		}
-		f.Add(raw[:min(len(raw), 4096)])
+		f.Add(raw[:min(len(raw), maxParserFuzzBytes)])
 	}
 	f.Fuzz(func(t *testing.T, raw []byte) {
 		for _, name := range []string{"f.flac", "f.mp3"} {
-			buf, err := DecodeAndDisarm(name, raw)
-			if err == nil && (buf.Frames != len(buf.Left) || buf.Frames > MaxDecodedFrames) {
-				t.Fatalf("inconsistent buffer %d/%d", buf.Frames, len(buf.Left))
-			}
+			checkFuzzDecoded(t, name, raw)
 		}
 	})
 }

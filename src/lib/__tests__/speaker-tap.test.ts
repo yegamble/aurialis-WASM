@@ -9,7 +9,7 @@ describe("audio-thread speaker measurement", () => {
   it.each([null, [[1, 0, 0, 0, 0], [1, 0, 0, 0, 0]]])("measures exactly the requested contiguous frames (filters=%s)", (coefficients) => {
     const messages: Energy[] = [];
     let create: (new () => Processor) | undefined;
-    runInNewContext(readFileSync("e2e/support/live-output-tap.js", "utf8"), {
+    runInNewContext(readFileSync("e2e/support/actual-output-tap.js", "utf8"), {
       AudioWorkletProcessor: class { port = { onmessage: () => undefined, postMessage: (message: Energy) => { messages.push(message); } }; },
       currentTime: 0, registerProcessor: (_name: string, constructor: new () => Processor) => { create = constructor; },
     });

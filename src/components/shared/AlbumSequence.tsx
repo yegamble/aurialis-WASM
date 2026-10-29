@@ -89,7 +89,7 @@ export function AlbumSequence({ files, identity, title, transition, onChange, di
       </>}
     </div>
     {files.length === 0 && <p className="disclosure">Render current album masters before building a continuous WAV.</p>}
-    {ready && <audio ref={attachAudio} controls preload="none" src={ready.url} aria-label="Continuous album preview" className="min-h-[44px] w-full" onError={() => { setMessage("This browser could not play the continuous WAV. Download it to listen in a compatible audio player."); }} />}
+    {ready && <audio ref={attachAudio} controls preload="none" src={ready.url} aria-label="Continuous album preview" className="min-h-[44px] min-w-0 w-full" onError={() => { setMessage("This browser could not play the continuous WAV. Download it to listen in a compatible audio player."); }} />}
     <p role="status" className="disclosure">{message}</p>
   </section>;
 }

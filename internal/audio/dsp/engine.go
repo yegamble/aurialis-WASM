@@ -1227,9 +1227,7 @@ func (e *Engine) processLimiterSample(l, r float64) (float64, float64) {
 // pass through the same delay so v2 latency never depends on settings.
 func (e *Engine) processTruePeakStage(l, r, rawL, rawR float64, limActive bool) (float64, float64, float64, float64) {
 	limit := limActive && e.params.Limiter.TruePeak
-	if limActive && !limit {
-		l, r = e.processLimiterSample(l, r)
-	} else if !limActive {
+	if !limActive {
 		e.lastLimGRDB = 0
 	}
 	if e.truePeak.guardStale {
@@ -1240,6 +1238,12 @@ func (e *Engine) processTruePeakStage(l, r, rawL, rawR float64, limActive bool) 
 	ceiling := e.stages.limiterCeiling
 	l, r, rawL, rawR, gain := e.truePeak.process(l, r, rawL, rawR, ceiling, e.stages.limiterRelease, limit)
 	if !limit {
+		// Apply the fallback to the delayed output. Applying it before
+		// the delay would limit new frames twice while old true-peak gain
+		// remains queued, creating a dip when True Peak turns off.
+		if limActive {
+			l, r = e.processLimiterSample(l, r)
+		}
 		return l, r, rawL, rawR
 	}
 	e.lastLimGRDB = math.Max(0, -linToDB(gain))

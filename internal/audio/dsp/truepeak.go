@@ -149,6 +149,8 @@ type truePeakLimiter struct {
 	// ran on bypassed audio; processing restarts it from silence instead.
 	guardMix, guardStep     float64
 	guardPrimed, guardStale bool
+	// Keep each queued frame's fade and intended unguarded peak together.
+	guardHistory, targetPeak [truePeakRing]float64
 
 	// Delay line: processed L/R and raw L/R for A/B monitoring and bypass.
 	delay   [4][truePeakRing]float64
@@ -247,6 +249,7 @@ func (t *truePeakLimiter) push(l, r, rawL, rawR float64) (float64, float64, floa
 // still runs so its state is current when limiting resumes, and a change of
 // limit crossfades the two over guardFadeSeconds.
 func (t *truePeakLimiter) process(l, r, rawL, rawR, ceiling, release float64, limit bool) (float64, float64, float64, float64, float64) {
+	targetPeak := math.Max(math.Abs(l), math.Abs(r))
 	guardL, guardR := t.guard.sample(l, r)
 	target := 0.0
 	if limit {
@@ -275,10 +278,21 @@ func (t *truePeakLimiter) process(l, r, rawL, rawR, ceiling, release float64, li
 	protected := limit || t.guardMix > 0
 	gain := t.gain(t.requirement(l, r, ceiling*truePeakHeadroom, protected), release)
 	delayedLimit := t.limited[t.cursor]
+	delayedMix, delayedPeak := t.guardHistory[t.cursor], t.targetPeak[t.cursor]
 	t.limited[t.cursor] = protected
+	t.guardHistory[t.cursor], t.targetPeak[t.cursor] = t.guardMix, targetPeak
 	l, r, rawL, rawR = t.push(l, r, rawL, rawR)
 	if !limit && !delayedLimit {
 		return l, r, rawL, rawR, 1
+	}
+	if !limit && delayedMix < 1 {
+		weight := 0.5 + 0.5*math.Cos(math.Pi*delayedMix)
+		gain += (1 - gain) * weight
+		// Old boosted guard history must not overshoot a newly neutral
+		// frame. Intentionally unlimited input may exceed the old ceiling.
+		if peak := math.Max(math.Abs(l), math.Abs(r)); peak > 0 {
+			gain = math.Min(gain, math.Max(ceiling, delayedPeak)/peak)
+		}
 	}
 	return l * gain, r * gain, rawL, rawR, gain
 }

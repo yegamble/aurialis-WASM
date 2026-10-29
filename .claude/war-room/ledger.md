@@ -21,7 +21,7 @@ PR [#62](https://github.com/yegamble/aurialis-WASM/pull/62) merged on 2026-10-29
 
 | ID | Remaining item | Acceptance still required | Status |
 |---|---|---|---|
-| C31 | Physical device qualification | Qualify real playback on Android, Windows with Bluetooth, iOS and a 96 kHz interface, including the requested sustained run and overload behavior. An immutable device-check bundle was delivered to the owner at [4712fb78](https://4712fb78-aurialis-wasm.yegamble.workers.dev/device-check/) from source `fa80ee9`; the actual Go-kernel HTTPS probe passed, but physical-device reports are still pending. | blocked (owner physical-device JSON reports) |
+| C31 | Physical device qualification | Qualify real playback on Android, Windows with Bluetooth, iOS and a 96 kHz interface, including the requested sustained run and overload behavior. The owner reported no audible audition-volume change on an iPhone 13 Pro Max; the 2026-10-29 report identifies production build `d8e9ba1ef2facabc`, 48 kHz Classic and no sustained live run. Fix verification and a physical iOS retest remain required. Use the [published device-check page](https://aurialis.yosefgamble.com/device-check/); the old `4712fb78` preview now returns Cloudflare error 1101. Android hardware is unavailable to the owner; Windows/Bluetooth and 96 kHz-interface evidence also remain outstanding. | open (iOS volume failure; remaining physical-device evidence) |
 
 ### Verified & Merged — completion inventory
 

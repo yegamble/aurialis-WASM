@@ -697,9 +697,9 @@ function MasterView({ trackId }: { trackId: string }) {
         // Media keys drive whichever player the listener last started (S-4).
         play: () => { stopScrub(false); if (lastPlayed.current === "audition" && audition.current?.canPlay()) return audition.current.play(); lastPlayed.current = "live"; return controller.play(); },
         pause: () => { stopScrub(false); if (audition.current?.playing()) audition.current.pause(); else controller.pause(); },
-        seek: (seconds) => { stopScrub(false); if (!audition.current?.playing()) controller.seek(seconds); },
-        restart: () => { stopScrub(false); controller.seek(0); },
-        forward: () => { forwardAction.current(); },
+        seek: (seconds) => { stopScrub(false); if (lastPlayed.current === "audition" && audition.current?.canPlay()) audition.current.seek(seconds); else controller.seek(seconds); },
+        restart: () => { stopScrub(false); if (lastPlayed.current === "audition" && audition.current?.canPlay()) audition.current.seek(0); else controller.seek(0); },
+        forward: () => { if (lastPlayed.current === "audition" && audition.current?.canPlay()) audition.current.seek(audition.current.position().position + 10); else forwardAction.current(); },
         onError: (error) => { if (active) setLiveError(error instanceof Error ? error.message : "Playback could not start."); },
       });
       playbackControls.current = controls;
@@ -727,7 +727,7 @@ function MasterView({ trackId }: { trackId: string }) {
   /** The Media Session's view: the audition while it plays, else live playback. */
   function mediaState(controller: LivePlaybackController): LivePlaybackState {
     const state = controller.getState();
-    return audition.current?.playing() ? { ...state, ...audition.current.position(), playing: true } : state;
+    return lastPlayed.current === "audition" && audition.current?.canPlay() ? { ...state, ...audition.current.position(), playing: audition.current.playing(), repeat: false, loading: false } : state;
   }
   async function play() {
     const controller = live.current;
@@ -1050,6 +1050,7 @@ function MasterView({ trackId }: { trackId: string }) {
           {(liveRate.kind === "capped" || liveRate.kind === "resampled") && <AuditionExport key={track.id} track={track} sourceBlob={sourceBlob} delivery={delivery}
             volume={playback?.volume ?? 1} livePlaying={(playback?.playing ?? false) || (playback?.loading ?? false)} onStart={() => { lastPlayed.current = "audition"; stopScrub(false); live.current?.pause(); }}
             onHeld={(held) => { auditionHeld.current = held; }} onHandle={(handle) => { audition.current = handle; }}
+            onPositionChange={() => { const controller = live.current; if (controller) playbackControls.current?.update(mediaState(controller)); }}
             onPlayingChange={() => { const controller = live.current; if (controller) playbackControls.current?.update(mediaState(controller), true); }} />}
           {track.mode === "deep" && track.deepMastering && <DeepTimeline script={track.deepMastering.proposal} selectedId={deepMoveId} onSelect={selectDeepMove} playheadRatio={playheadRatio} />}
           <LiveSpectrumChart frame={spectrum} playing={playback?.playing ?? false} />

@@ -355,6 +355,24 @@ describe("master live playback lifecycle", () => {
     expect(screen.queryByText(/what you hear is what you export/u)).toBeNull();
   }, 30000);
 
+  it("routes media seeking to the paused or playing audition until live takes over", async () => {
+    heldAudition(); mount(); await ready();
+    const instance = latest();
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    await screen.findByRole("button", { name: "Pause audition" });
+    const element = document.querySelector<HTMLAudioElement>("audio.audition-export"); if (!element) throw new Error("Missing audition");
+    Object.defineProperty(element, "duration", { configurable: true, value: 20 });
+    fireEvent.loadedMetadata(element);
+    fireEvent.keyDown(document.body, { key: "ArrowRight", shiftKey: true });
+    expect(element.currentTime).toBe(10);
+    fireEvent.keyDown(document.body, { key: " ", code: "Space" });
+    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    expect(element.currentTime).toBe(9);
+    expect(instance.controller.seek).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(instance.controller.seek).toHaveBeenCalled();
+  }, 30000);
   it("Export hands over the held audition file, and the play/pause key drives the audition (V1-10 S-3, S-4)", async () => {
     const { mediaPlay, mediaPause, delivery } = heldAudition();
     mount(); await ready();

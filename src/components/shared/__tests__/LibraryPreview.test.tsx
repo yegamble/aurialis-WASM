@@ -5,6 +5,7 @@ import { testStore } from "@/lib/__tests__/fixtures";
 import { engineParams } from "@/lib/engine-params";
 import type { ScriptV2 } from "@/lib/deep-mastering";
 import type { Track } from "@/lib/types";
+import { getAudio } from "@/lib/db";
 import * as loudness from "@/lib/loudness-match";
 import * as playback from "@/lib/live-playback";
 const mocks = vi.hoisted(() => ({ blob: new Blob(["source"]) }));
@@ -19,7 +20,7 @@ function player() {
   return { getState: () => state, play: vi.fn(() => Promise.resolve()), pause: vi.fn(), seek: vi.fn(), setBypass: vi.fn(), setVolume: vi.fn(), setRepeat: vi.fn(), setLoudnessMatch: vi.fn(), dispose: vi.fn() };
 }
 beforeEach(() => { const values = new Map<string, string>(); vi.stubGlobal("localStorage", { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } }); });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });
 describe("Library equal-loudness preview", () => {
   it.each([false, true])("measures the current export chain and applies monitor-only gain (Deep=%s)", async (deep) => {
     const track: Track = deep ? { ...base, deepMastering: { sourceRevision: 0, proposal: script, applied: script, targets: [] } } : base;
@@ -35,6 +36,21 @@ describe("Library equal-loudness preview", () => {
     fireEvent.click(screen.getByRole("button", { name: "Equal-loudness A/B" }));
     await waitFor(() => { expect(controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: 0 }); });
     view.unmount(); expect(controller.dispose).toHaveBeenCalledOnce();
+  });
+  it("does not measure a new project with the previous project’s Blob while its source loads", async () => {
+    const controller = player(); vi.spyOn(playback, "createLivePlayback").mockReturnValue(controller as unknown as playback.LivePlaybackController);
+    const measure = vi.spyOn(loudness, "measureLoudnessMatch").mockImplementation((_blob, request) => Promise.resolve({ key: request.key, scope: request.scope, processedLufs: -12, originalLufs: -18 }));
+    const view = render(<LibraryPreview track={base} onClose={vi.fn()} />);
+    await waitFor(() => { expect(screen.getByRole<HTMLButtonElement>("button", { name: "Equal-loudness A/B" }).disabled).toBe(false); });
+    fireEvent.click(screen.getByRole("button", { name: "Equal-loudness A/B" }));
+    await waitFor(() => { expect(measure).toHaveBeenCalledOnce(); });
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let loaded: ((blob: Blob) => void) | undefined;
+    vi.mocked(getAudio).mockReturnValueOnce(new Promise((resolve) => { loaded = resolve; }));
+    view.rerender(<LibraryPreview track={{ ...base, id: "track-other" }} onClose={vi.fn()} />);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(measure).toHaveBeenCalledOnce();
+    view.unmount(); await act(async () => { loaded?.(mocks.blob); await Promise.resolve(); });
   });
   it("aborts a pending match when preview closes and ignores its late result", async () => {
     const controller = player(); vi.spyOn(playback, "createLivePlayback").mockReturnValue(controller as unknown as playback.LivePlaybackController);

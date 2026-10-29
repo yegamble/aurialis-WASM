@@ -76,8 +76,8 @@ export function SourceRelink({ track, open, onClose }: { track: Track; open: boo
 }
 
 export function LibraryPreview({ track, onClose }: { track: Track; onClose: () => void }) {
-  const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
-  const match = useLoudnessMatch(track, sourceBlob);
+  const [storedSource, setStoredSource] = useState<{ track: Track; blob: Blob } | null>(null);
+  const match = useLoudnessMatch(track, storedSource?.track === track ? storedSource.blob : null);
   const { processedDb, originalDb } = match.gains;
   const currentMatch = useRef(match.gains); currentMatch.current = match.gains;
   const live = useRef<LivePlaybackController | null>(null);
@@ -91,7 +91,7 @@ export function LibraryPreview({ track, onClose }: { track: Track; onClose: () =
       if (!blob) throw new Error("The source is missing. Close preview and restore the audio file.");
       const stored = await readStoredSource(blob, controller.signal); controller.signal.throwIfAborted();
       playback = createLivePlayback(stored.pcm, track.advanced, { onState: (next) => { if (!controller.signal.aborted) setState(next); }, onError: (cause) => { if (!controller.signal.aborted) setError(cause.message); } }, track.sourceIdentity ? { blob: stored.blob, identity: track.sourceIdentity, ...(track.deepMastering?.applied ? { applied: track.deepMastering.applied } : {}) } : undefined);
-      live.current = playback; playback.setLoudnessMatch(currentMatch.current); setSourceBlob(stored.blob); setState(playback.getState());
+      live.current = playback; playback.setLoudnessMatch(currentMatch.current); setStoredSource({ track, blob: stored.blob }); setState(playback.getState());
     })().catch((cause: unknown) => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Preview failed."); });
     return () => { controller.abort(); stopScrub(false); playback?.dispose(); live.current = null; };
   }, [track]);

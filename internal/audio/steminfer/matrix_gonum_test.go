@@ -2,7 +2,7 @@
 
 package steminfer
 
-// cspell:words gonum SSE3 sgemm
+// cspell:words noasm retile gonum SSE3 sgemm
 
 import (
 	"context"

@@ -2,7 +2,7 @@
 
 package steminfer
 
-// cspell:words gonum sgemm SSE3
+// cspell:words noasm blas HADDPS gonum sgemm SSE3 AVX2 FMA
 
 import (
 	"golang.org/x/sys/cpu"

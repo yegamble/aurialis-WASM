@@ -2,7 +2,7 @@
 
 package steminfer
 
-// cspell:words AVX2 FMA
+// cspell:words noasm AVX2 FMA
 
 import (
 	"math"

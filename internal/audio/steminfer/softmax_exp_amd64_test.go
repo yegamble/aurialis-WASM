@@ -2,7 +2,7 @@
 
 package steminfer
 
-// cspell:words ULP softmax AVX2 FMA
+// cspell:words noasm nonpositive Exponentials ULP softmax AVX2 FMA
 
 import (
 	"math"

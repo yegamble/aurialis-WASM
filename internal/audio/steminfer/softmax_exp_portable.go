@@ -2,6 +2,8 @@
 
 package steminfer
 
+// cspell:words noasm Exponentials
+
 import "math"
 
 func softmaxExponentials(values []float32, maximum float32) float64 {

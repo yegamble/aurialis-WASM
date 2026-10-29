@@ -150,7 +150,7 @@ describe("negotiated append-only live controls", () => {
     expect(packed[50]).toBe(1);
     expect(() => packLiveControls(live)).toThrow("Unsupported DSP algorithm version");
   });
-  it.each([3, -1, 1.5, NaN, Infinity])("rejects algorithm %s before publishing a transaction", (algorithmVersion) => {
+  it.each([4, -1, 1.5, NaN, Infinity])("rejects algorithm %s before publishing a transaction", (algorithmVersion) => {
     const publication = createLiveControls(params(), 1, 2);
     const before = new Uint8Array(publication.buffer).slice();
     expect(() => { publication.publish({ ...params(), algorithmVersion }, 2); }).toThrow("Unsupported DSP algorithm version");

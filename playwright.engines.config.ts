@@ -15,5 +15,5 @@ export default defineConfig({
     { name: "firefox-audio", metadata: { executionTarget: target }, use: { ...devices["Desktop Firefox"] } },
     { name: "webkit-audio", metadata: { executionTarget: target }, use: { ...devices["Desktop Safari"] } },
   ],
-  ...(external ? {} : { webServer: { command: `bash scripts/serve-e2e.sh ${port}`, url: `http://127.0.0.1:${port}/health`, reuseExistingServer: false, timeout: 120_000 } }),
+  ...(external ? {} : { webServer: { command: `exec bash scripts/serve-e2e.sh ${port}`, gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 }, url: `http://127.0.0.1:${port}/build-target-native.json`, reuseExistingServer: false, timeout: 9 * 60_000 } }),
 });

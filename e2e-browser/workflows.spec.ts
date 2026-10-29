@@ -97,13 +97,15 @@ async function assertPrivate(info: TestInfo, requests: ReturnType<typeof observe
   await info.attach("all-browser-and-worker-network-requests", { path, contentType: "application/json" });
 }
 
-test("measured Reference applies and exports the real local proposal with no audio requests", async ({ page, context }, info) => {
+for (const quality of ["Classic", "Oversampled"] as const) test(quality === "Classic" ? "measured Reference applies and exports the real local proposal with no audio requests" : "measured Reference Oversampled width applies and exports the real local proposal without uploads", async ({ page, context }, info) => {
   const requests = observeNetwork(context);
   const source = fixture(997, 1), id = await upload(page, source, "private-reference-source.wav");
+  if (quality === "Oversampled") await page.getByRole("button", { name: "Oversampled", exact: true }).click();
   const before = await settings(page, id);
   const reference = await upload(page, fixture(2800, 1), "private-reference-target.wav");
   await page.goto(`/reference/${id}`);
   await page.getByRole("combobox", { name: "Reference track", exact: true }).selectOption(reference);
+  if (quality === "Oversampled") await page.getByRole("checkbox", { name: "Include width", exact: true }).check();
   await page.getByRole("button", { name: "Analyze reference audio", exact: true }).click();
   await expect(page.getByRole("button", { name: "Apply measured proposal", exact: true })).toBeEnabled({ timeout: 30_000 });
   expect(await settings(page, id)).toEqual(before);
@@ -111,7 +113,13 @@ test("measured Reference applies and exports the real local proposal with no aud
   await expect(page.getByText(/Measured proposal applied/u)).toBeVisible();
   const advanced = await settings(page, id);
   expect(advanced.eqBands).not.toEqual(before.eqBands);
-  expect(advanced.stereo).toEqual(before.stereo);
+  if (quality === "Classic") expect(advanced.stereo).toEqual(before.stereo);
+  else {
+    expect(advanced.renderQuality).toBe("oversampled");
+    expect(exportParams(advanced).algorithmVersion).toBe(3);
+    expect(Math.abs(advanced.stereo.width - before.stereo.width)).toBeLessThanOrEqual(20 * .62);
+    expect(advanced.stereo).toEqual({ ...before.stereo, width: advanced.stereo.width });
+  }
   await page.getByRole("link", { name: "Back to master", exact: true }).click();
   await page.getByRole("button", { name: "Export", exact: true }).click();
   const dialog = page.getByRole("dialog");

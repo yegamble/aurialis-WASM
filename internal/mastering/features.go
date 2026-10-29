@@ -13,6 +13,7 @@ import (
 	"sort"
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio"
+	"github.com/yegamble/Aurialis-WASM/internal/fft"
 )
 
 const (
@@ -235,6 +236,7 @@ func measureSpectrumBandsContext(ctx context.Context, buf *audio.Buffer, fftSize
 		weightPower += weights[i] * weights[i]
 	}
 	scratch := make([]complex128, fftSize)
+	transform := fft.New(fftSize, fft.RecursiveTwiddles)
 	var total spectralSummary
 	// Periodic Hann squared windows at 75% overlap sum to exactly 1.5 for
 	// every sample. Pad both ends and include every intersecting window, so
@@ -250,7 +252,7 @@ func measureSpectrumBandsContext(ctx context.Context, buf *audio.Buffer, fftSize
 				scratch[i] = complex((float64(buf.Left[index])-meanLeft)*weights[i], (float64(buf.Right[index])-meanRight)*weights[i])
 			}
 		}
-		fftInPlace(scratch)
+		transform.Transform(scratch, false)
 		var spectral spectralSummary
 		for k := 0; k <= fftSize/2; k++ {
 			frequency := float64(k) * float64(buf.SampleRate) / float64(fftSize)
@@ -309,31 +311,6 @@ func rawSummaryContext(ctx context.Context, buf *audio.Buffer, start, end int) (
 	summary.midPower /= count
 	summary.sidePower /= count
 	return summary, nil
-}
-
-func fftInPlace(values []complex128) {
-	n := len(values)
-	for i, j := 1, 0; i < n; i++ {
-		bit := n >> 1
-		for ; j&bit != 0; bit >>= 1 {
-			j ^= bit
-		}
-		j ^= bit
-		if i < j {
-			values[i], values[j] = values[j], values[i]
-		}
-	}
-	for length := 2; length <= n; length *= 2 {
-		rotation := cmplx.Rect(1, -2*math.Pi/float64(length))
-		for start := 0; start < n; start += length {
-			phase := complex(1, 0)
-			for j := 0; j < length/2; j++ {
-				even, odd := values[start+j], values[start+j+length/2]*phase
-				values[start+j], values[start+j+length/2] = even+odd, even-odd
-				phase *= rotation
-			}
-		}
-	}
 }
 
 func addSummary(total *spectralSummary, part spectralSummary, weight float64) {

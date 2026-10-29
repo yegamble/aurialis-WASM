@@ -83,8 +83,8 @@ test("Reset modules never releases delayed unlimited frames after heavy gain red
   expect(Math.max(...tail.map(Math.abs)), "Reset must return to audible source at -3.1 dBFS").toBeCloseTo(0.7, 2);
 });
 
-type LateRepeatWindow = SpeakerWindow & { lateRepeat?: { elapsed: number; duration: number } };
-test("Repeat enabled in the final 80 ms keeps the speaker stream continuous", async ({ page }, info) => {
+type LateRepeatWindow = SpeakerWindow & { lateRepeat?: { elapsed: number; duration: number; disabledAt: number } };
+test("Repeat restored in the final 80 ms of a finite looping pass keeps the speaker stream continuous", async ({ page }, info) => {
   await captureDeepDevice(page, 48000);
   await observeFiniteSpeaker(page);
   await page.addInitScript(() => {
@@ -93,21 +93,30 @@ test("Repeat enabled in the final 80 ms keeps the speaker stream continuous", as
       if (duration === undefined) nativeStart.call(this, when, offset); else nativeStart.call(this, when, offset, duration);
       if (!(this.context instanceof AudioContext) || (window as SpeakerWindow).finiteSpeaker?.starts.length !== 1 || !this.buffer) return;
       const context = this.context, length = this.buffer.duration - offset;
+      let disabledAt = 0;
       const timer = setInterval(() => {
         const elapsed = context.currentTime - when;
+        const repeat = document.querySelector<HTMLButtonElement>('button[aria-label="Repeat track"]');
+        if (!disabledAt && elapsed >= 0.25 && repeat?.getAttribute("aria-pressed") === "true") {
+          disabledAt = elapsed;
+          repeat.click();
+        }
         if (elapsed < length - 0.06) return;
         clearInterval(timer);
-        (window as LateRepeatWindow).lateRepeat = { elapsed, duration: length };
-        document.querySelector<HTMLButtonElement>('button[aria-label="Repeat track"]')?.click();
+        (window as LateRepeatWindow).lateRepeat = { elapsed, duration: length, disabledAt };
+        repeat?.click();
       }, 1);
     };
   });
   await uploadProject(page, "late-repeat.wav", 2, fixture(220, 2));
   await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");
+  await page.getByRole("button", { name: "Repeat track", exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect.poll(() => page.evaluate(() => (window as LateRepeatWindow).lateRepeat)).toBeTruthy();
   const timing = await page.evaluate(() => (window as LateRepeatWindow).lateRepeat);
   if (!timing) throw new Error("Missing Repeat activation time");
+  expect(timing.disabledAt).toBeGreaterThan(0);
+  expect(timing.disabledAt).toBeLessThan(timing.elapsed);
   expect(timing.duration - timing.elapsed).toBeGreaterThan(0);
   expect(timing.duration - timing.elapsed).toBeLessThanOrEqual(0.08);
   await expect(page.getByRole("button", { name: "Repeat track", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -117,6 +126,7 @@ test("Repeat enabled in the final 80 ms keeps the speaker stream continuous", as
   const speaker = await speakerSnapshot(page);
   if (!speaker?.starts[0]) throw new Error("Missing Repeat speaker capture");
   expect(speaker.starts, "late Repeat must resume the current source epoch").toHaveLength(1);
+  expect(speaker.starts[0].looping).toBe(true);
   const start = speaker.starts[0].when;
   const boundary = speaker.chunks.find((chunk) => chunk.time >= start + 2)?.begin;
   if (boundary === undefined) throw new Error("Capture did not reach the source boundary");

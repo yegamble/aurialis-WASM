@@ -643,6 +643,8 @@ function MasterView({ trackId }: { trackId: string }) {
   const rateChoices = track ? exportRateChoices(track.sampleRate, source?.left.length ?? track.sourceIdentity?.frames ?? Math.round(track.duration * track.sampleRate)) : [];
   // A choice that is unavailable for this track falls back to the source rate.
   const delivery = availableDelivery(exportFormat, rateChoices);
+  const currentExport = useRef({ track, delivery });
+  currentExport.current = { track, delivery };
   useEffect(() => {
     if (renderAbort.current && !renderAbort.current.signal.aborted && renderSettings.current !== settingsKey) {
       renderAbort.current.abort();
@@ -847,6 +849,7 @@ function MasterView({ trackId }: { trackId: string }) {
     renderSettings.current = settingsKey;
     setMessage("Rendering WAV from the imported source…");
     try {
+      const exportedKey = auditionKey(track, delivery);
       const { bitDepth, dither } = delivery, outputRate = deliveredRate(delivery, track.sampleRate);
       // A fresh audition already holds this exact file: hand it over (S-3).
       const auditioned = auditionHeld.current?.key === auditionKey(track, delivery) ? auditionHeld.current : null;
@@ -866,7 +869,8 @@ function MasterView({ trackId }: { trackId: string }) {
       setTimeout(() => {
         URL.revokeObjectURL(url);
       }, 1000);
-      dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { status: "mastered" } });
+      const current = currentExport.current;
+      if (current.track && auditionKey(current.track, current.delivery) === exportedKey) dispatch({ type: "COMPLETE_EXPORT", expected: track });
       setMessage(
         `Exported ${bitDepth === 32 ? "32-bit float" : `${String(bitDepth)}-bit PCM`} WAV${bitDepth === 32 ? "" : dither ? " with TPDF dither" : " without dither"} at ${outputRate === track.sampleRate ? "the source rate" : `${String(outputRate / 1000)} kHz (converted from ${String(track.sampleRate / 1000)} kHz)`} ${track.deepMastering?.applied ? "from applied revision " + String(track.deepMastering.applied.revision) : "using the same Go DSP parameters"}.${truePeakDbtp === null ? "" : ` Delivered true peak ${truePeakDbtp.toFixed(2)} dBTP at ${formatRate(outputRate)}.`}`,
       );
@@ -1141,7 +1145,12 @@ function MasterView({ trackId }: { trackId: string }) {
           value={delivery}
           rateChoices={rateChoices}
           rateNote={unavailableRateNote(rateChoices, track.sampleRate)}
-          onChange={setExportFormat}
+          onChange={(format) => {
+            if (auditionKey(track, availableDelivery(format, rateChoices)) !== auditionKey(track, delivery)) {
+              dispatch({ type: "INVALIDATE_EXPORT", id: track.id });
+            }
+            setExportFormat(format);
+          }}
         />
         <p className="disclosure">
           Source sample rate: {formatRate(track.sampleRate)}. The source rate

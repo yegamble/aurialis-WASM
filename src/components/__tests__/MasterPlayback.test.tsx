@@ -88,6 +88,23 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstub
 const audioRequests = () => vi.mocked(fetch).mock.calls.filter(([input]) => input !== "/api/stems/model");
 
 describe("master live playback lifecycle", () => {
+  it("cannot mark edited settings mastered when an earlier export finishes", async () => {
+    const { delivery } = heldAudition();
+    let finish: (() => void) | undefined;
+    delivery.mockImplementation(() => new Promise((resolve) => {
+      finish = () => { resolve({ blob: canonicalWAV(pcm), truePeakDbtp: -1 }); };
+    }));
+    mount(); await ready();
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));
+    await waitFor(() => { expect(delivery).toHaveBeenCalledOnce(); });
+    // A user can edit the underlying controls while the asynchronous render is held.
+    fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "6" } });
+    await act(async () => { finish?.(); await Promise.resolve(); });
+    await waitFor(() => { expect(savedTrack().advanced.input).toBe(6); });
+    expect(savedTrack().status).not.toBe("mastered");
+  }, 30000);
+
   it("loads canonical stored PCM offline, applies settings live, and clears meters on pause", async () => {
     mount();
     await ready();
@@ -353,6 +370,15 @@ describe("master live playback lifecycle", () => {
     fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));
     await within(screen.getByRole("dialog")).findByText(/^Exported 24-bit PCM WAV/u);
     expect(delivery).toHaveBeenCalledOnce();
+    await waitFor(() => { expect(savedTrack().status).toBe("mastered"); });
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "16-bit PCM" }));
+    await waitFor(() => { expect(savedTrack().status).toBe("ready"); });
+    fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));
+    await waitFor(() => { expect(savedTrack().status).toBe("mastered"); });
+    expect(delivery).toHaveBeenCalledTimes(2);
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Close dialog" }));
+    fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "6" } });
+    await waitFor(() => { expect(savedTrack().status).toBe("ready"); });
   }, 30000);
 
   it("a refused audition start leaves the Media Session paused (Round 8f REQUIRED-2)", async () => {

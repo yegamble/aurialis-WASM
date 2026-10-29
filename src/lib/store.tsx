@@ -1,5 +1,6 @@
 "use client";
 
+import { exportTrackKey } from "./engine-params";
 import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import {
   createContext,
@@ -46,6 +47,8 @@ type StoreState = {
 
 type StoreAction =
   | { type: "ADD_TRACK"; track: Track }
+  | { type: "COMPLETE_EXPORT"; expected: Track }
+  | { type: "INVALIDATE_EXPORT"; id: string }
   | { type: "SAVE_RELEASE_REVIEW"; expected: Track; report: NonNullable<Track["releaseReview"]> }
   | { type: "APPLY_SIMPLE_DIRECTION"; expected: Track; change: SimpleChange }
   | { type: "APPLY_REFERENCE"; expected: Track; reference?: Track; advanced: AdvancedParams; restore?: Pick<Track, "mode" | "simpleCustom" | "shortcutUndo"> }
@@ -104,7 +107,15 @@ function updateTrackInList(
   id: string,
   updater: (track: Track) => Track,
 ): Track[] {
-  return tracks.map((track) => (track.id === id ? pruneShortcutUndo(updater(track)) : track));
+  return tracks.map((track) => {
+    if (track.id !== id) return track;
+    const next = pruneShortcutUndo(updater(track));
+    if (track.status !== "mastered" || next.status !== "mastered" || next === track) return next;
+    try {
+      if (exportTrackKey(track) === exportTrackKey(next)) return next;
+    } catch { /* Unsupported render settings cannot retain an exported status. */ }
+    return { ...next, status: "ready" };
+  });
 }
 
 export function reduceStoreState(
@@ -112,6 +123,12 @@ export function reduceStoreState(
   action: StoreAction,
 ): StoreState {
   switch (action.type) {
+    case "COMPLETE_EXPORT":
+      return { ...state, tracks: updateTrackInList(state.tracks, action.expected.id, (track) =>
+        exportTrackKey(track) === exportTrackKey(action.expected) ? { ...track, status: "mastered" } : track) };
+    case "INVALIDATE_EXPORT":
+      return { ...state, tracks: updateTrackInList(state.tracks, action.id, (track) =>
+        track.status === "mastered" ? { ...track, status: "ready" } : track) };
     case "SAVE_RELEASE_REVIEW":
       return { ...state, tracks: updateTrackInList(state.tracks, action.expected.id, (track) => track === action.expected ? {
         ...track, releaseReview: action.report, updatedAt: new Date().toISOString(),

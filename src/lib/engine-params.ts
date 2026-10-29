@@ -96,3 +96,9 @@ export function exportRender(track: Pick<Track, "advanced" | "deepMastering">): 
   const applied = track.deepMastering?.applied;
   return applied ? { script: exportScript(applied) } : { params: exportParams(track.advanced) };
 }
+
+/** Source and canonical export payload identity, independent of labels and draft proposals. */
+export function exportTrackKey(track: Track): string {
+  return JSON.stringify([track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0,
+    track.sourceIdentity ?? null, track.sampleRate, track.duration, exportRender(track)]);
+}

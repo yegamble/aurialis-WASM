@@ -16,6 +16,21 @@ const queued = { jobId: "deep-job-1", kind: "analyze_deep_v2", status: "queued",
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("source-bound Deep DTO and jobs", () => {
+  it("keeps exported status for an unapplied draft but invalidates applied and detached audio", () => {
+    const original = testStore.tracks[0]; if (!original) throw new Error("Missing source");
+    const track = { ...original, status: "mastered" as const, sourceIdentity: identity, sourceRevision: 0, deepMastering: state() };
+    const initial = { ...testStore, tracks: [track] };
+    const draft = reduceStoreState(initial, { type: "SAVE_DEEP_PROPOSAL", id: track.id, expectedSourceRevision: 0, expectedAudioKey: track.id, expectedProposalRevision: 1, deep: { ...state(), proposal: { ...script(), revision: 2 } } });
+    expect(draft.tracks[0]?.status).toBe("mastered");
+    const before = { advanced: original.advanced, profile: original.profile, genre: original.genre, tone: original.tone, intensity: original.intensity, target: original.target, simpleCustom: true, shortcutUndo: {} };
+    const applied = reduceStoreState(initial, { type: "COMMIT_DEEP_APPLIED", id: track.id, expectedSourceRevision: 0, expectedAudioKey: track.id, expectedAppliedRevision: null, expectedAdvanced: track.advanced, script: script(), advanced: track.advanced, before });
+    expect(applied.tracks[0]?.status).toBe("ready");
+    const exported = reduceStoreState(applied, { type: "COMPLETE_EXPORT", expected: applied.tracks[0] ?? track });
+    expect(exported.tracks[0]?.status).toBe("mastered");
+    const detached = reduceStoreState(exported, { type: "DETACH_DEEP_APPLIED", id: track.id, expectedSourceRevision: 0, expectedAudioKey: track.id, expectedAppliedRevision: 1, expectedAdvanced: track.advanced, snapshot: before });
+    expect(detached.tracks[0]?.status).toBe("ready");
+  });
+
   it("initializes disabled zero modules only on their first explicit Advanced edit", () => {
     const original = testStore.tracks[0]; if (!original) throw new Error("Missing source");
     const advanced = createDefaultAdvancedParams();

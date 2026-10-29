@@ -6,7 +6,8 @@ function object(value: unknown): Record<string, unknown> {
 /** Structured server diagnostics stay available without putting raw details in the UI. */
 export class AudioJobError extends Error {
   constructor(readonly status: number, readonly code: string, readonly detail: string) {
-    const message = code === "busy" ? "The local audio processor is busy. Try again after the current task finishes."
+    const message = code === "memory_capacity" ? "Aurialis has reached its audio memory capacity. Wait for active tasks to finish or release retained stem results, then try again."
+      : code === "busy" ? "The local audio processor is busy. Try again after the current task finishes."
       : code === "queue_full" ? "The audio analysis queue is full. Try again after another job finishes."
       : code === "stems_unavailable" ? "Smart Split is unavailable in this native Aurialis build (built from source)."
       : status === 503 ? "The local audio processor is unavailable. Check that the Aurialis server is running, then try again."

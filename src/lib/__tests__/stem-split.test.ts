@@ -52,6 +52,7 @@ describe("Smart Split client", () => {
     for (const [status, code, kind] of [
       [503, "stems_unavailable", "unavailable"],
       [503, "busy", "busy"],
+      [503, "memory_capacity", "memory"],
       [503, "queue_full", "queue_full"],
       [413, "too_long", "too_long"],
       [413, "payload_too_large", "too_long"],

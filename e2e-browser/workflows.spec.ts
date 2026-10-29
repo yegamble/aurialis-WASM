@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fixture, decode } from "../e2e/audio-fixture";
 import { denseFixture } from "../e2e/workflow-fixture";
+import { verifyReleaseQualityStaleness } from "../e2e/release-quality-cases";
 import { exportParams, exportScript } from "../src/lib/engine-params";
 import type { AdvancedParams, ExportDelivery, MeasuredAudioMetrics, Track } from "../src/lib/types";
 import type { ReleaseReport } from "../src/lib/release-review";
@@ -181,6 +182,7 @@ test("Release retains native-equivalent final 16/24/32-bit WAVs and exact encode
     await reviewEncoded(page, info, native.audio, String(bitDepth));
   }
   await assertPrivate(info, requests);
+  await verifyReleaseQualityStaleness(page, id);
 });
 
 // V1-04: the browser build checks the same converted CD file the native engine delivers.

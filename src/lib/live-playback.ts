@@ -442,11 +442,28 @@ export function createLivePlayback(
     audio = context;
     // A device switch or a context interruption stalls callbacks that are not
     // this graph's load: restart the worklet's deadline watch with a warm-up.
-    const rewatch = () => { if (audio !== context) return; underruns.reset(); worklet?.port.postMessage({ type: "rewatch", slackMs: watchSlackMs(context) }); };
+    let deviceGeneration = 0;
+    let settleTimers: ReturnType<typeof setTimeout>[] = [];
+    const cancelSettle = () => { deviceGeneration++; for (const timer of settleTimers) clearTimeout(timer); settleTimers = []; };
+    const rewatch = () => {
+      if (audio !== context || disposed) return;
+      cancelSettle();
+      const generation = deviceGeneration;
+      let slackMs = watchSlackMs(context);
+      underruns.reset(); worklet?.port.postMessage({ type: "rewatch", slackMs });
+      // Device latency may settle after devicechange. Re-read twice, without
+      // extending the warm-up when the reported value did not change.
+      settleTimers = [250, 1000].map((delay) => setTimeout(() => {
+        if (disposed || audio !== context || generation !== deviceGeneration) return;
+        const settled = watchSlackMs(context);
+        if (settled === slackMs) return;
+        slackMs = settled; underruns.reset(); worklet?.port.postMessage({ type: "rewatch", slackMs });
+      }, delay));
+    };
     const devices = (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
     context.addEventListener("statechange", rewatch);
     devices?.addEventListener("devicechange", rewatch);
-    unwatchDevice = () => { context.removeEventListener("statechange", rewatch); devices?.removeEventListener("devicechange", rewatch); };
+    unwatchDevice = () => { cancelSettle(); context.removeEventListener("statechange", rewatch); devices?.removeEventListener("devicechange", rewatch); };
     state = { ...state, liveSampleRate: context.sampleRate };
     const resumed = context.resume();
     const sharedHeader = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 8);

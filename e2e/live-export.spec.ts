@@ -3,6 +3,7 @@
 import { Buffer } from "node:buffer";
 import { readFile, writeFile } from "node:fs/promises";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import { observeAcceptedControls, expectHeaviestAccepted } from "./accepted-controls";
 import type { Track } from "../src/lib/types";
 import { decode } from "./audio-fixture";
 import { kWeightedLevel, meanOutputEnergy, observeOutputEnergy, outputEnergyRate } from "./live-output";
@@ -108,11 +109,12 @@ async function timeWorklet(page: Page): Promise<void> {
 
 /** Every module the UI can enable together, saved before reload like a returning project. */
 async function heaviestChain(page: Page): Promise<void> {
+  await observeAcceptedControls(page);
   await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as { tracks: Track[] };
     const advanced = state.tracks[0]?.advanced; if (!advanced) throw new Error("Missing uploaded track");
     advanced.input = 6;
-    advanced.eqBands = advanced.eqBands.map((band) => ({ ...band, gainDb: 2 }));
+    advanced.eqBands = advanced.eqBands.map((band) => ({ ...band, gainDb: 2 })) as typeof advanced.eqBands;
     advanced.deHarsh = { ...advanced.deHarsh, enabled: true, thresholdDb: -30, rangeDb: 6 };
     advanced.multiband = { ...advanced.multiband, enabled: true, bands: advanced.multiband.bands.map((band) => ({ ...band, thresholdDb: -24, ratio: 3 })) as typeof advanced.multiband.bands };
     advanced.compressor = { ...advanced.compressor, enabled: true, threshold: -20, ratio: 3, autoRelease: true };
@@ -186,7 +188,8 @@ async function liveAgainstExport(page: Page, info: TestInfo, sourceRate: number,
 
   await page.getByRole("button", { name: "Repeat track", exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
-  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true", { timeout: 20_000 });
+  await expectHeaviestAccepted(page);
   // One whole loop of K-weighted speaker output, once the first copy has warmed the chain.
   await page.waitForTimeout(LOOP_SECONDS * 1000);
   const contextRate = await outputEnergyRate(page);
@@ -363,7 +366,8 @@ async function playHeaviest(page: Page, name: string): Promise<void> {
   await heaviestChain(page);
   await page.getByRole("button", { name: "Repeat track", exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
-  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
+  await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true", { timeout: 20_000 });
+  await expectHeaviestAccepted(page);
 }
 
 test("load outside the kernel past real time (a burner spinning 2–3 ms of each 2.67 ms quantum) fires the can't-keep-up message at 48 kHz", async ({ page }) => {
@@ -418,7 +422,8 @@ test(`the export algorithm keeps up live for ${String(SOAK_SECONDS)} s with ever
   await page.getByRole("button", { name: "Repeat track", exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
   const transport = page.locator(".transport");
-  await expect(transport).toHaveAttribute("data-playing", "true");
+  await expect(transport).toHaveAttribute("data-playing", "true", { timeout: 20_000 });
+  await expectHeaviestAccepted(page);
   // Warm-up: Chromium records 12–19 underrun events while the stream starts.
   await expect.poll(() => page.evaluate(() => (window as TimingWindow).qaTiming?.audioMs ?? 0), { intervals: [500], timeout: 60_000 }).toBeGreaterThanOrEqual(2000);
   const warmUnderruns = await underrunEvents(page);

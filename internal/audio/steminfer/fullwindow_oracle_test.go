@@ -24,6 +24,13 @@ type fullWindowTensor struct {
 // by testdata/fullwindow_oracle.py (oracle.json + oracle.bin).
 func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	directory := os.Getenv("AURIALIS_STEM_FULL_ORACLE")
+	qualification := os.Getenv("AURIALIS_STEM_QUALIFY_NATIVE") == "1"
+	if qualification && (directory == "" || os.Getenv("AURIALIS_STEM_MODEL") == "") {
+		t.Fatal("native qualification requires the synthetic oracle and pinned model")
+	}
+	if qualification && matrixBackendName() != "gonum-sse3" {
+		t.Fatalf("qualification did not select SSE3 kernel: %s", matrixBackendName())
+	}
 	if directory == "" {
 		t.Skip("set the full-window PyTorch oracle directory")
 	}
@@ -40,9 +47,12 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	if err := json.Unmarshal(metadataBytes, &metadata); err != nil || metadata.Format != "aurialis-original-full-window-v1" || metadata.Samples != maximumWindowSamples {
 		t.Fatal("unexpected full-window oracle", err, metadata.Format, metadata.Samples)
 	}
-	raw, err := boundedTestArtifact(filepath.Join(directory, "oracle.bin"), 256<<20)
+	raw, err := readFullWindowOracle(directory)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if qualification {
+		verifyNativeSyntheticOracle(t, metadataBytes, raw)
 	}
 	read := func(name string) []float32 {
 		tensor, ok := metadata.Tensors[name]
@@ -62,6 +72,11 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 	names := [5]string{"vocal", "drums", "bass", "guitar", "piano"}
+	stopMemory := func() {}
+	if qualification {
+		stopMemory = observeNativeQualificationHeap(t, len(raw))
+	}
+	defer stopMemory()
 	started := time.Now()
 	err = runner.predict(context.Background(), source[:samples], source[samples:], []int{0, 1, 2, 3, 4}, func(head int, left, right []float32) error {
 		expected := read("pcm." + names[head])
@@ -85,5 +100,13 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("window took %v with %d lanes", time.Since(started), defaultWorkers())
+	elapsed := time.Since(started)
+	t.Logf("window took %v with %d lanes", elapsed, defaultWorkers())
+	if qualification {
+		stopMemory()
+		if elapsed > 180*time.Second {
+			t.Errorf("native window took %s, exceeds qualified 180s usable budget", elapsed)
+		}
+		verifyNativeWindowCancellation(t, runner, source[:samples], source[samples:])
+	}
 }

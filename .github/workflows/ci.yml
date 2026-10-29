@@ -257,6 +257,8 @@ jobs:
       - name: Build browser-target UI and dual WASM once
         run: |
           pnpm run build:browser
+          test "$(cat internal/webui/embedded/build-target-browser.json)" = '{"schema":1,"target":"browser"}'
+          test ! -e internal/webui/embedded/build-target-native.json
           pnpm run typecheck:worker
           pnpm run typecheck:browser-tests
           pnpm exec wrangler types deploy/cloudflare/worker-configuration.d.ts --include-runtime false --check -c deploy/cloudflare/wrangler.jsonc

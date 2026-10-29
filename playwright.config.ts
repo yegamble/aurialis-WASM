@@ -28,8 +28,9 @@ export default defineConfig({
   ],
   webServer: {
     command: `bash scripts/serve-e2e.sh ${PORT}`,
-    url: `${BASE_URL}/health`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
+    url: `${BASE_URL}/build-target-native.json`,
+    reuseExistingServer: false,
+    // The server command bounds a local cold build to 8 minutes and its start to 30 seconds.
+    timeout: 9 * 60_000,
   },
 });

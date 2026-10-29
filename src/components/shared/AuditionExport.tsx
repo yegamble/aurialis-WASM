@@ -47,16 +47,20 @@ function applyVolume(element: HTMLAudioElement | null, volume: number, fallback:
 }
 
 /**
- * Before playing, synchronously (S-1, Round 8: WebKit's user activation does not
- * survive an await): set the element's volume, and where it does not stick (iOS
- * Safari ignores HTMLMediaElement.volume) route the element once through a
- * GainNode with the element itself at 1, and start resuming its context. The
- * probe uses a value other than 1, so a slider left at 1 still reveals an
- * ignored volume (S-2). Building or resuming that route needs a user gesture,
- * so without one (auto-play after a render) this returns null where the route
- * is missing or suspended, and the audition stays Ready for a click. Other
- * browsers never get a Web Audio path. Returns the pending resume, if any.
- * The iOS path is unverified on a real device (no WebKit/iOS project).
+ * iOS media volume can echo an assigned value without applying audible gain.
+ * Route iPhone/iPad playback through Web Audio regardless of that readback;
+ * touch-enabled Macintosh covers iPadOS's desktop browser identity.
+ */
+function needsVolumeRoute(): boolean {
+  return /iPad|iPhone|iPod/iu.test(navigator.userAgent)
+    || (/Macintosh/iu.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+}
+
+/**
+ * Build the volume route only in a Play gesture: Safari activation does not
+ * survive the render's await. Other platforms keep the media-element path
+ * unless their volume property rejects an assignment. The routed element stays
+ * at unity while GainNode applies the monitor volume, without decoding a copy.
  */
 function prepareVolume(element: HTMLAudioElement, volume: number, fallback: Fallback, gesture: boolean): Promise<void> | null {
   const level = clampVolume(volume);
@@ -65,7 +69,7 @@ function prepareVolume(element: HTMLAudioElement, volume: number, fallback: Fall
     element.volume = probe;
     const ignored = Math.abs(element.volume - probe) >= 0.001;
     element.volume = level;
-    if (!ignored || typeof AudioContext === "undefined") return Promise.resolve();
+    if ((!needsVolumeRoute() && !ignored) || typeof AudioContext === "undefined") return Promise.resolve();
     if (!gesture) return null;
     const context = new AudioContext();
     const gain = context.createGain();
@@ -102,7 +106,7 @@ export function AuditionExport({ track, sourceBlob, delivery, volume, livePlayin
   onPositionChange?: () => void;
 }) {
   const audio = useRef<HTMLAudioElement | null>(null);
-  // Only where the element ignores .volume (iOS Safari): element → gain → speakers.
+  // iOS and other elements that reject .volume: element → gain → speakers.
   const fallbackGain = useRef<{ context: AudioContext; gain: GainNode } | null>(null);
   const held = useRef<Held | null>(null);
   const pending = useRef<AbortController | null>(null);

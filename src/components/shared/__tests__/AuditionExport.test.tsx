@@ -193,6 +193,49 @@ describe("Audition export (V1-10 owner ruling)", () => {
     expect(created).toHaveBeenCalledOnce();
     expect(sources).toHaveBeenCalledOnce();
   });
+  it.each([
+    { device: "iPhone", userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 Version/26.6.1 Mobile/15E148 Safari/604.1", touchPoints: 5 },
+    { device: "iPad desktop identity", userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/26.6 Safari/605.1.15", touchPoints: 5 },
+  ])("routes $device through gain even when media volume reads back successfully", async ({ userAgent, touchPoints }) => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(userAgent);
+    const touch = Object.getOwnPropertyDescriptor(navigator, "maxTouchPoints");
+    Object.defineProperty(navigator, "maxTouchPoints", { configurable: true, value: touchPoints });
+    onTestFinished(() => { if (touch) Object.defineProperty(navigator, "maxTouchPoints", touch); else Reflect.deleteProperty(navigator, "maxTouchPoints"); });
+    const gain = { gain: { value: 1 }, connect: vi.fn(() => ({})) };
+    const sources = vi.fn(() => ({ connect: vi.fn(() => gain) }));
+    const resume = vi.fn();
+    const close = vi.fn();
+    vi.stubGlobal("AudioContext", class {
+      destination = {}; state = "suspended";
+      createGain() { return gain; }
+      createMediaElementSource() { return sources(); }
+      resume() { resume(); this.state = "running"; return Promise.resolve(); }
+      close() { close(); return Promise.resolve(); }
+    });
+    vi.spyOn(engine, "renderDelivery").mockResolvedValue({ blob: wav, truePeakDbtp: null });
+    const onStart = vi.fn();
+    const view = render(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={0.25} livePlaying={false} onStart={onStart} />);
+    const element = document.querySelector<HTMLAudioElement>("audio.audition-export");
+    if (!element) throw new Error("Missing audition element");
+    // The old capability probe succeeds, although it cannot establish audible gain.
+    element.volume = 0.25;
+    expect(element.volume).toBe(0.25);
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    await screen.findByText(/^Ready: the exact export file/u);
+    expect(sources).not.toHaveBeenCalled();
+    expect(playSpy).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Play audition" }));
+    await screen.findByRole("button", { name: "Pause audition" });
+    expect(resume).toHaveBeenCalledOnce();
+    expect(sources).toHaveBeenCalledOnce();
+    expect(element.volume).toBe(1);
+    expect(gain.gain.value).toBe(0.25);
+    view.rerender(<AuditionExport track={base()} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying={false} onStart={onStart} />);
+    expect(gain.gain.value).toBe(1);
+    expect(sources).toHaveBeenCalledOnce();
+    view.unmount();
+    expect(close).toHaveBeenCalledOnce();
+  });
   /** An iOS-like element whose .volume never sticks, and a recording AudioContext. */
   function iosMock() {
     const volume = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "volume");

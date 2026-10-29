@@ -14,3 +14,10 @@ func softmaxExponentials(values []float32, maximum float32) float64 {
 	}
 	return sum
 }
+
+func softmaxMaximum(values []float32) float32 { return scalarSoftmaxMaximum(values) }
+func normalizeSoftmax(values []float32, sum float64) {
+	for i := range values {
+		values[i] = float32(float64(values[i]) / sum)
+	}
+}

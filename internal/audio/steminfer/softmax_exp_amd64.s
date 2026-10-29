@@ -78,3 +78,56 @@ loop:
  JNZ loop
  VZEROUPPER
  RET
+
+DATA maxConstants<>+0(SB)/4, $0xff7fffff
+DATA maxConstants<>+4(SB)/4, $0x7f7fffff
+DATA maxConstants<>+8(SB)/4, $0x7fffffff
+GLOBL maxConstants<>(SB), RODATA|NOPTR, $12
+
+TEXT ·maximumFiniteSoftmax(SB), NOSPLIT, $0-20
+ MOVQ values+0(FP), SI
+ MOVQ count+8(FP), CX
+ VBROADCASTSS maxConstants<>+0(SB), Y2
+ VPBROADCASTD maxConstants<>+4(SB), Y3
+ VPBROADCASTD maxConstants<>+8(SB), Y4
+ VXORPS Y5, Y5, Y5
+maxLoop:
+ VMOVUPS (SI), Y0
+ VANDPS Y4, Y0, Y1
+ VPCMPGTD Y3, Y1, Y6
+ VORPS Y6, Y5, Y5
+ VMAXPS Y0, Y2, Y2
+ ADDQ $32, SI
+ SUBQ $8, CX
+ JNZ maxLoop
+ VPMOVMSKB Y5, AX
+ TESTL AX, AX
+ JNZ maxExceptional
+ VEXTRACTF128 $1, Y2, X1
+ VMAXPS X1, X2, X2
+ VSHUFPS $0x4e, X2, X2, X1
+ VMAXPS X1, X2, X2
+ VSHUFPS $0xb1, X2, X2, X1
+ VMAXPS X1, X2, X2
+ MOVSS X2, ret+16(FP)
+ VZEROUPPER
+ RET
+maxExceptional:
+ MOVL $0x7fc00000, ret+16(FP)
+ VZEROUPPER
+ RET
+
+TEXT ·divideSoftmaxFourLanes(SB), NOSPLIT, $0-24
+ MOVQ values+0(FP), SI
+ MOVQ count+8(FP), CX
+ VBROADCASTSD sum+16(FP), Y1
+divideLoop:
+ VCVTPS2PD (SI), Y0
+ VDIVPD Y1, Y0, Y0
+ VCVTPD2PSY Y0, X0
+ VMOVUPS X0, (SI)
+ ADDQ $16, SI
+ SUBQ $4, CX
+ JNZ divideLoop
+ VZEROUPPER
+ RET

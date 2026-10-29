@@ -71,3 +71,43 @@ func TestVectorExpExceptionalAndUnderflowFallback(t *testing.T) {
 		}
 	}
 }
+
+func TestVectorSoftmaxMaximumAndNormalization(t *testing.T) {
+	if !hasPackedMatrix() {
+		t.Skip("AVX2/FMA unavailable")
+	}
+	for _, width := range []int{1, 7, 8, 9, 62, maximumSequence} {
+		values := make([]float32, width)
+		for i := range values {
+			values[i] = float32(math.Sin(float64(i)*.37) * 100)
+		}
+		for _, special := range []float32{0, float32(math.Copysign(0, -1)), math.SmallestNonzeroFloat32, -math.SmallestNonzeroFloat32, math.MaxFloat32, -math.MaxFloat32, float32(math.Inf(1)), float32(math.Inf(-1)), float32(math.NaN())} {
+			values[width/2] = special
+			got, want := softmaxMaximum(values), scalarSoftmaxMaximum(values)
+			if math.IsNaN(float64(want)) {
+				if !math.IsNaN(float64(got)) {
+					t.Fatal("maximum hid NaN")
+				}
+			} else if got != want {
+				t.Fatalf("maximum width%d got%g want%g", width, got, want)
+			}
+		}
+		for _, sum := range []float64{1, 1.7, 1723, 0, math.Inf(1), math.NaN()} {
+			for i := range values {
+				values[i] = float32(math.Exp(-float64(i % 121)))
+			}
+			original := append([]float32(nil), values...)
+			normalizeSoftmax(values, sum)
+			for i, x := range original {
+				want := float32(float64(x) / sum)
+				if math.IsNaN(float64(want)) {
+					if !math.IsNaN(float64(values[i])) {
+						t.Fatal("division hid NaN")
+					}
+				} else if math.Float32bits(values[i]) != math.Float32bits(want) {
+					t.Fatalf("division width%d sum%g got%g want%g", width, sum, values[i], want)
+				}
+			}
+		}
+	}
+}

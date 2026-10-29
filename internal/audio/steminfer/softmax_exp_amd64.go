@@ -2,7 +2,7 @@
 
 package steminfer
 
-// cspell:words noasm noescape nonpositive Exponentials softmax AVX2 FMA ULP
+// cspell:words noasm noescape nonpositive Exponentials softmax AVX2 FMA ULP GELU Abramowitz Stegun
 
 import "math"
 
@@ -44,3 +44,43 @@ func expSoftmaxValues(values []float32, vector bool) {
 //
 //go:noescape
 func expFourLanes(values *float32, count int)
+
+func softmaxMaximum(values []float32) float32 {
+	if hasPackedMatrix() && len(values) >= 8 {
+		count := len(values) / 8 * 8
+		maximum := maximumFiniteSoftmax(&values[0], count)
+		if !math.IsNaN(float64(maximum)) {
+			maximum *= .125
+			for _, x := range values[count:] {
+				maximum = max(maximum, x*.125)
+			}
+			return maximum
+		}
+	}
+	return scalarSoftmaxMaximum(values)
+}
+
+func normalizeSoftmax(values []float32, sum float64) {
+	first := 0
+	if hasPackedMatrix() && len(values) >= 4 && sum > 0 && !math.IsInf(sum, 0) {
+		first = len(values) / 4 * 4
+		divideSoftmaxFourLanes(&values[0], first, sum)
+	}
+	for i := first; i < len(values); i++ {
+		values[i] = float32(float64(values[i]) / sum)
+	}
+}
+
+// maximumFiniteSoftmax returns the raw finite maximum, or NaN when any input
+// is nonfinite so the caller recomputes the exact scalar exceptional case.
+// Only softmax consumes this result: either sign of a zero maximum yields
+// the same exponential. count is positive and divisible by eight.
+//
+//go:noescape
+func maximumFiniteSoftmax(values *float32, count int) float32
+
+// divideSoftmaxFourLanes preserves the scalar float64 division and float32
+// rounding for each value independently. It does not reassociate the sum.
+//
+//go:noescape
+func divideSoftmaxFourLanes(values *float32, count int, sum float64)

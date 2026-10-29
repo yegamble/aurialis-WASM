@@ -9,7 +9,7 @@ import { fixture } from "./audio-fixture";
 import { uploadProject } from "./workflow-fixture";
 const execute = promisify(execFile);
 type SpeakerCapture = { left: number[]; right: number[]; chunks: { time: number; contextTime: number; begin: number }[]; starts: { when: number; offset: number; looping: boolean }[] };
-type SpeakerWindow = Window & { finiteSpeaker?: SpeakerCapture };
+type SpeakerWindow = Window & { finiteSpeaker?: SpeakerCapture; finiteSpeakerFrames?: () => number; restartFiniteSpeaker?: () => void };
 function boundarySource(rate: number, frames: number) {
   const wav = Buffer.alloc(44 + frames * 8); wav.write("RIFF"); wav.writeUInt32LE(wav.length - 8, 4); wav.write("WAVEfmt ", 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(3, 20); wav.writeUInt16LE(2, 22); wav.writeUInt32LE(rate, 24); wav.writeUInt32LE(rate * 8, 28); wav.writeUInt16LE(8, 32); wav.writeUInt16LE(32, 34); wav.write("data", 36); wav.writeUInt32LE(frames * 8, 40);
   for (let frame = 0; frame < frames; frame++) { const value = frame < 16 ? .8 : frame >= frames - 16 ? -.8 : .12 * Math.cos(frame * .13); wav.writeFloatLE(value, 44 + frame * 8); wav.writeFloatLE(value * .7, 48 + frame * 8); } return wav;
@@ -28,7 +28,10 @@ async function observeFiniteSpeaker(page: Page) {
     };
     const probe: SpeakerCapture = { left: [], right: [], chunks: [], starts: [] }; (window as SpeakerWindow).finiteSpeaker = probe;
     const header = new Int32Array(new SharedArrayBuffer(8)), samples = new Float32Array(new SharedArrayBuffer(2 * 262144 * 4)), times = new Float64Array(new SharedArrayBuffer(2048 * 8));
-    (window as SpeakerWindow & { snapshotFiniteSpeaker?: () => SpeakerCapture }).snapshotFiniteSpeaker = () => {
+    (window as SpeakerWindow).finiteSpeakerFrames = () => Atomics.load(header, 1);
+    (window as SpeakerWindow).restartFiniteSpeaker = () => { Atomics.store(header, 1, 0); Atomics.add(header, 0, 1); };
+    (window as SpeakerWindow & { snapshotFiniteSpeaker?: (stop: boolean) => SpeakerCapture }).snapshotFiniteSpeaker = (stop) => {
+      if (stop) Atomics.store(header, 0, 0);
       const count = Atomics.load(header, 1); return { starts: probe.starts, left: Array.from(samples.slice(0, count)), right: Array.from(samples.slice(262144, 262144 + count)), chunks: Array.from(times.slice(0, count / 128), (time, index) => ({ time, contextTime: time, begin: index * 128 })) };
     };
     const nativeStart = AudioBufferSourceNode.prototype.start;
@@ -48,7 +51,8 @@ async function observeFiniteSpeaker(page: Page) {
     AudioNode.prototype.connect = connect;
   });
 }
-async function speakerSnapshot(page: Page) { return page.evaluate(() => (window as SpeakerWindow & { snapshotFiniteSpeaker?: () => SpeakerCapture }).snapshotFiniteSpeaker?.()); }
+async function speakerSnapshot(page: Page, stop = false) { return page.evaluate((freeze) => (window as SpeakerWindow & { snapshotFiniteSpeaker?: (stop: boolean) => SpeakerCapture }).snapshotFiniteSpeaker?.(freeze), stop); }
+async function speakerFrames(page: Page) { return page.evaluate(() => (window as SpeakerWindow).finiteSpeakerFrames?.() ?? 0); }
 
 test("Reset modules never releases delayed unlimited frames after heavy gain reduction", async ({ page }, info) => {
   await observeFiniteSpeaker(page);
@@ -62,25 +66,42 @@ test("Reset modules never releases delayed unlimited frames after heavy gain red
   await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");
   const reset = page.getByRole("button", { name: "Reset modules", exact: true });
   await reset.scrollIntoViewIfNeeded();
+  await page.getByRole("button", { name: "Repeat track", exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
-  await expect.poll(async () => (await speakerSnapshot(page))?.left.length ?? 0).toBeGreaterThan(48000);
+  await expect.poll(() => speakerFrames(page)).toBeGreaterThan(48000);
   const reduction = page.getByRole("region", { name: "Live loudness of the processed output", exact: true }).locator("div").filter({ has: page.getByText("Gain reduction", { exact: true }) }).locator("strong");
   await expect.poll(async () => Number(await reduction.innerText())).toBeGreaterThan(3);
-  const before = await speakerSnapshot(page);
-  if (!before) throw new Error("Missing speaker capture before Reset modules");
+  const beforeFrames = await speakerFrames(page);
+  const previousVersion = Number(await page.locator(".transport").getAttribute("data-parameter-version"));
+  // Start the bounded recorder at the actual Reset click, before React updates
+  // the DSP. Slow automation preparation cannot consume its capture budget.
+  await reset.evaluate((element) => { element.addEventListener("click", () => { (window as SpeakerWindow).restartFiniteSpeaker?.(); }, { capture: true, once: true }); });
   await reset.click();
   await expect(page.getByRole("slider", { name: "Input gain", exact: true })).toHaveValue("0");
   await expect(page.getByRole("checkbox", { name: "Enable limiter", exact: true })).not.toBeChecked();
-  await expect.poll(async () => (await speakerSnapshot(page))?.left.length ?? 0).toBeGreaterThan(before.left.length + 4800);
-  await page.getByRole("button", { name: "Pause", exact: true }).click();
-  const after = await speakerSnapshot(page);
+  await expect.poll(async () => {
+    const transport = page.locator(".transport"), version = Number(await transport.getAttribute("data-parameter-version"));
+    return version > previousVersion && version === Number(await transport.getAttribute("data-applied-version"));
+  }).toBe(true);
+  const acknowledgedFrames = await speakerFrames(page);
+  expect(acknowledgedFrames, "capture needs room for 100 ms after the DSP acknowledges Reset").toBeLessThan(262144 - 4800);
+  await expect.poll(() => speakerFrames(page)).toBeGreaterThan(acknowledgedFrames + 4800);
+  const after = await speakerSnapshot(page, true);
   if (!after) throw new Error("Missing speaker capture after Reset modules");
+  expect(after.left.length, "a saturated recorder cannot prove the whole Reset transition").toBeLessThan(262144);
+  expect(after.starts).toHaveLength(1);
+  expect(after.starts[0]?.looping).toBe(true);
   const peak = [...after.left, ...after.right].reduce((maximum, sample) => Math.max(maximum, Math.abs(sample)), 0);
-  const evidence = { sourcePeakDbfs: -3.1, inputGainDb: 12, ceilingDbtp: -1, beforeFrames: before.left.length, afterFrames: after.left.length, peakDbfs: 20 * Math.log10(peak) };
+  const evidence = { sourcePeakDbfs: -3.1, inputGainDb: 12, ceilingDbtp: -1, beforeFrames, acknowledgedFrames, afterFrames: after.left.length, peakDbfs: 20 * Math.log10(peak) };
   await info.attach("reset-speaker-peak", { body: JSON.stringify(evidence, null, 2), contentType: "application/json" });
   expect(peak, JSON.stringify(evidence)).toBeLessThanOrEqual(10 ** (-1 / 20));
   const tail = after.left.slice(-1024);
   expect(Math.max(...tail.map(Math.abs)), "Reset must return to audible source at -3.1 dBFS").toBeCloseTo(0.7, 2);
+  // Keyboard activation avoids scrolling the sticky transport during cleanup.
+  const pause = page.getByRole("button", { name: "Pause", exact: true });
+  await expect(pause).toBeVisible();
+  await pause.press("Enter");
+  await expect(page.getByLabel("Playback transport")).toHaveAttribute("data-playing", "false");
 });
 
 type LateRepeatWindow = SpeakerWindow & { lateRepeat?: { elapsed: number; duration: number; disabledAt: number } };
@@ -120,7 +141,7 @@ test("Repeat restored in the final 80 ms of a finite looping pass keeps the spea
   expect(timing.duration - timing.elapsed).toBeGreaterThan(0);
   expect(timing.duration - timing.elapsed).toBeLessThanOrEqual(0.08);
   await expect(page.getByRole("button", { name: "Repeat track", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect.poll(async () => (await speakerSnapshot(page))?.left.length ?? 0).toBeGreaterThan(48000 * 2.5);
+  await expect.poll(() => speakerFrames(page)).toBeGreaterThan(48000 * 2.5);
   await expect(page.getByLabel("Playback transport")).toHaveAttribute("data-playing", "true");
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   const speaker = await speakerSnapshot(page);

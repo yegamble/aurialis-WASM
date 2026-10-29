@@ -28,10 +28,10 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: 10.33.0
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26.12.0"
           cache: pnpm
@@ -62,7 +62,11 @@ jobs:
       # The deployed bytes are an older build, so only check the headers and boundary.
       - name: Check production responds
         run: |
+          source .github/scripts/cloudflare-policy-headers.sh
+          headers="$(mktemp)"
+          trap 'rm -f "$headers"' EXIT
           for origin in https://aurialis.yosefgamble.com https://aurialis.yosef.app; do
-            curl -fsS --max-time 20 -D - -o /dev/null "$origin/" | grep -qi '^cross-origin-embedder-policy: require-corp' \
-              || { echo "::error::$origin is unhealthy after rollback."; exit 1; }
+            curl -fsS --max-time 20 -D "$headers" -o /dev/null "$origin/" \
+              || { echo "::error::$origin did not respond after rollback."; exit 1; }
+            assert_cloudflare_policy_headers "$origin" "$headers"
           done

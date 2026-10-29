@@ -507,6 +507,19 @@ describe("per-track live audio lifecycle", () => {
     expect(controller.getState()).toMatchObject({ playing: false, error: OVERLOAD_MESSAGE });
     controller.dispose();
   });
+  it.each([false, true])("exposes acknowledged controls and only opt-in kernel diagnostics (enabled=%s)", async (diagnostics) => {
+    const { nodes } = graphHarness();
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams(), {}, undefined, { diagnostics });
+    await controller.play(); const node = nodes[0]; if (!node) throw new Error("Missing graph");
+    expect(node.options.processorOptions).toMatchObject({ diagnostics, requestedAlgorithm: 2 });
+    expect(controller.getDiagnostics().deviceStats).toBeNull();
+    expect(controller.getDiagnostics().acceptedControls).toBeNull();
+    new Int32Array(node.options.processorOptions.header).set([1], 4);
+    expect(controller.getDiagnostics().acceptedControls?.values).toHaveLength(82);
+    node.port.message({ type: "diagnostics", frames: 48000, audioMs: 1000, wallMs: 1005, kernelMs: 300, clockStepMs: 1 });
+    expect(controller.getDiagnostics().kernel).toEqual(diagnostics ? { frames: 48000, audioMs: 1000, wallMs: 1005, kernelMs: 300, clockStepMs: 1 } : null);
+    controller.dispose();
+  });
   it("gives the worklet the output's slack where playbackStats is missing", async () => {
     const { nodes } = graphHarness();
     const controller = createLivePlayback(source(), createDefaultAdvancedParams());

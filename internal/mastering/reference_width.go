@@ -76,8 +76,9 @@ func renderedStereoMoments(ctx context.Context, source *audio.Buffer, params dsp
 	var moments stereoMoments
 	engine := dsp.NewEngine(float64(source.SampleRate))
 	engine.SetParams(params)
-	if engine.LatencyFrames() != 0 {
-		return moments, errors.New("reference width guard requires zero-buffered-latency algorithm 1")
+	reader, err := newReferenceRenderReader(source, engine)
+	if err != nil {
+		return moments, err
 	}
 	var left, right [4096]float32
 	for start := 0; start < len(source.Left); start += len(left) {
@@ -85,8 +86,13 @@ func renderedStereoMoments(ctx context.Context, source *audio.Buffer, params dsp
 			return moments, err
 		}
 		count := min(len(left), len(source.Left)-start)
-		engine.ProcessBlock(source.Left[start:start+count], source.Right[start:start+count], left[:count], right[:count])
-		for i := range count {
+		if err := reader.read(ctx, left[:count], right[:count]); err != nil {
+			return moments, err
+		}
+		for i := range left {
+			if i >= count {
+				break
+			}
 			l, r := float64(left[i]), float64(right[i])
 			if !isFinite(l) || !isFinite(r) {
 				return moments, errors.New("reference width render produced invalid samples")

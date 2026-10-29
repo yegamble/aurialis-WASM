@@ -16,8 +16,8 @@ type ProbeWindow = Window & { qaOutput?: OutputProbe };
 
 /** Test-only tap of the actual node feeding the speakers; no application DSP mocks. */
 export async function observeOutput(page: Page): Promise<void> {
-  const source = await readFile("e2e/support/live-output-tap.js", "utf8");
-  await page.route("**/__qa/live-output-tap.js", (route) => route.fulfill({ body: source, contentType: "text/javascript" }));
+  const source = await readFile("e2e/support/actual-output-tap.js", "utf8");
+  await page.route("**/__qa/actual-output-tap.js", (route) => route.fulfill({ body: source, contentType: "text/javascript" }));
   await page.addInitScript(() => {
     const NativeContext = AudioContext;
     const loading = new WeakMap<BaseAudioContext, () => Promise<void>>();
@@ -26,7 +26,7 @@ export async function observeOutput(page: Page): Promise<void> {
         super(options);
         const load = this.audioWorklet.addModule.bind(this.audioWorklet);
         let observer: Promise<void> | undefined;
-        const prepare = () => observer ??= load("/__qa/live-output-tap.js");
+        const prepare = () => observer ??= load("/__qa/actual-output-tap.js");
         loading.set(this, prepare);
         this.audioWorklet.addModule = async (url, moduleOptions) => { await load(url, moduleOptions); await prepare(); };
       }

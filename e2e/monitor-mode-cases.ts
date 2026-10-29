@@ -27,6 +27,13 @@ async function channelRelation(page: Page) {
 }
 /** Actual Go speaker output, selected-mode matching, and unchanged exported PCM. */
 export async function verifyMonitorModes(page: Page) {
+  const measurements: { mode: string; measure: string | null; format: string | null }[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname !== "/api/master/render" || request.method() !== "POST") return;
+    const body = request.postData() ?? "";
+    const field = (name: string) => body.match(new RegExp('name="' + name + '"\\r?\\n\\r?\\n([^\\r\\n]*)', "u"))?.[1] ?? null;
+    const mode = field("monitorMode"); if (mode) measurements.push({ mode, measure: field("measure"), format: field("format") });
+  });
   await observeOutput(page); await uploadProject(page, "monitor-check.wav", 4);
   await page.getByRole("slider", { name: "Input gain", exact: true }).fill("6");
   const before = await exportHash(page);
@@ -78,5 +85,5 @@ export async function verifyMonitorModes(page: Page) {
   const libraryOriginalDb = await meanOutputLevel(page, 48000);
   expect(libraryOriginalDb).toBeCloseTo(originalLevels[1] ?? 0, 1);
   await page.keyboard.press("Escape");
-  return { evidence, originalLevels, libraryOriginalDb, expectedSideMinusMonoDb: 20 * Math.log10(1 / 3), exportHash: before, librarySidePlayback: true };
+  return { evidence, measurements, originalLevels, libraryOriginalDb, expectedSideMinusMonoDb: 20 * Math.log10(1 / 3), exportHash: before, librarySidePlayback: true };
 }

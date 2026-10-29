@@ -110,12 +110,8 @@ func decodeAndDisarmFLAC(raw []byte) (*Buffer, error) {
 		}
 		capacity = int(info.totalSamples)
 	}
-	initial := capacity
-	if info.totalSamples == 0 {
-		initial = 0
-	}
-	left := make([]float32, 0, initial)
-	right := make([]float32, 0, initial)
+	// Reserve PCM only as validated frames arrive; STREAMINFO is untrusted.
+	var left, right []float32
 	scale := float32(1 / math.Ldexp(1, info.bitsPerSample-1))
 	hash := md5.New() // #nosec G401 -- format-defined integrity check
 	var (
@@ -137,6 +133,12 @@ func decodeAndDisarmFLAC(raw []byte) (*Buffer, error) {
 		offset += frameLen
 		if len(left)+n > capacity {
 			return nil, fmt.Errorf("%w: FLAC frames exceed declared or maximum length", ErrCorruptContainer)
+		}
+		if len(left)+n > cap(left) {
+			// Grow by validated blocks, doubling to keep cumulative copies bounded.
+			nextCapacity := min(capacity, max(len(left)+n, 2*cap(left)))
+			left = append(make([]float32, 0, nextCapacity), left...)
+			right = append(make([]float32, 0, nextCapacity), right...)
 		}
 		sampleLE = sampleLE[:0]
 		for i := range n {

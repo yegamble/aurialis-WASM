@@ -52,7 +52,7 @@ import type {
   Track,
 } from "@/lib/types";
 import { albumRateChoices, albumRateNote, exportRateChoices, formatRate, unavailableRateNote } from "@/lib/export-rates";
-import { availableDelivery, CD_DELIVERY, DEFAULT_DELIVERY, deliveredBytes, deliveredRate, deliveryRequest, deliverySummary, type DeliveryFormat } from "@/lib/delivery-format";
+import { availableDelivery, CD_DELIVERY, DEFAULT_DELIVERY, deliveredBytes, deliveredRate, deliveryRequest, deliverySummary } from "@/lib/delivery-format";
 import { DeliveryFormatControls } from "./shared/DeliveryFormatControls";
 import { MAX_SOURCE_FRAMES } from "@/lib/audio-limits";
 import { Icon, type IconName } from "./shared/Icon";
@@ -626,7 +626,6 @@ function MasterView({ trackId }: { trackId: string }) {
   const [deepEditorOpen, setDeepEditorOpen] = useState(false);
   const selectDeepMove = useCallback((id: string) => { setDeepMoveId(id); setDeepEditorOpen(Boolean(id)); }, []);
   const closeDeepEditor = useCallback(() => { setDeepEditorOpen(false); }, []);
-  const [exportFormat, setExportFormat] = useState<DeliveryFormat>(DEFAULT_DELIVERY);
   const [message, setMessage] = useState("");
   const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
   const renderAbort = useRef<AbortController | null>(null);
@@ -642,7 +641,9 @@ function MasterView({ trackId }: { trackId: string }) {
   const settingsKey = useMemo(() => track ? appliedRevisionKey(track) ?? masteringSettingsKey(track.advanced) : "", [track]);
   const rateChoices = track ? exportRateChoices(track.sampleRate, source?.left.length ?? track.sourceIdentity?.frames ?? Math.round(track.duration * track.sampleRate)) : [];
   // A choice that is unavailable for this track falls back to the source rate.
-  const delivery = availableDelivery(exportFormat, rateChoices);
+  const delivery = availableDelivery(track?.exportDelivery ?? DEFAULT_DELIVERY, rateChoices);
+  const currentExport = useRef({ track, delivery });
+  currentExport.current = { track, delivery };
   useEffect(() => {
     if (renderAbort.current && !renderAbort.current.signal.aborted && renderSettings.current !== settingsKey) {
       renderAbort.current.abort();
@@ -847,6 +848,7 @@ function MasterView({ trackId }: { trackId: string }) {
     renderSettings.current = settingsKey;
     setMessage("Rendering WAV from the imported source…");
     try {
+      const exportedKey = auditionKey(track, delivery);
       const { bitDepth, dither } = delivery, outputRate = deliveredRate(delivery, track.sampleRate);
       // A fresh audition already holds this exact file: hand it over (S-3).
       const auditioned = auditionHeld.current?.key === auditionKey(track, delivery) ? auditionHeld.current : null;
@@ -866,7 +868,8 @@ function MasterView({ trackId }: { trackId: string }) {
       setTimeout(() => {
         URL.revokeObjectURL(url);
       }, 1000);
-      dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { status: "mastered" } });
+      const current = currentExport.current;
+      if (current.track && auditionKey(current.track, current.delivery) === exportedKey) dispatch({ type: "COMPLETE_EXPORT", expected: track });
       setMessage(
         `Exported ${bitDepth === 32 ? "32-bit float" : `${String(bitDepth)}-bit PCM`} WAV${bitDepth === 32 ? "" : dither ? " with TPDF dither" : " without dither"} at ${outputRate === track.sampleRate ? "the source rate" : `${String(outputRate / 1000)} kHz (converted from ${String(track.sampleRate / 1000)} kHz)`} ${track.deepMastering?.applied ? "from applied revision " + String(track.deepMastering.applied.revision) : "using the same Go DSP parameters"}.${truePeakDbtp === null ? "" : ` Delivered true peak ${truePeakDbtp.toFixed(2)} dBTP at ${formatRate(outputRate)}.`}`,
       );
@@ -1141,7 +1144,9 @@ function MasterView({ trackId }: { trackId: string }) {
           value={delivery}
           rateChoices={rateChoices}
           rateNote={unavailableRateNote(rateChoices, track.sampleRate)}
-          onChange={setExportFormat}
+          onChange={(format) => {
+            dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { exportDelivery: format } });
+          }}
         />
         <p className="disclosure">
           Source sample rate: {formatRate(track.sampleRate)}. The source rate

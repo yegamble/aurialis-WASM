@@ -5,14 +5,14 @@ import { renderDelivery } from "@/lib/browser-engine";
 import { reserveBrowserAudioMemory } from "@/lib/browser-jobs";
 import { deliveryRequest, deliverySummary, type DeliveryFormat } from "@/lib/delivery-format";
 import { exportRender } from "@/lib/engine-params";
+import { exportTrackKey } from "@/lib/export-identity";
 import type { Track } from "@/lib/types";
 import { Icon } from "./Icon";
 import { Button } from "./Primitives";
 
 /** Everything that changes the bytes Export writes; a different key makes an audition stale. */
 export function auditionKey(track: Track, delivery: DeliveryFormat): string {
-  return JSON.stringify([track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0, track.sourceIdentity?.pcmHash ?? "",
-    exportRender(track), deliveryRequest(delivery), delivery.bitDepth]);
+  return JSON.stringify([exportTrackKey(track), deliveryRequest(delivery), delivery.bitDepth]);
 }
 
 /** A rendered export file, kept so Export can hand over these same bytes. */

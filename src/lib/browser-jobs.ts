@@ -1,4 +1,5 @@
-import { MAX_JOB_INPUT_BYTES, MAX_SOURCE_FRAMES } from "./audio-limits";
+import { MAX_JOB_INPUT_BYTES } from "./audio-limits";
+import { audioInputShape } from "./audio-input-shape";
 import { EXPORT_SAMPLE_RATES } from "./types";
 const OFFLINE_ABI = "1.0";
 const MIB = 1024 * 1024;
@@ -68,35 +69,6 @@ export function reserveBrowserAudioMemory(initialBytes = 0): Readonly<{ update: 
   return Object.freeze({ update, dispose });
 }
 
-type WavShape = { bytes: number; rate: number | undefined };
-/** Decoded capacity and `fmt ` rate from the RIFF chunk list, so JUNK, bext or LIST chunks may precede `fmt `. */
-async function wavShape(blob: Blob): Promise<WavShape> {
-  if (blob.size === 0) return { bytes: 0, rate: undefined };
-  const fallback = Math.min(MAX_SOURCE_FRAMES * 8, blob.size * 8);
-  const data = new DataView(await blob.slice(0, 65_536).arrayBuffer());
-  const id = (offset: number) => String.fromCharCode(...Array.from({ length: 4 }, (_, i) => data.getUint8(offset + i)));
-  // Capacity only. Go CDR remains the authoritative format/container validator.
-  if (data.byteLength < 12 || id(0) !== "RIFF" || id(8) !== "WAVE") return { bytes: fallback, rate: undefined };
-  let align = 0;
-  let rate: number | undefined;
-  for (let offset = 12; offset + 8 <= data.byteLength;) {
-    const size = data.getUint32(offset + 4, true);
-    if (id(offset) === "data") {
-      const frames = align > 0 ? Math.floor(size / align) : MAX_SOURCE_FRAMES;
-      if (frames < 1 || frames > MAX_SOURCE_FRAMES) throw new Error("This WAV exceeds the local frame limit. " + LOCAL_FALLBACK);
-      return { bytes: frames * 8, rate };
-    }
-    if (offset + 8 + size > data.byteLength) break;
-    if (id(offset) === "fmt " && size >= 16) {
-      const declared = data.getUint32(offset + 12, true);
-      rate = declared >= 8000 && declared <= 192000 ? declared : undefined;
-      align = data.getUint16(offset + 20, true);
-    }
-    offset += 8 + size + size % 2;
-  }
-  return { bytes: fallback, rate };
-}
-
 // Measured under WASM on 8,388,608 frames at 48 kHz: 7.5 s unconverted,
 // 26.5 s to 88.2 kHz and 28.1 s to 96 kHz, about 1 + 1.4 × the rate ratio.
 // 1.5 keeps headroom; downsampling still filters every input frame.
@@ -106,12 +78,15 @@ async function preflight(request: JobRequest, source: Blob, reference: Blob, sig
   signal.throwIfAborted();
   const input = source.size + reference.size;
   if (input > MAX_JOB_INPUT_BYTES) throw new Error("The combined audio exceeds the 257 MiB local job limit. " + LOCAL_FALLBACK);
-  const shape = await wavShape(source);
-  const decoded = shape.bytes + (await wavShape(reference)).bytes;
+  const shape = await audioInputShape(source, signal);
+  const decoded = shape.bytes + (await audioInputShape(reference, signal)).bytes;
   signal.throwIfAborted();
   // Measured Go worker linear memory peaks near 2.2x the decoded PCM (input
   // copy, reconstructed and rendered channels, encoded WAV). Add the
   // transferred input buffer and the returned audio, with headroom.
+  // FLAC's bounded geometric growth can retain up to 2x decoded capacity:
+  // 4x covers that plus rendered PCM and encoded float WAV; 3x covers a
+  // decode growth copy before rendering. This remains a working estimate.
   let estimate = 64 * MIB + input * 2 + decoded * (request.operation === "render" ? 4 : 3);
   // A converted export also holds resampled channels, their measurement and
   // the larger encoded WAV. An unreadable source rate assumes 8 kHz (worst case).

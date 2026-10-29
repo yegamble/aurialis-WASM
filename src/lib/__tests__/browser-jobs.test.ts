@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { waitFor } from "@testing-library/react";
 
@@ -35,6 +36,22 @@ function paddedSource(rate: number, frames: number) {
 function render(file: Blob, sampleRate?: string) { const form = new FormData(); form.append("file", file, "source.wav"); form.append("bitDepth", "16"); if (sampleRate) form.append("sampleRate", sampleRate); return form; }
 function body() { const form = new FormData(); form.append("file", source(), "source.wav"); return form; }
 
+function compressedFile() {
+  return new File([new Uint8Array(readFileSync("src/lib/__tests__/silence-8m.flac"))], "silence-8m.flac");
+}
+function mp3Frames() {
+  // This fixture's leading ID3v2 tag is 45 bytes; its remaining 12 actual frames
+  // include the Info frame, so counting every frame is conservative for Go.
+  return new Uint8Array(readFileSync("internal/audio/testdata/tone-44k-cbr.mp3")).slice(45);
+}
+/** Let an incorrectly admitted job settle, so a rejected-admission assertion fails promptly. */
+function replyToAdmittedJobs() {
+  vi.spyOn(TestWorker.prototype, "postMessage").mockImplementation(function (this: TestWorker, message, transfer) {
+    this.message = message; this.transfer = transfer;
+    queueMicrotask(() => { this.reply(); });
+  });
+}
+
 const originalArrayBuffer = Object.getOwnPropertyDescriptor(Blob.prototype, "arrayBuffer");
 beforeEach(() => {
   Object.defineProperty(Blob.prototype, "arrayBuffer", { configurable: true, writable: true, value: function (this: Blob) { return new Promise<ArrayBuffer>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => { if (reader.result instanceof ArrayBuffer) resolve(reader.result); else reject(new Error("Invalid fixture Blob read")); }; reader.onerror = () => { reject(new Error("Fixture Blob read failed")); }; reader.readAsArrayBuffer(this); }); } });
@@ -44,9 +61,146 @@ beforeEach(() => {
   vi.stubGlobal("Worker", TestWorker);
   vi.stubGlobal("fetch", vi.fn());
 });
-afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); if (originalArrayBuffer) Object.defineProperty(Blob.prototype, "arrayBuffer", originalArrayBuffer); else Reflect.deleteProperty(Blob.prototype, "arrayBuffer"); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.unstubAllEnvs(); if (originalArrayBuffer) Object.defineProperty(Blob.prototype, "arrayBuffer", originalArrayBuffer); else Reflect.deleteProperty(Blob.prototype, "arrayBuffer"); });
+
+describe("compressed admission header capacity", () => {
+  it.each([
+    { name: "CBR MPEG-1", data: new Uint8Array(readFileSync("internal/audio/testdata/tone-44k-cbr.mp3")), rate: 44100, frames: 13824 },
+    { name: "VBR MPEG-1 with ID3v1 trailer", data: new Uint8Array(readFileSync("internal/audio/testdata/tone-44k-vbr.mp3")), rate: 44100, frames: 13824 },
+    { name: "mono MPEG-2 with padding", data: new Uint8Array(readFileSync("internal/audio/testdata/tone-22k-mono.mp3")), rate: 22050, frames: 6336 },
+  ])("bounds real $name output including info frames and gapless padding", async ({ data, rate, frames }) => {
+    const { audioInputShape } = await import("../audio-input-shape");
+    expect(await audioInputShape(new Blob([data]), new AbortController().signal)).toEqual({ bytes: frames * 8, rate });
+  });
+
+  it("reads MP3 headers across 64 KiB chunks and skips repeated ID3 tags and footers", async () => {
+    const { audioInputShape } = await import("../audio-input-shape");
+    const id3 = new Uint8Array(65_525); id3.set([73, 68, 51, 4, 0, 16]);
+    // Body + optional 10-byte footer puts the first MPEG header at offset 65,535.
+    const size = id3.length - 20;
+    for (let i = 0; i < 4; i++) id3[9 - i] = (size >>> (7 * i)) & 127;
+    const emptyTag = new Uint8Array([73, 68, 51, 4, 0, 0, 0, 0, 0, 0]);
+    expect(await audioInputShape(new Blob([emptyTag, id3, mp3Frames()]), new AbortController().signal)).toEqual({ bytes: 13824 * 8, rate: 44100 });
+  });
+
+  it("ignores fake Xing frame counts and falls back for truncated or mixed-version/rate chains", async () => {
+    const { audioInputShape } = await import("../audio-input-shape");
+    const original = mp3Frames(), fake = original.slice();
+    // The first stereo MPEG-1 frame carries an Info header after its side info.
+    expect(String.fromCharCode(...fake.slice(36, 40))).toBe("Info");
+    fake.fill(0, 44, 48);
+    expect(await audioInputShape(new Blob([fake]), new AbortController().signal)).toEqual({ bytes: 13824 * 8, rate: 44100 });
+    const mixedVersion = original.slice(), mixedRate = original.slice();
+    // First frame: floor(144 * 192000 / 44100) = 626 bytes.
+    mixedVersion[627] = (mixedVersion[627] ?? 0) & 0xf7;
+    mixedRate[628] = (mixedRate[628] ?? 0) | 4;
+    for (const data of [original.slice(0, -1), mixedVersion, mixedRate, new Uint8Array([73, 68, 51, 4, 0, 0, 128, 0, 0, 0])]) {
+      expect(await audioInputShape(new Blob([data]), new AbortController().signal)).toEqual({ bytes: 33_554_432 * 8, rate: undefined });
+    }
+  });
+
+  it("uses the conservative bound when a WAV fmt chunk lies beyond the header window", async () => {
+    const { audioInputShape } = await import("../audio-input-shape");
+    const prefix = new Uint8Array(20 + 65_536), view = new DataView(prefix.buffer);
+    prefix.set([82, 73, 70, 70], 0); prefix.set([87, 65, 86, 69, 74, 85, 78, 75], 8);
+    view.setUint32(16, 65_536, true);
+    expect(await audioInputShape(new Blob([prefix, source().slice(12)]), new AbortController().signal)).toEqual({ bytes: 33_554_432 * 8, rate: undefined });
+  });
+
+  it("preserves the format-proven byte expansion bound for uncompressed AIFF", async () => {
+    const { audioInputShape } = await import("../audio-input-shape");
+    const header = new Uint8Array(54); header.set([70, 79, 82, 77]); header.set([65, 73, 70, 70], 8);
+    expect(await audioInputShape(new Blob([header]), new AbortController().signal)).toEqual({ bytes: 54 * 8, rate: undefined });
+  });
+});
 
 describe("device-local browser audio transport", () => {
+  it("rejects a real tiny FLAC expanding beyond the low-device budget before cloning or worker creation", async () => {
+    vi.stubGlobal("navigator", { deviceMemory: 2 });
+    const { deviceAudioRequest, reserveBrowserAudioMemory } = await import("../browser-jobs");
+    const file = compressedFile(), read = vi.spyOn(file, "arrayBuffer");
+    const form = new FormData(); form.append("file", file);
+    // Verified FLAC silence: 8,388,480 stereo frames in 2,090 bytes, over 32,000x expansion.
+    expect(file.size).toBe(2090);
+    replyToAdmittedJobs();
+    await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: form })).rejects.toThrow("memory budget");
+    expect(read).not.toHaveBeenCalled(); expect(TestWorker.all).toHaveLength(0);
+    const owner = reserveBrowserAudioMemory(192 * 1024 * 1024); owner.dispose();
+  });
+
+  it("uses the full decoded bound for unknown FLAC duration and ambiguous non-WAV input", async () => {
+    vi.stubGlobal("navigator", { deviceMemory: 2 });
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    const unknown = new Uint8Array(readFileSync("src/lib/__tests__/silence-8m.flac"));
+    unknown[21] = (unknown[21] ?? 0) & 0xf0; unknown.fill(0, 22, 26);
+    replyToAdmittedJobs();
+    for (const file of [new Blob([unknown]), new Blob(["unrecognized audio"])]) {
+      await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: render(file) })).rejects.toThrow("memory budget");
+    }
+    expect(TestWorker.all).toHaveLength(0);
+  });
+
+  it("charges source and reference FLAC capacity independently and releases rejected reservations", async () => {
+    vi.stubGlobal("navigator", { deviceMemory: 4 });
+    const { deviceAudioRequest, reserveBrowserAudioMemory } = await import("../browser-jobs");
+    const owner = reserveBrowserAudioMemory(128 * 1024 * 1024);
+    replyToAdmittedJobs();
+    try {
+      // Either source alone fits; their combined decoded working set does not.
+      const single = new FormData(); single.append("file", compressedFile());
+      await expect(deviceAudioRequest("/api/analyze/features", { method: "POST", body: single })).resolves.toHaveProperty("status", 200);
+      const form = new FormData(); form.append("source", compressedFile()); form.append("reference", compressedFile());
+      await expect(deviceAudioRequest("/api/analyze/reference", { method: "POST", body: form })).rejects.toThrow("memory budget");
+      expect(TestWorker.all).toHaveLength(1);
+      expect(() => { owner.update(448 * 1024 * 1024); }).not.toThrow();
+    } finally { owner.dispose(); }
+  });
+
+  it("keeps an ordinary three-minute MP3 within a 512 MiB device budget", async () => {
+    vi.stubGlobal("navigator", { deviceMemory: 4 });
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    const frames = mp3Frames(), file = new File(Array.from({ length: 600 }, () => frames), "three-minutes.mp3");
+    replyToAdmittedJobs();
+    await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: render(file) })).resolves.toHaveProperty("status", 200);
+    expect(TestWorker.all).toHaveLength(1);
+  });
+
+  it("charges compressed sample-rate conversion using STREAMINFO rate", async () => {
+    vi.stubGlobal("navigator", { deviceMemory: 4 });
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    replyToAdmittedJobs();
+    await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: render(compressedFile(), "48000") })).resolves.toHaveProperty("status", 200);
+    await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: render(compressedFile(), "96000") })).rejects.toThrow("memory budget");
+    expect(TestWorker.all).toHaveLength(1);
+  });
+
+  it("cancels during compressed preflight without cloning input or retaining its reservation", async () => {
+    vi.stubGlobal("navigator", { deviceMemory: 2 });
+    const { deviceAudioRequest, reserveBrowserAudioMemory } = await import("../browser-jobs");
+    const controller = new AbortController(), file = compressedFile(), read = vi.spyOn(file, "arrayBuffer");
+    const form = new FormData(); form.append("file", file);
+    const slice = file.slice.bind(file);
+    vi.spyOn(file, "slice").mockImplementation((...args) => { controller.abort(); return slice(...args); });
+    await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: form, signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+    await waitFor(() => { const owner = reserveBrowserAudioMemory(192 * 1024 * 1024); owner.dispose(); });
+    expect(read).not.toHaveBeenCalled(); expect(TestWorker.all).toHaveLength(0);
+  });
+
+  it("checks cancellation while walking MP3 headers across successive chunks", async () => {
+    const { deviceAudioRequest } = await import("../browser-jobs");
+    const controller = new AbortController(), frames = mp3Frames();
+    const file = new File(Array.from({ length: 600 }, () => frames), "long.mp3"), slice = file.slice.bind(file);
+    const read = vi.spyOn(file, "arrayBuffer"), chunks = vi.spyOn(file, "slice").mockImplementation((...args) => {
+      if ((args[0] ?? 0) > 0) controller.abort();
+      return slice(...args);
+    });
+    const form = new FormData(); form.append("file", file);
+    await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: form, signal: controller.signal })).rejects.toMatchObject({ name: "AbortError" });
+    expect(chunks.mock.calls.length).toBeGreaterThan(1);
+    expect(chunks.mock.calls.every(([start, end]) => (end ?? 0) - (start ?? 0) <= 65_536)).toBe(true);
+    expect(read).not.toHaveBeenCalled(); expect(TestWorker.all).toHaveLength(0);
+  });
+
   it("transfers raw buffers once, keeps metadata separate, and terminates after completion without fetch", async () => {
     const { deviceAudioRequest } = await import("../browser-jobs");
     const pending = deviceAudioRequest("/api/analyze/features", { method: "POST", body: body() });

@@ -1,6 +1,6 @@
 import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import { runAudioJob } from "./audio-jobs";
-import { engineParams } from "./browser-engine";
+import { exportParams } from "./engine-params";
 import { sameSource } from "./library";
 import { verifyCanonicalSource } from "./project-import";
 import type { AdvancedParams, SourceIdentity } from "./types";
@@ -59,7 +59,7 @@ function equal(left: unknown, right: unknown): boolean {
 
 /** Only the audio engine's bounded EQ gains and opt-in width may differ from the exact submitted baseline. */
 function proposedAdvanced(value: unknown, baseline: AdvancedParams, options: ReferenceOptions): AdvancedParams {
-  const candidate = object(value), expected = engineParams(baseline);
+  const candidate = object(value), expected = exportParams(baseline);
   if (!Array.isArray(candidate.bands) || candidate.bands.length !== 5) throw failure();
   const bands = candidate.bands.map((item: unknown, i) => {
     const band = object(item), original = expected.bands.at(i);
@@ -79,7 +79,7 @@ function proposedAdvanced(value: unknown, baseline: AdvancedParams, options: Ref
 function readProposal(value: unknown, baseline: AdvancedParams, options: ReferenceOptions): ReferenceProposal {
   const data = object(value);
   const returnedOptions = object(data.options);
-  if (data.version !== "1.0" || data.sourceSpectrum !== "baseline_rendered" || !equal(data.baseline, engineParams(baseline)) || !equal({ ...returnedOptions, includeWidth: returnedOptions.includeWidth === undefined ? false : bool(returnedOptions.includeWidth) }, options)) throw failure();
+  if (data.version !== "1.0" || data.sourceSpectrum !== "baseline_rendered" || !equal(data.baseline, exportParams(baseline)) || !equal({ ...returnedOptions, includeWidth: returnedOptions.includeWidth === undefined ? false : bool(returnedOptions.includeWidth) }, options)) throw failure();
   if (!Array.isArray(data.bands) || data.bands.length !== 5 || !Array.isArray(data.warnings) || data.warnings.length > 20) throw failure();
   const identity = source(data.source), reference = source(data.reference);
   const edges = [20, 120, 500, 2000, 6000, 20000].map((edge) => Math.min(edge, Math.min(identity.sampleRate, reference.sampleRate) / 2));
@@ -108,7 +108,7 @@ export async function matchReference(sourceBlob: Blob, referenceBlob: Blob, base
   await verifyCanonicalSource(referenceBlob, expected.reference, signal);
   const form = new FormData();
   form.append("source", sourceBlob, "source.wav"); form.append("reference", referenceBlob, "reference.wav");
-  form.append("params", JSON.stringify(engineParams(baseline))); form.append("options", JSON.stringify(options));
+  form.append("params", JSON.stringify(exportParams(baseline))); form.append("options", JSON.stringify(options));
   const result = await runAudioJob("/api/analyze/reference", form, signal, onProgress, (job) => { if (job.kind !== "analyze_reference") throw failure(); return readProposal(job.referenceProposal, baseline, options); });
   signal.throwIfAborted();
   if (!sameSource(result.source, expected.source) || !sameSource(result.reference, expected.reference)) throw failure();

@@ -15,6 +15,7 @@ interface JobRequest {
   params?: string;
   script?: string;
   profile?: string;
+  renderQuality?: "classic" | "oversampled";
   bitDepth?: number;
   sampleRate?: number;
   dither?: string;
@@ -211,16 +212,21 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
   switch (path) {
     case "/api/master/render": request = { operation: "render" }; allowed = ["file", "params", "script", "profile", "bitDepth", "sampleRate", "dither", "format", "measure"]; break;
     case "/api/analyze/features": request = { operation: "features" }; allowed = ["file"]; break;
-    case "/api/analyze/deep": request = { operation: "deep" }; allowed = ["file", "profile", "scriptVersion"]; break;
+    case "/api/analyze/deep": request = { operation: "deep" }; allowed = ["file", "profile", "scriptVersion", "renderQuality"]; break;
     case "/api/analyze/reference": request = { operation: "reference" }; allowed = ["source", "reference", "params", "options"]; break;
     default: throw new Error("This audio operation is unavailable in the browser. " + LOCAL_FALLBACK);
   }
   for (const key of fields.keys()) if (!allowed.includes(key)) throw new Error("Unsupported local audio field.");
   const text = (key: string) => { const value = fields.get(key); if (value !== undefined && typeof value !== "string") throw new Error("Invalid local audio field."); return value; };
-  const params = text("params"), script = text("script"), profile = text("profile"), format = text("format"), options = text("options"), scriptVersion = text("scriptVersion"), bitDepth = text("bitDepth"), sampleRate = text("sampleRate"), dither = text("dither");
+  const params = text("params"), script = text("script"), profile = text("profile"), format = text("format"), options = text("options"), scriptVersion = text("scriptVersion"), bitDepth = text("bitDepth"), sampleRate = text("sampleRate"), dither = text("dither"), renderQuality = text("renderQuality");
   if (params !== undefined) request.params = params;
   if (script !== undefined) request.script = script;
   if (profile !== undefined) request.profile = profile;
+  if (renderQuality !== undefined) {
+    if (renderQuality !== "classic" && renderQuality !== "oversampled") throw new Error("Invalid local audio render quality.");
+    if (scriptVersion !== "2.0") throw new Error("Render quality requires a version 2 Deep proposal.");
+    request.renderQuality = renderQuality;
+  }
   if (format !== undefined) request.format = format;
   if (options !== undefined) request.options = options;
   if (scriptVersion !== undefined) request.scriptVersion = scriptVersion;

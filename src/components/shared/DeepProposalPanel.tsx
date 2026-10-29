@@ -28,9 +28,10 @@ function levelMatchText(match: LevelMatch): string {
   const gain = "Level match " + signed(match.gainDb) + " dB (compressor makeup)";
   return match.limiterCapped ? gain + ". Holding the source loudness needs " + signed(match.neededDb) + " dB, which would take more than 2 dB of export limiting." : gain + " holds the source loudness.";
 }
-function PredictedLevels({ deep, soloed }: { deep: DeepMasteringState; soloed: boolean }) {
+function PredictedLevels({ deep, soloed, quality }: { deep: DeepMasteringState; soloed: boolean; quality: AdvancedParams["renderQuality"] }) {
   const { proposal, prediction } = deep; const source = proposal.beforeMetrics;
   if (!prediction) return <p className="disclosure">No export prediction is stored for this draft. Analyze again to measure it.</p>;
+  if ((proposal.chainParams.algorithmVersion === 3) !== (quality === "oversampled")) return <p className="disclosure">Render quality changed since this prediction. Analyze again to measure the selected quality, or apply and export to measure the result.</p>;
   if (prediction.revision !== proposal.revision) return <p className="disclosure">Predicted levels were measured for draft revision {prediction.revision}. This draft has changed since then; analyze again to re-measure, or apply and export to measure the result.</p>;
   if (soloed) return <p className="disclosure">Predicted levels describe the whole draft. While a move is soloed, Apply mutes the other moves, so these levels no longer apply; clear solo to compare them.</p>;
   const after: MeasuredAudioMetrics = prediction.afterMetrics;
@@ -90,7 +91,7 @@ export const DeepProposalPanel = memo(function DeepProposalPanel({ track, source
     setBusy(true); setError(""); setProgress(0); setMessage("Loading original audio…");
     try {
       const blob = await getAudio(expectedKey); controller.signal.throwIfAborted(); if (!blob) throw new Error("The source is missing. Restore it before Deep analysis.");
-      const measured = await analyzeDeep(blob, expectedProfile, expectedTrack.sourceIdentity, controller.signal, (value, stage) => { if (operation.current === controller && !controller.signal.aborted) { setProgress(value); setMessage(stage); } });
+      const measured = await analyzeDeep(blob, expectedProfile, expectedTrack.sourceIdentity, controller.signal, (value, stage) => { if (operation.current === controller && !controller.signal.aborted) { setProgress(value); setMessage(stage); } }, expectedTrack.advanced.renderQuality);
       controller.signal.throwIfAborted(); if (operation.current !== controller) return;
       const proposal = { ...measured.proposal, revision: Math.max(measured.proposal.revision, (expectedProposal ?? 0) + 1) };
       setMessage("Validating the proposed schedule…"); const compiled = await compileScript(proposal, proposal.source.sampleRate, controller.signal);
@@ -144,7 +145,7 @@ export const DeepProposalPanel = memo(function DeepProposalPanel({ track, source
       <p className="disclosure">{deep.proposal.summary}</p>
       <p className="disclosure">Draft revision {deep.proposal.revision} · {deep.proposal.moves.length} moves. {deep.applied ? "Applied revision " + String(deep.applied.revision) + " remains active until another complete revision is applied." : "Static processing remains active."}</p>
       <dl className="grid grid-cols-2 gap-2 text-xs"><div><dt>Proposed input</dt><dd>{deep.proposal.chainParams.inputGainDb.toFixed(2)} dB</dd></div><div><dt>Proposed ceiling</dt><dd>{db(deep.proposal.chainParams.limiter.ceilingDbtp, 2)} dBTP</dd></div></dl>
-      <PredictedLevels deep={deep} soloed={soloId !== ""} />
+      <PredictedLevels deep={deep} soloed={soloId !== ""} quality={track.advanced.renderQuality} />
       <ProposalChanges current={track.advanced} proposal={deep.proposal} />
       <div className="flex flex-wrap gap-2"><Button disabled={busy || !sourceReady || !onApply} onClick={() => { void apply(); }}>{soloId ? "Apply solo proposal" : "Apply Deep proposal"}</Button><Button variant="secondary" onClick={() => { try { downloadScript(track, deep.proposal, "draft"); } catch (cause) { setError(cause instanceof Error ? cause.message : "The script could not be downloaded."); } }}>Download draft Script JSON</Button>{deep.applied && <Button variant="secondary" onClick={() => { if (deep.applied) { try { downloadScript(track, deep.applied, "applied"); } catch (cause) { setError(cause instanceof Error ? cause.message : "The script could not be downloaded."); } } }}>Download applied Script JSON</Button>}</div>
       {!onApply && <p className="disclosure">Automation application is awaiting live-engine integration and verification. Drafts can be reviewed, edited and downloaded.</p>}

@@ -91,9 +91,15 @@ async function timeWorklet(page: Page): Promise<void> {
       if (!href.pathname.endsWith("/worklets/aurialis-live-worklet.js")) return nativeAddModule.call(this, url, options);
       const source = await (await fetch(href)).text(), host = "from \"./aurialis-wasi-host.js\"";
       if (!source.includes(render) || !source.includes("const QUANTUM = 128;") || !source.includes(host)) throw new Error("The worklet changed; update the timing tap.");
-      const timed = source.replace(host, `from "${new URL("./aurialis-wasi-host.js", href).href}"`)
-        .replace("const QUANTUM = 128;", `const QUANTUM = 128;${tap}`)
-        .replace(render, `const qaStart = qaNow();\n      ${render}\n      qaTiming(this, qaNow() - qaStart);`);
+      const finalStage = "this.recordDiagnostics(this.pendingKernelMs, this.pendingKernelStart);";
+      const prepared = source.replace(host, `from "${new URL("./aurialis-wasi-host.js", href).href}"`)
+        .replace("const QUANTUM = 128;", `const QUANTUM = 128;${tap}`);
+      // New engines include the final Go monitor stage and alignment/mixing work
+      // in one quantum budget. The older source only has the DSP call anchor.
+      const timed = source.includes(finalStage)
+        ? prepared.replace(render, `this.qaKernelStart = qaNow();\n      ${render}`)
+          .replace(finalStage, `${finalStage} qaTiming(this, qaNow() - this.qaKernelStart);`)
+        : prepared.replace(render, `const qaStart = qaNow();\n      ${render}\n      qaTiming(this, qaNow() - qaStart);`);
       const blob = URL.createObjectURL(new Blob([timed], { type: "text/javascript" }));
       try { await nativeAddModule.call(this, blob, options); } finally { URL.revokeObjectURL(blob); }
     };

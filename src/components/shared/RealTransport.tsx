@@ -1,8 +1,9 @@
 "use client";
 import { useEffect, useId, useRef } from "react";
+import type { MonitorMode } from "@/lib/monitor-mode";
 import type { LivePlaybackState } from "@/lib/live-playback";
 import { Icon } from "./Icon";
-import { formatTime } from "./Primitives";
+import { ChoiceGroup, formatTime } from "./Primitives";
 
 type RealTransportProps = {
   state: LivePlaybackState | null;
@@ -19,6 +20,7 @@ type RealTransportProps = {
   handover?: boolean;
   inline?: boolean;
   /** Opt-in static loudness match (V1-11): the toggle and its applied offset text. */
+  monitor?: { mode: MonitorMode; onChange: (mode: MonitorMode) => void };
   match?: { enabled: boolean; text: string; onToggle: (enabled: boolean) => void };
 };
 
@@ -118,7 +120,7 @@ function useHoldAction(direction: -1 | 1, onScrub: RealTransportProps["onScrub"]
 }
 
 /** One live audio clock: A is processed, B original; restart always means this track at zero. */
-export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal, onVolume, onRestart, onForward, onRepeat, onScrub, nextTrackTitle, handover = false, inline = false, match }: RealTransportProps) {
+export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal, onVolume, onRestart, onForward, onRepeat, onScrub, nextTrackTitle, handover = false, inline = false, match, monitor }: RealTransportProps) {
   const matchId = useId(), noteId = useId();
   const root = useRef<HTMLDivElement>(null);
   // Publish the fixed transport's height so pages can clear it (--transport-height).
@@ -192,6 +194,7 @@ export function RealTransport({ state, sourceReady, onPlay, onPause, onOriginal,
           </label>
         </div>
       </div>
+      {monitor && <div className="mt-1 min-w-0"><ChoiceGroup label="Listening mode (A/B)" value={monitor.mode} options={[{ value: "stereo", label: "Stereo" }, { value: "mono", label: "Mono" }, { value: "side", label: "Side" }]} onChange={monitor.onChange} /><p className="disclosure">Listening only. Side plays the stereo difference; centered sound cancels. Audition export plays the delivery file.</p></div>}
       {match && <div className="mt-1 flex min-w-0 items-center gap-2">
         <button type="button" disabled={unavailable} aria-pressed={match.enabled} aria-describedby={`${matchId} ${noteId}`}
           title="Equal-loudness A/B · Lowers the louder of A and B by one fixed offset measured from what you hear. Listening only; export is unchanged."

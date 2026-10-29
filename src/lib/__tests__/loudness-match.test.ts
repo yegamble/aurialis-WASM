@@ -25,6 +25,13 @@ describe("static attenuate-only A/B loudness match (V1-11)", () => {
     expect(Math.abs((processedLufs + gains.processedDb) - (originalLufs + gains.originalDb))).toBeLessThanOrEqual(0.5);
   });
 
+  it("never holds a stereo match offset when the listening mode changes", () => {
+    const original = testStore.tracks[0]; if (!original) throw new Error("Missing project");
+    const stereo = loudnessMatchRequest(original), mono = loudnessMatchRequest(original, "mono"), side = loudnessMatchRequest(original, "side");
+    expect(mono.scope).not.toBe(stereo.scope); expect(side.scope).not.toBe(mono.scope);
+    expect(mono.render).toEqual(stereo.render); expect(side.render).toEqual(stereo.render);
+    expect(resolveLoudnessMatch(true, mono, { key: stereo.key, scope: stereo.scope, processedLufs: -12, originalLufs: -18 })).toEqual({ state: "measuring", held: null });
+  });
   it("binds monitor measurement to the selected render quality", () => {
     const original = testStore.tracks[0]; if (!original) throw new Error("Missing project");
     const classic = loudnessMatchRequest(original), oversampled = loudnessMatchRequest({ ...original, advanced: { ...original.advanced, renderQuality: "oversampled" } });

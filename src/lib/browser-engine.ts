@@ -1,3 +1,4 @@
+import type { MonitorMode } from "./monitor-mode";
 import { exportParams } from "./engine-params";
 export { engineParams } from "./engine-params";
 import { deviceAudioRequest, usesBrowserAudio, type JobPriority } from "./browser-jobs";
@@ -254,16 +255,18 @@ export async function measureAudio(
 // normalization, Set target loudness and Equal-loudness A/B re-render one
 // source many times; after the first, measure=render skips re-measuring it
 // (this avoids a second source measurement on each render).
-const sourceMetrics = new WeakMap<Blob, MeasuredAudioMetrics>();
+const sourceMetrics = new WeakMap<Blob, Map<MonitorMode, MeasuredAudioMetrics>>();
 
 /** Measure the source and one export render (static parameters or a script) without downloading audio. */
-export async function measureRender(file: Blob, render: { params: object } | { script: ScriptV2 }, signal?: AbortSignal, priority: JobPriority = "foreground"): Promise<AudioMeasurement> {
+export async function measureRender(file: Blob, render: { params: object } | { script: ScriptV2 }, signal?: AbortSignal, priority: JobPriority = "foreground", monitorMode?: MonitorMode): Promise<AudioMeasurement> {
   const form = new FormData();
   form.append("file", file, "source.wav");
   if ("script" in render) form.append("script", JSON.stringify(render.script));
   else form.append("params", JSON.stringify(render.params));
   form.append("format", "json");
-  const cached = sourceMetrics.get(file);
+  if (monitorMode !== undefined) form.append("monitorMode", monitorMode);
+  const mode = monitorMode ?? "stereo";
+  const cached = sourceMetrics.get(file)?.get(mode);
   if (cached) form.append("measure", "render");
   const response = await audioRequest(form, signal, true, priority);
   if (!response.ok) throw await audioError(response, "Audio measurement failed.");
@@ -272,7 +275,8 @@ export async function measureRender(file: Blob, render: { params: object } | { s
   if (cached && typeof body === "object" && body !== null && "beforeMetrics" in body && body.beforeMetrics === null)
     body.beforeMetrics = cached;
   const measured = audioMeasurement(body);
-  sourceMetrics.set(file, measured.beforeMetrics);
+  const readings = sourceMetrics.get(file) ?? new Map<MonitorMode, MeasuredAudioMetrics>();
+  readings.set(mode, measured.beforeMetrics); sourceMetrics.set(file, readings);
   return measured;
 }
 

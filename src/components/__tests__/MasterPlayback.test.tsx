@@ -73,6 +73,7 @@ beforeEach(() => {
       pause: vi.fn(() => { update({ playing: false }); }),
       seek: vi.fn((position: number) => { update({ position }); }),
       setParams: vi.fn(), applyScript: vi.fn(), detachScript: vi.fn(), setBypass: vi.fn((original: boolean) => { update({ original }); }),
+      setMonitorMode: vi.fn((monitorMode: "stereo" | "mono" | "side") => { update({ monitorMode }); }),
       setVolume: vi.fn((volume: number) => { update({ volume }); }),
       setLoudnessMatch: vi.fn((match: { processedDb: number; originalDb: number } | null) => { update({ loudnessMatch: match ?? { processedDb: 0, originalDb: 0 } }); }),
       setRepeat: vi.fn((repeat: boolean) => { update({ repeat }); }),
@@ -89,6 +90,16 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstub
 const audioRequests = () => vi.mocked(fetch).mock.calls.filter(([input]) => input !== "/api/stems/model");
 
 describe("master live playback lifecycle", () => {
+  it("changes listening mode without editing the project or recreating its processing graph", async () => {
+    mount(); await ready(); const before = savedTrack(), controller = latest().controller;
+    fireEvent.click(screen.getByRole("button", { name: "Mono" }));
+    await waitFor(() => { expect(controller.setMonitorMode).toHaveBeenLastCalledWith("mono"); });
+    expect(savedTrack()).toEqual(before); expect(instances).toHaveLength(1);
+    expect(localStorage.getItem("aurialis-monitor-mode-v1")).toBe("mono");
+    fireEvent.click(screen.getByRole("button", { name: "Side" }));
+    await waitFor(() => { expect(controller.setMonitorMode).toHaveBeenLastCalledWith("side"); });
+    expect(savedTrack()).toEqual(before);
+  });
   it("saves an explicit render quality, pauses the previous graph and exports that quality", async () => {
     const { delivery } = heldAudition(); mount(); await ready();
     fireEvent.click(screen.getByRole("button", { name: "Play" })); const previous = latest();

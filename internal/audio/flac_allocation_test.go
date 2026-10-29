@@ -58,7 +58,7 @@ func TestFLACKnownAndUnknownLengthMatch(t *testing.T) {
 	}
 }
 
-// A ten-second stereo stream with constant subframes keeps benchmark setup
+// A ten-second stereo stream with constant subframe encoding keeps benchmark setup
 // independent of external encoders and large checked-in fixtures.
 func BenchmarkFLACValidatedBlockGrowth(b *testing.B) {
 	const blocks = 108

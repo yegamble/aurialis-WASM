@@ -213,6 +213,8 @@ func TestDocsLimitsEveryMentionMatchesConstants(t *testing.T) {
 		{"separate four-minute download limit", ci},
 		{"five-minute actual-song", "length of the recorded test song"},
 		{"Isolated 3/5-minute native render", "lengths of the measured test songs"},
+		{"two-window synthetic 48 kHz, 20-second source", "duration of the recorded hosted qualification fixture, not a product limit"},
+		{"rough 3–4 minutes per window projects to 75–100 minutes", "rounded hosted Intel measurements and extrapolation for a 3:45 source, not an enforced deadline"},
 	}
 
 	used := make([]bool, len(rules))

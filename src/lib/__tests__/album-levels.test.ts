@@ -118,6 +118,20 @@ describe("album level plan", () => {
     // Each blocked normalize choice is its own key, never another level's.
     expect(albumMastersKey([first], { mode: "normalize", targetLufs: -9, offsets: [{ trackId: first.id, offsetDb: 6 }] }, DEFAULT_DELIVERY)).not.toBe(blocked);
   });
+
+  it("invalidates static and applied masters when the effective render quality changes", () => {
+    for (const track of [first, deep]) {
+      for (const level of [DEFAULT_ALBUM_LEVEL, normalize()]) {
+        const classic = { ...track, advanced: { ...track.advanced, renderQuality: "classic" as const } };
+        const oversampled = { ...track, advanced: { ...track.advanced, renderQuality: "oversampled" as const } };
+        const oldKey = albumMastersKey([track], level, DEFAULT_DELIVERY);
+        expect(albumMastersKey([classic], level, DEFAULT_DELIVERY)).toBe(oldKey);
+        expect(albumMastersKey([oversampled], level, DEFAULT_DELIVERY)).not.toBe(oldKey);
+        const payload = exportRender(oversampled);
+        expect("script" in payload ? payload.script.chainParams.algorithmVersion : payload.params.algorithmVersion).toBe(3);
+      }
+    }
+  });
 });
 
 describe("album track render", () => {

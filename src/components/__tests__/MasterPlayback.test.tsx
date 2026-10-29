@@ -77,6 +77,7 @@ beforeEach(() => {
       setLoudnessMatch: vi.fn((match: { processedDb: number; originalDb: number } | null) => { update({ loudnessMatch: match ?? { processedDb: 0, originalDb: 0 } }); }),
       setRepeat: vi.fn((repeat: boolean) => { update({ repeat }); }),
       dispose: vi.fn(), getState: () => instance.state,
+      getDiagnostics: () => ({ sourceRate: 48000, liveRate: 48000, contextTime: 0, contextState: "running", baseLatency: 0, outputLatency: 0, deviceStats: null, acceptedControls: null, kernel: null }),
     };
     instances.push(instance);
     return instance.controller;

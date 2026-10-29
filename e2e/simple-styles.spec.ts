@@ -101,3 +101,22 @@ test("Simple styles and combined modifiers retain keyboard, six-width accessibil
   }
   const slider = page.getByRole("slider", { name: "Intensity", exact: true }); await slider.focus(); await page.keyboard.press("ArrowRight"); expect((await saved(page)).intensity).toBe(51);
 });
+
+for (const [genre, related] of [["Metal", "Rock"], ["Jazz", "Acoustic"]] as const) {
+  test(`${genre} and ${related} retain distinct existing exported recipes`, async ({ page }, info) => {
+    test.setTimeout(90_000); await upload(page, material());
+    await page.getByRole("slider", { name: "Intensity", exact: true }).fill("100");
+    await page.getByRole("button", { name: related, exact: true }).click(); const parent = await exported(page);
+    await page.getByRole("button", { name: genre, exact: true }).click(); const chosen = await exported(page);
+    expect(chosen.rate).toBe(parent.rate); expect(chosen.left).toHaveLength(parent.left.length);
+    let maximumDelta = 0, residualPower = 0;
+    for (let index = parent.rate; index < parent.left.length; index++) {
+      for (const [a, b] of [[chosen.left.at(index) ?? 0, parent.left.at(index) ?? 0], [chosen.right.at(index) ?? 0, parent.right.at(index) ?? 0]]) {
+        const delta = (a ?? 0) - (b ?? 0); maximumDelta = Math.max(maximumDelta, Math.abs(delta)); residualPower += delta * delta;
+      }
+    }
+    const residualDbfs = 10 * Math.log10(residualPower / (2 * (parent.left.length - parent.rate)));
+    expect(maximumDelta).toBeGreaterThan(1e-5); expect(residualDbfs).toBeGreaterThan(-100);
+    await info.attach("existing-genre-recipe-pcm", { body: JSON.stringify({ genre, related, maximumDelta, residualDbfs, chosenRmsDbfs: level(chosen), relatedRmsDbfs: level(parent) }), contentType: "application/json" });
+  });
+}

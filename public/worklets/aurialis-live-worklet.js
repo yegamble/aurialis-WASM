@@ -49,6 +49,8 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     const config = options.processorOptions;
+    this.diagnostics = config.diagnostics === true;
+    this.diagnosticFrames = 0; this.diagnosticKernel = 0; this.diagnosticWall = null; this.diagnosticLast = 0;
     this.header = new Int32Array(config.header);
     if (config.stream !== undefined) {
       if (!(config.stream instanceof SharedArrayBuffer) || config.stream.byteLength !== 24) throw new Error("The source epoch buffer is invalid.");
@@ -203,6 +205,8 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       if (this.controlAbiVersion === 2 && (typeof exports.aurialis_control_buffer_v2 !== "function"
         || typeof exports.aurialis_set_controls_v2 !== "function" || exports.aurialis_algorithm_supported(2) !== 1))
         throw new Error("The live audio engine is missing its versioned settings interface.");
+      if (exports.aurialis_algorithm_supported(config.requestedAlgorithm ?? 2) !== 1)
+        throw new Error("The selected render quality is unavailable in this audio engine. Reload to update it.");
       this.numericSchedule = typeof exports.aurialis_schedule_abi === "function" && exports.aurialis_schedule_abi() === 1
         && ["aurialis_schedule_source_buffer", "aurialis_schedule_bind_source", "aurialis_schedule_begin", "aurialis_schedule_move_buffer", "aurialis_schedule_stage_move", "aurialis_schedule_commit", "aurialis_schedule_revision", "aurialis_schedule_seek", "aurialis_schedule_detach", "aurialis_schedule_set_looping"].every(name => typeof exports[name] === "function");
       this.kernel = exports;
@@ -215,6 +219,16 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
   }
   setSlack(slack) {
     this.slackMs = typeof slack === "number" && Number.isFinite(slack) && slack > 0 && this.clockStep < slack / 2 ? slack : null;
+  }
+  recordDiagnostics(kernelMs, started) {
+    if (!this.diagnostics) return;
+    if (this.diagnosticWall === null) this.diagnosticWall = started;
+    this.diagnosticFrames += QUANTUM; this.diagnosticKernel += kernelMs;
+    if (this.diagnosticFrames - this.diagnosticLast < sampleRate) return;
+    this.diagnosticLast = this.diagnosticFrames;
+    this.port.postMessage({ type: "diagnostics", frames: this.diagnosticFrames, kernelMs: this.diagnosticKernel,
+      wallMs: wallNow() - this.diagnosticWall, audioMs: this.diagnosticFrames * 1000 / sampleRate,
+      clockStepMs: Number.isFinite(this.clockStep) ? this.clockStep : null });
   }
   resetWatch() {
     this.watchWall = null; this.watchFrame = 0; this.watchKernel = 0; this.watchMisses = 0; this.watchWindows = 0; this.watchStrikes = 0; this.watchLastStart = null;
@@ -482,6 +496,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         throw new Error("The live audio engine rejected an audio block.");
       const kernelMs = wallNow() - kernelStart;
       this.watchKernel += kernelMs;
+      this.recordDiagnostics(kernelMs, kernelStart);
       this.refreshBuffers();
       if (this.generation !== Atomics.load(this.header, GENERATION)) {
         outL.fill(0); outR.fill(0); return true;

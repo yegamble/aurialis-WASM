@@ -1,3 +1,4 @@
+import { acceptedControlPacket, readKernelDiagnostics, type KernelDiagnostics } from "./playback-diagnostics";
 import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import type { StereoPCM } from "./browser-engine";
 import { exportParams } from "./engine-params";
@@ -9,6 +10,8 @@ import { sameSource } from "./library";
 import type { ScriptV2 } from "./deep-mastering";
 import { packLiveControls, createLiveControls } from "./live-controls";
 import type { AdvancedParams, SourceIdentity } from "./types";
+
+export type LivePlaybackDiagnostics = { sourceRate: number; liveRate: number | null; contextTime: number | null; contextState: string | null; baseLatency: number | null; outputLatency: number | null; deviceStats: ReturnType<typeof readPlaybackStats>; acceptedControls: ReturnType<typeof acceptedControlPacket>; kernel: KernelDiagnostics | null };
 
 export type LivePlaybackState = {
   position: number;
@@ -119,6 +122,7 @@ export type LivePlaybackController = {
   setRepeat: (enabled: boolean) => void;
   dispose: () => void;
   getState: () => LivePlaybackState;
+  getDiagnostics: () => LivePlaybackDiagnostics;
 };
 
 const QUANTUM = 128;
@@ -148,6 +152,7 @@ export function createLivePlayback(
   settings: AdvancedParams,
   callbacks: LivePlaybackCallbacks = {},
   binding?: { blob: Blob; identity: SourceIdentity; applied?: ScriptV2 },
+  options: { diagnostics?: boolean } = {},
 ): LivePlaybackController {
   if (!Number.isInteger(source.sampleRate) || source.sampleRate < 8000 || source.sampleRate > 192000
     || source.left.length === 0 || source.left.length !== source.right.length
@@ -162,6 +167,7 @@ export function createLivePlayback(
   let publicationToken = 0;
   let activePublication: AbortController | undefined;
   const publications = new Map<number, { resolve: (revision: number) => void; reject: (error: Error) => void; canCommit: () => boolean; commitSent: boolean }>();
+  let kernelDiagnostics: KernelDiagnostics | null = null;
   let currentParams = exportParams(settings);
   let serializedSettings = JSON.stringify(currentParams);
   let state: LivePlaybackState = {
@@ -391,6 +397,7 @@ export function createLivePlayback(
   function onWorkletMessage(event: MessageEvent<unknown>): void {
     if (disposed || !isRecord(event.data)) return;
     const message = event.data;
+    if (message.type === "diagnostics") { if (options.diagnostics) kernelDiagnostics = readKernelDiagnostics(message); return; }
     if (message.type === "stream-armed" && typeof message.generation === "number") {
       arms.get(message.generation)?.resolve();
     } else if (message.type === "automation-staged" && typeof message.token === "number") {
@@ -498,7 +505,7 @@ export function createLivePlayback(
       const node = new AudioWorkletNode(context, "aurialis-live", { numberOfInputs: 1, numberOfOutputs: 1,
         channelCount: 2, channelCountMode: "explicit", outputChannelCount: [2],
         processorOptions: { header: sharedHeader, stream: sharedStream, tags: sharedTags, samples: sharedSamples, delayBlocks,
-          module: compiledModule, controls: sharedControls, controlAbiVersion: 2, entropy: crypto.getRandomValues(new Uint8Array(256)),
+          module: compiledModule, controls: sharedControls, controlAbiVersion: 2, requestedAlgorithm: currentParams.algorithmVersion, diagnostics: options.diagnostics === true, entropy: crypto.getRandomValues(new Uint8Array(256)),
           clockOriginMs: Math.max(1, performance.now()), watchSlackMs: watchSlackMs(context) } });
       worklet = node;
       node.port.onmessage = (event: MessageEvent<unknown>) => {
@@ -715,6 +722,9 @@ export function createLivePlayback(
       emit();
     },
     getState: snapshot,
+    getDiagnostics: () => ({ sourceRate: source.sampleRate, liveRate: audio?.sampleRate ?? null, contextTime: audio?.currentTime ?? null, contextState: audio?.state ?? null,
+      baseLatency: audio && Number.isFinite(audio.baseLatency) ? audio.baseLatency : null, outputLatency: audio && Number.isFinite(audio.outputLatency) ? audio.outputLatency : null,
+      deviceStats: audio ? readPlaybackStats(audio) : null, acceptedControls: acceptedControlPacket(header, controls?.buffer), kernel: kernelDiagnostics }),
     dispose() {
       if (disposed) return;
       disposed = true; wantsPlayback = false;

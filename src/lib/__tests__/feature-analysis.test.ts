@@ -66,7 +66,7 @@ describe("measured source analysis jobs", () => {
     }
   });
   it.each([
-    ["busy", "busy"], ["queue_full", "queue is full"], ["stems_unavailable", "Smart Split is unavailable"], ["maintenance", "processor is unavailable"],
+    ["memory_capacity", "memory capacity"], ["busy", "busy"], ["queue_full", "queue is full"], ["stems_unavailable", "Smart Split is unavailable"], ["maintenance", "processor is unavailable"],
   ])("distinguishes 503 %s while retaining diagnostics", async (code, message) => {
     const fetch = vi.fn().mockResolvedValueOnce(json({ error: code, detail: "server diagnostic" }, 503));
     vi.stubGlobal("fetch", fetch);

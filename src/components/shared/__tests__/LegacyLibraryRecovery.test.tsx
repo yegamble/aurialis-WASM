@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdvancedParams, clampAdvancedToSampleRate } from "@/lib/audio-dsp";
 import { reserveBrowserAudioMemory } from "@/lib/browser-jobs";
 import { discardStagedAudio, newAudioAssetId, saveAudio } from "@/lib/db";
-import { readLegacyWav, scanLegacySources, type LegacyPage, type LegacySource } from "@/lib/legacy-library";
+import { readLegacySource, scanLegacySources, type LegacyPage, type LegacySource } from "@/lib/legacy-library";
 import { prepareProjectFile } from "@/lib/project-import";
 import type { Track } from "@/lib/types";
 import { LegacyLibraryRecovery } from "../LegacyLibraryRecovery";
@@ -12,7 +12,7 @@ import { LegacyLibraryRecovery } from "../LegacyLibraryRecovery";
 const { dispatch } = vi.hoisted(() => ({ dispatch: vi.fn<(action: { type: "ADD_TRACK"; track: Track }) => void>() }));
 vi.mock("@/lib/store", () => ({ useStore: () => ({ dispatch }) }));
 vi.mock("@/lib/db", () => ({ discardStagedAudio: vi.fn(), newAudioAssetId: vi.fn(), saveAudio: vi.fn() }));
-vi.mock("@/lib/legacy-library", () => ({ readLegacyWav: vi.fn(), scanLegacySources: vi.fn() }));
+vi.mock("@/lib/legacy-library", () => ({ readLegacySource: vi.fn(), scanLegacySources: vi.fn() }));
 vi.mock("@/lib/project-import", async (original) => ({
   ...await original<typeof import("@/lib/project-import")>(), prepareProjectFile: vi.fn(),
 }));
@@ -35,10 +35,10 @@ function deferred<T>() {
 async function findSources() {
   const view = render(<LegacyLibraryRecovery />);
   fireEvent.click(screen.getByRole("button", { name: "Find old projects" }));
-  await screen.findByRole("button", { name: `Recover WAV: ${source.name}` });
+  await screen.findByRole("button", { name: `Recover source: ${source.name}` });
   return view;
 }
-function recover() { fireEvent.click(screen.getByRole("button", { name: `Recover WAV: ${source.name}` })); }
+function recover() { fireEvent.click(screen.getByRole("button", { name: `Recover source: ${source.name}` })); }
 async function settled() { await waitFor(() => { expect(screen.getByRole("button", { name: "Find old projects" })).toBeEnabled(); }); }
 async function prepareStarted() {
   await waitFor(() => { expect(prepareProjectFile).toHaveBeenCalledOnce(); });
@@ -56,7 +56,7 @@ beforeEach(() => {
   } };
   verify = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
   vi.mocked(scanLegacySources).mockResolvedValue(page);
-  vi.mocked(readLegacyWav).mockResolvedValue({ file, verify });
+  vi.mocked(readLegacySource).mockResolvedValue({ file, verify });
   vi.mocked(prepareProjectFile).mockResolvedValue(imported);
   vi.mocked(newAudioAssetId).mockReturnValue("track-new-recovery");
   vi.mocked(saveAudio).mockResolvedValue({ durable: true });
@@ -68,19 +68,19 @@ describe("old library recovery controller", () => {
   it("reads nothing before an explicit scan and publishes a default project only after durable save and source rechecks", async () => {
     const order: string[] = [];
     const view = render(<LegacyLibraryRecovery />);
-    expect(scanLegacySources).not.toHaveBeenCalled(); expect(readLegacyWav).not.toHaveBeenCalled();
+    expect(scanLegacySources).not.toHaveBeenCalled(); expect(readLegacySource).not.toHaveBeenCalled();
     expect(prepareProjectFile).not.toHaveBeenCalled(); expect(saveAudio).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    vi.mocked(readLegacyWav).mockImplementation(() => { order.push("read selected original"); return Promise.resolve({ file, verify }); });
+    vi.mocked(readLegacySource).mockImplementation(() => { order.push("read selected original"); return Promise.resolve({ file, verify }); });
     vi.mocked(prepareProjectFile).mockImplementation(() => { order.push("CDR reconstruction"); return Promise.resolve(imported); });
     verify.mockImplementation(() => { order.push("check old source"); return Promise.resolve(); });
     vi.mocked(saveAudio).mockImplementation(() => { order.push("durable new source"); return Promise.resolve({ durable: true }); });
     dispatch.mockImplementation(() => { order.push("publish project"); });
     fireEvent.click(screen.getByRole("button", { name: "Find old projects" }));
-    await screen.findByRole("button", { name: `Recover WAV: ${source.name}` }); recover(); await settled();
+    await screen.findByRole("button", { name: `Recover source: ${source.name}` }); recover(); await settled();
     expect(order).toEqual(["read selected original", "CDR reconstruction", "check old source", "durable new source", "check old source", "publish project"]);
     expect(scanLegacySources).toHaveBeenCalledWith(expect.any(AbortSignal), null);
-    expect(readLegacyWav).toHaveBeenCalledWith(source, expect.any(AbortSignal));
+    expect(readLegacySource).toHaveBeenCalledWith(source, expect.any(AbortSignal));
     expect(prepareProjectFile).toHaveBeenCalledWith(file, expect.any(AbortSignal), expect.any(Function));
     expect(saveAudio).toHaveBeenCalledExactlyOnceWith("track-new-recovery", imported.canonical, false);
     expect(dispatch).toHaveBeenCalledOnce();
@@ -90,12 +90,12 @@ describe("old library recovery controller", () => {
     expect(track?.advanced).toEqual(clampAdvancedToSampleRate(createDefaultAdvancedParams(), identity.sampleRate));
     expect(track).not.toHaveProperty("deep"); expect(track).not.toHaveProperty("script"); expect(track).not.toHaveProperty("releaseReview");
     expect(discardStagedAudio).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: `Recover WAV: ${source.name}` })).toBeDisabled();
+    expect(screen.getByRole("button", { name: `Recover source: ${source.name}` })).toBeDisabled();
     view.unmount();
   });
 
   it("retains an unsupported original without invoking CDR, saving or publishing", async () => {
-    vi.mocked(readLegacyWav).mockRejectedValue(new Error("Codec recovery is unavailable; old audio and settings are retained."));
+    vi.mocked(readLegacySource).mockRejectedValue(new Error("Codec recovery is unavailable; old audio and settings are retained."));
     await findSources(); recover();
     expect(await screen.findByRole("alert")).toHaveTextContent("old audio and settings are retained"); await settled();
     expect(prepareProjectFile).not.toHaveBeenCalled(); expect(newAudioAssetId).not.toHaveBeenCalled();
@@ -128,8 +128,8 @@ describe("old library recovery controller", () => {
     const signal = vi.mocked(scanLegacySources).mock.calls[0]?.[0];
     fireEvent.click(screen.getByRole("button", { name: "Cancel recovery" })); expect(signal?.aborted).toBe(true);
     await act(async () => { held.resolve(page); await held.promise; }); await settled();
-    expect(screen.queryByRole("button", { name: `Recover WAV: ${source.name}` })).not.toBeInTheDocument();
-    expect(readLegacyWav).not.toHaveBeenCalled(); expect(saveAudio).not.toHaveBeenCalled(); expect(dispatch).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: `Recover source: ${source.name}` })).not.toBeInTheDocument();
+    expect(readLegacySource).not.toHaveBeenCalled(); expect(saveAudio).not.toHaveBeenCalled(); expect(dispatch).not.toHaveBeenCalled();
   });
 
   it("cancels reconstruction and rejects its late result without allocating a new source", async () => {
@@ -150,7 +150,7 @@ describe("old library recovery controller", () => {
     expect(() => reserveBrowserAudioMemory(maximumResident)).toThrow("memory budget");
     await act(async () => { held.resolve({ durable: true }); await held.promise; }); await settled();
     expect(discardStagedAudio).toHaveBeenCalledExactlyOnceWith("track-new-recovery", true); expect(dispatch).not.toHaveBeenCalled();
-    expect(vi.mocked(readLegacyWav).mock.calls.map(([selected]) => selected.key)).toEqual([source.key]);
+    expect(vi.mocked(readLegacySource).mock.calls.map(([selected]) => selected.key)).toEqual([source.key]);
     const available = reserveBrowserAudioMemory(maximumResident); available.dispose();
   });
 
@@ -159,7 +159,7 @@ describe("old library recovery controller", () => {
     try {
       await findSources(); recover();
       expect(await screen.findByRole("alert")).toHaveTextContent("memory budget"); await settled();
-      expect(readLegacyWav).not.toHaveBeenCalled(); expect(prepareProjectFile).not.toHaveBeenCalled(); expect(saveAudio).not.toHaveBeenCalled();
+      expect(readLegacySource).not.toHaveBeenCalled(); expect(prepareProjectFile).not.toHaveBeenCalled(); expect(saveAudio).not.toHaveBeenCalled();
     } finally { other.dispose(); }
   });
 

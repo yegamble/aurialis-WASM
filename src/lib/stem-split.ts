@@ -179,6 +179,7 @@ function rejected(response: Response, body: unknown): StemSplitError {
   const code = stringField(body, "error"), detail = stringField(body, "detail");
   if (code === "stems_unavailable") return new StemSplitError("unavailable", detail);
   if (code === "queue_full") return new StemSplitError("queue_full", detail);
+  if (code === "memory_capacity") return new StemSplitError("memory", detail);
   if (code === "busy") return new StemSplitError("busy", detail);
   if (response.status === 413) return new StemSplitError("too_long", detail);
   if (response.status === 400 || response.status === 415 || response.status === 422) return new StemSplitError("unreadable", detail);

@@ -72,3 +72,20 @@ test("wide transport centers Play and uses a legible ten-second icon", async ({ 
   expect(backBox?.width).toBe(forwardBox?.width);
   expect(backBox?.y).toBe(forwardBox?.y);
 });
+
+
+test("mobile meter regions remain above the fixed transport when focused", async ({ page }, info) => {
+  await uploadProject(page, "mobile-meter-clearance.wav", 2);
+  for (const width of [320, 375, 390]) {
+    await page.setViewportSize({ width, height: 640 });
+    for (const name of ["Live loudness of the processed output", "Measured audio levels"]) {
+      const meters = page.getByRole("region", { name, exact: true });
+      await meters.focus(); await meters.scrollIntoViewIfNeeded();
+      const meterBox = await meters.boundingBox(), transport = await page.locator(".transport").boundingBox();
+      if (!meterBox || !transport) throw new Error("Missing meter or transport geometry");
+      expect(meterBox.y + meterBox.height, `${String(width)}px ${name} clearance`).toBeLessThanOrEqual(transport.y);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+    await page.screenshot({ path: info.outputPath(`meters-${String(width)}.png`) });
+  }
+});

@@ -1242,11 +1242,12 @@ input[type="range"] {
   }
 }
 @media (max-width: 767px) {
+  html { scroll-padding-bottom: var(--transport-clearance); }
   /* Clears the fixed transport, whose measured height RealTransport publishes. */
   .master-page {
     padding-bottom: var(--transport-clearance);
   }
-  .master-page :is(button, input, select, a) {
+  .master-page :is(button, input, select, a, [tabindex]) {
     scroll-margin-bottom: var(--transport-clearance);
   }
 }
@@ -1451,6 +1452,7 @@ input[type="range"] {
   .album-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .album-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .album-layout > section { padding: 28px; }
+  .album-layout > section:first-child { grid-column: 1 / -1; }
   .album-hero { grid-template-columns: 180px minmax(0, 1fr) auto; padding-block: 65px; gap: 35px; }
   .album-hero .album-art-large { width: 180px; }
   .album-hero > .button { grid-column: auto; }

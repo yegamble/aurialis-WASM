@@ -99,3 +99,24 @@ test.describe("Smart Split (native, mocked model)", () => {
     expect(separations).toBe(0)
   })
 })
+
+
+test("Smart Split failure keeps every retry and layout target at least 44 px", async ({ page }) => {
+  const id = await uploadProject(page, "split-retry-targets.wav", 1);
+  await page.route("**/api/stems/model", (route) => route.fulfill({ json: { available: true, ready: true, state: "loaded", accelerated: true, backend: "apple-accelerate", arch: "arm64", speed } }));
+  await page.route("**/api/separate", (route) => route.fulfill({ status: 503, json: { error: "queue_full", detail: "Bounded fixture queue" } }));
+  await page.goto(`/split/${id}`);
+  await page.getByRole("button", { name: "Split split retry targets into 4 stems", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("can't take another right now");
+  for (const width of [320, 375, 390]) {
+    await page.setViewportSize({ width, height: 800 });
+    const panel = page.getByRole("group", { name: "Stem count", exact: true });
+    for (const button of await panel.getByRole("button").all()) {
+      const box = await button.boundingBox(); if (!box) throw new Error("Missing layout target");
+      expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+    const retry = await page.getByRole("button", { name: "Split split retry targets into 4 stems", exact: true }).boundingBox();
+    if (!retry) throw new Error("Missing retry target"); expect(retry.width).toBeGreaterThanOrEqual(44); expect(retry.height).toBeGreaterThanOrEqual(44);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+  }
+});

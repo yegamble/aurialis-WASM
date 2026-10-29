@@ -1536,3 +1536,6 @@ input[type="range"] {
 
 /* File names and local-server diagnostics must wrap within narrow panels. */
 .disclosure, .drop-zone p { overflow-wrap: anywhere; }
+
+/* Shared choice groups retain the compact wrapping archive and stem controls. */
+.choice-grid:is(.stem-count, .filter-row) { display: flex; flex-wrap: wrap; }

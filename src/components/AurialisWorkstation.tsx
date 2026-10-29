@@ -861,14 +861,7 @@ function MasterView({ trackId }: { trackId: string }) {
         controller.signal,
       );
       if (controller.signal.aborted || renderAbort.current !== controller) return;
-      const url = URL.createObjectURL(blob),
-        anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `${track.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-${String(outputRate / 1000)}k-${String(bitDepth)}bit.wav`;
-      anchor.click();
-      setTimeout(() => {
-        URL.revokeObjectURL(url);
-      }, 1000);
+      downloadLocalBlob(blob, `${track.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-${String(outputRate / 1000)}k-${String(bitDepth)}bit.wav`);
       const current = currentExport.current;
       if (current.track && auditionKey(current.track, current.delivery) === exportedKey) dispatch({ type: "COMPLETE_EXPORT", expected: track });
       setMessage(

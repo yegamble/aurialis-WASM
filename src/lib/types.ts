@@ -108,7 +108,11 @@ export type RepairParams = {
   phaseAlign: boolean;
 };
 
+export type RenderQuality = "classic" | "oversampled";
+
 export type AdvancedParams = {
+  /** Missing in older projects: retain algorithm 2 without a sonic migration. */
+  renderQuality?: RenderQuality;
   input: number;
   threshold: number;
   ratio: number;

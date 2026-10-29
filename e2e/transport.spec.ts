@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { observeOutput, outputLevel } from "./live-output";
 import { uploadProject } from "./workflow-fixture";
 
@@ -75,18 +76,29 @@ test("wide transport centers Play and uses a legible ten-second icon", async ({ 
 
 
 test("mobile meter regions remain above the fixed transport when focused", async ({ page }, info) => {
-  await uploadProject(page, "mobile-meter-clearance.wav", 2);
-  for (const width of [320, 375, 390]) {
-    await page.setViewportSize({ width, height: 640 });
-    for (const name of ["Live loudness of the processed output", "Measured audio levels"]) {
-      const meters = page.getByRole("region", { name, exact: true });
-      await meters.focus(); await meters.scrollIntoViewIfNeeded();
-      const meterBox = await meters.boundingBox(), transport = await page.locator(".transport").boundingBox();
-      if (!meterBox || !transport) throw new Error("Missing meter or transport geometry");
-      expect(meterBox.y + meterBox.height, `${String(width)}px ${name} clearance`).toBeLessThanOrEqual(transport.y);
+  await uploadProject(page, "mobile-meter-clearance.wav", 8);
+  for (const playing of [false, true]) {
+    if (playing) {
+      await page.getByRole("button", { name: "Repeat track", exact: true }).click();
+      await page.getByRole("button", { name: "Play", exact: true }).click();
+      await expect(page.getByRole("region", { name: "Live loudness of the processed output", exact: true }).locator("strong").nth(3)).not.toHaveText("—");
     }
-    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
-    await page.screenshot({ path: info.outputPath(`meters-${String(width)}.png`) });
+    for (const width of [320, 375, 390]) {
+      await page.setViewportSize({ width, height: 640 });
+      for (const name of ["Live loudness of the processed output", "Measured audio levels"]) {
+        const meters = page.getByRole("region", { name, exact: true });
+        await meters.focus(); await meters.scrollIntoViewIfNeeded();
+        const meterBox = await meters.boundingBox(), transport = await page.locator(".transport").boundingBox(), header = await page.locator(".mobile-header").boundingBox();
+        if (!meterBox || !transport || !header) throw new Error("Missing meter, header or transport geometry");
+        expect(meterBox.height).toBeGreaterThanOrEqual(44);
+        expect(meterBox.y, `${String(width)}px ${name} header clearance`).toBeGreaterThanOrEqual(header.y + header.height);
+        expect(meterBox.y + meterBox.height, `${String(width)}px ${name} clearance`).toBeLessThanOrEqual(transport.y);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+      const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
+      expect(axe.violations, `${String(width)}px mobile meter accessibility`).toEqual([]);
+      await page.screenshot({ path: info.outputPath(`meters-${String(width)}-${playing ? "playing" : "stopped"}.png`) });
+    }
   }
 });
 

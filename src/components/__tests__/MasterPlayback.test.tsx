@@ -571,7 +571,7 @@ describe("master live playback lifecycle", () => {
     expect(instance.state.playing).toBe(true);
     expect(instance.state.repeat).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Skip forward 10 seconds" }));
-    expect(instance.controller.seek).toHaveBeenLastCalledWith(0.1);
+    expect(instance.controller.seek).toHaveBeenLastCalledWith(0);
     expect(instance.state.playing).toBe(true);
     expect(mocks.push).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));

@@ -7,8 +7,6 @@ on:
     branches:
       - codex/complete-backend
   workflow_dispatch:
-  schedule:
-    - cron: "17 9 1 * *"
 
 concurrency:
   group: steminfer-native-qualification-${{ github.ref }}

@@ -253,7 +253,7 @@ export async function measureAudio(
 // The source's own measurement, per immutable source Blob. Simple-mode
 // normalization, Set target loudness and Equal-loudness A/B re-render one
 // source many times; after the first, measure=render skips re-measuring it
-// (the export meter reconstructs every frame, so each pass is costly).
+// (this avoids a second source measurement on each render).
 const sourceMetrics = new WeakMap<Blob, MeasuredAudioMetrics>();
 
 /** Measure the source and one export render (static parameters or a script) without downloading audio. */

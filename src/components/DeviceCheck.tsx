@@ -35,6 +35,7 @@ export function DeviceCheck() {
   const memory = useRef<ReturnType<typeof reserveBrowserAudioMemory> | null>(null);
   const samples = useRef<Sample[]>([]), events = useRef<{ at: string; kind: string; detail: string }[]>([]);
   const { onScrub } = useTransportScrub(controller, { available: () => controller.current !== null, resume: () => { void controller.current?.play().catch((cause: unknown) => { setMessage(cause instanceof Error ? cause.message : "Playback could not resume."); }); } });
+  const auditionPlaying = useRef(false);
   const started = useRef<{ wall: number; audioMs: number | null } | null>(null);
   function record(kind: string, detail = "") { if (events.current.length < 128) events.current.push({ at: new Date().toISOString(), kind, detail }); }
   useEffect(() => {
@@ -136,8 +137,8 @@ export function DeviceCheck() {
       <h2>Change the output, then check audition volume</h2><p className="disclosure">During playback, switch the actual output in the operating system. Mark the change and name the new route. A browser devicechange event alone does not verify a hardware switch.</p>
       <Button variant="secondary" onClick={() => { record("owner_output_switch", hardware.changedRoute); }}>Mark physical output switch</Button>
       <TextField label="Changed physical output route" value={hardware.changedRoute} onChange={(changedRoute) => { setHardware({ ...hardware, changedRoute }); }} />
-      {prepared && ready && <AuditionExport track={prepared.track} sourceBlob={prepared.blob} delivery={DEFAULT_DELIVERY} volume={volume} livePlaying={state?.playing ?? false} onStart={() => { controller.current?.pause(); setRunning(false); record("audition_started"); }} />}
-      <SliderField label="Audition playback volume" value={volume} defaultValue={.5} min={0} max={1} step={.01} onChange={(value) => { setVolume(value); controller.current?.setVolume(value); }} />
+      {prepared && ready && <AuditionExport track={prepared.track} sourceBlob={prepared.blob} delivery={DEFAULT_DELIVERY} volume={volume} livePlaying={state?.playing ?? false} onStart={() => { controller.current?.pause(); setRunning(false); record("audition_started", `volume=${String(volume)}`); }} onPlayingChange={(playing) => { auditionPlaying.current = playing; record("audition_playing", String(playing)); }} />}
+      <SliderField label="Audition playback volume" value={volume} defaultValue={.5} min={0} max={1} step={.01} onChange={(value) => { setVolume(value); controller.current?.setVolume(value); record("audition_volume_changed", `volume=${String(value)}; playing=${String(auditionPlaying.current)}`); }} />
       <p className="disclosure">On the actual iPhone or iPad, play Audition export, then move Audition playback volume from 25% to 100%. Record what you hear; desktop WebKit is not iOS evidence. Complete this separately from the uninterrupted ten-minute run.</p>
       <ChoiceGroup label="Audition volume observation" value={volumeResult} options={[{ value: "not_checked", label: "Not checked" }, { value: "changed", label: "Volume changed" }, { value: "failed", label: "Did not change" }]} onChange={setVolumeResult} />
       <TextField label="Glitches, interruptions and other observations" value={hardware.observations} onChange={(observations) => { setHardware({ ...hardware, observations }); }} />

@@ -309,7 +309,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "26.12.0"
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.frontend-quality.outputs.artifact-name }}
           path: artifacts/ci-download
@@ -364,7 +364,7 @@ jobs:
           cache: pnpm
       - name: Install test dependencies
         run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.frontend-quality.outputs.artifact-name }}
           path: artifacts/ci-download
@@ -425,7 +425,7 @@ jobs:
         with:
           path: ~/.cache/ms-playwright
           key: ${{ steps.chromium-cache.outputs.cache-primary-key }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.frontend-quality.outputs.artifact-name }}
           path: artifacts/ci-download
@@ -489,7 +489,7 @@ jobs:
         timeout-minutes: 4
         if: steps.chromium-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install chromium
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.browser-build.outputs.artifact-name }}
           path: artifacts/ci-browser-download
@@ -577,7 +577,7 @@ jobs:
           cache: pnpm
       - name: Install Wrangler
         run: pnpm install --frozen-lockfile
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ${{ needs.browser-build.outputs.artifact-name }}
           path: artifacts/ci-browser-download

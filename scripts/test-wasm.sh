@@ -35,3 +35,4 @@ node wasm/dsp/verify-offline.mjs public/wasm/aurialis-dsp.wasm "$(go env GOROOT)
 
 AURIALIS_OVERSAMPLED_FIXTURE="$oversampled_fixture" go test ./wasm/dsp -run TestWriteOversampledParityFixture -count=1
 node wasm/dsp/verify-oversampling.mjs public/wasm/aurialis-realtime.wasm "$oversampled_fixture"
+node wasm/dsp/verify-monitor.mjs public/wasm/aurialis-realtime.wasm

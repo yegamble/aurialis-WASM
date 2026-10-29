@@ -1,7 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const externalBaseURL = process.env.PLAYWRIGHT_BROWSER_BASE_URL;
-if (process.env.AURIALIS_BROWSER_QA !== "1") throw new Error("Browser QA requires explicit AURIALIS_BROWSER_QA=1 opt-in.");
 
 export default defineConfig({
   testDir: "./e2e-browser",

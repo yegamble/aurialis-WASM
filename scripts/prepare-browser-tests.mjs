@@ -5,6 +5,7 @@ import path from "node:path";
 
 /** Compile an intentionally incompatible real Go module without external assets. */
 export default async function prepareBrowserTests() {
+  if (process.env.AURIALIS_BROWSER_QA !== "1") throw new Error("Browser QA requires explicit AURIALIS_BROWSER_QA=1 opt-in.");
   const directory = path.resolve("artifacts/browser-local");
   await mkdir(directory, { recursive: true });
   const source = "wasm/dsp/testdata/stale-browser/main.go";

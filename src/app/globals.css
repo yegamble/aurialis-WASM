@@ -1242,13 +1242,11 @@ input[type="range"] {
   }
 }
 @media (max-width: 767px) {
-  html { scroll-padding-bottom: var(--transport-clearance); }
+  /* Reserve each fixed edge once when bringing a focused control into view. */
+  html { scroll-padding-top: 70px; scroll-padding-bottom: var(--transport-clearance); }
   /* Clears the fixed transport, whose measured height RealTransport publishes. */
   .master-page {
     padding-bottom: var(--transport-clearance);
-  }
-  .master-page :is(button, input, select, a, [tabindex]) {
-    scroll-margin-bottom: var(--transport-clearance);
   }
 }
 @media (min-width: 768px) {

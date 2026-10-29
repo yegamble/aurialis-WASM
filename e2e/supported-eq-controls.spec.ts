@@ -211,6 +211,9 @@ test("populated filter controls retain six-width accessibility and 44 pixel touc
       const handles = page.locator(".eq-handle");
       await expect(handles).toHaveCount(1);
       await handles.scrollIntoViewIfNeeded();
+      const box = await handles.boundingBox();
+      expect(box?.width).toBeGreaterThanOrEqual(44);
+      expect(box?.height).toBeGreaterThanOrEqual(44);
       const active = await handles.evaluate((element) => {
         const rect = element.getBoundingClientRect();
         // Probe the center and four inset cardinal edges of the circular target.
@@ -218,6 +221,8 @@ test("populated filter controls retain six-width accessibility and 44 pixel touc
           document.elementFromPoint(rect.left + rect.width * x!, rect.top + rect.height * y!)?.closest(".eq-handle") === element);
       });
       expect(active, `${width}px ${type} selected handle is unobscured`).toBe(true);
+      await handles.focus();
+      await expect(handles).toBeFocused();
       const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
       expect(axe.violations, `${width}px ${type}: ${JSON.stringify(axe.violations)}`).toEqual([]);
     }

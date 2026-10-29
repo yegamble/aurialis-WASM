@@ -9,16 +9,20 @@ import "math"
 // attack ramp.
 const (
 	truePeakAttackSeconds = 0.0015
-	truePeakPhases        = 8  // oversampling ratio of the limiter detector
-	truePeakHalfTaps      = 24 // K: input samples on each side of a detected point
-	truePeakSupport       = 2*truePeakHalfTaps - 2
-	truePeakRing          = 384 // > A+2K-1 at 192 kHz (288+47)
-	truePeakKaiser        = 8.0
-	// truePeakHeadroom (-0.2 dB) absorbs the detector's truncation error.
-	// Against an independent 128-tap 32x reconstruction it keeps program-like
-	// material with strong near-Nyquist content under the ceiling. Full-band
-	// white noise, whose reconstruction depends on distant samples, can still
-	// read about 0.15 dB high on such references.
+	// guardFadeSeconds crossfades guarded and unguarded audio when limiting
+	// is switched live, so the switch leaves no splice.
+	guardFadeSeconds = 0.005
+	truePeakPhases   = 8  // oversampling ratio of the limiter detector
+	truePeakHalfTaps = 24 // K: input samples on each side of a detected point
+	truePeakSupport  = 2*truePeakHalfTaps - 2
+	truePeakRing     = 384 // > A+2K-1 at 192 kHz (288+47)
+	truePeakKaiser   = 8.0
+	// truePeakHeadroom (-0.2 dB) absorbs the detector's remaining error on
+	// guarded input (nyquistGuard): the 8-phase grid can miss a 0.45 fs peak
+	// by 0.14 dB, and gain changes inside the 48-sample support move the
+	// reconstruction a little. Against the long-sinc reference
+	// (internal/audio/truepeakref) limited exports sit at least 0.13 dB under
+	// the ceiling (QA worst 0.136 dB across 360 adversarial renders).
 	truePeakHeadroom = 0.977237221 // 10^(-0.2/20)
 )
 
@@ -36,8 +40,7 @@ func besselI0(x float64) float64 {
 }
 
 // truePeakFIR is a Kaiser-windowed sinc interpolator split into polyphase
-// branches. It is deliberately stricter than the BS.1770-style 4x meter
-// (peakFIR), whose 49 taps under-read content near Nyquist by more than 1 dB.
+// branches, accurate to 0.14% up to 0.45 fs: the band nyquistGuard passes.
 var truePeakFIR = func() [truePeakPhases][2 * truePeakHalfTaps]float64 {
 	var coefficients [truePeakPhases][2 * truePeakHalfTaps]float64
 	for phase := range coefficients {
@@ -91,16 +94,66 @@ func (d *truePeakDetector) sample(left, right float64) float64 {
 	return peak
 }
 
-// truePeakLimiter is the algorithm v2 lookahead limiter. Requirements come
-// from truePeakFIR against the ceiling lowered by truePeakHeadroom.
+// nyquistGuardSections is an 8th-order elliptic low-pass in second-order
+// sections {b0, b1, b2, a1, a2}: flat to 0.45 fs (0 to +0.01 dB, unity at
+// DC) and at least 69.99 dB down from 0.4643 fs. It is specified in normalized
+// frequency, so one set serves every rate: 19.8 kHz passband at 44.1 kHz,
+// 21.6 kHz at 48 kHz. truePeakFIR is accurate to 0.14% up to 0.45 fs but
+// under-reads by 10% at 0.47 fs and 60% at 0.49 fs, so content in the top of
+// the band reached the ideal reconstruction up to 1.5 dB over the ceiling
+// (V1-13). Removing it before detection makes the detector's accuracy hold
+// for whatever the chain feeds the limiter. Generated with SciPy:
+// signal.ellip(8, 0.01, 70, 0.9, output="sos"), first section scaled to
+// unity DC gain.
+var nyquistGuardSections = [4][5]float64{
+	{0.4968144773977866, 0.9922982910215842, 0.4968144773977866, 1.2471523769477268, 0.4110340455309755},
+	{1.0, 1.9803737009470235, 0.9999999999999999, 1.5875708316789159, 0.7062029271152792},
+	{1.0, 1.961551365591217, 0.9999999999999996, 1.7880336638312146, 0.8815601061724416},
+	{1.0, 1.9510488053838244, 1.0000000000000002, 1.8827813685844075, 0.9681668373460819},
+}
+
+// nyquistGuard runs nyquistGuardSections on both channels in transposed
+// direct form II.
+type nyquistGuard struct {
+	state [len(nyquistGuardSections)][2][2]float64 // section, channel, z1/z2
+}
+
+func (g *nyquistGuard) sample(left, right float64) (float64, float64) {
+	for i := range nyquistGuardSections {
+		c := &nyquistGuardSections[i]
+		s := &g.state[i]
+		y := c[0]*left + s[0][0]
+		s[0][0] = sanitizeSample(c[1]*left - c[3]*y + s[0][1])
+		s[0][1] = sanitizeSample(c[2]*left - c[4]*y)
+		left = y
+		y = c[0]*right + s[1][0]
+		s[1][0] = sanitizeSample(c[1]*right - c[3]*y + s[1][1])
+		s[1][1] = sanitizeSample(c[2]*right - c[4]*y)
+		right = y
+	}
+	return left, right
+}
+
+// truePeakLimiter is the algorithm v2 lookahead limiter. While limiting it
+// band-limits its input with nyquistGuard, then takes requirements from
+// truePeakFIR against the ceiling lowered by truePeakHeadroom.
 type truePeakLimiter struct {
 	attack, latency, hold int
 
+	guard    nyquistGuard
 	detector truePeakDetector
+	// guardMix crossfades unguarded (0) and guarded (1) input when limiting
+	// starts or stops, guardStep per frame over guardFadeSeconds. The first
+	// frame after a reset takes the target at once, so a render whose
+	// settings never change is never faded. guardStale marks a guard that
+	// ran on bypassed audio; processing restarts it from silence instead.
+	guardMix, guardStep     float64
+	guardPrimed, guardStale bool
 
 	// Delay line: processed L/R and raw L/R for A/B monitoring and bypass.
-	delay  [4][truePeakRing]float64
-	cursor int
+	delay   [4][truePeakRing]float64
+	limited [truePeakRing]bool // Limited and guard-fade frames retain protection on exit.
+	cursor  int
 	// Frames Drain still owes: the full latency after any input, else zero.
 	pending int
 
@@ -120,14 +173,15 @@ type truePeakLimiter struct {
 
 func newTruePeakLimiter(sampleRate float64) truePeakLimiter {
 	attack := max(1, int(math.Round(sampleRate*truePeakAttackSeconds)))
-	t := truePeakLimiter{attack: attack, latency: attack + truePeakSupport, hold: attack + truePeakSupport + 1}
+	t := truePeakLimiter{attack: attack, latency: attack + truePeakSupport, hold: attack + truePeakSupport + 1,
+		guardStep: 1 / math.Max(1, math.Round(sampleRate*guardFadeSeconds))}
 	t.reset()
 	return t
 }
 
 func (t *truePeakLimiter) reset() {
-	attack, latency, hold := t.attack, t.latency, t.hold
-	*t = truePeakLimiter{attack: attack, latency: latency, hold: hold, envelope: 1}
+	attack, latency, hold, step := t.attack, t.latency, t.hold, t.guardStep
+	*t = truePeakLimiter{attack: attack, latency: latency, hold: hold, guardStep: step, envelope: 1}
 	for i := 0; i < attack; i++ {
 		t.average[i] = 1
 	}
@@ -188,11 +242,42 @@ func (t *truePeakLimiter) push(l, r, rawL, rawR float64) (float64, float64, floa
 }
 
 // process advances the limiter by one frame and returns the delayed frame with
-// its gain. With limit false it runs at unity gain so state stays aligned.
+// its gain. Frames queued under limiting or its guard fade retain protection
+// when limiting turns off; fully unguarded frames leave at unity. The guard
+// still runs so its state is current when limiting resumes, and a change of
+// limit crossfades the two over guardFadeSeconds.
 func (t *truePeakLimiter) process(l, r, rawL, rawR, ceiling, release float64, limit bool) (float64, float64, float64, float64, float64) {
-	gain := t.gain(t.requirement(l, r, ceiling*truePeakHeadroom, limit), release)
+	guardL, guardR := t.guard.sample(l, r)
+	target := 0.0
+	if limit {
+		target = 1
+	}
+	if !t.guardPrimed {
+		t.guardMix, t.guardPrimed = target, true
+	}
+	if t.guardMix < target {
+		t.guardMix = math.Min(target, t.guardMix+t.guardStep)
+	} else if t.guardMix > target {
+		t.guardMix = math.Max(target, t.guardMix-t.guardStep)
+	}
+	switch t.guardMix {
+	case 1:
+		l, r = guardL, guardR
+	case 0:
+	default:
+		// A raised-cosine ramp leaves less splice energy than a linear one.
+		weight := 0.5 - 0.5*math.Cos(math.Pi*t.guardMix)
+		l += weight * (guardL - l)
+		r += weight * (guardR - r)
+	}
+	// The guard can ring from the preceding boosted input into a neutral
+	// frame during the fade. Protect that mixture too until it is fully raw.
+	protected := limit || t.guardMix > 0
+	gain := t.gain(t.requirement(l, r, ceiling*truePeakHeadroom, protected), release)
+	delayedLimit := t.limited[t.cursor]
+	t.limited[t.cursor] = protected
 	l, r, rawL, rawR = t.push(l, r, rawL, rawR)
-	if !limit {
+	if !limit && !delayedLimit {
 		return l, r, rawL, rawR, 1
 	}
 	return l * gain, r * gain, rawL, rawR, gain

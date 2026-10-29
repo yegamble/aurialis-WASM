@@ -23,10 +23,20 @@ func meterBlocks(m *LoudnessMeter, x []float32) {
 	}
 }
 
+// raceSeconds shortens EBU test signals under the race detector, which made
+// these the slowest tests in the package (QA-4); the non-race run keeps the
+// full EBU lengths.
+func raceSeconds(full, race float64) float64 {
+	if raceEnabled {
+		return race
+	}
+	return full
+}
+
 func TestLiveMeterSteadyToneMatchesEBU3341(t *testing.T) {
 	for _, rate := range []float64{44100, 48000, 96000, 192000} {
 		m := NewLoudnessMeter(rate)
-		meterBlocks(m, tone(rate, -23, 20))
+		meterBlocks(m, tone(rate, -23, raceSeconds(20, 5)))
 		s := m.Snapshot()
 		for name, got := range map[string]float64{"momentary": s.MomentaryLUFS, "short-term": s.ShortTermLUFS, "integrated": s.IntegratedLUFS} {
 			if math.Abs(got+23) > 0.1 {
@@ -41,7 +51,7 @@ func TestLiveMeterSteadyToneMatchesEBU3341(t *testing.T) {
 
 func TestLiveMeterGatingMatchesOfflineMeter(t *testing.T) {
 	// EBU Tech 3341 case 4: -36 / -23 / -36 dBFS for 10 / 60 / 10 s → -23.0 LUFS.
-	x := append(append(tone(48000, -36, 10), tone(48000, -23, 60)...), tone(48000, -36, 10)...)
+	x := append(append(tone(48000, -36, raceSeconds(10, 3)), tone(48000, -23, raceSeconds(60, 12))...), tone(48000, -36, raceSeconds(10, 3))...)
 	m := NewLoudnessMeter(48000)
 	meterBlocks(m, x)
 	live := m.Snapshot().IntegratedLUFS
@@ -52,19 +62,22 @@ func TestLiveMeterGatingMatchesOfflineMeter(t *testing.T) {
 }
 
 func TestLiveMeterLoudnessRangeEBU3342(t *testing.T) {
+	// Two-level cases read exactly at any segment length, so the race
+	// detector shortens them; the five-level case depends on EBU's 20 s.
 	cases := []struct {
-		levels []float64
-		want   float64
+		levels      []float64
+		want        float64
+		raceSeconds float64
 	}{
-		{[]float64{-20, -30}, 10},
-		{[]float64{-20, -15}, 5},
-		{[]float64{-40, -20}, 20},
-		{[]float64{-50, -35, -20, -35, -50}, 15},
+		{[]float64{-20, -30}, 10, 8},
+		{[]float64{-20, -15}, 5, 8},
+		{[]float64{-40, -20}, 20, 8},
+		{[]float64{-50, -35, -20, -35, -50}, 15, 20},
 	}
 	for _, c := range cases {
 		var x []float32
 		for _, level := range c.levels {
-			x = append(x, tone(48000, level, 20)...)
+			x = append(x, tone(48000, level, raceSeconds(20, c.raceSeconds))...)
 		}
 		m := NewLoudnessMeter(48000)
 		meterBlocks(m, x)

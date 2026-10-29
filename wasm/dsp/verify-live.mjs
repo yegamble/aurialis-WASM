@@ -26,7 +26,8 @@ assert.equal(wasm.aurialis_control_count(3), 0);
 assert.equal(wasm.aurialis_algorithm_supported(1), 1);
 assert.equal(wasm.aurialis_algorithm_supported(2), 1);
 assert.equal(wasm.aurialis_latency_frames(), 0);
-assert.equal(wasm.aurialis_live_drain(), 0);
+assert.equal(typeof wasm.aurialis_live_drain, "undefined", "aurialis_live_drain is retired");
+assert.equal(wasm.aurialis_live_end_input(129), 0);
 const pointers = [0, 1, 2, 3].map(channel => wasm.aurialis_live_buffer(channel) >>> 0);
 for (let channel = 0; channel < 4; channel++) {
   const pointer = pointers[channel];
@@ -145,9 +146,12 @@ for (const [index, fixture] of fixtures.entries()) {
       compare(output[3][frame], fixture.outputRight[start + frame], `JS ABI2 right fixture${index} frame${start + frame}`);
     }
   }
-  const outputBeforeDrain = refresh().map(channel => channel.slice());
-  assert.equal(wasm.aurialis_live_drain(), 0);
-  assert.deepEqual(refresh(), outputBeforeDrain);
+  // Algorithm 1 buffers nothing: a source end drains an empty tail.
+  assert.equal(wasm.aurialis_live_end_input(0), 1);
+  renderDirect(inputLeft.subarray(0, 128), inputRight.subarray(0, 128));
+  assert.equal(wasm.aurialis_live_tail_frames(), 0, "immediate engine drained a tail");
+  assert.equal(wasm.aurialis_live_resume_input(), 1);
+  assert.equal(wasm.aurialis_live_reset(), 1);
 }
-console.log(`wasm-live-direct: ${fixtures.length} native fixtures matched exactly; JSON and ABI2/algorithm1 paths matched; fixed pointers, validation, zero sign, shared controls/state/reset and one-page memory growth passed`);
+console.log(`wasm-live-direct: ${fixtures.length} native fixtures matched exactly; JSON and ABI2/algorithm1 paths matched; fixed pointers, validation, zero sign, source end, shared controls/state/reset and one-page memory growth passed`);
 process.exit(0);

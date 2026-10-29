@@ -35,7 +35,9 @@ func (e *Engine) LatencyFrames() int {
 }
 
 // Drain emits buffered audio after the last input frame, up to the shorter
-// output slice. It does not extend a source with an IIR decay or reset history.
+// output slice. It does not extend a source with an IIR decay or reset history,
+// except that the v2 limiter's Nyquist guard is cleared: the rendered file is
+// silent after its last frame, so the limiter must not see the guard ring on.
 // The immediate v1 engine has no buffered frames; outputs remain untouched.
 // For v2 it flushes the lookahead with silence and returns the frames written.
 func (e *Engine) Drain(outL, outR []float32) int {
@@ -43,6 +45,7 @@ func (e *Engine) Drain(outL, outR []float32) int {
 		return 0
 	}
 	n := min(len(outL), len(outR), e.truePeak.pending)
+	e.truePeak.guard = nyquistGuard{}
 	passthrough := e.params.Bypass || (e.isChainNeutral() && !e.params.ABOriginal)
 	for i := 0; i < n; i++ {
 		if passthrough {
@@ -53,6 +56,21 @@ func (e *Engine) Drain(outL, outR []float32) int {
 		outL[i], outR[i] = e.finishSample(l, r, rawL, rawR, e.params.Limiter.Enabled)
 	}
 	e.truePeak.pending -= n
+	return n
+}
+
+// DrainDetached writes what Drain would emit now, then restores the engine
+// as if the source had not ended, so processing can continue seamlessly. Live
+// playback drains this way at the end of a finite pass that may still turn
+// into a loop (Repeat turned back on). It returns the frames written.
+func (e *Engine) DrainDetached(outL, outR []float32) int {
+	e.drainSaved = e.truePeak
+	prng, limiterGR := e.prngState, e.lastLimGRDB
+	envelope, previousL, previousR := e.limEnvLin, e.limPrevL, e.limPrevR
+	n := e.Drain(outL, outR)
+	e.truePeak = e.drainSaved
+	e.prngState, e.lastLimGRDB = prng, limiterGR
+	e.limEnvLin, e.limPrevL, e.limPrevR = envelope, previousL, previousR
 	return n
 }
 

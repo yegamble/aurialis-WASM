@@ -1373,3 +1373,183 @@ Round E evidence:
   - P2-1. A new ledger watch line covers the "without playbackStats, a 60 ms stall once a second" case. It failed once in about 14 runs at load average 8.8, then passed 3/3 and 8/8. It is the worklet slack rule's false negative, outside the V1-10 diff.
   - P2-2 (the Play/Pause double-click within 3–16 ms): no action, as ruled.
 - Round 8g gates (2026-10-28, load average about 7; each gate judged on its own exit status): `tsc` and the browser-test `tsc`, ESLint, knip and cspell all exit 0, and Vitest `--maxWorkers=2` passes 760/760, both before and after the QA E10 edits.
+
+## V1-13 Exports hold the true-peak ceiling — 2026-10-27
+
+Chair ruling 2026-10-27 from V1-10 Round E QA, which also folds in the V1-10 Round E 44.1 kHz over. Branch `fix/v1-13-true-peak-ceiling`.
+
+**Finding.** On a near-ideal reconstruction, exports went over the −1 dBTP ceiling, and the meters missed it. The dense mix with every module on reached −0.31 dBTP at 48 kHz (Crisp 60%) while the 4× meter read −1.14. The cause was content between 0.45 fs and Nyquist. The limiter's 48-tap detector under-reads it (10% at 0.47 fs, 60% at 0.49 fs), and the 49-tap BS.1770-4 Annex 2 meter is worse. The documented "32× reference −1.00" used a 128-tap kernel that attenuates near Nyquist too.
+
+**Fix.**
+- While limiting, the algorithm 2 stage band-limits its input with an 8th-order elliptic low-pass (`nyquistGuard`, `internal/audio/dsp/truepeak.go`). It is flat to 0.45 fs (0 to +0.01 dB, unity at DC) and at least 69.99 dB down from 0.4643 fs, which gives a 19.8 kHz passband at 44.1 kHz and 21.6 kHz at 48 kHz. The detector, 0.2 dB headroom and latency are unchanged. `Drain` clears the guard because the rendered file is silent after its last frame.
+- The true-peak meter (export report, Release Check, live meter) is a 4× Kaiser sinc with 48 taps per phase, plus parabolic refinement between grid points.
+- A longer detector kernel was rejected: being accurate to 0.49 fs needs about a thousand taps, and a fixed margin would have to be several dB.
+
+**Reference.** `internal/audio/truepeakref` (test-only) reconstructs the whole zero-extended signal by spectral shift on a 32× grid. It reads sines to 0.498 fs within 0.006 dB and agrees with a direct ±1024-tap Kaiser sinc within 0.01 dB. On the V1-10 head it reproduces QA's numbers: 48 kHz Crisp −0.311 dBTP with the meter at −1.139.
+
+**Results** (`wasm/dsp/true_peak_ceiling_test.go`, 2 s fixtures). "Over" is reference minus ceiling; the meter error is the lower of the export and live meter minus the reference.
+
+| Fixture, rate | Worst over, before | Worst meter error, before | Worst over, after | Worst meter error, after |
+| --- | --- | --- | --- | --- |
+| Dense, 44.1 kHz | +0.09 dB | −0.26 dB | −0.19 dB | −0.008 dB |
+| Dense, 48 kHz | +0.69 dB | −0.83 dB | −0.18 dB | −0.008 dB |
+| Dense, 96 kHz | +0.40 dB | −0.62 dB | −0.18 dB | −0.002 dB |
+| Torture, 44.1 kHz | +1.21 dB | −1.46 dB | −0.22 dB | −0.002 dB |
+| Torture, 48 kHz | +1.45 dB | −1.69 dB | −0.21 dB | −0.005 dB |
+| Torture, 96 kHz | +1.23 dB | −1.48 dB | −0.22 dB | −0.001 dB |
+| Converted 44.1→48 kHz, 16-bit | −0.39 dB | −0.19 dB | −0.22 dB | +0.002 dB |
+
+- **Chains.** Every module on (60% Crisp, 60% Tube, or 0.6% Warm, whose noise hats keep their near-Nyquist energy), plus a bare limiter driven 12 dB into a 10 ms release. Ceilings were −1, −1.5 and −2 dBTP.
+- **Torture mix.** Gated tones from 20 kHz to 0.498 fs, noise in the top 2% of the band, a hard-clipped 3 kHz tone, and bass.
+- **4 s QA repro** (dense, every module on, 44.1/48/96 kHz, Crisp/Tube/Warm 60%). Before: −0.31 to −0.85 dBTP. After: −1.17 to −1.21 dBTP, with the meter within 0.009 dB.
+- **V1-10's 44.1 kHz over.** A 16-bit 16 s dense loop with every module on (Tube) measured −0.27 dBTP before and −1.19 after. In the browser (`e2e/live-export.spec.ts`), the 44.1 kHz source now delivers −1.21 dBTP (was −0.85) and live reads −1.2. That spec now asserts the ceiling for 44.1 and 48 kHz sources.
+
+**Shifts.** The guard removes content above 0.45 fs from limited exports.
+- Deep profile predictions (6 s): Δ LUFS moved by at most 0.02 LU, true peak by at most 0.05 dB and limiter reduction by at most 0.08 dB. No Level match changed ([research table](mastering-controls-research.md#deep-proposal-baselines) re-measured).
+- `TestLevelMatchReportsTheLimitingCap`: the clipped-square fixture now peaks at 0.75. At 0.8 the proposal alone needed 2.25 dB of reduction.
+- Below the ceiling, v2 now equals v1 through the guard (was bit-identical to v1).
+- Live == export bit-identity holds: `TestLivePlaybackRendersTheExport` still shows a residual of −∞.
+
+**CPU.** Measured on the M2 with other agents holding load average 10–200.
+- Native min-of-15 per stereo frame: the guard costs 12 ns, the new meter 167 ns (old meter 71 ns) and the detector 340 ns. The added 108 ns is about 0.005 load at 48 kHz natively.
+- V1-10 measured the detector at 0.04–0.06 load in V8, about 3× native. On that scale V1-13 adds about 0.016, which puts QA's 0.140–0.179 baseline near 0.16–0.20, under the 1/3 budget.
+- Interleaved V8 runs of `bench-live.mjs` (algorithm 2, heaviest chain, 48 kHz, four alternating runs, load average 8–22) cannot separate the change from host noise. The best mean load per model was 0.165–0.218 for the V1-10 base and 0.160–0.197 for V1-13 (Warm, Tube, Transformer), with p99 0.169–0.396. QA's baseline was 0.140–0.179 and the budget is 0.333.
+
+**Evidence and gates** (local, 2026-10-27).
+- `unit`: `truepeakref_test.go`, `meter_truepeak_test.go`, `truepeak_test.go`, `resample_test.go`, `true_peak_ceiling_test.go`.
+- Under `-race`, the ceiling matrix runs at 48 kHz only (21 s at load 14). A new non-race CI step runs every rate. `go test -race ./internal/... ./wasm/...` passed. Under load 20–50, `internal/audio/dsp` took 522 s and `wasm/dsp` took 658 s; the V1-13 tests account for about 54 s of that.
+- `gofmt`, `go vet`, golangci-lint v2.15.0 (0 issues), cspell (402 files), and both WASM builds pass.
+- Vitest `--maxWorkers=2`: 693 of 695 passed. The two `MasterPlayback.test.tsx` cases timed out at 20 s under load 150–220 and passed when the file was rerun alone. No TypeScript changed.
+- FFmpeg meter comparison (`pnpm run test:meters`): 15 fixtures, peak error 0.0051 dB (was 0.0312).
+- `pnpm run test:wasm`: offline export parity, 7 renders byte-identical.
+- Playwright `mastering-targets`, `live-export` and `release-artifacts`: 16/16 passed (`--workers=1`).
+
+**Open.**
+- The meter bound covers what the export limiter emits. Unprocessed content up to 0.498 fs (an export with the limiter off, or the torture mix itself) still reads 0.17 dB low at 44.1/48 kHz and 0.62 dB low at 96 kHz.
+- A V8 CPU number on an idle host is still to be recorded.
+
+**Round E 1 corrections (Devil's Advocate: not verified on `cd8b835`), 2026-10-27.** The Devil's Advocate reproduced the ceiling and meter numbers; these items close its findings.
+- B1. `origin/fix/v1-10-live-export-path` (`c03ed1e`) is merged in, and one `raceEnabled` tag file serves both features. The branch will merge `main` again once V1-10 lands.
+- R2, live == export for files that end loud. The export drains the lookahead against silence, but live playback ran the chain and guard on past the end. The worklet now calls `aurialis_live_end_input(offset)` once per finite pass, one alignment delay ahead of the audible deadline. That quantum processes up to the offset and then drains like `Engine.Drain`, and a later deadline (Repeat turned back on) resets the engine. Before the fix the Devil's Advocate probe (clipped ±0.9 square plus a 0.449 fs tone, +4 dB, −1 dBTP) differed at −89 dB (44.1 kHz) and −104 dB (48 kHz). It is now bit-identical at both rates, for an end inside a quantum and on its boundary, with the limiter alone and with every module on (`TestLivePlaybackOfALoudAbruptEndRendersTheExport`, Vitest `live-worklet.test.ts`).
+- R5 (Chair), meters. The export meter (`MeasureStereo`) now reconstructs by spectral shift: 65,536-point transforms measure 49,152 frames each with 8,192 frames of context per side, on a 4× grid with parabolic refinement. On a 3 s unlimited export dense between 0.47 fs and Nyquist it reads −0.027/−0.037/−0.001 dB against the reference at 44.1/48/96 kHz. The old meter, which the live display keeps, reads −0.45/−0.21/−0.01 dB on the 3 s mix and up to −1.19 dB on a 1 s one. On the ceiling matrix both meters read within 0.01 dB. FFmpeg peak error is 0.0057 dB.
+- S1, guard switching. A 5 ms raised-cosine crossfade covers live limiter and true-peak toggles. Leaving bypass restarts the guard from silence and fades it in, and bypass plays the processed column so engaging it fades out. Exports never fade. Measured above 16 kHz at unity gain reduction, a switch adds at most 0.0005; instant switching added 0.0025–0.011. The test bound is 0.0006 (`TestGuardSwitchLeavesNoSplice`).
+- S3, guard response. Ripple is 0 to +0.01 dB up to 0.45 fs. The stopband sits at −69.99 dB from 0.4643 fs (not 0.464) at 44.1/48/96 kHz, and the streaming filter matches the analytic response (`TestNyquistGuardResponse`).
+- S4. At a 0.8 peak, the clipped square gets no Level match: capped, 2.25 dB of reduction reported, and the drop finding shown (`TestLevelMatchStaysAtZeroWhenTheProposalAlreadyLimitsHeavily`). The user guide says hard-clipped sources now get about 0.25 dB or more extra limiting. A P2 ledger line asks the finding to name the cause.
+- S6. A depguard rule rejects non-test imports of `internal/audio/truepeakref`.
+- R3, R4. `api.md` describes the guard, both meters and the reference, with no remaining 49-tap or 128-tap claims. README, the user guide and the limiter panel say that with the limiter on, audio above 0.45 × the sample rate (19.85 kHz at 44.1 kHz) is filtered, and that the limiter is no longer null-transparent at unity gain.
+- R1, real-worklet CPU gate (`e2e/live-export.spec.ts` "keeps up live", heaviest chain, 48 kHz, 30 s, interleaved, load average 104–205). Every completed run passed 0.5 with `slow` 0.
+  - V1-10 head `c03ed1e`: mean load 0.472, 0.471, 0.436, 0.495 (average 0.469). Drift −2 to −5 ms against a 150 ms limit. Three more base runs failed before starting: one webServer timeout, then a stale QA asset left by that killed run.
+  - V1-13: mean load 0.482, 0.485, 0.463, 0.497, 0.482, 0.497, 0.452 (average 0.480). Drift −4 to −57 ms, except one run with a +1,793 ms host stall that failed the drift check.
+  - The difference (+0.011) is inside run-to-run noise, so the live meter keeps its 48-tap kernel.
+- S5, race cost. Command: `go test -race -count=1 -timeout 30m ./...`, run locally at load average 73–165.
+  - V1-13 per-package: `internal/audio/dsp` 720 s, `internal/mastering` 522 s, `wasm/dsp` 392 s, `internal/audio/truepeakref` 135 s, `internal/audio/steminfer` 119 s, `internal/audio` 110 s, `internal/browserjobs` 95 s.
+  - `internal/server` failed `TestRenderOutlivesBaseDeadlineWithinExportBudget` (a 5 s wall-clock budget). The V1-10 head fails it the same way under the same load (2 of 2), and V1-13 passes it alone (3 of 3).
+  - The V1-10 head right after (load 45–200): `internal/audio/dsp` 594 s, `internal/mastering` 571 s, `wasm/dsp` 289 s, `internal/server` 69 s.
+  - V1-10's last PR CI took 273 s, 240 s and 110 s for those three packages. This branch has no PR, so it has no CI times yet; the 10 m per-package limit must be checked on the PR.
+- Export budget calibration (non-race, interleaved, load average 230–300): base 9.46/3.52 µs per frame (2.28×/3.17× headroom), V1-13 8.64/4.33 µs per frame (2.50×/2.57×). An earlier pair at load 280 failed for both builds.
+- Round E 1 gates (local, 2026-10-27, load average 45–300 from concurrent agents):
+  - `gofmt -l` empty; `go vet`, golangci-lint v2.15.0 (with depguard; 0 issues) and identypo pass; tsc, ESLint, knip and cspell (407 files) pass.
+  - `bash scripts/build.sh` passes; `pnpm run test:wasm` passes, with `verify-realtime.mjs` now checking the source-end drain at 44.1/48/96 kHz; 7 offline renders are byte-identical.
+  - FFmpeg meters: 15 comparisons, peak error 0.0059 dB.
+  - Vitest `--maxWorkers=2`: 707/707.
+  - Playwright `mastering-targets`, `live-export` and `release-artifacts` (`--workers=1`): 18 of 19. The "rejected source rate" case timed out clicking Pause after its 1 s source had finished playing at load 230; alone it passed 2 of 2.
+
+**Round E 2 corrections (Devil's Advocate: not verified on `39cd1f2`; QA Round E), 2026-10-27.** QA's DSP verdict held: across 360 adversarial renders the worst export sat 0.136 dB under the ceiling, 288 of 288 live/export comparisons were bit-identical, and the CPU gate read 0.480–0.492. The fixes:
+- R-A / QA-6, meter edges. The export meter started its grid at frame 0 on fake zero predecessors and never looked past the last frame. A lone 0.9 sample read −0.150 dBTP against a true −0.915. The Devil's Advocate's decaying cosine (0.5·cos(2π f i+φ)·e^(−i/400), 3000 frames, the RED test) read up to 0.83 dB high, and the same tone reversed read up to 1.74 dB low, because its true peak lies after the last frame. The meter now measures 1,024 frames of the zero extension on each side. Against an independent direct ±1024-tap sinc (`truepeakref.DirectPeakDBTP`, measuring before the first and after the last frame), crest starts and ends at 0.2–0.47 fs with four phases, lone samples, and 1- and 2-frame files read −0.036 to +0.009 dB. `truepeakref.PeakDBTP` also measures the edges now.
+- QA-1 (Chair ruling), scope. The export meter reads ≤ 0.1 dB on all content except sustained coherent energy within about fs/16384 of Nyquist, which is unphysical in real audio and removed by the guard in limited exports. The flip regression test (`TestExportMeterNyquistFlipBound`) pins it: a 1 s flip reads exactly; 4 s and 10 s read 1.09 and 1.38 dB low, but never below what the meter's 8,192-frame context reconstructs and never over. The context was not enlarged.
+- R-B / QA-2. Release Check guidance, `api.md`, the bridge comment, the FFmpeg script and the parity test no longer call the meter a finite 4× FIR estimate. `grep` finds no "4× FIR" or "FIR inter-sample" in `src/` or `wasm/`.
+- QA-3, measured numbers. Limited exports land ≥ 0.13 dB under the ceiling (not 0.18–0.22). The live meter reads within 0.07 dB on limited exports (not 0.01). On unlimited content above 0.46 fs, abrupt edges included, it can read several dB low (9.6 dB on the flip, 0.57 dB on a 19.9 kHz tone with abrupt edges at 44.1 kHz), so the live tile now says it is an estimate and that the export check is authoritative.
+- S-b1, end-of-source contract. `aurialis_live_end_input` and its companions are required at worklet load, with no per-quantum feature detection. `aurialis_live_drain` had no production caller and is retired; the verify scripts check the source end instead. The live engine and worklet URLs carry a content hash from `next.config.ts` (`?v=`), so a cached older engine cannot run with a newer worklet. Both servers already send `no-store`, and the app had no other versioned-asset pattern to follow.
+- S-b2, Repeat back on after the mark. The mark no longer stops the engine. `Engine.DrainDetached` drains the export's tail into a side buffer and restores the limiter, dither and v1-limiter state. The engine keeps processing, and the worklet plays the tail only while the pass stays finite. Turning Repeat back on calls `aurialis_live_resume_input` instead of a reset, and the resumed loop is bit-identical to one never marked (`TestLiveResumeAfterTheEndMarkContinuesTheLoop`). A loud abrupt end still renders the export's final frames.
+- S-g1, phase disclosure. The limiter panel, README, user guide and `api.md` say the guard is minimum-phase and shifts the top octave's phase: group delay is about 1 ms at 19.8 kHz, 0.26 ms at 19 kHz and under 0.04 ms below 15 kHz at 44.1 kHz. So a limited master won't null against the source.
+- S-a1. "All content" is scoped per QA-1.
+- S-a2, source measurement cache. `measure=render` on JSON renders (native and browser jobs) skips the source measurement, and the client caches `beforeMetrics` per source Blob, so Set target loudness and the Equal-loudness A/B measurement measure an unchanged source once.
+  - A 10-minute 96 kHz file is 57.6 million frames, beyond the 33,554,432-frame decode limit (5:49 at 96 kHz), so it cannot be imported at all. Timing used the longest permitted 96 kHz file, 5:49 stereo, in the browser build's Go/WASM module in V8 (one job per process), at load average 12–180.
+  - One Set-target-loudness iteration (JSON render, source measured): `c03ed1e` 585 s, head 435 s. Later iterations with `measure=render`: 356 s.
+  - Release Check, 24-bit render: 375 s at `c03ed1e`, 229 s at head. Delivered-file measurement: 49 s at `c03ed1e`, 47 s at head.
+  - The spectral export meter costs about what the old 49-tap meter did here; the render dominates, and the load swings swamp the difference.
+- S3, S4, S6 and the guard switching (S1) are covered in Round E 1 above.
+- QA-4, race cost. Under `-race` the live meter EBU tests shorten (steady tone 5 s, gating 3/12/3 s, two-level LRA 8 s); the five-level LRA case keeps EBU's 20 s, and the non-race run keeps every full length. Measured with `go test -race -run TestLiveMeter ./internal/audio/dsp`: 290 s before (load average 84–140) and 106 s after (158–175).
+- QA-5. The CPU gate margin is thin: QA measured 0.480–0.492 mean load against 0.5. Any further per-sample live work needs a fresh soak.
+- P2 lines (ledger): a gain crossfade when the limiter, true peak or bypass turns off under gain reduction; one shared FFT; the `MasterPlayback.test.tsx` timeouts under load.
+- Merged V1-10 `302181b` and then `a386720` (README, `cspell.json` and `tasks.md` conflicts resolved; the worklet's slack timing and `renderQuantum` merged cleanly with the source-end code).
+- R1 under V1-10's `playbackStats` watch (heaviest chain, 48 kHz, 30 s soak; interleaved against the V1-10 head `302181b`; load average 9–88):
+  - Base, 12 runs: mean load 0.359–0.471 (average 0.447); 2 runs failed on 1–2 device underruns after warm-up.
+  - V1-13, 12 runs: mean load 0.303–0.488 (average 0.468 over 11). 4 failed in the first four pairs: underruns of 6, 2 and 4, and one stop by the overload message at 9 s. The last eight pairs had 0 underruns.
+  - Paired runs 7–12, at similar load: base 0.462–0.467 against V1-13 0.475–0.488, about +0.016, the meter and guard cost estimated earlier. Every completed run is under 0.5, but the margin is thin (QA-5).
+  - At `a386720` both builds failed to complete at load average 200–230. That rerun is still owed on a quieter host.
+- Race cost (`go test -race -count=1 ./...` packages, same window, local; V1-13 vs the V1-10 head):
+  - `internal/audio/dsp`: 615 s vs 605 s, after the QA-4 trims and the short-file transform.
+  - `internal/mastering`: 540 s vs 586 s.
+  - `internal/audio/truepeakref`: 101 s (new package).
+  - `wasm/dsp`: 414 s vs 173 s before the race trims; afterwards 200 s vs 119 s of CPU time at load 160–220.
+  - Non-race CI steps now run the full meter, ceiling and loud-end matrices (127 s locally at load 190).
+- Round E 2 gates (local, load average 38–200):
+  - gofmt, `go vet`, golangci-lint (0 issues), identypo, tsc, ESLint (after one test fix), knip and cspell pass.
+  - `bash scripts/build.sh` and `test:wasm` pass. The FFmpeg meter comparison passes with 0.0057 dB peak error.
+  - Vitest `--maxWorkers=2` passes. `MasterPlayback.test.tsx` times out at load above 160 on both this branch and the V1-10 head (P2).
+  - Playwright `mastering-targets`, `live-export`, `release-artifacts` and `live-playback`: 26/26.
+  - Race: every package passes except `internal/server`'s 5 s wall-clock deadline test under load, which the V1-10 head also fails.
+
+**Final round after V1-10 merged (main `7ebdee4`), 2026-10-28.**
+- `origin/main` is merged in (`c1f83ad`). The README, `tasks.md` and ledger conflicts keep both stories, and V1-10's overload wording is unchanged. The ledger drops the V1-10 Round E P2 line that V1-13 folds in.
+- Integration with V1-10's final live path is intact: the source-end, resume and tail exports, the drained-tail playback and the content-hashed engine and worklet URLs all sit beside the overload watch, `renderQuantum` and Audition export.
+- Fix found by the full suite: `finite-playback` 44100/129→96000 compared the speaker with the engine's continuous output. The native oracle now drains the same tail at the capture's end frame and returns the speaker PCM (`78286ca`).
+- R1, the real-worklet CPU gate (heaviest chain, 48 kHz, 30 s). Each run started only when the 1-minute load average was below 8, with the load recorded at the start, alternating with main `7ebdee4`:
+
+| Pair | main mean load (start load) | V1-13 mean load (start load) |
+| --- | --- | --- |
+| 1 | 0.296 (7.88) | 0.326 (7.61) |
+| 2 | 0.308 (6.78) | 0.388 (6.05) |
+| 3 | 0.413 (7.63) | 0.465 (6.61) |
+| 4 | 0.417 (7.15) | 0.460 (7.69) |
+| 5 | 0.451 (7.54) | 0.478 (7.63) |
+| 6 | 0.404 (7.02) | 0.460 (7.67) |
+
+  - Main averaged 0.382 and V1-13 0.430. Every pair was higher on V1-13 (+0.027 to +0.080, mean +0.048).
+  - All 12 runs passed with 0 device underruns after warm-up, 0 slow calls and drift of 5 ms or less.
+  - The 120 s soak (`AURIALIS_LIVE_SOAK_SECONDS=120`) passed on both: V1-13 0.389 at start load 7.86, main 0.351 at 6.66, 0 underruns.
+  - The gate (≤ 0.5) holds, but V1-13's highest run, 0.478, leaves 0.022. Any further per-sample live work needs a fresh soak (QA-5).
+- `internal/server` `TestRenderOutlivesBaseDeadlineWithinExportBudget` under `-race` at load average 8–11: 3 of 3 passed (2.26–2.40 s against its 5 s budget). The earlier failures were load-only.
+- Race, `go test -race -count=1 ./...` at load average 3–5 (per package):
+
+| Package | Time |
+| --- | --- |
+| `internal/audio/dsp` | 245 s |
+| `internal/mastering` | 215 s |
+| `wasm/dsp` | 151 s |
+| `internal/server` | 41 s |
+| `internal/audio/truepeakref` | 39 s |
+| `internal/audio/steminfer` | 25 s |
+| `internal/audio` | 18 s |
+| `internal/browserjobs` | 14 s |
+| `internal/jobs` | 6 s |
+| `internal/audio/automation` | 3 s |
+| `internal/audio/automator` | 3 s |
+| `cmd/aurialis` | 2 s |
+
+- Gates via `quiet.sh`, each judged on its own exit status:
+  - Go: gofmt (no output), `go mod verify`, `go vet`, golangci-lint v2.15.0 (0 issues), identypo and govulncheck (no vulnerabilities) pass.
+  - Both WASM builds, `bash scripts/build.sh` and `test:wasm` pass; FFmpeg meters 0.0057 dB.
+  - TypeScript: `tsc`, the browser-test `tsc`, ESLint, knip and cspell (418 files) pass. `typecheck:worker` needs the browser build's generated `asset-policy.json` and fails the same way on main.
+  - Vitest `--maxWorkers=2`: 762/762.
+  - Newman (`pnpm run test:backend:postman`) passes.
+  - Full native Playwright (`--workers=1`): 164 of 165 before the oracle fix, then 165 of 165 after it (19.4 min, load average 7–18).
+
+Status: **implemented — open, awaiting merge** (`fix/v1-13-true-peak-ceiling`).
+
+
+**Resumed Round E3 correction — 2026-10-29 (PR #58).**
+
+The green `29d209f` checkpoint above predates this round. V1-10 is merged in PR #57 at `7ebdee4`; V1-13 remains **open — awaiting merge**. The owner authorized delegated merge on 2026-10-29, after final-head CI and review. The stale V1-12 ledger status is also corrected against its already-merged PR #56 (`164d154`); this is a history correction, not a new runtime verification.
+
+- **R-1, clipping on Reset modules/bypass.** Independent DSP and Devil's Advocate probes reproduced delayed pre-limiter audio at +2.899 dBFS (+6 dB input) and +8.899 dBFS (+12 dB input). Returning raw columns immediately failed four of six existing no-splice cases. The correction (`660d74c`, integrated from `3e351d0`) tags frames entering under limiting or its guard fade, and applies the computed limiter gain when those protected frames leave the delay. Neutral/bypass returns the exact source after the 5 ms fade plus lookahead; disabling limiting while retaining a boosted non-neutral chain can still exceed full scale intentionally. Static renders retain their prior output.
+- **Focused DSP evidence (implementer's current-session report, unit / wasm-bridge).** `TestLimitedToNeutralRetainsQueuedGain` passes 12 combinations of 44.1/48/96 kHz, +6/+12 dB input and reset/bypass, peaking at −1.244 dBFS. The same tests fail on the old source in all 12 cases. `TestQueuedGainSurvivesInterruptedGuardFade` covers non-neutral limiter-off, true-peak-off and rapid neutral/bypass changes. Existing guard no-splice, allocation/drain and live source-end/Repeat/loud-end parity tests pass. The chair subsequently retrieved passing full-race CI logs and QA ran the fresh real-worklet soak described below.
+- **S-1, copy.** Release Check calls its row **Reconstructed true peak** and states the coherent near-Nyquist exception to the 0.1 dB bound. The limiter says its top-band attenuation is progressive, and the source-cache comment says the saving is a repeated source measurement.
+- **S-3, API coverage.** Go `TestRenderMeasurementSelection` and Newman TS-033…TS-038 cover JSON render-only measurement, the default and bypass source metrics, and invalid non-JSON, unknown, repeated and feature-analysis selections. The focused Go test passes. The collection now contains 42 requests. The first resumed full Newman run failed three missing embedded-WASM/runtime prerequisites in the fresh worktree before building its assets; the measurement-selection cases passed. After rebuilding the binary, Newman passes all 42 requests and 48 assertions, with the raw curl Host/upload/header probes (8 s, `newman-e2e` / `api-curl`).
+- **Browser regressions (`playwright-a11y-responsive`).** The targeted three-case run passes: Reset modules captures 208,128 speaker frames with a maximum of −1.243538 dBFS; Repeat restored 58.667 ms before the finite boundary keeps the same source epoch and a minimum window RMS of 0.137425; the 320 px True peak disclosure fits and the accessibility check passes. The first Repeat test enabled looping on an initially finite source, which intentionally finishes before starting a periodic epoch. The corrected test starts with Repeat on, turns it off, then restores it in the last 80 ms of that same looping-source epoch; no production change was needed.
+- **Local chair gate evidence (`unit` / `compiled-binary-smoke`).** TypeScript, ESLint, knip, module verification, the pinned CI identypo command, govulncheck (no vulnerabilities), browser-test TypeScript and Vitest (63 files, 762 tests) pass. Formatting, vet and pinned golangci-lint v2.15.0 pass; both WASM modules, Next.js and the native binary build pass (14 s), followed by binary smoke (1 s). Whole-repository spelling passes on 419 files. Scoped security review verifies headers, Host/Origin defenses, API bounds, exclusion of `truepeakref` from production dependencies and zero production dependency audit vulnerabilities; the previously documented development-only Newman audit exceptions are unchanged.
+- **Executed CI evidence at `30921a5`, not a local race run.** The chair retrieved actual logs from [run 40819463926](https://github.com/yegamble/aurialis-WASM/actions/runs/40819463926): all required checks pass (16 successful checks, the PR production-deploy job intentionally skipped). Full `go test -race` passes every package, including DSP 387.953 s, mastering 292.326 s and WASM 215.057 s. The full-rate non-race ceiling/loud-end matrix passes in 11.408 s and meter cases in 20.050 s. FFmpeg passes 15 independent cases with maximum peak error 0.0057 dB. Compiled JS/WASI checks match 333 native fixtures exactly and pass ABI 2 source-end/resume checks (`wasm-bridge`); static browser tests pass 27/27 in 3.6 minutes. Shipped application code is unchanged since `660d74c`; the subsequent corrections affect tests and documentation. Final-head CI remains required before merge.
+- **Native suite and test correction.** The local full native suite at `30921a5` ends at **166 passed / 1 failed (167 total)** in 1,131 s. Tape Warmth failed before enabling the shortcut: a partial 1,024-frame startup B window was compared with steady A (1.26014 dB difference). The unchanged original test passes alone (18 s). Test-only `1393828` retains the existing strict full-period A/B mean difference below 0.1 dB, the speaker-clock wait and all activation/restoration PCM assertions; the whole shortcut file passes 10/10 (49 s). Devil's Advocate then requested a fresh clock anchor immediately before the A click (`d62ba8c`); all four affected final live-PCM cases pass (38 s), with neutral A/B and restored deltas of 0 dB. This is not a claim of a fresh 167/167 local run.
+- **Fresh CPU evidence (actual worklet, same shipped application code).** The full suite's 30 s soak reads mean kernel load 0.262267, maximum call 2 ms, zero slow calls/device underruns and −5 ms drift against its 150 ms limit. QA's isolated 120 s soak passes in 128 s: mean load 0.267975 against the 0.5 gate, mean kernel call 0.7146 ms, maximum 2 ms, zero slow calls/device or ring underruns, −6 ms drift against the 250 ms limit, and window lag −1 to +1 ms. Host load starts at 4.33 and ends at 12.95. Evidence: `qa-live-soak-120s-20261029-010225-73418.log` and `/private/tmp/aurialis-qa-v113-evidence/120s-live-soak.json`. QA has no remaining functional finding. Final-head CI and the final review/merge gate remain pending.
+- **Local gate coverage:** AGENTS.md (including the plugin rules copy) and the repo map now require CI's non-race full-rate ceiling/loud-end matrix and full meter cases in addition to `go test -race`; race builds trim those cases. The detector optimization, FFT consolidation and worklet-helper cache busting stay outside this corrective wave.

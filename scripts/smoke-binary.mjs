@@ -10,7 +10,7 @@ const directory = await mkdtemp(path.join(tmpdir(), "aurialis-smoke-"));
 const binary = path.resolve("aurialis");
 const port = 39871;
 const host = `http://127.0.0.1:${port}`;
-const liveExports = ["aurialis_live_buffer", "aurialis_live_process", "aurialis_live_reset"];
+const liveExports = ["aurialis_live_buffer", "aurialis_live_process", "aurialis_live_reset", "aurialis_live_end_input", "aurialis_live_resume_input", "aurialis_live_tail_buffer", "aurialis_live_tail_frames"];
 const child = spawn(binary, ["-addr", `127.0.0.1:${port}`], {
   cwd: directory,
   stdio: ["ignore", "ignore", "inherit"],

@@ -20,8 +20,17 @@ linters:
     - noctx         # Finds HTTP requests sent without context.Context
     - exhaustive    # Enforces exhaustiveness on enum switch statements
     - unconvert     # Removes unnecessary type conversions
+    - depguard      # Keeps test-only packages out of production code
 
   settings:
+    depguard:
+      rules:
+        test-only-reference:
+          files:
+            - "!$test"
+          deny:
+            - pkg: github.com/yegamble/Aurialis-WASM/internal/audio/truepeakref
+              desc: the long-sinc true-peak reference is slow and test-only; production code must not import it
     staticcheck:
       checks:
         - all

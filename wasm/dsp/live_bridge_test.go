@@ -148,3 +148,97 @@ func TestLiveMeterReadsProcessedOutputAndGainReduction(t *testing.T) {
 		t.Fatal("uninitialized bridge published a meter snapshot")
 	}
 }
+
+// aurialis_live_end_input accepts one offset in 0–128 per stream; reset or
+// aurialis_live_resume_input clears it. The engine output never changes: the
+// mark only drains the lookahead tail an export would, for the worklet to
+// play while the pass is finite. The tail limits against silence, so near
+// the ceiling it differs from the engine, which limits against more input.
+func TestLiveEndInputDrainsLikeAnExport(t *testing.T) {
+	p := dsp.DefaultParams()
+	p.AlgorithmVersion, p.InputGainDB = dsp.TruePeakAlgorithmVersion, 6
+	p.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: -1, TargetLUFS: -9, ReleaseMS: 80, TruePeak: true}
+	marked, plain := liveBlockBridge{bridge: NewBridge(48000)}, liveBlockBridge{bridge: NewBridge(48000)}
+	for _, b := range []*liveBlockBridge{&marked, &plain} {
+		if !b.bridge.SetParams(p) || b.reset() != 1 {
+			t.Fatal("settings rejected")
+		}
+	}
+	if marked.endInput(liveBlockFrames+1) != 0 || marked.tailFrames() != 0 {
+		t.Fatal("offset past the quantum accepted, or a tail before the end")
+	}
+	if marked.endInput(5) != 1 || marked.endInput(6) != 0 {
+		t.Fatal("end not accepted exactly once")
+	}
+	latency := marked.bridge.LatencyFrames()
+	var engine [2][]float32
+	for block := 0; block < 4; block++ {
+		for _, b := range []*liveBlockBridge{&marked, &plain} {
+			for frame := range liveBlockFrames {
+				b.channels[0][frame] = float32(0.9 * math.Sin(float64(block*liveBlockFrames+frame)/7))
+				b.channels[1][frame] = b.channels[0][frame]
+			}
+			if b.process() != liveBlockFrames {
+				t.Fatal("block rejected")
+			}
+		}
+		if marked.channels[2] != plain.channels[2] || marked.channels[3] != plain.channels[3] {
+			t.Fatalf("block %d: the mark changed the engine output", block)
+		}
+		engine[0] = append(engine[0], plain.channels[2][:]...)
+	}
+	if int(marked.tailFrames()) != latency {
+		t.Fatalf("tail %d frames, want the %d-frame lookahead", marked.tailFrames(), latency)
+	}
+	differs := false
+	for i := range latency {
+		differs = differs || marked.tail[0][i] != engine[0][5+i]
+	}
+	if !differs {
+		t.Fatal("the drained tail matched the continuing engine; the fixture does not limit at the end")
+	}
+	if marked.resumeInput() != 1 || marked.tailFrames() != 0 || marked.endInput(0) != 1 || marked.reset() != 1 || marked.endInput(0) != 1 {
+		t.Fatal("resume or reset did not clear the end")
+	}
+}
+
+// V1-13 Round E 2 S-b2: Repeat turned back on after the source's end was
+// marked continues the loop with no gap and no reset. The engine never stopped
+// processing the looping input, so its output equals a stream that was never
+// marked, and after resume the tail is gone, so the worklet plays that output.
+func TestLiveResumeAfterTheEndMarkContinuesTheLoop(t *testing.T) {
+	const rate = 48000.0
+	p := dsp.DefaultParams()
+	p.AlgorithmVersion, p.InputGainDB = dsp.TruePeakAlgorithmVersion, 9
+	p.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: -1, TargetLUFS: -9, ReleaseMS: 80, TruePeak: true}
+	loop, _ := denseMix(rate, 1)
+	frames := len(loop)
+	resumeBlock := (frames + int(0.04*rate)) / liveBlockFrames
+	marked, plain := liveBlockBridge{bridge: NewBridge(rate)}, liveBlockBridge{bridge: NewBridge(rate)}
+	for _, b := range []*liveBlockBridge{&marked, &plain} {
+		if !b.bridge.SetParams(p) || b.reset() != 1 {
+			t.Fatal("settings rejected")
+		}
+	}
+	for block := 0; block < (2*frames)/liveBlockFrames; block++ {
+		start := block * liveBlockFrames
+		if start <= frames && frames < start+liveBlockFrames && marked.endInput(liveFrameCount(frames-start)) != 1 {
+			t.Fatal("end rejected")
+		}
+		if block == resumeBlock && (marked.resumeInput() != 1 || marked.tailFrames() != 0) {
+			t.Fatal("resume kept the tail")
+		}
+		for _, b := range []*liveBlockBridge{&marked, &plain} {
+			for frame := range liveBlockFrames {
+				b.channels[0][frame] = loop[(start+frame)%frames] // the source loops on
+				b.channels[1][frame] = b.channels[0][frame]
+			}
+			if b.process() != liveBlockFrames {
+				t.Fatal("block rejected")
+			}
+		}
+		if marked.channels[2] != plain.channels[2] || marked.channels[3] != plain.channels[3] {
+			t.Fatalf("block %d (source end in block %d, resume in %d) differs from the unmarked loop", block, frames/liveBlockFrames, resumeBlock)
+		}
+	}
+}

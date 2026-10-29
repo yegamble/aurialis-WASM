@@ -122,6 +122,12 @@ export type LivePlaybackController = {
 };
 
 const QUANTUM = 128;
+
+/** The live engine and worklet URLs carry a build content hash (next.config.ts),
+ * so a cached older engine can never run with a newer worklet. */
+function liveAssetUrl(path: string): string {
+  return `${path}?v=${process.env.NEXT_PUBLIC_AURIALIS_LIVE_ASSET_VERSION ?? "dev"}`;
+}
 const SLOTS = 256;
 const WRITE = 0;
 const READ = 1;
@@ -462,12 +468,12 @@ export function createLivePlayback(
       bootTimeout = setTimeout(() => { reject(new Error("Live audio initialization timed out. Retry playback.")); }, 15000);
     });
     const loadModule = async () => {
-      const response = await fetch("/wasm/aurialis-realtime.wasm", { signal: requestAbort.signal });
+      const response = await fetch(liveAssetUrl("/wasm/aurialis-realtime.wasm"), { signal: requestAbort.signal });
       if (!response.ok) throw new Error("The shared Go audio engine could not be loaded. Reload and retry.");
       return WebAssembly.compile(await response.arrayBuffer());
     };
     const loaded = Promise.all([
-      loadModule(), context.audioWorklet.addModule("/worklets/aurialis-live-worklet.js"),
+      loadModule(), context.audioWorklet.addModule(liveAssetUrl("/worklets/aurialis-live-worklet.js")),
     ]).then(([compiledModule]) => {
       if (isDisposed() || audio !== context) return;
       const delayBlocks = Math.max(4, Math.ceil(context.sampleRate * 0.08 / QUANTUM));

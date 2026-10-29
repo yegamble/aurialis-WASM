@@ -138,7 +138,7 @@ func (b *Bridge) ProcessBlock(inL, inR, outL, outR []float32) bool {
 	return true
 }
 
-// Measure computes gated K-weighted loudness, FIR inter-sample peak,
+// Measure computes gated K-weighted loudness, the reconstructed true peak,
 // crest factor, and stereo correlation estimates.
 func (b *Bridge) Measure(left, right []float32) dsp.Metrics {
 	b.mu.Lock()
@@ -169,6 +169,14 @@ func (b *Bridge) Drain(outL, outR []float32) int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.engine.Drain(outL, outR)
+}
+
+// DrainDetached writes the lookahead tail Drain would emit and leaves the
+// engine unchanged (dsp.Engine.DrainDetached).
+func (b *Bridge) DrainDetached(outL, outR []float32) int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.engine.DrainDetached(outL, outR)
 }
 
 // SampleRate returns the current processing rate for compiled schedule binding.

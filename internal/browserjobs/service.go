@@ -39,6 +39,7 @@ type Request struct {
 	DeviceRate    int    `json:"deviceRate,omitempty"`
 	Options       string `json:"options,omitempty"`
 	ScriptVersion string `json:"scriptVersion,omitempty"`
+	Measure       string `json:"measure,omitempty"`
 }
 
 // Result separates bounded JSON diagnostics from transferable binary audio buffers.
@@ -85,7 +86,7 @@ func DecodeRequest(raw []byte) (Request, error) {
 	var allowed string
 	switch request.Operation {
 	case "render":
-		allowed = " operation params script profile bitDepth sampleRate dither format "
+		allowed = " operation params script profile bitDepth sampleRate dither format measure "
 	case "features":
 		allowed = " operation "
 	case "deep":

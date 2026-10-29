@@ -148,7 +148,7 @@ test("a failed live WASI asset reports the error and Retry playback restores aud
   await uploadProject(page, "qa-live-asset-retry.wav", 12);
   await page.getByRole("slider", { name: "Playback volume", exact: true }).fill("1");
   let attempts = 0;
-  await page.route("**/wasm/aurialis-realtime.wasm", async (route) => {
+  await page.route("**/wasm/aurialis-realtime.wasm?*", async (route) => {
     attempts++;
     if (attempts === 1) await route.fulfill({ status: 503, contentType: "text/plain", body: "QA engine asset failure" });
     else await route.continue();
@@ -178,7 +178,7 @@ test("a live WASI failure after keyboard pause reports immediately and retries s
   let started: (() => void) | undefined;
   const requested = new Promise<void>((resolve) => { started = resolve; });
   let attempts = 0;
-  await page.route("**/wasm/aurialis-realtime.wasm", async (route) => {
+  await page.route("**/wasm/aurialis-realtime.wasm?*", async (route) => {
     attempts++;
     if (attempts === 1) {
       started?.();
@@ -238,9 +238,9 @@ test("leaving during held live WASI initialization cancels it and reopening crea
   const failures: string[] = [];
   // cspell:ignore requestfailed
   page.on("requestfailed", (request) => {
-    if (request.url().endsWith("/wasm/aurialis-realtime.wasm")) failures.push(request.failure()?.errorText ?? "unknown");
+    if (new URL(request.url()).pathname.endsWith("/wasm/aurialis-realtime.wasm")) failures.push(request.failure()?.errorText ?? "unknown");
   });
-  await page.route("**/wasm/aurialis-realtime.wasm", async (route) => {
+  await page.route("**/wasm/aurialis-realtime.wasm?*", async (route) => {
     requests++;
     if (requests === 1) {
       started?.();

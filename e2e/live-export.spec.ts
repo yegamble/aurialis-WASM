@@ -211,8 +211,8 @@ test("live playback at the speakers matches the exported WAV in loudness and tru
   test.setTimeout(150_000);
   await pinDeviceRate(page);
   const evidence = await liveAgainstExport(page, info, RATE);
-  // Ceiling compliance of the export itself is V1-13's gate; at 48 kHz this
-  // dense loop meets it, so the live meter must too.
+  // V1-13: the export holds the ceiling (the Go long-sinc tests prove it on a
+  // near-ideal reconstruction at 44.1/48/96 kHz), and the live meter reads it.
   expect(evidence.exportDeliveredTruePeakDbtp, JSON.stringify(evidence)).toBeLessThanOrEqual(CEILING_DBTP);
   expect(evidence.liveTruePeakMeterDbtp, JSON.stringify(evidence)).toBeLessThanOrEqual(CEILING_DBTP + 0.1);
   expect(Math.abs(evidence.liveTruePeakMeterDbtp - evidence.exportDeliveredTruePeakDbtp), JSON.stringify(evidence)).toBeLessThanOrEqual(0.15);
@@ -231,6 +231,10 @@ for (const [sourceRate, deviceRate] of [[48000, 44100], [44100, 48000]] as const
     const evidence = await liveAgainstExport(page, info, sourceRate);
     expect(evidence.contextRate, JSON.stringify(evidence)).toBe(sourceRate);
     expect(evidence.resampledNote, JSON.stringify(evidence)).toBe(0);
+    // V1-13: the 44.1 kHz export of this chain delivered −0.85 dBTP before the
+    // limiter band-limited its input; every source rate holds the ceiling.
+    expect(evidence.exportDeliveredTruePeakDbtp, JSON.stringify(evidence)).toBeLessThanOrEqual(CEILING_DBTP);
+    expect(evidence.liveTruePeakMeterDbtp, JSON.stringify(evidence)).toBeLessThanOrEqual(CEILING_DBTP + 0.1);
   });
 }
 

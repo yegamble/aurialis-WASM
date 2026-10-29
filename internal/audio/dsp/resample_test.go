@@ -194,18 +194,16 @@ func TestConvertedExportHoldsTruePeakCeiling(t *testing.T) {
 					metrics := MeasureStereo(left, right, float64(to))
 					detector := detectorPeakDB(left, right)
 					reference := referenceTruePeakDB([][]float32{left, right}, 0)
-					t.Logf("%d→%d Hz delivered: 8x %.3f dBTP, 32x reference %.3f dBTP, 4x meter %.3f dBTP, sample peak %.3f dBFS, final reduction %.2f dB", from, to, detector, reference, metrics.TruePeakDBTP, metrics.SamplePeakDBFS, reduction)
+					t.Logf("%d→%d Hz delivered: 8x %.3f dBTP, long-sinc reference %.3f dBTP, export meter %.3f dBTP, sample peak %.3f dBFS, final reduction %.2f dB", from, to, detector, reference, metrics.TruePeakDBTP, metrics.SamplePeakDBFS, reduction)
 					if detector > ceiling || reference > ceiling {
-						t.Errorf("delivered true peak %.3f dBTP (32x reference %.3f) exceeds the %g dBTP ceiling", detector, reference, ceiling)
+						t.Errorf("delivered true peak %.3f dBTP (long-sinc reference %.3f) exceeds the %g dBTP ceiling", detector, reference, ceiling)
 					}
-					// afterMetrics.truePeakDbtp is the 49-tap 4x meter, which is
-					// less accurate than both references: on other full-band
-					// noise it has read up to 0.21 dB over the ceiling at
-					// 96→88.2 kHz while they held it. On this fixed program it
-					// stays under the ceiling, so any rise past it is a
+					// afterMetrics.truePeakDbtp is the spectral export meter; it reads
+					// within 0.1 dB of the reference, so on a held export it
+					// stays under the ceiling and any rise past it is a
 					// regression.
 					if metrics.TruePeakDBTP > ceiling {
-						t.Errorf("4x meter %.3f dBTP is above the %g dBTP ceiling", metrics.TruePeakDBTP, ceiling)
+						t.Errorf("export meter %.3f dBTP is above the %g dBTP ceiling", metrics.TruePeakDBTP, ceiling)
 					}
 					// Peaks are pulled under the ceiling by gain, so no sample
 					// sits at the clip level.

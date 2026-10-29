@@ -56,8 +56,10 @@ func liveVector(p dsp.Params) liveVersionedControlVector {
 }
 
 // livePlayback renders a source the way the worklet plays it: ABI 2 controls,
-// 128-frame quanta, silent quanta after the source ends, and the processed
-// ring read the engine's latency ahead of the dry ring so A lines up with B.
+// 128-frame quanta, the source's end marked (aurialis_live_end_input) in the
+// quantum that holds it and its drained tail played in place of the engine's
+// frames (a finite pass), silent quanta after it, and the processed ring read
+// the engine's latency ahead of the dry ring so A lines up with B.
 // It returns what is heard for each source frame and the live meter snapshot.
 func livePlayback(t *testing.T, rate float64, left, right []float32, params dsp.Params) ([]float32, []float32, dsp.LiveLoudness) {
 	t.Helper()
@@ -76,6 +78,10 @@ func livePlayback(t *testing.T, rate float64, left, right []float32, params dsp.
 				blocks.channels[0][frame], blocks.channels[1][frame] = left[start+frame], right[start+frame]
 			}
 		}
+		marked := start <= frames && frames < start+liveBlockFrames
+		if marked && blocks.endInput(liveFrameCount(frames-start)) != 1 {
+			t.Fatal("source end rejected")
+		}
 		if blocks.process() != liveBlockFrames {
 			t.Fatal("live quantum rejected")
 		}
@@ -83,7 +89,12 @@ func livePlayback(t *testing.T, rate float64, left, right []float32, params dsp.
 		processed[1] = append(processed[1], blocks.channels[3][:]...)
 	}
 	blocks.meterSnapshot()
-	return processed[0][latency : latency+frames], processed[1][latency : latency+frames], blocks.meter.Snapshot()
+	meter := blocks.meter.Snapshot()
+	tail, tailL, tailR := int(blocks.tailFrames()), blocks.tailBuffer(0), blocks.tailBuffer(1)
+	for i := 0; i < tail && frames+i < len(processed[0]); i++ {
+		processed[0][frames+i], processed[1][frames+i] = tailL[i], tailR[i]
+	}
+	return processed[0][latency : latency+frames], processed[1][latency : latency+frames], meter
 }
 
 func residualDB(got, want [2][]float32) float64 {
@@ -107,10 +118,9 @@ func residualDB(got, want [2][]float32) float64 {
 // live true-peak meter, which reads after the true-peak limiter, reads what the
 // export measures and stays within 0.1 dB of the ceiling.
 //
-// Known export-path margin, not a live difference: with every module on but
-// saturation at 0.6% (so noise hats keep their near-Nyquist energy) the BS.1770
-// 4x meter read −0.75 dBTP at 48 kHz on export and live alike, where an
-// independent 32x reconstruction read −1.00 dBTP.
+// The export ceiling itself, including the 0.6% saturation case whose noise
+// hats keep their near-Nyquist energy, is V1-13's gate on a long-sinc
+// reconstruction (true_peak_ceiling_test.go).
 func TestLivePlaybackRendersTheExport(t *testing.T) {
 	hot := dsp.DefaultParams()
 	hot.AlgorithmVersion, hot.InputGainDB = dsp.TruePeakAlgorithmVersion, 15
@@ -233,5 +243,49 @@ func TestLiveVectorRoundTrips(t *testing.T) {
 	decoded.AlgorithmVersion = uint32(vector[liveControlValues])
 	if !accepted || decoded != params {
 		t.Fatalf("vector does not round-trip: %+v", decoded)
+	}
+}
+
+// loudAbruptEnd is the V1-13 Round E probe: a hard-clipped ±0.9 square and a
+// 0.449 fs tone that stop at full level on the last frame.
+func loudAbruptEnd(rate float64, frames int) ([]float32, []float32) {
+	left, right := make([]float32, frames), make([]float32, frames)
+	for i := range left {
+		square := 0.9
+		if math.Sin(2*math.Pi*441*float64(i)/rate) < 0 {
+			square = -0.9
+		}
+		tone := 0.3 * math.Sin(2*math.Pi*0.449*float64(i))
+		left[i] = float32(math.Max(-0.9, math.Min(0.9, square+tone)))
+		right[i] = float32(math.Max(-0.9, math.Min(0.9, 0.8*square-tone)))
+	}
+	return left, right
+}
+
+// V1-13 Round E R2: a file that ends loud renders the same final frames live
+// as exported. The export drains the lookahead against silence (dsp.Engine
+// Drain clears the Nyquist guard), so live playback must drain from the
+// source's last frame too, not run the chain and guard on into silence.
+func TestLivePlaybackOfALoudAbruptEndRendersTheExport(t *testing.T) {
+	p := dsp.DefaultParams()
+	p.AlgorithmVersion, p.InputGainDB = dsp.TruePeakAlgorithmVersion, 4
+	p.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: -1, TargetLUFS: -9, ReleaseMS: 80, TruePeak: true}
+	every := heaviestLiveParams(dsp.TruePeakAlgorithmVersion, dsp.SatTube)
+	rates := []float64{44100, 48000}
+	if raceEnabled {
+		rates = []float64{48000} // the non-race run checks both rates
+	}
+	for _, rate := range rates {
+		// An end inside a quantum and one on its boundary.
+		for _, frames := range []int{int(rate/4) + 37, 128 * 90} {
+			left, right := loudAbruptEnd(rate, frames)
+			for name, params := range map[string]dsp.Params{"limiter": p, "every module on": every} {
+				heardL, heardR, _ := livePlayback(t, rate, left, right, params)
+				exportL, exportR, _ := dsp.RenderBuffer(left, right, rate, params)
+				if residual := residualDB([2][]float32{heardL, heardR}, [2][]float32{exportL, exportR}); !math.IsInf(residual, -1) {
+					t.Errorf("%.0f Hz, %d frames, %s: live vs export residual %.1f dB, want bit-identical", rate, frames, name, residual)
+				}
+			}
+		}
 	}
 }

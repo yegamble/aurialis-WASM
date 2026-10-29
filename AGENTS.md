@@ -59,6 +59,9 @@ golangci-lint run ./...                              # Runs staticcheck (all), r
 identypo ./...                                       # AST identifier typo check across Go symbols
 govulncheck ./...                                    # Go dependency & stdlib CVE reachability check
 go test -race -count=1 ./...
+# The race build trims signal matrices; run every sample rate and full meter case too.
+go test -run 'HoldTheCeilingAgainstTheLongSincReference$|^TestLivePlaybackOfALoudAbruptEndRendersTheExport$' -count=1 ./wasm/dsp
+go test -run '^Test(ExportMeter|TruePeakMeterReads|LiveMeter)' -count=1 ./internal/audio/dsp
 GOOS=js GOARCH=wasm go build -o public/wasm/aurialis-dsp.wasm ./wasm/dsp
 
 # 2. Next.js 16 / TypeScript & Bundle Quality Gate (pnpm only — direct equivalents to Go linters)

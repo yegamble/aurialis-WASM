@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"math"
 	"testing"
+
+	"github.com/yegamble/Aurialis-WASM/internal/audio/truepeakref"
 )
 
 // The detector's contiguous newest-first window is a speed layout for the live
@@ -138,26 +140,40 @@ func TestLegacyLimiterStillMissesInterSamplePeaks(t *testing.T) {
 	}
 }
 
+// guarded runs a signal through a fresh Nyquist guard, as the v2 limiter
+// stage does before detection, in float64.
+func guarded(left, right []float32) ([]float64, []float64) {
+	var g nyquistGuard
+	outL, outR := make([]float64, len(left)), make([]float64, len(right))
+	for i := range left {
+		outL[i], outR[i] = g.sample(float64(left[i]), float64(right[i]))
+	}
+	return outL, outR
+}
+
 func TestTruePeakBelowCeilingMatchesLegacyAligned(t *testing.T) {
-	// Below the ceiling v2 applies unity gain, so after latency compensation it
-	// must reproduce v1 bit for bit. Dither is excluded: its noise sequence also
-	// covers the lookahead's leading frames and is therefore offset by design.
+	// Below the ceiling v2 applies unity gain to the Nyquist-guarded chain, so
+	// after latency compensation it must reproduce v1 through the guard; only
+	// v1's float32 output rounding separates them. Dither is excluded: its
+	// noise sequence also covers the lookahead's leading frames and is
+	// therefore offset by design.
 	left, right := generateToneStereo(48000, 997, 0.3, 0.3, 0.2)
 	p := truePeakParams(-1)
 	p.Bands[2].GainDB, p.Saturation.Amount, p.Stereo.WidthPct = 2, 15, 115
 	legacy := p
 	legacy.AlgorithmVersion = LegacyAlgorithmVersion
-	wantL, wantR, _, err := RenderBufferContext(context.Background(), left, right, 48000, legacy)
+	legacyL, legacyR, _, err := RenderBufferContext(context.Background(), left, right, 48000, legacy)
 	if err != nil {
 		t.Fatal(err)
 	}
+	wantL, wantR := guarded(legacyL, legacyR)
 	gotL, gotR, _, err := RenderBufferContext(context.Background(), left, right, 48000, p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := range wantL {
-		if gotL[i] != wantL[i] || gotR[i] != wantR[i] {
-			t.Fatalf("aligned v2 differs from v1 at frame %d", i)
+		if math.Abs(float64(gotL[i])-wantL[i]) > 1e-6 || math.Abs(float64(gotR[i])-wantR[i]) > 1e-6 {
+			t.Fatalf("aligned v2 differs from guarded v1 at frame %d: %g vs %g", i, gotL[i], wantL[i])
 		}
 	}
 }
@@ -229,9 +245,11 @@ func TestTruePeakShortInputDrainsWholeLatency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Below the ceiling the output is the guarded input at unity gain.
+	want, _ := guarded(in, in)
 	for i := range in {
-		if outL[i] != in[i] || outR[i] != in[i] {
-			t.Fatalf("short input frame %d = %g, want %g", i, outL[i], in[i])
+		if outL[i] != float32(want[i]) || outR[i] != float32(want[i]) {
+			t.Fatalf("short input frame %d = %g, want %g", i, outL[i], want[i])
 		}
 	}
 }
@@ -276,52 +294,19 @@ func TestTruePeakProcessingDoesNotAllocate(t *testing.T) {
 	}
 }
 
-// referenceTruePeakDB is an independent 32x, 128-tap Kaiser-windowed sinc
-// reconstruction, evaluated away from the buffer edges so truncation of the
-// buffer itself cannot ring. It shares no code with truePeakFIR or peakFIR.
+// referenceTruePeakDB is the independent long-sinc reference (a spectral
+// band-limited reconstruction on a 32x grid, exact on sines to 0.498 fs). It
+// shares no code with truePeakFIR or peakFIR.
 func referenceTruePeakDB(channels [][]float32, edge int) float64 {
-	const phases, half, beta = 32, 64, 10.0
-	bessel := func(x float64) float64 {
-		sum, term := 1.0, 1.0
-		for k := 1; k < 50; k++ {
-			term *= x / 2 / float64(k)
-			sum += term * term
-		}
-		return sum
-	}
-	var kernel [phases][2 * half]float64
-	for p := range kernel {
-		for k := range kernel[p] {
-			d := float64(k-half+1) - float64(p)/phases
-			sinc := 1.0
-			if d != 0 {
-				sinc = math.Sin(math.Pi*d) / (math.Pi * d)
-			}
-			kernel[p][k] = sinc * bessel(beta*math.Sqrt(1-(d/half)*(d/half))) / bessel(beta)
-		}
-	}
-	peak := 0.0
-	for _, x := range channels {
-		for i := edge; i < len(x)-edge; i++ {
-			for p := range kernel {
-				v := 0.0
-				for k, c := range kernel[p] {
-					if j := i + k - half + 1; j >= 0 && j < len(x) {
-						v += c * float64(x[j])
-					}
-				}
-				peak = math.Max(peak, math.Abs(v))
-			}
-		}
-	}
-	return linToDB(peak)
+	return truepeakref.PeakDBTP(channels, edge)
 }
 
 func TestTruePeakLimiterHoldsAgainstIndependentReference(t *testing.T) {
 	// Program-like content with strong high-frequency energy: a decaying kick,
 	// a 220 Hz tone and broadband noise, plus a 19 kHz or 0.45 fs tone. The
-	// 49-tap 4x meter under-reads these near Nyquist, so a limiter driven by it
-	// leaves real inter-sample overs; v2 must hold the reference under ceiling.
+	// BS.1770-4 49-tap 4x meter under-reads these near Nyquist, so a limiter
+	// driven by it leaves real inter-sample overs; v2 must hold the reference
+	// under ceiling.
 	for _, rate := range []float64{44100, 96000} {
 		for _, hf := range []float64{0, 19000, 0.45 * rate} {
 			t.Run(fmt.Sprintf("%.0f/%.0f", rate, hf), func(t *testing.T) {
@@ -342,8 +327,8 @@ func TestTruePeakLimiterHoldsAgainstIndependentReference(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if got := referenceTruePeakDB([][]float32{outL, outR}, 300); got > -1 {
-					t.Fatalf("independent 32x reference %.3f dBTP exceeds -1 dBTP", got)
+				if got := referenceTruePeakDB([][]float32{outL, outR}, 0); got > -1 {
+					t.Fatalf("long-sinc reference %.3f dBTP exceeds -1 dBTP", got)
 				}
 			})
 		}

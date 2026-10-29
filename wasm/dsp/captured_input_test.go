@@ -34,6 +34,11 @@ type capturedDeviceInput struct {
 	Script         mastering.ScriptV2 `json:"script"`
 	DeviceLeft     []float32          `json:"deviceLeft"`
 	DeviceRight    []float32          `json:"deviceRight"`
+	// EndFrame, for a finite pass, is the captured frame where the source's
+	// input ends (V1-13): the worklet then plays the lookahead tail an export
+	// drains in place of the engine's frames from there, which SpeakerLeft and
+	// SpeakerRight reproduce.
+	EndFrame int `json:"endFrame,omitempty"`
 }
 type capturedDeviceOutput struct {
 	DeviceRate     int       `json:"deviceRate"`
@@ -41,12 +46,14 @@ type capturedDeviceOutput struct {
 	SourceVerified bool      `json:"sourceVerified"`
 	OutputLeft     []float32 `json:"outputLeft"`
 	OutputRight    []float32 `json:"outputRight"`
+	SpeakerLeft    []float32 `json:"speakerLeft,omitempty"`
+	SpeakerRight   []float32 `json:"speakerRight,omitempty"`
 }
 
 // This test-only oracle consumes actual browser-resampled device PCM. It does not
 // rehash it as if it were original source PCM, and is never linked into the API.
 func renderCapturedDeviceInput(ctx context.Context, input *capturedDeviceInput) (*capturedDeviceOutput, error) {
-	if input == nil || input.CapturedFrames < 1 || input.CapturedFrames > capturedDeviceFrames || len(input.DeviceLeft) != input.CapturedFrames || len(input.DeviceRight) != input.CapturedFrames || input.SourceRate != input.Script.Source.SampleRate || input.Frames != input.Script.Source.Frames || input.StaticFrames < 0 || input.StaticFrames > input.CapturedFrames || (input.StaticFrames > 0 && (input.StaticParams == nil || dsp.ValidateParams(*input.StaticParams) != nil)) {
+	if input == nil || input.CapturedFrames < 1 || input.CapturedFrames > capturedDeviceFrames || len(input.DeviceLeft) != input.CapturedFrames || len(input.DeviceRight) != input.CapturedFrames || input.SourceRate != input.Script.Source.SampleRate || input.Frames != input.Script.Source.Frames || input.StaticFrames < 0 || input.StaticFrames > input.CapturedFrames || input.EndFrame < 0 || input.EndFrame > input.CapturedFrames || (input.EndFrame > 0 && input.Looping) || (input.StaticFrames > 0 && (input.StaticParams == nil || dsp.ValidateParams(*input.StaticParams) != nil)) {
 		return nil, errors.New("invalid captured device layout or source metadata")
 	}
 	schedule, err := mastering.ValidateScriptV2Context(ctx, &input.Script, input.DeviceRate)
@@ -84,11 +91,21 @@ func renderCapturedDeviceInput(ctx context.Context, input *capturedDeviceInput) 
 		}
 	}
 	output := &capturedDeviceOutput{DeviceRate: input.DeviceRate, CapturedFrames: input.CapturedFrames, OutputLeft: make([]float32, input.CapturedFrames), OutputRight: make([]float32, input.CapturedFrames)}
+	var tail [2][liveTailFrames]float32
+	tailFrames := -1
 	for start := 0; start < input.CapturedFrames; {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		if input.EndFrame > 0 && start == input.EndFrame && tailFrames < 0 {
+			// The worklet marks the source's end here; the bridge drains the
+			// export's tail beside the engine (live_bridge.go render).
+			tailFrames = engine.DrainDetached(tail[0][:], tail[1][:])
+		}
 		end := min(start+128, input.CapturedFrames)
+		if input.EndFrame > start && input.EndFrame < end {
+			end = input.EndFrame
+		}
 		if start < input.StaticFrames {
 			end = min(end, input.StaticFrames)
 			engine.ProcessBlock(input.DeviceLeft[start:end], input.DeviceRight[start:end], output.OutputLeft[start:end], output.OutputRight[start:end])
@@ -113,6 +130,13 @@ func renderCapturedDeviceInput(ctx context.Context, input *capturedDeviceInput) 
 		}
 		if output.OutputRight[i] == 0 {
 			output.OutputRight[i] = 0
+		}
+	}
+	if input.EndFrame > 0 {
+		output.SpeakerLeft = append([]float32(nil), output.OutputLeft...)
+		output.SpeakerRight = append([]float32(nil), output.OutputRight...)
+		for i := 0; i < max(tailFrames, 0) && input.EndFrame+i < input.CapturedFrames; i++ {
+			output.SpeakerLeft[input.EndFrame+i], output.SpeakerRight[input.EndFrame+i] = tail[0][i], tail[1][i]
 		}
 	}
 	return output, nil

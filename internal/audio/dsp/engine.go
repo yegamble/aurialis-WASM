@@ -266,6 +266,8 @@ type Engine struct {
 	limPrevR    [3]float64
 	lastLimGRDB float64
 	truePeak    truePeakLimiter
+	// drainSaved holds the limiter across DrainDetached without allocating.
+	drainSaved truePeakLimiter
 
 	// Deterministic xorshift64* state for TPDF dither
 	prngState uint64
@@ -1230,6 +1232,11 @@ func (e *Engine) processTruePeakStage(l, r, rawL, rawR float64, limActive bool) 
 	} else if !limActive {
 		e.lastLimGRDB = 0
 	}
+	if e.truePeak.guardStale {
+		// The guard last ran on bypassed audio: restart it from silence and
+		// fade it in rather than splice in a state built from other audio.
+		e.truePeak.guard, e.truePeak.guardMix, e.truePeak.guardPrimed, e.truePeak.guardStale = nyquistGuard{}, 0, true, false
+	}
 	ceiling := e.stages.limiterCeiling
 	l, r, rawL, rawR, gain := e.truePeak.process(l, r, rawL, rawR, ceiling, e.stages.limiterRelease, limit)
 	if !limit {
@@ -1240,7 +1247,11 @@ func (e *Engine) processTruePeakStage(l, r, rawL, rawR float64, limActive bool) 
 }
 
 // truePeakPassthrough keeps v2 bypass bit-identical to the source, delayed by
-// the same lookahead as processed audio so toggling bypass stays aligned.
+// the same lookahead as processed audio so toggling bypass stays aligned. It
+// plays the stage's processed column: once the guard has faded out that is the
+// source exactly, and audio processed before bypass leaves the delay line
+// first with its limiter gain, so engaging bypass crossfades out of the guard
+// instead of splicing or releasing queued audio without its gain reduction.
 func (e *Engine) truePeakPassthrough(inL, inR float32) (float32, float32) {
 	l, r := float64(inL), float64(inR)
 	if math.IsNaN(l) || math.IsInf(l, 0) {
@@ -1249,7 +1260,8 @@ func (e *Engine) truePeakPassthrough(inL, inR float32) (float32, float32) {
 	if math.IsNaN(r) || math.IsInf(r, 0) {
 		r = 0
 	}
-	_, _, l, r, _ = e.truePeak.process(l, r, l, r, e.stages.limiterCeiling, e.stages.limiterRelease, false)
+	l, r, _, _, _ = e.truePeak.process(l, r, l, r, e.stages.limiterCeiling, e.stages.limiterRelease, false)
+	e.truePeak.guardStale = true
 	return float32(l), float32(r)
 }
 

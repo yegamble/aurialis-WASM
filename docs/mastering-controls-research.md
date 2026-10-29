@@ -51,13 +51,13 @@ EQ columns are Sub / Low 250 Hz / Mid / Presence 4 kHz / Air 12 kHz shelf in dB;
 
 | Profile | Dynamic: Δ LUFS / Δ crest / TP / avg GR / limiter GR / Level match | Dense: Δ LUFS / Δ crest / TP / avg GR / limiter GR / Level match |
 | --- | --- | --- |
-| Warm Analog | −0.04 LU / +0.27 dB / −10.13 dBTP / 1.50 dB / 0.00 dB / +1.2 dB | −0.02 / −0.37 / −1.22 / 1.48 / 1.84 / +1.5 |
-| Punchy Commercial | −0.02 / +0.36 / −9.79 / 1.45 / 0.00 / +2.1 | −0.09 / −0.54 / −1.23 / 1.50 / 1.91 / +2.4 |
-| Dynamic & Open | −0.03 / +0.25 / −9.93 / 0.75 / 0.00 / +1.1 | −0.01 / −0.61 / −1.23 / 0.74 / 1.42 / +1.3 |
-| Vocal Forward | −0.01 / +0.40 / −9.84 / 1.49 / 0.00 / +2.3 | −0.16 / −0.35 / −1.22 / 1.47 / 1.91 / +2.4 (cap) |
-| Bass Heavy | +0.02 / +0.33 / −9.63 / 1.50 / 0.00 / +1.6 | −0.30 / −0.45 / −1.22 / 1.51 / 1.95 / +1.7 (cap) |
+| Warm Analog | −0.04 LU / +0.25 dB / −10.10 dBTP / 1.50 dB / 0.00 dB / +1.2 dB | −0.03 / −0.39 / −1.24 / 1.48 / 1.86 / +1.5 |
+| Punchy Commercial | −0.03 / +0.34 / −9.76 / 1.45 / 0.00 / +2.1 | −0.11 / −0.56 / −1.24 / 1.50 / 1.93 / +2.4 |
+| Dynamic & Open | −0.04 / +0.15 / −9.98 / 0.75 / 0.00 / +1.1 | −0.02 / −0.63 / −1.24 / 0.74 / 1.50 / +1.3 |
+| Vocal Forward | −0.01 / +0.39 / −9.81 / 1.49 / 0.00 / +2.3 | −0.18 / −0.37 / −1.24 / 1.47 / 1.98 / +2.4 (cap) |
+| Bass Heavy | +0.02 / +0.33 / −9.59 / 1.50 / 0.00 / +1.6 | −0.31 / −0.49 / −1.24 / 1.51 / 1.95 / +1.7 (cap) |
 
-Dense sources now hold loudness within 0.3 LU at the cost of 1.4–2.0 dB of peak limiting and a 0.35–0.61 dB crest cut; before the ruling the true-peak headroom cap left them 1.0–1.7 LU quieter with 0.1–0.5 dB of limiting. Dynamic sources are unchanged. On a clipped, square-like 2 s source (`TestLevelMatchReportsTheLimitingCap`) the cap binds at +0.1 dB with 1.99 dB of limiting, the proposal is 1.36 LU quieter and the drop finding explains why.
+Dense sources now hold loudness within 0.31 LU at the cost of 1.5–2.0 dB of peak limiting and a 0.37–0.63 dB crest cut; before the ruling the true-peak headroom cap left them 1.0–1.7 LU quieter with 0.1–0.5 dB of limiting. Dynamic sources are unchanged. On a clipped, square-like 2 s source peaking at 0.75 (`TestLevelMatchReportsTheLimitingCap`) the cap binds at +0.3 dB with 1.99 dB of limiting, the proposal is 1.13 LU quieter and the drop finding explains why. The table and this case were re-measured after V1-13 band-limited the export limiter at 0.45 fs and refined the true-peak meter: Δ LUFS moved by at most 0.02 LU, true peak by at most 0.05 dB, limiter reduction by at most 0.08 dB, and no Level match changed. At the previous 0.8 peak the square-like source needed 2.25 dB of reduction before any Level match.
 
 Generated section moves are capped (MUB-5) at +0.8 dB EQ, +8 width points and +0.5 dB saturation drive above the baseline; cuts are not capped. The generator currently emits only −0.5 dB input-gain headroom trims, so these caps guard future EQ, width and drive moves. A finding explains a loudness change above 1 LU, a crest cut above 4 dB or an export limiter peak reduction above 4 dB.
 

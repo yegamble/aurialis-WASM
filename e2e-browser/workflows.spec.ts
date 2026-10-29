@@ -181,8 +181,8 @@ test("Release retains native-equivalent final 16/24/32-bit WAVs and exact encode
     const native = await nativeRender(info, source, advanced, bitDepth);
     await reviewEncoded(page, info, native.audio, String(bitDepth));
   }
-  await assertPrivate(info, requests);
   await verifyReleaseQualityStaleness(page, id);
+  await assertPrivate(info, requests);
 });
 
 // V1-04: the browser build checks the same converted CD file the native engine delivers.

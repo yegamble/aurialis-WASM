@@ -34,7 +34,10 @@ export async function verifyMonitorModes(page: Page) {
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
   const evidence = [];
+  const originalLevels = [];
   for (const mode of ["Mono", "Side"] as const) {
+    const match = page.getByRole("button", { name: "Equal-loudness A/B", exact: true });
+    if (await match.getAttribute("aria-pressed") === "true") await match.click();
     const beforeFrames = (await outputLevel(page))?.frames ?? 0;
     await page.getByRole("button", { name: mode, exact: true }).click();
     await expect.poll(async () => (await outputLevel(page))?.frames ?? 0).toBeGreaterThan(beforeFrames + 48000);
@@ -42,10 +45,11 @@ export async function verifyMonitorModes(page: Page) {
       await page.getByRole("button", { name: side, exact: true }).click();
       await expect.poll(async () => {
         const relation = await channelRelation(page);
-        return relation && relation.energy > 1e-6 ? mode === "Mono" ? relation.difference : relation.sum : 1;
+        return relation && relation.energy > 1e-6 ? relation.difference : 1;
       }).toBeLessThan(1e-8);
     }
-    const match = page.getByRole("button", { name: "Equal-loudness A/B", exact: true });
+    await page.waitForTimeout(150);
+    originalLevels.push(await meanOutputLevel(page, 48000));
     if (await match.getAttribute("aria-pressed") !== "true") await match.click();
     await expect(page.locator(".match-status")).not.toHaveText(/Measuring|Re-measuring|unavailable|^$/iu, { timeout: 30_000 });
     const levels = [];
@@ -56,6 +60,8 @@ export async function verifyMonitorModes(page: Page) {
     expect(Math.abs((levels[0] ?? 0) - (levels[1] ?? 0))).toBeLessThanOrEqual(.5);
     evidence.push({ mode, levels, relation: await channelRelation(page) });
   }
+  // Independent fixture: L=.2sin, R=.1sin; Mono=.15sin, Side=.05sin.
+  expect((originalLevels[1] ?? 0) - (originalLevels[0] ?? 0)).toBeCloseTo(20 * Math.log10(1 / 3), 1);
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   expect(await exportHash(page)).toBe(before);
   await page.reload(); await expect(page.getByRole("button", { name: "Side", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -63,9 +69,14 @@ export async function verifyMonitorModes(page: Page) {
   await page.getByRole("button", { name: /^Preview /u }).click();
   const preview = page.getByRole("dialog", { name: /^Preview /u });
   await expect(preview.getByRole("button", { name: "Side", exact: true })).toHaveAttribute("aria-pressed", "true");
+  const libraryMatch = preview.getByRole("button", { name: "Equal-loudness A/B", exact: true });
+  if (await libraryMatch.getAttribute("aria-pressed") === "true") await libraryMatch.click();
+  await preview.getByRole("button", { name: "B Original", exact: true }).click();
   await preview.getByRole("button", { name: "Play", exact: true }).click();
   await expect.poll(async () => (await outputLevel(page))?.frames ?? 0).toBeGreaterThan(48000);
-  await expect.poll(async () => { const relation = await channelRelation(page); return relation && relation.energy > 1e-6 ? relation.sum : 1; }).toBeLessThan(1e-8);
+  await expect.poll(async () => { const relation = await channelRelation(page); return relation && relation.energy > 1e-6 ? relation.difference : 1; }).toBeLessThan(1e-8);
+  const libraryOriginalDb = await meanOutputLevel(page, 48000);
+  expect(libraryOriginalDb).toBeCloseTo(originalLevels[1] ?? 0, 1);
   await page.keyboard.press("Escape");
-  return { evidence, exportHash: before, librarySidePlayback: true };
+  return { evidence, originalLevels, libraryOriginalDb, expectedSideMinusMonoDb: 20 * Math.log10(1 / 3), exportHash: before, librarySidePlayback: true };
 }

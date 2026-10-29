@@ -82,12 +82,12 @@ test.describe("Smart Split (native, mocked model)", () => {
     }))
     await page.route("**/api/separate", async (route) => { separations++; await route.abort() })
     await page.goto(`/split/${id}`)
-    await expect(page.getByRole("status").filter({ hasText: "plain Go" })).toHaveText("Smart Split is off in this build: it runs the model in plain Go, which did not finish one 20-second window in 30 minutes. Splitting needs the macOS build, which uses Apple Accelerate.")
+    await expect(page.getByRole("status").filter({ hasText: "no qualified inference backend" })).toHaveText("Smart Split is off because this build or processor has no qualified inference backend. Use a macOS build with Apple Accelerate, or a Linux or Windows build on an AVX2/FMA processor. The portable and SSE3 fallback paths have not qualified for usable speed.")
     await expect(page.getByRole("button", { name: "Split Night Drive into 4 stems", exact: true })).toBeDisabled()
     await expect(page.getByText(/Estimated split time/u)).toHaveCount(0)
 
     // Master and Tools state the same reason instead of inviting a split.
-    const plainGo = "Smart Split is off in this build: it runs the model in plain Go, which did not finish one 20-second window in 30 minutes. Splitting needs the macOS build, which uses Apple Accelerate."
+    const plainGo = "Smart Split is off because this build or processor has no qualified inference backend. Use a macOS build with Apple Accelerate, or a Linux or Windows build on an AVX2/FMA processor. The portable and SSE3 fallback paths have not qualified for usable speed."
     await page.goto(`/master/${id}`)
     const nav = page.getByRole("navigation", { name: "Tools for Night Drive", exact: true })
     await expect(nav).toContainText(plainGo)
@@ -107,7 +107,7 @@ test("Smart Split failure keeps every retry and layout target at least 44 px", a
   await page.route("**/api/separate", (route) => route.fulfill({ status: 503, json: { error: "queue_full", detail: "Bounded fixture queue" } }));
   await page.goto(`/split/${id}`);
   await page.getByRole("button", { name: "Split split retry targets into 4 stems", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("can't take another right now");
+  await expect(page.getByRole("alert").filter({ hasText: "Smart Split is already working" })).toContainText("can't take another right now");
   for (const width of [320, 375, 390]) {
     await page.setViewportSize({ width, height: 800 });
     const panel = page.getByRole("group", { name: "Stem count", exact: true });

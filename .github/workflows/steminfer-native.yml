@@ -17,6 +17,7 @@ permissions:
 
 jobs:
   qualification:
+    if: github.event_name != 'push' || github.event.deleted != true
     name: native ${{ matrix.platform }} model qualification
     runs-on: ${{ matrix.runner }}
     timeout-minutes: ${{ matrix.job_timeout }}

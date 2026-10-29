@@ -219,7 +219,9 @@ func TestStoreStatusReportsLoadingAfterADownload(t *testing.T) {
 }
 
 func TestBackendReportsAcceleration(t *testing.T) {
-	if Accelerated() != (Backend() == "apple-accelerate" || Backend() == "packed-avx2-fma") {
+	qualifiedApple := runtime.GOOS == "darwin" && Backend() == "apple-accelerate"
+	qualifiedPacked := (runtime.GOOS == "linux" || runtime.GOOS == "windows") && Backend() == "packed-avx2-fma"
+	if Accelerated() != (qualifiedApple || qualifiedPacked) {
 		t.Fatalf("accelerated %v with backend %s", Accelerated(), Backend())
 	}
 	if runtime.GOOS != "darwin" && Backend() == "apple-accelerate" {

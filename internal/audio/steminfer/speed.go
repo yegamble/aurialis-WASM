@@ -2,7 +2,10 @@ package steminfer
 
 // cspell:words steminfer
 
-import "math"
+import (
+	"math"
+	"runtime"
+)
 
 // Backend names this build's matrix kernel: "apple-accelerate" (macOS with
 // cgo), "packed-avx2-fma" (qualified Linux/Windows amd64), "gonum-sse3",
@@ -13,8 +16,14 @@ func Backend() string { return matrixBackendName() }
 // Accelerated reports a hardware backend that passed its model qualification.
 // Only AVX2/FMA is qualified on Linux/Windows; the SSE3 fallback stays disabled.
 func Accelerated() bool {
-	backend := matrixBackendName()
-	return backend == "apple-accelerate" || backend == "packed-avx2-fma"
+	switch matrixBackendName() {
+	case "apple-accelerate":
+		return runtime.GOOS == "darwin"
+	case "packed-avx2-fma":
+		return runtime.GOOS == "linux" || runtime.GOOS == "windows"
+	default:
+		return false
+	}
 }
 
 // Speed is the model's window geometry and the recorded time per window for

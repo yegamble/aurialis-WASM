@@ -5,11 +5,13 @@ package steminfer
 import "math"
 
 // Backend names this build's matrix kernel: "apple-accelerate" (macOS with
-// cgo) or "portable-go" (everything else).
+// cgo), "gonum-sse3" (candidate Linux/Windows amd64 with SSE3), or "portable-go".
+// A backend name does not imply that its full-window qualification has passed.
 func Backend() string { return matrixBackendName() }
 
 // Accelerated reports whether inference uses Apple Accelerate. Only that
-// backend has finished a window in a usable time.
+// backend has finished a qualified window in a usable time. The native Gonum
+// candidate stays unavailable until Linux and Windows full-window gates pass.
 func Accelerated() bool { return matrixBackendName() == "apple-accelerate" }
 
 // Speed is the model's window geometry and the recorded time per window for

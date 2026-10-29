@@ -36,7 +36,7 @@ func TestAlgorithmVersionLegacyCompatibility(t *testing.T) {
 }
 
 func TestAlgorithmVersionRejectionPreservesHistory(t *testing.T) {
-	for _, version := range []uint32{3, 4, math.MaxUint32} {
+	for _, version := range []uint32{4, 5, math.MaxUint32} {
 		e, reference := NewEngine(48000), NewEngine(48000)
 		p := DefaultParams()
 		p.Bands[2].GainDB, p.Saturation.Amount = 3, 30

@@ -16,6 +16,16 @@ import (
 // It reports uncertainty and does not infer instruments, musical roles or lost transients.
 // The prediction measures the proposal rendered through the export algorithm.
 func AnalyzeDeepV2Context(ctx context.Context, buf *audio.Buffer, profile ProfileID, onProgress func(int, string)) (*ScriptV2, *ProposalPrediction, error) {
+	return AnalyzeDeepV2QualityContext(ctx, buf, profile, "classic", onProgress)
+}
+
+// AnalyzeDeepV2QualityContext predicts the explicitly selected render algorithm.
+// Omitted quality keeps old proposals and their classic export unchanged.
+func AnalyzeDeepV2QualityContext(ctx context.Context, buf *audio.Buffer, profile ProfileID, quality string, onProgress func(int, string)) (*ScriptV2, *ProposalPrediction, error) {
+	algorithm, qualityErr := RenderQualityAlgorithm(quality)
+	if qualityErr != nil {
+		return nil, nil, qualityErr
+	}
 	var featureProgress func(int, string)
 	if onProgress != nil {
 		featureProgress = func(progress int, stage string) { onProgress(progress*6/10, stage) }
@@ -33,6 +43,9 @@ func AnalyzeDeepV2Context(ctx context.Context, buf *audio.Buffer, profile Profil
 		return nil, nil, err
 	}
 	params := ProposalBaseline(canonical)
+	if algorithm == dsp.OversampledAlgorithmVersion {
+		params.AlgorithmVersion = algorithm
+	}
 	script := &ScriptV2{Version: "2.0", Source: features.Source, Revision: 1, Profile: canonical, Summary: "Measured spectral-balance proposal from a conservative baseline. Its compressor threshold is set from the source's level, and its only loudness change is the measured Level match gain shown with the prediction; review it before applying. No instrument or musical-role inference.", Sections: features.Sections, Moves: []automation.Move{}, Findings: []Finding{}, ChainParams: params, BeforeMetrics: metrics}
 	audible := false
 	for _, frame := range features.Frames {
@@ -83,8 +96,11 @@ func AnalyzeDeepV2Context(ctx context.Context, buf *audio.Buffer, profile Profil
 		return nil, nil, err
 	}
 	if audible {
-		// One explicit, listed gain holds the source loudness within 2 dB of
-		// limiter reduction (V1-09 Round E); the prediction is its export render.
+		// One listed gain holds loudness within the profile's limiting budget;
+		// the prediction is its actual export render.
+		if canonical == ProfileDynamicOpen {
+			prediction.levelMatchLimitDB = MaxDynamicLevelMatchLimiterReductionDB
+		}
 		renders := 0
 		prediction, err = searchLevelMatch(metrics.IntegratedLUFS, script.ChainParams.Limiter.CeilingDBTP, prediction, func(gainDB float64) (ProposalPrediction, error) {
 			script.ChainParams.Compressor.MakeupDB = gainDB

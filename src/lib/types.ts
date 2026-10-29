@@ -1,3 +1,4 @@
+import type { AlbumTransition } from "./album-transitions";
 import type { AlbumLevel } from "./album-levels";
 import type { DeliveryFormat } from "./delivery-format";
 import type { DeepMasteringState } from "./deep-mastering";
@@ -108,7 +109,11 @@ export type RepairParams = {
   phaseAlign: boolean;
 };
 
+export type RenderQuality = "classic" | "oversampled";
+
 export type AdvancedParams = {
+  /** Missing in older projects: retain algorithm 2 without a sonic migration. */
+  renderQuality?: RenderQuality;
   input: number;
   threshold: number;
   ratio: number;
@@ -221,6 +226,8 @@ export type Album = {
   level: AlbumLevel;
   /** Bit depth, sample rate and dither of every rendered master; one rate makes a mixed-rate album uniform. */
   delivery: DeliveryFormat;
+  /** Separate continuous-export setting; does not invalidate individual masters. */
+  transition?: AlbumTransition;
   trackIds: string[];
   mastered: boolean;
 };

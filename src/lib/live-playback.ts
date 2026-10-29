@@ -1,3 +1,5 @@
+import { isMonitorMode, monitorModeCode, type MonitorMode } from "./monitor-mode";
+import { acceptedControlPacket, readKernelDiagnostics, type KernelDiagnostics } from "./playback-diagnostics";
 import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import type { StereoPCM } from "./browser-engine";
 import { exportParams } from "./engine-params";
@@ -10,6 +12,8 @@ import type { ScriptV2 } from "./deep-mastering";
 import { packLiveControls, createLiveControls } from "./live-controls";
 import type { AdvancedParams, SourceIdentity } from "./types";
 
+export type LivePlaybackDiagnostics = { sourceRate: number; liveRate: number | null; contextTime: number | null; contextState: string | null; baseLatency: number | null; outputLatency: number | null; deviceStats: ReturnType<typeof readPlaybackStats>; acceptedControls: ReturnType<typeof acceptedControlPacket>; kernel: KernelDiagnostics | null };
+
 export type LivePlaybackState = {
   position: number;
   duration: number;
@@ -17,6 +21,7 @@ export type LivePlaybackState = {
   ready: boolean;
   loading: boolean;
   original: boolean;
+  monitorMode?: MonitorMode;
   repeat: boolean;
   repeatPending?: boolean;
   volume: number;
@@ -113,12 +118,14 @@ export type LivePlaybackController = {
   applyScript: (script: ScriptV2, signal: AbortSignal, canCommit?: () => boolean) => Promise<ScriptV2>;
   detachScript: (settings: AdvancedParams, signal: AbortSignal, canCommit?: () => boolean) => Promise<void>;
   setBypass: (original: boolean) => void;
+  setMonitorMode: (mode: MonitorMode) => void;
   setVolume: (volume: number) => void;
   /** Apply one static attenuate-only monitor gain pair, or unity with null. */
   setLoudnessMatch: (match: LoudnessMatchGains | null) => void;
   setRepeat: (enabled: boolean) => void;
   dispose: () => void;
   getState: () => LivePlaybackState;
+  getDiagnostics: () => LivePlaybackDiagnostics;
 };
 
 const QUANTUM = 128;
@@ -148,6 +155,7 @@ export function createLivePlayback(
   settings: AdvancedParams,
   callbacks: LivePlaybackCallbacks = {},
   binding?: { blob: Blob; identity: SourceIdentity; applied?: ScriptV2 },
+  options: { diagnostics?: boolean } = {},
 ): LivePlaybackController {
   if (!Number.isInteger(source.sampleRate) || source.sampleRate < 8000 || source.sampleRate > 192000
     || source.left.length === 0 || source.left.length !== source.right.length
@@ -162,6 +170,7 @@ export function createLivePlayback(
   let publicationToken = 0;
   let activePublication: AbortController | undefined;
   const publications = new Map<number, { resolve: (revision: number) => void; reject: (error: Error) => void; canCommit: () => boolean; commitSent: boolean }>();
+  let kernelDiagnostics: KernelDiagnostics | null = null;
   let currentParams = exportParams(settings);
   let serializedSettings = JSON.stringify(currentParams);
   let state: LivePlaybackState = {
@@ -391,6 +400,7 @@ export function createLivePlayback(
   function onWorkletMessage(event: MessageEvent<unknown>): void {
     if (disposed || !isRecord(event.data)) return;
     const message = event.data;
+    if (message.type === "diagnostics") { if (options.diagnostics) kernelDiagnostics = readKernelDiagnostics(message); return; }
     if (message.type === "stream-armed" && typeof message.generation === "number") {
       arms.get(message.generation)?.resolve();
     } else if (message.type === "automation-staged" && typeof message.token === "number") {
@@ -442,11 +452,28 @@ export function createLivePlayback(
     audio = context;
     // A device switch or a context interruption stalls callbacks that are not
     // this graph's load: restart the worklet's deadline watch with a warm-up.
-    const rewatch = () => { if (audio !== context) return; underruns.reset(); worklet?.port.postMessage({ type: "rewatch", slackMs: watchSlackMs(context) }); };
+    let deviceGeneration = 0;
+    let settleTimers: ReturnType<typeof setTimeout>[] = [];
+    const cancelSettle = () => { deviceGeneration++; for (const timer of settleTimers) clearTimeout(timer); settleTimers = []; };
+    const rewatch = () => {
+      if (audio !== context || disposed) return;
+      cancelSettle();
+      const generation = deviceGeneration;
+      let slackMs = watchSlackMs(context);
+      underruns.reset(); worklet?.port.postMessage({ type: "rewatch", slackMs });
+      // Device latency may settle after devicechange. Re-read twice, without
+      // extending the warm-up when the reported value did not change.
+      settleTimers = [250, 1000].map((delay) => setTimeout(() => {
+        if (disposed || audio !== context || generation !== deviceGeneration) return;
+        const settled = watchSlackMs(context);
+        if (settled === slackMs) return;
+        slackMs = settled; underruns.reset(); worklet?.port.postMessage({ type: "rewatch", slackMs });
+      }, delay));
+    };
     const devices = (navigator as { mediaDevices?: MediaDevices }).mediaDevices;
     context.addEventListener("statechange", rewatch);
     devices?.addEventListener("devicechange", rewatch);
-    unwatchDevice = () => { context.removeEventListener("statechange", rewatch); devices?.removeEventListener("devicechange", rewatch); };
+    unwatchDevice = () => { cancelSettle(); context.removeEventListener("statechange", rewatch); devices?.removeEventListener("devicechange", rewatch); };
     state = { ...state, liveSampleRate: context.sampleRate };
     const resumed = context.resume();
     const sharedHeader = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 8);
@@ -481,7 +508,7 @@ export function createLivePlayback(
       const node = new AudioWorkletNode(context, "aurialis-live", { numberOfInputs: 1, numberOfOutputs: 1,
         channelCount: 2, channelCountMode: "explicit", outputChannelCount: [2],
         processorOptions: { header: sharedHeader, stream: sharedStream, tags: sharedTags, samples: sharedSamples, delayBlocks,
-          module: compiledModule, controls: sharedControls, controlAbiVersion: 2, entropy: crypto.getRandomValues(new Uint8Array(256)),
+          module: compiledModule, controls: sharedControls, controlAbiVersion: 2, requestedAlgorithm: currentParams.algorithmVersion, diagnostics: options.diagnostics === true, entropy: crypto.getRandomValues(new Uint8Array(256)),
           clockOriginMs: Math.max(1, performance.now()), watchSlackMs: watchSlackMs(context) } });
       worklet = node;
       node.port.onmessage = (event: MessageEvent<unknown>) => {
@@ -508,6 +535,7 @@ export function createLivePlayback(
       left.connect(merge, 0, 0); right.connect(merge, 0, 1);
       merge.connect(context.destination);
       splitter = split; merger = merge; leftAnalyser = left; rightAnalyser = right;
+      node.port.postMessage({ type: "monitor-mode", value: monitorModeCode(state.monitorMode ?? "stereo") });
       node.port.postMessage({ type: "original", value: state.original });
       node.port.postMessage({ type: "volume", value: state.volume });
       node.port.postMessage(matchMessage(state.loudnessMatch ?? UNITY_MATCH));
@@ -569,7 +597,7 @@ export function createLivePlayback(
     if (!Number.isSafeInteger(revision)) throw new Error("The schedule revision limit has been reached. Reload this project.");
     const installed = { ...script, revision };
     try {
-      const packet = await prepareLiveAutomation(installed, binding.blob, context.sampleRate, combined);
+      const packet = await prepareLiveAutomation(installed, binding.blob, context.sampleRate, combined, currentParams.algorithmVersion === 3 ? "oversampled" : "classic");
       combined.throwIfAborted(); if (!canCommit()) throw new DOMException("The source or settings changed.", "AbortError");
       scheduleRevision = revision;
       const version = state.parameterVersion + 1;
@@ -671,6 +699,12 @@ export function createLivePlayback(
       worklet?.port.postMessage({ type: "original", value: original });
       emit();
     },
+    setMonitorMode(mode) {
+      if (disposed || !isMonitorMode(mode)) return;
+      state = { ...state, monitorMode: mode };
+      worklet?.port.postMessage({ type: "monitor-mode", value: monitorModeCode(mode) });
+      emit();
+    },
     setVolume(volume) {
       if (disposed || !Number.isFinite(volume)) return;
       state = { ...state, volume: Math.max(0, Math.min(1, volume)) };
@@ -698,6 +732,9 @@ export function createLivePlayback(
       emit();
     },
     getState: snapshot,
+    getDiagnostics: () => ({ sourceRate: source.sampleRate, liveRate: audio?.sampleRate ?? null, contextTime: audio?.currentTime ?? null, contextState: audio?.state ?? null,
+      baseLatency: audio && Number.isFinite(audio.baseLatency) ? audio.baseLatency : null, outputLatency: audio && Number.isFinite(audio.outputLatency) ? audio.outputLatency : null,
+      deviceStats: audio ? readPlaybackStats(audio) : null, acceptedControls: acceptedControlPacket(header, controls?.buffer), kernel: kernelDiagnostics }),
     dispose() {
       if (disposed) return;
       disposed = true; wantsPlayback = false;

@@ -18,6 +18,7 @@ import { masteringTargets } from "./mastering-targets";
 import { restoredSimpleDirection, type SimpleChange } from "./simple-directions";
 import { hasAppliedDeep } from "./reference-matching";
 import { readReleaseReport } from "./release-review";
+import { readAlbumTransition } from "./album-transition-settings";
 import { pruneAlbumOffsets, readAlbumLevel } from "./album-levels";
 import { readDeliveryFormat } from "./delivery-format";
 import { deepSourceMatches, loweredDeepCeilings, readDeepMasteringState, type DeepMasteringState, type DeepSettingsSnapshot, type ScriptV2 } from "./deep-mastering";
@@ -80,7 +81,6 @@ type StoreAction =
     }
   | { type: "UPDATE_STEREO"; trackId: string; patch: Partial<StereoParams> }
   | { type: "UPDATE_LIMITER"; trackId: string; patch: Partial<LimiterParams> }
-  | { type: "UPDATE_REPAIR"; trackId: string; patch: Partial<RepairParams> }
   | { type: "UPDATE_DE_HARSH"; trackId: string; patch: Partial<DeHarshParams> }
   | { type: "UPDATE_MULTIBAND"; trackId: string; patch: Partial<Omit<MultibandParams, "bands">> }
   | { type: "UPDATE_MULTIBAND_BAND"; trackId: string; index: 0 | 1 | 2; patch: Partial<MultibandBandParams> }
@@ -208,7 +208,7 @@ export function reduceStoreState(
             ...next,
             shortcutUndo: directionChanged ? {} : track.shortcutUndo ?? {},
             simpleCustom: directionChanged ? false : track.simpleCustom ?? true,
-            advanced: directionChanged ? { ...mapped, limiter: { ...mapped.limiter, ...limiterTarget } } : { ...track.advanced, limiter: { ...track.advanced.limiter, ...limiterTarget } },
+            advanced: directionChanged ? { ...mapped, ...(track.advanced.renderQuality !== undefined ? { renderQuality: track.advanced.renderQuality } : {}), limiter: { ...mapped.limiter, ...limiterTarget } } : { ...track.advanced, limiter: { ...track.advanced.limiter, ...limiterTarget } },
             updatedAt: new Date().toISOString(),
           };
         }),
@@ -345,23 +345,6 @@ export function reduceStoreState(
         })),
       };
 
-    case "UPDATE_REPAIR":
-      return {
-        ...state,
-        tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
-          ...track,
-          simpleCustom: true,
-          advanced: {
-            ...track.advanced,
-            repair: {
-              ...track.advanced.repair,
-              ...action.patch,
-            },
-          },
-          updatedAt: new Date().toISOString(),
-        })),
-      };
-
     case "UPDATE_DE_HARSH":
     case "UPDATE_MULTIBAND":
     case "UPDATE_MULTIBAND_BAND":
@@ -394,7 +377,7 @@ export function reduceStoreState(
           ...track,
           simpleCustom: true,
           shortcutUndo: {},
-          advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate),
+          advanced: clampAdvancedToSampleRate({ ...createDefaultAdvancedParams(), ...(track.advanced.renderQuality !== undefined ? { renderQuality: track.advanced.renderQuality } : {}) }, track.sampleRate),
           updatedAt: new Date().toISOString(),
         })),
       };
@@ -502,10 +485,20 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
   if (!Array.isArray(candidate.tracks)) return null;
   const tracks: Track[] = candidate.tracks.filter((track) => track.source !== "demo").map((track) => {
     const baseAdv = createDefaultAdvancedParams(track.advanced);
+    const renderQuality: unknown = track.advanced?.renderQuality;
+    const advancedSeed = { ...track.advanced }; delete advancedSeed.renderQuality;
     const storedBands: unknown = track.advanced?.eqBands;
     const restored: Track & { script?: unknown } = { ...normalizeSourceMetadata(track), advanced: createDefaultAdvancedParams() };
     delete restored.script;
     delete restored.releaseScore;
+    if (renderQuality !== undefined && renderQuality !== "classic" && renderQuality !== "oversampled") {
+      restored.status = "ready";
+      restored.importNotice = "An unsupported render quality was removed. This project uses Classic until you explicitly choose another quality.";
+    }
+    if (track.advanced?.repair?.enabled) {
+      restored.status = "ready";
+      restored.importNotice = "An older audio repair setting was removed because repair is unavailable. Your other processing settings are preserved.";
+    }
     if (track.exportDelivery !== undefined) restored.exportDelivery = readDeliveryFormat(track.exportDelivery);
     const review = readReleaseReport(track.releaseReview);
     if (review) restored.releaseReview = review;
@@ -520,7 +513,8 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
       mode: track.mode,
       advanced: clampAdvancedToSampleRate({
         ...baseAdv,
-        ...track.advanced,
+        ...advancedSeed,
+        ...(renderQuality === "classic" || renderQuality === "oversampled" ? { renderQuality } : {}),
         eqBands:
           Array.isArray(storedBands) && storedBands.length === 5
             ? (storedBands as Track["advanced"]["eqBands"])
@@ -550,10 +544,8 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
           // eslint-disable-next-line security/detect-object-injection
           bands: baseAdv.multiband.bands.map((band, index) => ({ ...band, ...track.advanced?.multiband?.bands?.[index] })) as MultibandParams["bands"],
         },
-        repair: {
-          ...baseAdv.repair,
-          ...(track.advanced?.repair ?? {}),
-        },
+        // Repair was never implemented. Old saved switches cannot prevent playback.
+        repair: createDefaultAdvancedParams().repair,
       }, track.sampleRate),
     }), loweredDeepCeilings(track.deepMastering));
   });
@@ -561,7 +553,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
     tracks,
     albums: Array.isArray(candidate.albums) ? candidate.albums.map(({ target: _legacyTarget, ...album }) => {
       const trackIds = album.trackIds.filter((id) => tracks.some((track) => track.id === id));
-      return { ...album, level: pruneAlbumOffsets(readAlbumLevel(album.level), trackIds), delivery: readDeliveryFormat(album.delivery), mastered: false, trackIds };
+      return { ...album, level: pruneAlbumOffsets(readAlbumLevel(album.level), trackIds), delivery: readDeliveryFormat(album.delivery), transition: readAlbumTransition(album.transition), mastered: false, trackIds };
     }) : [],
     stems: [],
   };

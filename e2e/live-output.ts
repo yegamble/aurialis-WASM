@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { expect, type Page } from "@playwright/test";
 
 type OutputProbe = {
@@ -8,15 +9,28 @@ type OutputProbe = {
   sampleRate: number;
   left: number[];
   right: number[];
-  energy?: { remaining: number; frames: number; squares: number; k?: KWeighting };
+  port: MessagePort;
+  energy?: { remaining: number; frames: number; squares: number };
 };
-/** BS.1770 K-weighting (pre-filter shelf then RLB high-pass) with per-channel state. */
-type KWeighting = { coefficients: number[][]; state: number[][] };
 type ProbeWindow = Window & { qaOutput?: OutputProbe };
 
 /** Test-only tap of the actual node feeding the speakers; no application DSP mocks. */
 export async function observeOutput(page: Page): Promise<void> {
+  const source = await readFile("e2e/support/actual-output-tap.js", "utf8");
+  await page.route("**/__qa/actual-output-tap.js", (route) => route.fulfill({ body: source, contentType: "text/javascript" }));
   await page.addInitScript(() => {
+    const NativeContext = AudioContext;
+    const loading = new WeakMap<BaseAudioContext, () => Promise<void>>();
+    window.AudioContext = class extends NativeContext {
+      constructor(options?: AudioContextOptions) {
+        super(options);
+        const load = this.audioWorklet.addModule.bind(this.audioWorklet);
+        let observer: Promise<void> | undefined;
+        const prepare = () => observer ??= load("/__qa/actual-output-tap.js");
+        loading.set(this, prepare);
+        this.audioWorklet.addModule = async (url, moduleOptions) => { await load(url, moduleOptions); await prepare(); };
+      }
+    };
     const nativeConnect = AudioNode.prototype.connect;
     let generation = 0;
     const connected = new WeakSet<AudioNode>();
@@ -26,47 +40,21 @@ export async function observeOutput(page: Page): Promise<void> {
       const result: unknown = Reflect.apply(nativeConnect, this, [destination, ...ports]);
       if (destination instanceof AudioDestinationNode && !connected.has(this)) {
         connected.add(this);
-        const context = this.context as AudioContext;
-        const capture = context.createScriptProcessor(1024, 2, 2);
-        const silent = context.createGain();
-        silent.gain.value = 0;
-        const probe: OutputProbe = {
-          generation: ++generation, instanceId: `${performance.timeOrigin}:${generation}`,
-          frames: 0, time: 0, sampleRate: context.sampleRate, left: [], right: [],
-        };
-        (window as ProbeWindow).qaOutput = probe;
-        capture.onaudioprocess = (event) => {
-          probe.frames += event.inputBuffer.length;
-          probe.time = event.playbackTime;
-          probe.left = Array.from(event.inputBuffer.getChannelData(0));
-          probe.right = Array.from(event.inputBuffer.getChannelData(1));
-          const energy = probe.energy;
-          if (energy && energy.remaining > 0) {
-            const count = Math.min(energy.remaining, probe.left.length);
-            const k = energy.k;
-            // Two cascaded biquads per channel; state holds x1, x2, y1, y2 per stage.
-            const weigh = (sample: number, channel: number) => {
-              if (!k) return sample;
-              let value = sample;
-              for (let stage = 0; stage < 2; stage++) {
-                const [b0 = 0, b1 = 0, b2 = 0, a1 = 0, a2 = 0] = k.coefficients[stage] ?? [];
-                const s = k.state[channel * 2 + stage] ?? [0, 0, 0, 0];
-                const [x1 = 0, x2 = 0, y1 = 0, y2 = 0] = s;
-                const y = b0 * value + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
-                k.state[channel * 2 + stage] = [value, x1, y, y1];
-                value = y;
-              }
-              return value;
-            };
-            for (let index = 0; index < count; index++)
-              energy.squares += weigh(probe.left[index] ?? 0, 0) ** 2 + weigh(probe.right[index] ?? 0, 1) ** 2;
-            energy.remaining -= count;
-            energy.frames += count;
-          }
-        };
-        Reflect.apply(nativeConnect, this, [capture]);
-        Reflect.apply(nativeConnect, capture, [silent]);
-        Reflect.apply(nativeConnect, silent, [destination]);
+        const node = this, context = this.context;
+        void loading.get(context)?.().then(() => {
+          const capture = new AudioWorkletNode(context, "qa-live-output", { channelCount: 2, channelCountMode: "explicit", outputChannelCount: [2] });
+          const silent = context.createGain(); silent.gain.value = 0;
+          const probe: OutputProbe = { generation: ++generation, instanceId: `${performance.timeOrigin}:${generation}`, frames: 0, time: 0, sampleRate: context.sampleRate, left: [], right: [], port: capture.port };
+          (window as ProbeWindow).qaOutput = probe;
+          capture.port.onmessage = (event: MessageEvent<{ type: string; frames: number; time: number; left: number[]; right: number[]; squares: number }>) => {
+            const message = event.data;
+            if (message.type === "energy") probe.energy = { remaining: 0, frames: message.frames, squares: message.squares };
+            else { probe.frames = message.frames; probe.time = message.time; probe.left = message.left; probe.right = message.right; }
+          };
+          Reflect.apply(nativeConnect, node, [capture]);
+          Reflect.apply(nativeConnect, capture, [silent]);
+          Reflect.apply(nativeConnect, silent, [destination]);
+        });
       }
       return result instanceof AudioNode ? result : undefined;
     }
@@ -221,8 +209,8 @@ export async function meanOutputLevel(page: Page, frames?: number, weighting: "f
   await page.evaluate(([count, coefficients]) => {
     const probe = (window as ProbeWindow).qaOutput;
     if (!probe) throw new Error("Missing live output probe");
-    probe.energy = { remaining: count ?? probe.sampleRate, frames: 0, squares: 0,
-      ...(coefficients ? { k: { coefficients, state: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]] } } : {}) };
+    probe.energy = { remaining: count ?? probe.sampleRate, frames: 0, squares: 0 };
+    probe.port.postMessage({ frames: count ?? probe.sampleRate, coefficients });
   }, [frames, weighting === "k" ? kWeighting(rate) : null] as const);
   await expect.poll(() => page.evaluate(() => (window as ProbeWindow).qaOutput?.energy?.remaining), { intervals: [50], timeout: 30_000 }).toBe(0);
   return page.evaluate(() => {

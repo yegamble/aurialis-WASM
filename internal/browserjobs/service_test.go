@@ -337,3 +337,73 @@ func TestRenderMeasureOnlySkipsTheSourceMeasurement(t *testing.T) {
 		}
 	}
 }
+
+func TestMonitorMeasurementParityAndExportRejection(t *testing.T) {
+	wav := source(t)
+	for _, mode := range []string{"stereo", "mono", "side"} {
+		request := browserjobs.Request{Operation: "render", Params: `{"bypass":true}`, Format: "json", MonitorMode: mode}
+		local := run(t, request, wav, nil)
+		native := nativeRender(t, wav, [][2]string{{"params", request.Params}, {"format", "json"}, {"monitorMode", mode}})
+		if string(local.Metadata) != string(native) {
+			var a, b any
+			if json.Unmarshal(local.Metadata, &a) != nil || json.Unmarshal(native, &b) != nil {
+				t.Fatal("metadata")
+			}
+			aa, _ := json.Marshal(a)
+			bb, _ := json.Marshal(b)
+			if string(aa) != string(bb) {
+				t.Fatalf("%s native/browser mismatch: %s vs %s", mode, aa, bb)
+			}
+		}
+	}
+	for _, raw := range []string{`{"operation":"render","monitorMode":"mono"}`, `{"operation":"render","monitorMode":""}`, `{"operation":"features","monitorMode":"side"}`, `{"operation":"render","format":"json","monitorMode":"middle"}`} {
+		if _, err := browserjobs.Execute(context.Background(), []byte(raw), wav, nil, nil); err == nil {
+			t.Fatalf("accepted %s", raw)
+		}
+	}
+}
+
+func TestMonitorMeasuresRenderedPCMInsteadOfProcessingTheMatrix(t *testing.T) {
+	wav := source(t)
+	params := `{"inputGainDb":-6,"ditherBits":0}`
+	delivered := run(t, browserjobs.Request{Operation: "render", Params: params, BitDepth: 32}, wav, nil)
+	pcm, err := audio.DecodeAndDisarm("render.wav", delivered.Audio)
+	if err != nil {
+		t.Fatal(err)
+	}
+	original, err := audio.DecodeAndDisarm("source.wav", wav)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, view := range []string{"mono", "side"} {
+		mode, err := dsp.ParseMonitorMode(view)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result := run(t, browserjobs.Request{Operation: "render", Params: params, BitDepth: 32, Format: "json", MonitorMode: view}, wav, nil)
+		var metrics struct {
+			Before dsp.Metrics `json:"beforeMetrics"`
+			After  dsp.Metrics `json:"afterMetrics"`
+		}
+		if err := json.Unmarshal(result.Metadata, &metrics); err != nil {
+			t.Fatal(err)
+		}
+		before, err := dsp.MeasureMonitorContext(context.Background(), original.Left, original.Right, float64(original.SampleRate), mode)
+		if err != nil {
+			t.Fatal(err)
+		}
+		after, err := dsp.MeasureMonitorContext(context.Background(), pcm.Left, pcm.Right, float64(pcm.SampleRate), mode)
+		if err != nil {
+			t.Fatal(err)
+		}
+		metrics.After.GainReductionDB = after.GainReductionDB
+		if metrics.Before != before || metrics.After != after {
+			t.Fatalf("%s metrics do not describe selected source and rendered PCM", view)
+		}
+		// Monitoring is rejected on delivery; an ordinary subsequent export remains byte-identical.
+		again := run(t, browserjobs.Request{Operation: "render", Params: params, BitDepth: 32}, wav, nil)
+		if !bytes.Equal(again.Audio, delivered.Audio) {
+			t.Fatal("monitor measurement contaminated export")
+		}
+	}
+}

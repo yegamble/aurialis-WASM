@@ -363,6 +363,13 @@ func decodeFLACFrame(data []byte, info flacStreamInfo, out *[flacMaxChannels][]i
 			right[i] = (mid - right[i]) >> 1
 		}
 	}
+	for ch := range channels {
+		for _, sample := range out[ch] {
+			if !flacSampleInRange(sample, uint(depth)) {
+				return corrupt("reconstructed sample exceeds bit depth")
+			}
+		}
+	}
 	return blockSize, end + 2, nil
 }
 
@@ -439,6 +446,11 @@ func decodeFLACSubframe(r *flacBits, width uint, out []int64) error {
 	return nil
 }
 
+func flacSampleInRange(sample int64, width uint) bool {
+	limit := int64(1) << (width - 1)
+	return sample >= -limit && sample < limit
+}
+
 func decodeFLACFixed(r *flacBits, width uint, order int, out []int64) error {
 	if order > len(out) {
 		return errors.New("predictor order exceeds block")
@@ -454,18 +466,33 @@ func decodeFLACFixed(r *flacBits, width uint, order int, out []int64) error {
 		return err
 	}
 	for i := order; i < len(out); i++ {
+		var predicted int64
 		switch order {
 		case 1:
-			out[i] += out[i-1]
+			predicted = out[i-1]
 		case 2:
-			out[i] += 2*out[i-1] - out[i-2]
+			predicted = 2*out[i-1] - out[i-2]
 		case 3:
-			out[i] += 3*out[i-1] - 3*out[i-2] + out[i-3]
+			predicted = 3*out[i-1] - 3*out[i-2] + out[i-3]
 		case 4:
-			out[i] += 4*out[i-1] - 6*out[i-2] + 4*out[i-3] - out[i-4]
+			predicted = 4*out[i-1] - 6*out[i-2] + 4*out[i-3] - out[i-4]
+		}
+		if !flacReconstruct(out, i, predicted, width) {
+			return errors.New("fixed predictor sample exceeds bit depth")
 		}
 	}
 	return nil
+}
+
+// Valid prior samples bound predictors well below int64 overflow (at most
+// 32 coefficients of 15 bits times 33-bit samples). Check before addition.
+func flacReconstruct(out []int64, i int, predicted int64, width uint) bool {
+	limit := int64(1) << (width - 1)
+	if out[i] < -limit-predicted || out[i] > limit-1-predicted {
+		return false
+	}
+	out[i] += predicted
+	return true
 }
 
 func decodeFLACLPC(r *flacBits, width uint, order int, out []int64) error {
@@ -501,7 +528,9 @@ func decodeFLACLPC(r *flacBits, width uint, order int, out []int64) error {
 		for j := range order {
 			sum += coeffs[j] * out[i-1-j]
 		}
-		out[i] += sum >> uint(shift) // #nosec G115 -- shift is 0..15
+		if !flacReconstruct(out, i, sum>>uint(shift), width) { // #nosec G115 -- shift is 0..15
+			return errors.New("LPC sample exceeds bit depth")
+		}
 	}
 	return nil
 }

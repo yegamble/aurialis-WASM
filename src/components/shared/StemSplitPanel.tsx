@@ -9,7 +9,7 @@ import {
   type SplitStem, type StemModelStatus, type StemSplit, type StemSplitFailure,
 } from "@/lib/stem-split";
 import { stemModelNote, stemSplitAvailability, stemSplitEstimate } from "@/lib/stem-split-copy";
-import { Button } from "./Primitives";
+import { Button, ChoiceGroup } from "./Primitives";
 
 const stemLayouts = new Map<number, string[]>([
   [2, ["Vocals", "Instrumental"]],
@@ -135,7 +135,7 @@ export function StemSplitPanel({ audioId, title, duration = 0 }: { audioId: stri
   }
 
   const enabled = canSplit(browser, status, audioId);
-  const estimate = !browser && status?.available === true ? stemSplitEstimate(status.speed, duration, status.arch) : null;
+  const estimate = !browser && status?.available === true ? stemSplitEstimate(status.speed, duration, status.arch, status.backend) : null;
   return (
     <section className="split-intro paper-panel" aria-label="Smart Split">
       <div>
@@ -144,13 +144,7 @@ export function StemSplitPanel({ audioId, title, duration = 0 }: { audioId: stri
         <p>{stemSplitAvailability(browser)}</p>
         <p>Your audio stays on this device. Vocals, drums, bass and guitar separate cleanly; piano and Other are less reliable. The stems add up to the original mix.</p>
       </div>
-      <div className="stem-count" role="group" aria-label="Stem count">
-        {[2, 3, 4, 5, 6].map((number) => (
-          <button type="button" key={number} aria-pressed={count === number} disabled={busy}
-            className={count === number ? "is-active" : ""}
-            onClick={() => { setCount(number); setSplit(null); }}>{number}</button>
-        ))}
-      </div>
+      <ChoiceGroup label="Stem count" value={count} className="stem-count" options={[2, 3, 4, 5, 6].map((number) => ({ value: number, label: String(number), disabled: busy }))} onChange={(number) => { setCount(number); setSplit(null); }} />
       <div className="stem-preview">{(stemLayouts.get(count) ?? []).map((name) => <span key={name}>{name}</span>)}</div>
       {!browser && <p className="disclosure" role="status">{stemModelNote(status, lastFailure)}</p>}
       {estimate && <p className="disclosure">{estimate}</p>}

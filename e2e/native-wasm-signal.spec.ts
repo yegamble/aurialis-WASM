@@ -55,7 +55,7 @@ test("actual Go WASM bridge matches native PCM for independent parameter changes
   await page.evaluate(async () => {
     const scope = globalThis as unknown as { Go: new () => { importObject: WebAssembly.Imports; run: (instance: WebAssembly.Instance) => Promise<void> }; aurialisDSPInit?: (rate: number) => boolean }
     const go = new scope.Go()
-    const response = await fetch("/wasm/aurialis-dsp.wasm")
+    const response = await fetch("/__qa/aurialis-legacy-probe.wasm")
     if (!response.ok) throw new Error(`WASM HTTP ${response.status}`)
     const result = await WebAssembly.instantiateStreaming(response, go.importObject)
     void go.run(result.instance)

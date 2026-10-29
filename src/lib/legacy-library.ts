@@ -1,3 +1,4 @@
+import { isSourceFileName } from "./project-import";
 /** Read only the old library's keys; never deserialize its saved scripts or settings. */
 const LEGACY_DATABASE = "aurialis-library-entries-v1";
 const LEGACY_STORE = "kv";
@@ -156,11 +157,12 @@ async function hasSource(key: string, signal: AbortSignal): Promise<boolean> {
 }
 
 /** The returned snapshot must still pass the current Go CDR import path. */
-export async function readLegacyWav(source: LegacySource, signal: AbortSignal): Promise<{ file: File; verify: () => Promise<void> }> {
+export async function readLegacySource(source: LegacySource, signal: AbortSignal): Promise<{ file: File; verify: () => Promise<void> }> {
   const validated = sourceFromKey(source.key);
   if (!validated || validated.name !== source.name || validated.size !== source.size || validated.modified !== source.modified) throw new Error("The old library selection is invalid. Scan again.");
   source = validated;
-  if (source.size > MAX_FILE_BYTES) throw new Error("This original exceeds the 128 MiB WAV recovery limit. Its old copy is retained.");
+  if (!isSourceFileName(source.name)) throw new Error("Recovery supports WAV, AIFF, FLAC and MP3 originals. This unsupported original and its settings are retained.");
+  if (source.size > MAX_FILE_BYTES) throw new Error("This original exceeds the 128 MiB source recovery limit. Its old copy is retained.");
   if (!await hasSource(source.key, signal)) throw new Error("The old library entry changed. Scan again.");
   signal.throwIfAborted();
   const storage = (navigator as { storage?: Partial<StorageManager> }).storage;
@@ -171,13 +173,12 @@ export async function readLegacyWav(source: LegacySource, signal: AbortSignal): 
   const handle = await storageRead(() => directory.getFileHandle(`${encodeURIComponent(source.key)}.bin`, { create: false }), signal);
   const original = await storageRead(() => handle.getFile(), signal);
   signal.throwIfAborted();
-  if (original.size !== source.size || original.size < 12 || original.size > MAX_FILE_BYTES) throw new Error("The old original is missing, changed or outside the WAV recovery limit. Its records are retained.");
-  const header = new Uint8Array(await storageRead(() => original.slice(0, 12).arrayBuffer(), signal));
-  signal.throwIfAborted();
-  if (String.fromCharCode(...header.slice(0, 4)) !== "RIFF" || String.fromCharCode(...header.slice(8, 12)) !== "WAVE") throw new Error("Codec recovery is unavailable for this original. Its old audio and settings are retained; WAV recovery does not convert compressed formats.");
-  const name = `${source.name.replace(/\.[^.]+$/u, "").replace(/[/\\]/gu, "_").slice(0, 180)}.wav`;
+  if (original.size !== source.size || original.size < 12 || original.size > MAX_FILE_BYTES) throw new Error("The old original is missing, changed or outside the source recovery limit. Its records are retained.");
+  // Filename admission selects a supported decoder; Go CDR alone validates
+  // container bytes and reconstructs the clean PCM, including tagged FLAC/MP3.
+  const name = source.name.replace(/\.[^.]+$/u, "").replace(/[/\\]/gu, "_").slice(0, 180 - (source.name.split(".").at(-1)?.length ?? 0) - 1) + "." + (source.name.split(".").at(-1) ?? "wav").toLowerCase();
   return {
-    file: new File([original], name, { type: "audio/wav", lastModified: source.modified }),
+    file: new File([original], name, { type: "application/octet-stream", lastModified: source.modified }),
     verify: async () => {
       signal.throwIfAborted();
       const current = await storageRead(() => handle.getFile(), signal);

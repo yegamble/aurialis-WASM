@@ -49,6 +49,7 @@ func TestWriteOfflineJobParityFixture(t *testing.T) {
 	hot.Limiter.Enabled = true
 	hotV2 := hot
 	hotV2.AlgorithmVersion = dsp.TruePeakAlgorithmVersion
+	hotV3 := heaviestLiveParams(dsp.OversampledAlgorithmVersion, dsp.SatTube)
 	var fixtures []offlineParityFixture
 	for _, c := range []struct {
 		params               dsp.Params
@@ -61,6 +62,8 @@ func TestWriteOfflineJobParityFixture(t *testing.T) {
 		{hot, 24, 96000, ""},
 		{hot, 16, 44100, "tpdf"},
 		{hotV2, 16, 88200, ""},
+		{hotV3, 24, 0, "none"},
+		{hotV3, 16, 44100, "tpdf"},
 		{hot, 32, 44100, ""},
 	} {
 		params, err := json.Marshal(c.params)
@@ -78,6 +81,7 @@ func TestWriteOfflineJobParityFixture(t *testing.T) {
 		sum := sha256.Sum256(result.Audio)
 		fixtures = append(fixtures, offlineParityFixture{Request: string(raw), Source: source, AudioSHA256: hex.EncodeToString(sum[:]), Metadata: string(result.Metadata)})
 	}
+	fixtures = append(fixtures, deepEnvelopeParityFixture(t))
 	encoded, err := json.Marshal(fixtures)
 	if err != nil {
 		t.Fatal(err)

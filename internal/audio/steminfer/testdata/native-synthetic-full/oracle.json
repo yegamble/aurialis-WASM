@@ -1,0 +1,81 @@
+{
+  "format": "aurialis-original-full-window-v1",
+  "sourceFrames": 882000,
+  "sourceWavSHA256": null,
+  "queryTile": 64,
+  "batchTile": 8,
+  "threads": 2,
+  "captureAll": false,
+  "fullKeyAttention": true,
+  "fftVariant": "original_f32",
+  "fixture": "broadband",
+  "architectureCommit": "6fdad13686bb7e84d029ec66f9dbe76e65c93ebf",
+  "originalSHA256": "c62820893bbf86d4e734f966bd142d9157cfc8bb8e79e9d8f9ea553f3ff3519f",
+  "samples": 882000,
+  "dtype": "F32",
+  "tensors": {
+    "source": {
+      "shape": [
+        2,
+        882000
+      ],
+      "offset": 0,
+      "bytes": 7056000
+    },
+    "pcm.vocal": {
+      "shape": [
+        2,
+        882000
+      ],
+      "offset": 7056000,
+      "bytes": 7056000
+    },
+    "pcm.drums": {
+      "shape": [
+        2,
+        882000
+      ],
+      "offset": 14112000,
+      "bytes": 7056000
+    },
+    "pcm.bass": {
+      "shape": [
+        2,
+        882000
+      ],
+      "offset": 21168000,
+      "bytes": 7056000
+    },
+    "pcm.guitar": {
+      "shape": [
+        2,
+        882000
+      ],
+      "offset": 28224000,
+      "bytes": 7056000
+    },
+    "pcm.piano": {
+      "shape": [
+        2,
+        882000
+      ],
+      "offset": 35280000,
+      "bytes": 7056000
+    }
+  },
+  "binarySHA256": "5e8589f0f4b78f3cea7dec1a0203bab1b951741a28b6ff4e8ce3e44056a90fcc",
+  "elapsedSeconds": 126.258021375,
+  "originalFullOracleSHA256": "6dd83d4c764f5cab925b0363033540f9c67169261df1fca1bde0e5c75ae3c609",
+  "uncompressedBytes": 42336000,
+  "container": "gzip",
+  "selectedTensors": [
+    "source",
+    "pcm.vocal",
+    "pcm.drums",
+    "pcm.bass",
+    "pcm.guitar",
+    "pcm.piano"
+  ],
+  "compressedSHA256": "0ea045a5c6faaea44fab4f4efe91a86fcd6cbff1207488fd0e42d77797f338d2",
+  "compressedBytes": 38082825
+}

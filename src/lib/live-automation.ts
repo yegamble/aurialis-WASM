@@ -1,11 +1,11 @@
 import { compileScript, readScriptV2, type ScriptV2 } from "./deep-mastering";
 import { exportChain } from "./engine-params";
 import { packLiveControls } from "./live-controls";
-import type { SourceIdentity } from "./types";
+import type { RenderQuality, SourceIdentity } from "./types";
 import { verifyCanonicalSource } from "./project-import";
 
 /** Preparation stays on the main thread. The worklet receives fixed numeric slots only. */
-export async function prepareLiveAutomation(script: ScriptV2, blob: Blob, deviceRate: number, signal: AbortSignal) {
+export async function prepareLiveAutomation(script: ScriptV2, blob: Blob, deviceRate: number, signal: AbortSignal, quality?: RenderQuality) {
   const validated = readScriptV2(script);
   await verifyCanonicalSource(blob, validated.source, signal);
   const compiled = await compileScript(validated, deviceRate, signal);
@@ -20,7 +20,7 @@ export async function prepareLiveAutomation(script: ScriptV2, blob: Blob, device
   }
   // The script is validated and compiled as authored; live playback renders its
   // baseline through the export chain, the conversion export applies (V1-10).
-  return { source, controls: packLiveControls(exportChain(compiled.baseline), 2), moves, moveCount: compiled.moves.length, revision: compiled.revision, deviceRate: compiled.deviceRate };
+  return { source, controls: packLiveControls(exportChain(compiled.baseline, quality), 2), moves, moveCount: compiled.moves.length, revision: compiled.revision, deviceRate: compiled.deviceRate };
 }
 
 export async function verifiedSourceVector(blob: Blob, identity: SourceIdentity, signal: AbortSignal) {

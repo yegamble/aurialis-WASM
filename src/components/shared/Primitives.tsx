@@ -1,5 +1,6 @@
 "use client";
 
+import { relativeSeekPosition } from "@/lib/playback-position";
 import {
   useEffect,
   useId,
@@ -259,6 +260,7 @@ export function SliderField({
   );
 }
 
+const dialogBackgrounds = new WeakMap<HTMLElement, { users: number; previous: boolean }>();
 function useDialogFocus(open: boolean, onClose: () => void) {
   const panel = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
@@ -268,6 +270,12 @@ function useDialogFocus(open: boolean, onClose: () => void) {
   useEffect(() => {
     if (!open) return undefined;
     const previous = document.activeElement;
+    const overlay = panel.current?.parentElement;
+    const backgrounds = Array.from(document.body.children).filter((element): element is HTMLElement => element instanceof HTMLElement && element !== overlay && !["SCRIPT", "STYLE", "LINK"].includes(element.tagName));
+    for (const element of backgrounds) {
+      const entry = dialogBackgrounds.get(element) ?? { users: 0, previous: element.inert };
+      entry.users++; dialogBackgrounds.set(element, entry); element.inert = true;
+    }
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const focusables = () =>
@@ -278,6 +286,7 @@ function useDialogFocus(open: boolean, onClose: () => void) {
       );
     (focusables()[0] ?? panel.current)?.focus();
     const keydown = (event: KeyboardEvent) => {
+      if (overlay?.inert) return;
       if (event.key === "Escape") {
         event.preventDefault();
         close.current();
@@ -306,6 +315,10 @@ function useDialogFocus(open: boolean, onClose: () => void) {
     document.addEventListener("keydown", keydown);
     return () => {
       document.removeEventListener("keydown", keydown);
+      for (const element of backgrounds) {
+        const entry = dialogBackgrounds.get(element); if (!entry) continue;
+        if (--entry.users === 0) { element.inert = entry.previous; dialogBackgrounds.delete(element); }
+      }
       document.body.style.overflow = previousOverflow;
       if (previous instanceof HTMLElement) previous.focus();
     };
@@ -387,6 +400,7 @@ export function Waveform({
   peaks,
   playheadRatio: controlledRatio,
   onSeekRatio,
+  repeat = false,
 }: {
   seed: number;
   duration: number;
@@ -394,6 +408,7 @@ export function Waveform({
   peaks?: number[];
   playheadRatio?: number;
   onSeekRatio?: (ratio: number) => void;
+  repeat?: boolean;
 }) {
   const [internalRatio, setInternalRatio] = useState(0);
   const barsRef = useRef<HTMLDivElement>(null);
@@ -436,10 +451,10 @@ export function Waveform({
     const stepRatio = duration > 0 ? stepSeconds / duration : 0;
     if (event.key === "ArrowRight") {
       event.preventDefault();
-      setRatio(ratio + stepRatio);
+      setRatio(duration > 0 ? relativeSeekPosition({ position: ratio * duration, duration, repeat }, stepSeconds) / duration : ratio + stepRatio);
     } else if (event.key === "ArrowLeft") {
       event.preventDefault();
-      setRatio(ratio - stepRatio);
+      setRatio(duration > 0 ? relativeSeekPosition({ position: ratio * duration, duration, repeat }, -stepSeconds) / duration : ratio - stepRatio);
     } else if (event.key === "Home") {
       event.preventDefault();
       setRatio(0);

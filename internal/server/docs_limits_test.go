@@ -34,6 +34,8 @@ func TestAPIDocsLimitsMatchConstants(t *testing.T) {
 		fmt.Sprintf("`maxDecodedFrames: %d`", audio.MaxDecodedFrames),
 		fmt.Sprintf("**%s frames**", grouped(int64(audio.MaxDecodedFrames))),
 		fmt.Sprintf("`jobMemoryBudgetBytes: %d`", jobs.MaxMemoryBytes),
+		fmt.Sprintf("`processMemoryBudgetBytes: %d`", jobs.MaxProcessMemoryBytes),
+		fmt.Sprintf("`modelMemoryAllowanceBytes: %d`", jobs.ModelMemoryAllowance),
 		fmt.Sprintf("within **%d MiB**", jobs.MaxMemoryBytes/mib),
 		fmt.Sprintf("at most **%d jobs**", jobs.MaxRetainedJobs),
 		fmt.Sprintf("**%d-second** base deadline", int(postRequestTimeout/time.Second)),
@@ -59,6 +61,8 @@ func TestAPIDocsLimitsMatchConstants(t *testing.T) {
 		{`(\d+) MiB job budget`, jobs.MaxMemoryBytes / mib},
 		{`maxUploadBytes: (\d+)`, DefaultMaxUploadBytes},
 		{`jobMemoryBudgetBytes: (\d+)`, jobs.MaxMemoryBytes},
+		{`processMemoryBudgetBytes: (\d+)`, jobs.MaxProcessMemoryBytes},
+		{`modelMemoryAllowanceBytes: (\d+)`, jobs.ModelMemoryAllowance},
 	} {
 		matches := regexp.MustCompile(c.re).FindAllStringSubmatch(doc, -1)
 		if len(matches) == 0 {
@@ -104,6 +108,8 @@ func TestDocsLimitsEveryMentionMatchesConstants(t *testing.T) {
 	browserBudgets := sourceNumbers(t, "src/lib/browser-jobs.ts", `return (?:coarse \? )?(\d+) \* MIB(?: : (\d+) \* MIB)?;`)
 	browserDeadline := sourceNumber(t, "src/lib/browser-jobs.ts", `return (\d+)_000 \* Math\.max\(1, decoded`)
 	compileSignal := sourceNumber(t, "src/lib/deep-mastering.ts", `AbortSignal\.timeout\((\d+)_000\)`)
+	qaBuildDeadline := sourceNumber(t, "scripts/serve-e2e.sh", `result = process\.wait\(timeout=(\d+)\)`)
+	qaStartDeadline := sourceNumber(t, "scripts/serve-e2e.sh", `deadline=\$\(\(SECONDS \+ (\d+)\)\)`)
 	readTimeout := sourceNumber(t, "cmd/aurialis/main.go", `ReadTimeout:\s+(\d+) \* time\.Second`)
 	staticFile := sourceNumber(t, "scripts/prepare-browser-assets.mjs", `info\.size > (\d+) \* 1024 \* 1024`)
 	assetFile := sourceNumber(t, "scripts/ci-browser-artifacts.py", `MAXIMUM_FILE = (\d+) \* 1024 \* 1024`)
@@ -118,6 +124,7 @@ func TestDocsLimitsEveryMentionMatchesConstants(t *testing.T) {
 	request := float64(DefaultMaxUploadBytes)
 	file := float64(MaxAudioFileBytes - 44) // stated as "<n> MiB plus 44 bytes"
 	budget := float64(jobs.MaxMemoryBytes)
+	legacyFile := sourceNumber(t, "src/lib/legacy-library.ts", `MAX_FILE_BYTES = (\d+) \* 1024 \* 1024 \+ 44`) * mib
 	rules := []struct {
 		re   string
 		want float64 // bytes or seconds
@@ -137,11 +144,18 @@ func TestDocsLimitsEveryMentionMatchesConstants(t *testing.T) {
 		{`within the (\d+ MiB) plus 44-byte`, file},
 		{`cache capped at (\d+ MiB) plus 44 bytes`, file},
 		{`total cache cap of \*\*(\d+ MiB) plus 44 bytes`, file},
+		{`Recovery is capped at (\d+ MiB)`, legacyFile},
+		{`Each saved original is limited to (\d+ MiB)`, legacyFile},
 		// Job memory budget (jobs.MaxMemoryBytes).
 		{`(\d+ MiB) job budget`, budget},
 		{`within \*\*(\d+ MiB)\*\*`, budget},
 		{`jobMemoryBudgetBytes: \d+` + "`" + ` \((\d+ MiB)\)`, budget},
 		{`reservations are bounded at (\d+ MiB)`, budget},
+		{`(\d+ MiB) normal-job`, budget},
+		{`(\d+(?:\.\d+)? GiB) working-allocation budget`, float64(jobs.MaxProcessMemoryBytes)},
+		{`(\d+(?:\.\d+)? GiB) (?:separation|stem) limits`, float64(jobs.MaxSeparationBytes)},
+		{`(\d+-minute) process-tree deadline`, qaBuildDeadline},
+		{`(\d+-second) server-start check`, qaStartDeadline},
 		{`reference\.frames × 8 \+ (\d+ MiB)`, referenceHeadroom * mib},
 		{`retained scripts are charged at (\d+ MiB)`, mastering.MaxScriptV2Bytes},
 		// Separation pool and deadline (jobs.MaxSeparationBytes, jobs.SeparationTimeout).
@@ -199,6 +213,8 @@ func TestDocsLimitsEveryMentionMatchesConstants(t *testing.T) {
 		{"separate four-minute download limit", ci},
 		{"five-minute actual-song", "length of the recorded test song"},
 		{"Isolated 3/5-minute native render", "lengths of the measured test songs"},
+		{"two-window synthetic 48 kHz, 20-second source", "duration of the recorded hosted qualification fixture, not a product limit"},
+		{"rough 3–4 minutes per window projects to 75–100 minutes", "rounded hosted Intel measurements and extrapolation for a 3:45 source, not an enforced deadline"},
 	}
 
 	used := make([]bool, len(rules))

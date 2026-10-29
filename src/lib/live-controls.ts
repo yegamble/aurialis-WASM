@@ -29,7 +29,7 @@ export function packLiveControls(params: EngineParams, abiVersion: number = 1): 
   if (abiVersion !== 1 && abiVersion !== 2) throw new Error("Unsupported live control ABI.");
   const algorithmVersion = params.algorithmVersion === undefined ? 1 : params.algorithmVersion;
   // ABI 1 has no algorithm slot, so only ABI 2 can carry the export algorithm.
-  if (algorithmVersion !== 0 && algorithmVersion !== 1 && !(algorithmVersion === 2 && abiVersion === 2))
+  if (algorithmVersion !== 0 && algorithmVersion !== 1 && !((algorithmVersion === 2 || algorithmVersion === 3) && abiVersion === 2))
     throw new Error("Unsupported DSP algorithm version.");
   if (params.bands.length !== 5) throw new Error("Live audio requires five EQ bands.");
   // Runtime callers can violate the statically declared three-band tuple.
@@ -57,7 +57,7 @@ export function packLiveControls(params: EngineParams, abiVersion: number = 1): 
   if (abiVersion === 1) return values;
   const versioned = new Float64Array(CONTROL_COUNT + 1);
   versioned.set(values);
-  versioned[81] = algorithmVersion === 2 ? 2 : 1;
+  versioned[81] = algorithmVersion === 2 || algorithmVersion === 3 ? algorithmVersion : 1;
   return versioned;
 }
 

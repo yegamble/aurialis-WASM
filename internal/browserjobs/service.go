@@ -39,7 +39,9 @@ type Request struct {
 	DeviceRate    int    `json:"deviceRate,omitempty"`
 	Options       string `json:"options,omitempty"`
 	ScriptVersion string `json:"scriptVersion,omitempty"`
+	RenderQuality string `json:"renderQuality,omitempty"`
 	Measure       string `json:"measure,omitempty"`
+	MonitorMode   string `json:"monitorMode,omitempty"`
 }
 
 // Result separates bounded JSON diagnostics from transferable binary audio buffers.
@@ -86,15 +88,23 @@ func DecodeRequest(raw []byte) (Request, error) {
 	var allowed string
 	switch request.Operation {
 	case "render":
-		allowed = " operation params script profile bitDepth sampleRate dither format measure "
+		allowed = " operation params script profile bitDepth sampleRate dither format measure monitorMode "
 	case "features":
 		allowed = " operation "
 	case "deep":
-		allowed = " operation profile scriptVersion "
+		allowed = " operation profile scriptVersion renderQuality "
+		if _, err := mastering.RenderQualityAlgorithm(request.RenderQuality); err != nil {
+			return request, err
+		}
+		if seen["renderQuality"] && request.ScriptVersion != "2.0" {
+			return request, errors.New("renderQuality requires ScriptV2")
+		}
 	case "reference":
 		allowed = " operation params options "
 	case "compile":
 		allowed = " operation script deviceRate "
+	case "transition":
+		allowed = " operation bitDepth "
 	default:
 		return request, errors.New("unsupported local audio operation")
 	}
@@ -102,6 +112,9 @@ func DecodeRequest(raw []byte) (Request, error) {
 		if !strings.Contains(allowed, " "+key+" ") {
 			return request, errors.New("local audio metadata contains an unknown or unrelated field")
 		}
+	}
+	if seen["monitorMode"] && request.Format != "json" {
+		return request, errors.New("monitorMode is only accepted on a JSON render measurement")
 	}
 	return request, nil
 }
@@ -128,6 +141,9 @@ func Execute(ctx context.Context, raw, source, reference []byte, progress func(i
 		}
 		return compile(ctx, request)
 	}
+	if request.Operation == "transition" {
+		return transition(ctx, request, source, reference)
+	}
 	if len(source) == 0 || (request.Operation != "reference" && len(reference) != 0) {
 		return nil, errors.New("local audio operation has missing or unexpected input")
 	}
@@ -153,7 +169,7 @@ func Execute(ctx context.Context, raw, source, reference []byte, progress func(i
 			return nil, err
 		}
 		if request.ScriptVersion == "2.0" {
-			script, prediction, err := mastering.AnalyzeDeepV2Context(ctx, buf, profile, progress)
+			script, prediction, err := mastering.AnalyzeDeepV2QualityContext(ctx, buf, profile, request.RenderQuality, progress)
 			if err != nil {
 				return nil, err
 			}

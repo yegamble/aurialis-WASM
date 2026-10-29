@@ -64,3 +64,14 @@ describe("canonical value resets", () => {
     expect(screen.getByRole("slider").getAttribute("aria-valuetext")).toBe("0:00 of 0:10");
   });
 });
+
+
+it("wraps relative waveform keys in Repeat while End remains absolute", () => {
+  const seek = vi.fn();
+  render(<Waveform seed={0} duration={30} peaks={[0.2, 0.4]} playheadRatio={0.9} repeat onSeekRatio={seek} />);
+  const position = screen.getByRole("slider", { name: "Track playback position" });
+  fireEvent.keyDown(position, { key: "ArrowRight", shiftKey: true });
+  expect(seek).toHaveBeenLastCalledWith(7 / 30);
+  fireEvent.keyDown(position, { key: "End" });
+  expect(seek).toHaveBeenLastCalledWith(1);
+});

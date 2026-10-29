@@ -2,6 +2,7 @@ package dsp
 
 import (
 	"context"
+	"github.com/yegamble/Aurialis-WASM/internal/fft"
 	"math"
 	"math/bits"
 )
@@ -29,11 +30,11 @@ const (
 	offlinePeakEdge = 1 << 10
 )
 
-// offlineTruePeak returns the highest reconstructed absolute value of either
+// offlineMonitorTruePeak returns the highest reconstructed absolute value of either
 // channel of the zero-extended file, evaluated on a 4x grid from
 // offlinePeakEdge frames before the first frame to offlinePeakEdge frames
 // after the last. It checks ctx once per block.
-func offlineTruePeak(ctx context.Context, left, right []float32) (float64, error) {
+func offlineMonitorTruePeak(ctx context.Context, left, right []float32, mode MonitorMode) (float64, error) {
 	n := min(len(left), len(right))
 	if n == 0 {
 		return 0, nil
@@ -50,7 +51,7 @@ func offlineTruePeak(ctx context.Context, left, right []float32) (float64, error
 		size = 1 << bits.Len(uint(end-first+2*guard-1))
 	}
 	block := size - 2*guard
-	transform := newPeakFFT(size)
+	transform := fft.New(size, fft.DirectTwiddles)
 	// rotation[p-1][k] delays phase p by p/M samples at bin k (0..size/2).
 	var rotation [offlinePeakPhases - 1][]complex128
 	for p := range rotation {
@@ -73,7 +74,8 @@ func offlineTruePeak(ctx context.Context, left, right []float32) (float64, error
 		if at < 0 || at >= n {
 			return 0
 		}
-		return complex(sanitizeSample(float64(left[at])), sanitizeSample(float64(right[at])))
+		l, r := mode.Sample(left[at], right[at])
+		return complex(sanitizeSample(float64(l)), sanitizeSample(float64(r)))
 	}
 	for start := first; start < end; start += block {
 		if err := ctx.Err(); err != nil {
@@ -82,7 +84,7 @@ func offlineTruePeak(ctx context.Context, left, right []float32) (float64, error
 		for i := range spectrum {
 			spectrum[i] = sample(start - guard + i)
 		}
-		transform.run(spectrum, false)
+		transform.Transform(spectrum, false)
 		for p := range phases {
 			rotate := rotation[p]
 			for k := range spectrum {
@@ -94,7 +96,7 @@ func offlineTruePeak(ctx context.Context, left, right []float32) (float64, error
 					shifted[k] = spectrum[k] * complex(real(r), -imag(r))
 				}
 			}
-			transform.run(shifted, true)
+			transform.Transform(shifted, true)
 			copy(phases[p], shifted[guard:guard+block])
 		}
 		for i := 0; i < block && start+i < end; i++ {
@@ -116,53 +118,4 @@ func offlineTruePeak(ctx context.Context, left, right []float32) (float64, error
 		peak = math.Max(peak, math.Abs(grid[channel][1]))
 	}
 	return peak, nil
-}
-
-// peakFFT is an in-place iterative radix-2 transform for offlineTruePeak.
-type peakFFT struct {
-	size    int
-	twiddle []complex128
-}
-
-func newPeakFFT(size int) peakFFT {
-	f := peakFFT{size: size, twiddle: make([]complex128, size/2)}
-	for k := range f.twiddle {
-		angle := -2 * math.Pi * float64(k) / float64(size)
-		f.twiddle[k] = complex(math.Cos(angle), math.Sin(angle))
-	}
-	return f
-}
-
-// run transforms x in place; the inverse scales by 1/size.
-func (f peakFFT) run(x []complex128, inverse bool) {
-	n := f.size
-	for i, j := 1, 0; i < n; i++ {
-		bit := n >> 1
-		for ; j&bit != 0; bit >>= 1 {
-			j ^= bit
-		}
-		j |= bit
-		if i < j {
-			x[i], x[j] = x[j], x[i]
-		}
-	}
-	for span := 1; span < n; span <<= 1 {
-		stride := n / (2 * span)
-		for start := 0; start < n; start += 2 * span {
-			for k := 0; k < span; k++ {
-				w := f.twiddle[k*stride]
-				if inverse {
-					w = complex(real(w), -imag(w))
-				}
-				a, b := x[start+k], x[start+k+span]*w
-				x[start+k], x[start+k+span] = a+b, a-b
-			}
-		}
-	}
-	if inverse {
-		scale := complex(1/float64(n), 0)
-		for i := range x {
-			x[i] *= scale
-		}
-	}
 }

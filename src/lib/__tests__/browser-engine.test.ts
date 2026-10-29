@@ -7,6 +7,7 @@ import {
   exportLevelSummary,
   importAudio,
   measureAudio,
+  measureRender,
   normalizeSimpleAudio,
   trackMetrics,
   readCanonicalWAV,
@@ -84,6 +85,15 @@ describe("shared engine browser boundary", () => {
     const script = (fetch.mock.calls[1]?.[1] as { body: FormData }).body;
     expect([script.has("script"), script.has("params"), script.has("sampleRate"), script.has("dither")]).toEqual([true, false, false, false]);
     expect((await renderDelivery(new Blob(["source"]), { params: {} }, 32, {})).truePeakDbtp).toBeNull();
+  });
+  it("keeps source measurement caches separate for stereo, mono and side listening", async () => {
+    const reply = (before: unknown) => ({ ok: true, status: 200, json: () => Promise.resolve({ ...measurementResponse(), beforeMetrics: before }) });
+    const fetch = vi.fn().mockResolvedValueOnce(reply(measured)).mockResolvedValueOnce(reply(measured)).mockResolvedValueOnce(reply(null)).mockResolvedValueOnce(reply(measured));
+    vi.stubGlobal("fetch", fetch); const source = new Blob(["source"]);
+    for (const mode of ["stereo", "mono", "mono", "side"] as const) await measureRender(source, { params: {} }, undefined, "foreground", mode);
+    const bodies = fetch.mock.calls.map((call) => (call[1] as RequestInit).body as FormData);
+    expect(bodies.map((form) => form.get("monitorMode"))).toEqual(["stereo", "mono", "mono", "side"]);
+    expect(bodies.map((form) => form.get("measure"))).toEqual([null, null, "render", null]);
   });
   it("measures a source once and then asks for the render only (V1-13)", async () => {
     const metrics = (lufs: number) => ({ integratedLufs: lufs, shortTermLufs: lufs, truePeakDbtp: -1, samplePeakDbfs: -1, dynamicRangeDb: 8, correlation: 1, lowBassCorrelation: 1, dcLeftDbfs: -120, dcRightDbfs: -120, clippingSamples: 0, gainReductionDb: 0 });

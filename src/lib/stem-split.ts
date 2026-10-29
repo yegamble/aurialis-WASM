@@ -21,9 +21,9 @@ export interface StemModelStatus {
   downloadedBytes: number;
   totalBytes: number;
   state: StemModelState;
-  /** True when inference uses Apple Accelerate; plain-Go builds report false and are unavailable. */
+  /** True for qualified Apple Accelerate or packed AVX2/FMA inference. */
   accelerated: boolean;
-  /** "apple-accelerate", "portable-go", or "" when the server was started without the model. */
+  /** Qualified Apple/packed kernels, an unavailable fallback, or empty when disabled. */
   backend: string;
   /** The server's GOARCH; the recorded speed was timed on "arm64" (Apple silicon) only. */
   arch: string;
@@ -179,6 +179,7 @@ function rejected(response: Response, body: unknown): StemSplitError {
   const code = stringField(body, "error"), detail = stringField(body, "detail");
   if (code === "stems_unavailable") return new StemSplitError("unavailable", detail);
   if (code === "queue_full") return new StemSplitError("queue_full", detail);
+  if (code === "memory_capacity") return new StemSplitError("memory", detail);
   if (code === "busy") return new StemSplitError("busy", detail);
   if (response.status === 413) return new StemSplitError("too_long", detail);
   if (response.status === 400 || response.status === 415 || response.status === 422) return new StemSplitError("unreadable", detail);

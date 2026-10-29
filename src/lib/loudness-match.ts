@@ -1,7 +1,8 @@
 import { clampAdvancedToSampleRate } from "./audio-dsp";
 import { measureRender } from "./browser-engine";
-import { appliedRevisionKey, type ScriptV2 } from "./deep-mastering";
+import { type ScriptV2 } from "./deep-mastering";
 import { exportParams, exportScript } from "./engine-params";
+import type { MonitorMode } from "./monitor-mode";
 import type { Track } from "./types";
 
 /**
@@ -35,7 +36,7 @@ export type LoudnessMatch =
   | { state: "unavailable"; reason: string }
   | ({ state: "matched" } & MatchOffset);
 
-type LoudnessMatchRequest = { key: string; scope: string; render: { params: object } | { script: ScriptV2 } };
+type LoudnessMatchRequest = { key: string; scope: string; monitorMode: MonitorMode; render: { params: object } | { script: ScriptV2 } };
 
 /** BS.1770 gating reports −70 LUFS for silence; a match against it would be meaningless. */
 const SILENCE_LUFS = -70;
@@ -95,18 +96,18 @@ export function loudnessMatchText(match: LoudnessMatch): string {
  * on what is heard (Round E); since V1-10 that is the export algorithm, so the
  * same exportParams/exportScript the player uses build this render.
  */
-export function loudnessMatchRequest(track: Track): LoudnessMatchRequest {
+export function loudnessMatchRequest(track: Track, monitorMode: MonitorMode = "stereo"): LoudnessMatchRequest {
   const applied = track.deepMastering?.applied;
-  const render = applied ? { script: exportScript(applied) } : { params: exportParams(clampAdvancedToSampleRate(track.advanced, track.sampleRate)) };
-  const settings = appliedRevisionKey(track) ?? JSON.stringify(render);
-  const scope = ["match", track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0, track.sourceIdentity?.pcmHash ?? ""].join("|");
-  return { key: `${scope}|${settings}`, scope, render };
+  const render = applied ? { script: exportScript(applied, track.advanced.renderQuality ?? "classic") } : { params: exportParams(clampAdvancedToSampleRate(track.advanced, track.sampleRate)) };
+  const settings = JSON.stringify(render);
+  const scope = ["match", track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0, track.sourceIdentity?.pcmHash ?? "", monitorMode].join("|");
+  return { key: `${scope}|${settings}`, scope, monitorMode, render };
 }
 
 /** One offline measurement of A and B through the live settings. */
 export async function measureLoudnessMatch(source: Blob, request: LoudnessMatchRequest, signal: AbortSignal): Promise<LoudnessReading> {
   // Background: Export, Deep analysis and other user jobs preempt it in the browser queue.
-  const measured = await measureRender(source, request.render, signal, "background");
+  const measured = await measureRender(source, request.render, signal, "background", request.monitorMode);
   signal.throwIfAborted();
   return { key: request.key, scope: request.scope, processedLufs: measured.afterMetrics.integratedLufs, originalLufs: measured.beforeMetrics.integratedLufs };
 }

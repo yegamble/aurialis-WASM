@@ -2,7 +2,6 @@
 
 import { WorkspaceLink as Link } from "./shared/WorkspaceLink";
 import {
-  engineParams,
   measureAudio,
   normalizeSimpleAudio,
   exportLevelSummary,
@@ -11,7 +10,7 @@ import {
   type StereoPCM,
 } from "@/lib/browser-engine";
 import { reserveBrowserAudioMemory } from "@/lib/browser-jobs";
-import { exportRender } from "@/lib/engine-params";
+import { exportParams, exportRender } from "@/lib/engine-params";
 import { downloadLocalBlob } from "@/lib/download";
 import { clearNextPlaybackHandoff, reconcileNextPlaybackHandoff, stageNextPlaybackHandoff, takeNextPlaybackHandoff } from "@/lib/playback-handoff";
 import { bindPlaybackControls } from "@/lib/media-session";
@@ -19,6 +18,8 @@ import { ExtendedCompressorControls, ExtendedStereoControls, FrequencyDynamicsCo
 import { DSPModule } from "./shared/DSPModule";
 import { EQBandControls, LimiterReleaseControl } from "./shared/EQBandControls";
 import { RealTransport } from "./shared/RealTransport";
+import { relativeSeekPosition } from "@/lib/playback-position";
+import { useMonitorMode } from "@/lib/use-monitor-mode";
 import { useLoudnessMatch } from "@/lib/use-loudness-match";
 import { ReleaseReview } from "./shared/ReleaseReview";
 import { AuditionExport, auditionKey, type AuditionHandle, type HeldAudition } from "./shared/AuditionExport";
@@ -85,6 +86,8 @@ import { DeepProposalPanel } from "./shared/DeepProposalPanel";
 import { useDeepPlayback } from "@/lib/use-deep-playback";
 import { appliedRevisionKey } from "@/lib/deep-mastering";
 import { ALBUM_OFFSET_LIMIT_DB, ALBUM_TARGETS, albumLevelSummary, albumMastersKey, albumOffset, DEFAULT_ALBUM_LEVEL, planAlbumLevels, renderAlbumTrack, withAlbumOffset, type AlbumLevel, type AlbumMasterLevel, type AlbumRenderEngine } from "@/lib/album-levels";
+import { AlbumSequence } from "./shared/AlbumSequence";
+import { readAlbumTransition } from "@/lib/album-transition-settings";
 import { AlbumLevelChart, type MeasuredAlbumMaster } from "./shared/AlbumLevelChart";
 import type { ScriptV2 } from "@/lib/deep-mastering";
 import { DeepTimeline } from "./shared/DeepTimeline";
@@ -581,7 +584,7 @@ function trackToolHref(route: TrackToolRoute, trackId: string): string {
 }
 
 function masteringSettingsKey(settings: AdvancedParams) {
-  return JSON.stringify({ ...engineParams(settings), requestedTargetLufs: settings.limiter.targetLufs });
+  return JSON.stringify({ ...exportParams(settings), requestedTargetLufs: settings.limiter.targetLufs });
 }
 
 
@@ -638,7 +641,7 @@ function MasterView({ trackId }: { trackId: string }) {
     },
     [],
   );
-  const settingsKey = useMemo(() => track ? appliedRevisionKey(track) ?? masteringSettingsKey(track.advanced) : "", [track]);
+  const settingsKey = useMemo(() => track ? track.deepMastering?.applied ? JSON.stringify([appliedRevisionKey(track), track.advanced.renderQuality ?? "classic"]) : masteringSettingsKey(track.advanced) : "", [track]);
   const rateChoices = track ? exportRateChoices(track.sampleRate, source?.left.length ?? track.sourceIdentity?.frames ?? Math.round(track.duration * track.sampleRate)) : [];
   // A choice that is unavailable for this track falls back to the source rate.
   const delivery = availableDelivery(track?.exportDelivery ?? DEFAULT_DELIVERY, rateChoices);
@@ -654,10 +657,13 @@ function MasterView({ trackId }: { trackId: string }) {
   const liveSettings = useMemo(() => track ? clampAdvancedToSampleRate(track.advanced, source?.sampleRate ?? track.sampleRate) : createDefaultAdvancedParams(), [track?.advanced, track?.sampleRate, source?.sampleRate]);
   const currentSettings = useRef(liveSettings);
   currentSettings.current = liveSettings;
-  const loudnessMatch = useLoudnessMatch(track, sourceBlob);
+  const monitor = useMonitorMode();
+  const currentMonitor = useRef(monitor.mode); currentMonitor.current = monitor.mode;
+  const loudnessMatch = useLoudnessMatch(track, sourceBlob, monitor.mode);
   const { processedDb: matchProcessedDb, originalDb: matchOriginalDb } = loudnessMatch.gains;
   const currentMatch = useRef(loudnessMatch.gains);
   currentMatch.current = loudnessMatch.gains;
+  useEffect(() => { live.current?.setMonitorMode(monitor.mode); }, [monitor.mode]);
   const liveMeter = playback?.playing ? meter : null;
   const levels = liveMeter ? { peak: liveMeter.peakDbfs <= -119.9 ? "−∞" : liveMeter.peakDbfs.toFixed(1), rms: liveMeter.rmsDbfs <= -119.9 ? "−∞" : liveMeter.rmsDbfs.toFixed(1), crest: liveMeter.peakDbfs <= -119.9 ? "—" : liveMeter.crestDb.toFixed(1) } : null;
   const reading = (value: number | null | undefined) => value === null || value === undefined ? "—" : value.toFixed(1);
@@ -687,6 +693,7 @@ function MasterView({ trackId }: { trackId: string }) {
         onError: (error) => { if (active) setLiveError(error.message); },
       }, sourceBlob && track?.sourceIdentity ? { blob: sourceBlob, identity: track.sourceIdentity, ...(track.deepMastering?.applied ? { applied: track.deepMastering.applied } : {}) } : undefined);
       live.current = controller;
+      controller.setMonitorMode(currentMonitor.current);
       controller.setLoudnessMatch(currentMatch.current);
       setPlayback(controller.getState());
       setLiveError("");
@@ -696,9 +703,9 @@ function MasterView({ trackId }: { trackId: string }) {
         // Media keys drive whichever player the listener last started (S-4).
         play: () => { stopScrub(false); if (lastPlayed.current === "audition" && audition.current?.canPlay()) return audition.current.play(); lastPlayed.current = "live"; return controller.play(); },
         pause: () => { stopScrub(false); if (audition.current?.playing()) audition.current.pause(); else controller.pause(); },
-        seek: (seconds) => { stopScrub(false); if (!audition.current?.playing()) controller.seek(seconds); },
-        restart: () => { stopScrub(false); controller.seek(0); },
-        forward: () => { forwardAction.current(); },
+        seek: (seconds) => { stopScrub(false); if (lastPlayed.current === "audition" && audition.current?.canPlay()) audition.current.seek(seconds); else controller.seek(seconds); },
+        restart: () => { stopScrub(false); if (lastPlayed.current === "audition" && audition.current?.canPlay()) audition.current.seek(0); else controller.seek(0); },
+        forward: () => { if (lastPlayed.current === "audition" && audition.current?.canPlay()) audition.current.seek(audition.current.position().position + 10); else forwardAction.current(); },
         onError: (error) => { if (active) setLiveError(error instanceof Error ? error.message : "Playback could not start."); },
       });
       playbackControls.current = controls;
@@ -712,7 +719,7 @@ function MasterView({ trackId }: { trackId: string }) {
       setLiveError(error instanceof Error ? error.message : "Playback could not be initialized. Retry the source.");
       return undefined;
     }
-  }, [source, sourceBlob, trackId]);
+  }, [source, sourceBlob, trackId, track?.advanced.renderQuality]);
 
   // Monitoring only: export requests never read this gain.
   useEffect(() => { live.current?.setLoudnessMatch({ processedDb: matchProcessedDb, originalDb: matchOriginalDb }); }, [matchProcessedDb, matchOriginalDb]);
@@ -726,7 +733,7 @@ function MasterView({ trackId }: { trackId: string }) {
   /** The Media Session's view: the audition while it plays, else live playback. */
   function mediaState(controller: LivePlaybackController): LivePlaybackState {
     const state = controller.getState();
-    return audition.current?.playing() ? { ...state, ...audition.current.position(), playing: true } : state;
+    return lastPlayed.current === "audition" && audition.current?.canPlay() ? { ...state, ...audition.current.position(), playing: audition.current.playing(), repeat: false, loading: false } : state;
   }
   async function play() {
     const controller = live.current;
@@ -752,7 +759,7 @@ function MasterView({ trackId }: { trackId: string }) {
     const current = controller.getState();
     const intendedPlaying = scrub.current?.wasPlaying ?? current.playing;
     stopScrub(false);
-    if (!nextTrack) { controller.seek(Math.min(current.duration, current.position + 10)); return; }
+    if (!nextTrack) { controller.seek(relativeSeekPosition(current, 10)); return; }
     stageNextPlaybackHandoff({ fromTrackId: trackId, trackId: nextTrack.id, playing: intendedPlaying, volume: current.volume });
     handoverActive.current = true;
     setHandover(true);
@@ -860,14 +867,7 @@ function MasterView({ trackId }: { trackId: string }) {
         controller.signal,
       );
       if (controller.signal.aborted || renderAbort.current !== controller) return;
-      const url = URL.createObjectURL(blob),
-        anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `${track.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-${String(outputRate / 1000)}k-${String(bitDepth)}bit.wav`;
-      anchor.click();
-      setTimeout(() => {
-        URL.revokeObjectURL(url);
-      }, 1000);
+      downloadLocalBlob(blob, `${track.title.replace(/[^a-zA-Z0-9_-]/g, "-") || "aurialis"}-${String(outputRate / 1000)}k-${String(bitDepth)}bit.wav`);
       const current = currentExport.current;
       if (current.track && auditionKey(current.track, current.delivery) === exportedKey) dispatch({ type: "COMPLETE_EXPORT", expected: track });
       setMessage(
@@ -993,6 +993,7 @@ function MasterView({ trackId }: { trackId: string }) {
               <small>−1 to +1</small>
             </div>
           </div>
+          {monitor.mode !== "stereo" && <p className="disclosure">LUFS and true peak show the processed stereo delivery. Sample peak, RMS and correlation follow the selected A/B listening mode.</p>}
           <div className="metric-strip" role="region" tabIndex={0} aria-label="Measured audio levels">
             <div>
               <span>Sample peak</span>
@@ -1026,6 +1027,7 @@ function MasterView({ trackId }: { trackId: string }) {
             peaks={peaks}
             playheadRatio={playheadRatio}
             onSeekRatio={seek}
+            repeat={playback?.repeat ?? false}
           />
           <RealTransport
             state={playback}
@@ -1041,6 +1043,7 @@ function MasterView({ trackId }: { trackId: string }) {
             onForward={forward}
             onRepeat={(repeat) => { live.current?.setRepeat(repeat); }}
             onScrub={onScrub}
+            monitor={{ mode: monitor.mode, onChange: (mode) => { if (mode === monitor.mode) return; if (audition.current?.playing()) audition.current.pause(); lastPlayed.current = "live"; monitor.select(mode); } }}
             match={{ enabled: loudnessMatch.enabled, text: loudnessMatch.text, onToggle: loudnessMatch.setEnabled }}
             {...(nextTrack ? { nextTrackTitle: nextTrack.title || "Untitled track" } : {})}
             handover={handover}
@@ -1049,6 +1052,7 @@ function MasterView({ trackId }: { trackId: string }) {
           {(liveRate.kind === "capped" || liveRate.kind === "resampled") && <AuditionExport key={track.id} track={track} sourceBlob={sourceBlob} delivery={delivery}
             volume={playback?.volume ?? 1} livePlaying={(playback?.playing ?? false) || (playback?.loading ?? false)} onStart={() => { lastPlayed.current = "audition"; stopScrub(false); live.current?.pause(); }}
             onHeld={(held) => { auditionHeld.current = held; }} onHandle={(handle) => { audition.current = handle; }}
+            onPositionChange={() => { const controller = live.current; if (controller) playbackControls.current?.update(mediaState(controller)); }}
             onPlayingChange={() => { const controller = live.current; if (controller) playbackControls.current?.update(mediaState(controller), true); }} />}
           {track.mode === "deep" && track.deepMastering && <DeepTimeline script={track.deepMastering.proposal} selectedId={deepMoveId} onSelect={selectDeepMove} playheadRatio={playheadRatio} />}
           <LiveSpectrumChart frame={spectrum} playing={playback?.playing ?? false} />
@@ -1089,6 +1093,12 @@ function MasterView({ trackId }: { trackId: string }) {
           </span>
           {(deepPlayback.busy || deepPlayback.message || deepPlayback.error) && <section className="space-y-2" aria-label="Applied automation status"><p className="disclosure" role="status">{deepPlayback.message}</p>{deepPlayback.error && <><p role="alert" className="disclosure text-danger">{deepPlayback.error}</p><div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={deepPlayback.retry}>Retry processing request</Button><Button variant="secondary" onClick={deepPlayback.restoreAppliedSettings}>Restore applied settings</Button></div></>}{deepPlayback.busy && <Button variant="secondary" onClick={deepPlayback.cancel}>Cancel processing publication</Button>}</section>}
           {track.deepMastering?.applied && <section className="space-y-2" aria-label="Applied Deep recovery"><p className="disclosure">Detach returns to the static baseline of the applied revision. Revert restores the complete settings saved before the first Apply.</p><div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={deepPlayback.detach}>Detach automation</Button><Button variant="secondary" onClick={deepPlayback.revert}>Revert before first Apply</Button></div></section>}
+          <ChoiceGroup label="Render quality" value={track.advanced.renderQuality ?? "classic"} options={[{ value: "classic", label: "Classic" }, { value: "oversampled", label: "Oversampled" }]} onChange={(renderQuality) => {
+            if ((track.advanced.renderQuality ?? "classic") === renderQuality) return;
+            dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: { ...track.advanced, renderQuality } } });
+            setMessage("Render quality changed. Playback paused; press Play to hear this quality. Exports and applied Deep processing use the same choice.");
+          }} />
+          <p className="disclosure">Classic preserves existing projects. Oversampled uses more processing power; the selected quality is saved with this project.</p>
           {track.mode === "simple" && (
             <SimpleControls
               track={track}
@@ -1498,7 +1508,7 @@ function AdvancedControls({
         variant="secondary"
         icon={<Icon name="rotate-ccw" />}
         onClick={() => {
-          dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate), shortcutUndo: {} } });
+          dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: clampAdvancedToSampleRate({ ...createDefaultAdvancedParams(), ...(track.advanced.renderQuality !== undefined ? { renderQuality: track.advanced.renderQuality } : {}) }, track.sampleRate), shortcutUndo: {} } });
         }}
       >
         Reset modules
@@ -1842,6 +1852,7 @@ function AlbumView({ albumId }: { albumId: string }) {
         </> : <Button variant="secondary" icon={<Icon name="trash" />} disabled={working} onClick={() => { setConfirmDelete(true); }}>Delete album</Button>}
         {confirmDelete && <p className="disclosure">Deletes this album and its saved masters. Your projects and their sources stay in the Library.</p>}
       </div>
+      <AlbumSequence files={artifacts} identity={JSON.stringify([album.id, artifactKey, saved?.createdAt, rendered !== null])} title={album.title} transition={readAlbumTransition(album.transition)} disabled={working} onChange={(transition) => { dispatch({ type: "UPDATE_ALBUM", id: album.id, patch: { transition } }); }} />
       <div className="album-layout">
         <section className="paper-panel">
           <div className="section-heading">

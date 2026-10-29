@@ -8,6 +8,7 @@ import (
 
 	"github.com/yegamble/Aurialis-WASM/internal/audio"
 	"github.com/yegamble/Aurialis-WASM/internal/audio/dsp"
+	"github.com/yegamble/Aurialis-WASM/internal/fft"
 )
 
 func renderedReferenceBassPower(ctx context.Context, source *audio.Buffer, params dsp.Params, edges [6]float64) (float64, error) {
@@ -17,19 +18,20 @@ func renderedReferenceBassPower(ctx context.Context, source *audio.Buffer, param
 
 // Streaming two-pass analysis removes the exact rendered DC mean without retaining
 // song-length output buffers. Scratch depends on FFT size, never source duration.
-// All five physical bands describe the complete fixed-length algorithm1 output.
+// All five physical bands describe the complete latency-compensated export output.
 func renderedReferenceSpectrumContext(ctx context.Context, source *audio.Buffer, params dsp.Params, edges [6]float64) ([5]float64, error) {
 	engine := dsp.NewEngine(float64(source.SampleRate))
 	engine.SetParams(params)
-	if engine.LatencyFrames() != 0 {
-		return [5]float64{}, errors.New("rendered reference guard requires zero-buffered-latency algorithm1")
-	}
 	meanLeft, meanRight, err := renderedReferenceMeans(ctx, source, engine)
 	if err != nil {
 		return [5]float64{}, err
 	}
 	engine.Reset()
 	engine.SetParams(params)
+	reader, err := newReferenceRenderReader(source, engine)
+	if err != nil {
+		return [5]float64{}, err
+	}
 	size := 1024
 	for size < source.SampleRate/16 && size < 16384 {
 		size *= 2
@@ -37,6 +39,7 @@ func renderedReferenceSpectrumContext(ctx context.Context, source *audio.Buffer,
 	hop := size / 4
 	left, right := make([]float32, size), make([]float32, size)
 	scratch := make([]complex128, size)
+	transform := fft.New(size, fft.RecursiveTwiddles)
 	weights := make([]float64, size)
 	weightPower := 0.0
 	for i := range weights {
@@ -54,7 +57,9 @@ func renderedReferenceSpectrumContext(ctx context.Context, source *audio.Buffer,
 		clear(right[size-hop:])
 		if start < len(source.Left) {
 			end := min(start+hop, len(source.Left))
-			engine.ProcessBlock(source.Left[start:end], source.Right[start:end], left[size-hop:size-hop+end-start], right[size-hop:size-hop+end-start])
+			if err := reader.read(ctx, left[size-hop:size-hop+end-start], right[size-hop:size-hop+end-start]); err != nil {
+				return [5]float64{}, err
+			}
 		}
 		for i := range scratch {
 			index := start - 3*hop + i
@@ -68,7 +73,7 @@ func renderedReferenceSpectrumContext(ctx context.Context, source *audio.Buffer,
 				scratch[i] = 0
 			}
 		}
-		fftInPlace(scratch)
+		transform.Transform(scratch, false)
 		powers := referenceWindowBandPowers(scratch, source.SampleRate, weightPower, edges)
 		for band := range total {
 			total[band] += powers[band] * float64(hop)
@@ -81,6 +86,10 @@ func renderedReferenceSpectrumContext(ctx context.Context, source *audio.Buffer,
 }
 
 func renderedReferenceMeans(ctx context.Context, source *audio.Buffer, engine *dsp.Engine) (float64, float64, error) {
+	reader, err := newReferenceRenderReader(source, engine)
+	if err != nil {
+		return 0, 0, err
+	}
 	var left, right [4096]float32
 	meanLeft, meanRight := 0.0, 0.0
 	for start := 0; start < len(source.Left); start += len(left) {
@@ -88,8 +97,13 @@ func renderedReferenceMeans(ctx context.Context, source *audio.Buffer, engine *d
 			return 0, 0, err
 		}
 		count := min(len(left), len(source.Left)-start)
-		engine.ProcessBlock(source.Left[start:start+count], source.Right[start:start+count], left[:count], right[:count])
-		for i := range count {
+		if err := reader.read(ctx, left[:count], right[:count]); err != nil {
+			return 0, 0, err
+		}
+		for i := range left {
+			if i >= count {
+				break
+			}
 			l, r := float64(left[i]), float64(right[i])
 			if !isFinite(l) || !isFinite(r) {
 				return 0, 0, errors.New("reference render produced invalid samples")

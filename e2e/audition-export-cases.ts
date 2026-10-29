@@ -9,13 +9,21 @@ import { denseFixture, uploadProject } from "./workflow-fixture";
 // Audition export plays the exact file Export writes, from its Blob. Shared by
 // the native and browser-build suites.
 const SECONDS = 4, RATE = 96000;
-type AuditionWindow = Window & { qaDecodes?: number };
+type AuditionWindow = Window & { qaDecodes?: number; qaWorkerRenders?: number };
 
 /** Count every decodeAudioData call, so a second decoded copy of the audition would show. */
 async function countDecodes(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const scope = window as AuditionWindow;
-    scope.qaDecodes = 0;
+    scope.qaDecodes = 0; scope.qaWorkerRenders = 0;
+    const post = Worker.prototype.postMessage;
+    Worker.prototype.postMessage = function (message: unknown, transfer?: Transferable[] | StructuredSerializeOptions) {
+      if (typeof message === "object" && message !== null && "metadata" in message && typeof message.metadata === "string") {
+        const metadata: unknown = JSON.parse(message.metadata);
+        if (typeof metadata === "object" && metadata !== null && "operation" in metadata && metadata.operation === "render") scope.qaWorkerRenders = (scope.qaWorkerRenders ?? 0) + 1;
+      }
+      Reflect.apply(post, this, transfer === undefined ? [message] : [message, transfer]);
+    };
     const native = BaseAudioContext.prototype.decodeAudioData;
     BaseAudioContext.prototype.decodeAudioData = function (this: BaseAudioContext, ...args: Parameters<typeof native>) {
       scope.qaDecodes = (scope.qaDecodes ?? 0) + 1;
@@ -62,6 +70,7 @@ export async function verifyAuditionMatchesExport(page: Page, native = false): P
   // 24-bit, 96 kHz, every source frame.
   expect(fresh.length).toBe(44 + SECONDS * RATE * 6);
   const freshDigest = createHash("sha256").update(fresh).digest("hex");
+  const beforeAudition = await page.evaluate(() => (window as AuditionWindow).qaWorkerRenders ?? 0);
   await page.getByRole("button", { name: "Audition export", exact: true }).click();
   await expect.poll(() => playingAt(page), { timeout: 30_000 }).toBeGreaterThan(0.3);
   await expect(page.getByText("Playing the exact export file (96 kHz (source) · 24-bit PCM · TPDF dither).", { exact: true })).toBeVisible();
@@ -79,10 +88,13 @@ export async function verifyAuditionMatchesExport(page: Page, native = false): P
   expect(audition.digest, "the audition plays the bytes a fresh Export wrote").toBe(freshDigest);
   await page.getByRole("button", { name: "Pause audition", exact: true }).click();
 
+  const afterAudition = await page.evaluate(() => (window as AuditionWindow).qaWorkerRenders ?? 0);
+  if (!native) expect(afterAudition - beforeAudition, "one local worker render for audition").toBe(1);
   let renders = 0;
   page.on("request", (request) => { if (request.method() === "POST" && request.url().endsWith("/api/master/render")) renders++; });
   const handedOver = await exportWav(page);
   expect(createHash("sha256").update(handedOver).digest("hex")).toBe(freshDigest);
   if (native) expect(renders, "Export reused the held audition file").toBe(0);
+  else expect(await page.evaluate(() => (window as AuditionWindow).qaWorkerRenders ?? 0), "Export creates no second worker render").toBe(afterAudition);
   return { digest: audition.digest, size: audition.size };
 }

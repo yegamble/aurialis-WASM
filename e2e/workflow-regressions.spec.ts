@@ -334,3 +334,21 @@ test("each visible audio slider changes its own settings without mutating anothe
     }
   }
 });
+
+
+test("album level and delivery sit side by side on desktop and stack on mobile", async ({ page }, info) => {
+  await uploadProject(page, "album-layout.wav", 1);
+  await page.goto("/albums"); await page.getByRole("button", { name: "New album", exact: true }).click();
+  await page.getByRole("link", { name: /Untitled sequence 1/ }).click();
+  await page.getByRole("button", { name: "album layout", exact: true }).click();
+  for (const width of [320, 375, 390, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const level = await page.getByRole("region", { name: "Album level", exact: true }).boundingBox();
+    const delivery = await page.getByRole("region", { name: "Album delivery format", exact: true }).boundingBox();
+    if (!level || !delivery) throw new Error("Missing album panels");
+    if (width >= 1200) { expect(Math.abs(level.y - delivery.y)).toBeLessThan(1); expect(delivery.x).toBeGreaterThanOrEqual(level.x + level.width); }
+    else expect(delivery.y).toBeGreaterThanOrEqual(level.y + level.height);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+    if (width === 320 || width === 1440) await page.screenshot({ path: info.outputPath(`album-layout-${String(width)}.png`), fullPage: true });
+  }
+});

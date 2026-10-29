@@ -49,7 +49,7 @@ func waitFor(t *testing.T, mgr *jobs.Manager, id string, done func(*jobs.Job) bo
 func TestSeparationDeliversNamedStemsThatSumToTheMix(t *testing.T) {
 	mgr := jobs.NewManager(1)
 	defer mgr.Close()
-	mgr.SetSeparator(splitEvenly)
+	_ = mgr.SetSeparator(splitEvenly)
 	buf := makeTestBuffer()
 	for stems, names := range map[int][]string{2: {"vocals", "instrumental"}, 4: {"vocals", "drums", "bass", "other"}, 6: {"vocals", "drums", "bass", "guitar", "piano", "other"}} {
 		job, err := mgr.SubmitSeparate(buf, stems)
@@ -91,7 +91,7 @@ func TestSeparationDeliversNamedStemsThatSumToTheMix(t *testing.T) {
 func TestSeparationFailureAndCancellationKeepNoStems(t *testing.T) {
 	mgr := jobs.NewManager(1)
 	defer mgr.Close()
-	mgr.SetSeparator(func(context.Context, int, int, []float32, []float32, func(int, int, []float32, []float32) error, func(float64)) error {
+	_ = mgr.SetSeparator(func(context.Context, int, int, []float32, []float32, func(int, int, []float32, []float32) error, func(float64)) error {
 		return errors.New("model checksum mismatch")
 	})
 	job, err := mgr.SubmitSeparate(makeTestBuffer(), 4)
@@ -103,7 +103,7 @@ func TestSeparationFailureAndCancellationKeepNoStems(t *testing.T) {
 		t.Fatalf("%+v", failed)
 	}
 	started := make(chan struct{})
-	mgr.SetSeparator(func(ctx context.Context, _, _ int, _, _ []float32, _ func(int, int, []float32, []float32) error, _ func(float64)) error {
+	_ = mgr.SetSeparator(func(ctx context.Context, _, _ int, _, _ []float32, _ func(int, int, []float32, []float32) error, _ func(float64)) error {
 		close(started)
 		<-ctx.Done()
 		return ctx.Err()

@@ -32,8 +32,9 @@ func TestConfigureStemsReportsBackendAndCacheState(t *testing.T) {
 	if status.Backend != steminfer.Backend() || status.Accelerated != steminfer.Accelerated() || status.Arch != runtime.GOARCH {
 		t.Fatalf("backend %s accelerated %v arch %q", status.Backend, status.Accelerated, status.Arch)
 	}
-	if (status.Speed != nil) != steminfer.Accelerated() {
-		t.Fatalf("speed %+v on accelerated %v", status.Speed, steminfer.Accelerated())
+	_, speedKnown := steminfer.RecordedSpeed()
+	if (status.Speed != nil) != speedKnown {
+		t.Fatalf("speed %+v on backend %s", status.Speed, steminfer.Backend())
 	}
 	if status.Speed != nil && (status.Speed.IdleSecondsPerWindow != 32 || status.Speed.WindowSeconds != 20 || status.Speed.HopSeconds != 10) {
 		t.Fatalf("speed %+v", status.Speed)

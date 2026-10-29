@@ -74,7 +74,7 @@ type StemModelStatus struct {
 	// Arch is the server's GOARCH. The recorded speed was measured on arm64
 	// (Apple silicon) only, so the client caveats estimates elsewhere.
 	Arch string `json:"arch,omitempty"`
-	// Speed is the recorded per-window time, present on accelerated builds.
+	// Speed is optional recorded timing; acceleration alone does not supply it.
 	Speed *StemSpeed `json:"speed,omitempty"`
 }
 
@@ -116,7 +116,9 @@ func New(cfg Config) *Server {
 		postTimeout:  postRequestTimeout,
 		exportBudget: exportBudget,
 	}
-	s.jobs.SetSeparator(cfg.Separator)
+	if err := s.jobs.SetSeparator(cfg.Separator); err != nil {
+		s.cfg.Separator = nil
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
@@ -215,6 +217,14 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 				writeErrorJSON(w, http.StatusServiceUnavailable, "busy", "One audio request is already running; retry after it completes")
 				return
 			}
+			if r.ContentLength < 0 || r.ContentLength <= s.cfg.MaxUploadBytes {
+				prepared, reservation, ok := s.reserveRequest(w, r)
+				if !ok {
+					return
+				}
+				defer reservation.Release()
+				r = prepared
+			}
 			var cancel context.CancelFunc
 			r, cancel = s.withPostDeadline(w, r)
 			defer cancel()
@@ -307,6 +317,8 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 		"maxAudioFileBytes":          min(MaxAudioFileBytes, s.cfg.MaxUploadBytes),
 		"maxConcurrentAudioRequests": 1,
 		"jobMemoryBudgetBytes":       jobs.MaxMemoryBytes,
+		"processMemoryBudgetBytes":   jobs.MaxProcessMemoryBytes,
+		"modelMemoryAllowanceBytes":  jobs.ModelMemoryAllowance,
 		"profiles": []string{
 			"Warm Analog",
 			"Punchy Commercial",
@@ -374,7 +386,7 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request, exp
 				writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Audio file exceeds the decoded-frame storage limit")
 				return nil, false
 			}
-		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "format" || name == "script" || name == "scriptVersion" || (exportFields && (name == "sampleRate" || name == "dither" || name == "measure"))) && disposition["filename"] == "" && values[name] == nil:
+		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "format" || name == "script" || name == "scriptVersion" || ((r.URL.Path == "/api/analyze/deep" || r.URL.Path == "/analyze/deep") && name == "renderQuality") || (exportFields && (name == "sampleRate" || name == "dither" || name == "measure" || name == "monitorMode"))) && disposition["filename"] == "" && values[name] == nil:
 			var value []byte
 			fieldLimit := 64 * 1024
 			if name == "script" {
@@ -411,6 +423,9 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request, exp
 	buf, err := audio.DecodeAndDisarm(filename, rawBytes)
 	if err != nil {
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_audio", err.Error())
+		return nil, false
+	}
+	if !resizeRequest(w, r, pcmCapacity(buf)+4*1024*1024) {
 		return nil, false
 	}
 	return buf, true
@@ -482,13 +497,16 @@ func (s *Server) handleSeparate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job, err := s.jobs.SubmitSeparate(buf, stemCount)
+	job, err := s.jobs.SubmitSeparate(buf, stemCount, requestMemory(r))
 	switch {
 	case errors.Is(err, jobs.ErrSeparationUnavailable):
 		writeErrorJSON(w, http.StatusServiceUnavailable, "stems_unavailable", err.Error())
 		return
+	case errors.Is(err, jobs.ErrMemoryCapacity):
+		writeMemoryCapacity(w)
+		return
 	case errors.Is(err, jobs.ErrQueueFull):
-		writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", err.Error())
+		writeAdmissionError(w, err)
 		return
 	case err != nil:
 		writeErrorJSON(w, http.StatusRequestEntityTooLarge, "too_long", err.Error())
@@ -540,30 +558,44 @@ func (s *Server) handleAnalyzeDeep(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Analysis request canceled")
 		return
 	}
+	quality := r.FormValue("renderQuality")
+	_, qualityInForm := r.Form["renderQuality"]
+	qualityInQuery := r.URL.Query().Has("renderQuality")
+	if qualityInQuery {
+		if qualityInForm || len(r.URL.Query()["renderQuality"]) != 1 {
+			writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "Duplicate renderQuality")
+			return
+		}
+		quality = r.URL.Query().Get("renderQuality")
+	}
+	if _, qualityErr := mastering.RenderQualityAlgorithm(quality); qualityErr != nil || ((qualityInForm || qualityInQuery) && version != "2.0") {
+		writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "renderQuality must be classic or oversampled and requires ScriptV2")
+		return
+	}
 	if version == "2.0" {
 		for key, values := range r.URL.Query() {
-			if (key != "profile" && key != "scriptVersion") || len(values) != 1 {
+			if (key != "profile" && key != "scriptVersion" && key != "renderQuality") || len(values) != 1 {
 				writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "Unsupported ScriptV2 analysis query")
 				return
 			}
 		}
 		for key := range r.Form {
-			if key != "profile" && key != "scriptVersion" {
-				writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "ScriptV2 analysis accepts only profile and scriptVersion")
+			if key != "profile" && key != "scriptVersion" && key != "renderQuality" {
+				writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "ScriptV2 analysis accepts only profile, scriptVersion and renderQuality")
 				return
 			}
 		}
-		job, submitErr := s.jobs.SubmitAnalyzeDeepV2(buf, profile)
+		job, submitErr := s.jobs.SubmitAnalyzeDeepV2Quality(buf, profile, quality, requestMemory(r))
 		if submitErr != nil {
-			writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", submitErr.Error())
+			writeAdmissionError(w, submitErr)
 			return
 		}
 		s.writeAdmittedJob(w, r, job)
 		return
 	}
-	job, err := s.jobs.SubmitAnalyzeDeep(buf, profile)
+	job, err := s.jobs.SubmitAnalyzeDeep(buf, profile, requestMemory(r))
 	if err != nil {
-		writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", err.Error())
+		writeAdmissionError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusAccepted, job)
@@ -642,9 +674,17 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusBadRequest, "invalid_multipart", "measure must be \"render\" on a JSON render")
 		return
 	}
+	monitor, monitorErr := dsp.ParseMonitorMode(r.FormValue("monitorMode"))
+	if monitorErr != nil || (r.Form.Has("monitorMode") && !jsonResponse) {
+		writeErrorJSON(w, http.StatusBadRequest, "invalid_multipart", "monitorMode must be stereo, mono or side on a JSON render measurement")
+		return
+	}
 	outputRate := buf.SampleRate
 	if export.Converts(buf.SampleRate) {
 		outputRate = export.SampleRate
+	}
+	if !resizeRequest(w, r, renderMemoryBytes(buf, outputRate)) {
+		return
 	}
 	r, cancelExport, inBudget := s.withExportBudget(w, r, s.exportBudget(len(buf.Left), buf.SampleRate, outputRate))
 	defer cancelExport()
@@ -662,7 +702,7 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 	var beforeMetrics dsp.Metrics
 	var measureErr error
 	if !skipSource {
-		beforeMetrics, measureErr = dsp.MeasureStereoContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate))
+		beforeMetrics, measureErr = dsp.MeasureMonitorContext(r.Context(), buf.Left, buf.Right, float64(buf.SampleRate), monitor)
 	}
 	if measureErr != nil {
 		writeExportCanceled(w, r, "Audio measurement")
@@ -700,6 +740,15 @@ func (s *Server) handleMasterRender(w http.ResponseWriter, r *http.Request) {
 			writeErrorJSON(w, http.StatusBadRequest, "invalid_export_options", convertErr.Error())
 		}
 		return
+	}
+	if monitor != dsp.MonitorStereo {
+		reduction := afterMetrics.GainReductionDB
+		afterMetrics, measureErr = dsp.MeasureMonitorContext(r.Context(), outL, outR, float64(outRate), monitor)
+		afterMetrics.GainReductionDB = reduction
+		if measureErr != nil {
+			writeExportCanceled(w, r, "Audio measurement")
+			return
+		}
 	}
 	// Report the dither the delivered file carries; a conversion dithers after rendering.
 	params.DitherBits = deliveredDither
@@ -820,17 +869,22 @@ func (s *Server) handleDownloadStem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wavBytes, ok := s.jobs.StemWAV(id, stemName)
+	response, ok, err := s.jobs.LeaseStemWAV(id, stemName)
+	if err != nil {
+		writeMemoryCapacity(w)
+		return
+	}
 	if !ok {
 		writeErrorJSON(w, http.StatusNotFound, "stem_not_found", fmt.Sprintf("Stem %q for job %q not found", stemName, id))
 		return
 	}
 
+	defer response.Release()
 	w.Header().Set("Content-Type", "audio/wav")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.wav"`, stemName))
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(wavBytes) // #nosec G705 -- canonical PCM stem WAV; fixed audio/wav and nosniff headers
+	_, _ = w.Write(response.Bytes) // #nosec G705 -- canonical PCM stem WAV; fixed audio/wav and nosniff headers
 }
 
 func (s *Server) handleStaticOrSPA(w http.ResponseWriter, r *http.Request) {
@@ -874,13 +928,29 @@ func (s *Server) handleStaticOrSPA(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fallback if static export is not mounted on this path
-	if strings.HasPrefix(cleanPath, "/jobs/") || strings.HasPrefix(cleanPath, "/api/") || path.Ext(cleanPath) != "" {
+	if !knownStudioRoute(cleanPath) {
 		writeErrorJSON(w, http.StatusNotFound, "not_found", "API route not found")
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Aurialis Mastering Studio</title></head><body><div id="app">Aurialis-WASM</div></body></html>`)
+}
+
+func knownStudioRoute(cleanPath string) bool {
+	switch cleanPath {
+	case "/", "/library", "/albums", "/tools":
+		return true
+	}
+	parts := strings.Split(strings.Trim(cleanPath, "/"), "/")
+	if len(parts) != 2 || parts[1] == "" || path.Ext(parts[1]) != "" {
+		return false
+	}
+	switch parts[0] {
+	case "master", "split", "albums", "reference", "release-check":
+		return true
+	}
+	return false
 }
 
 func resolveStaticCandidates(relPath string) []string {
@@ -892,7 +962,7 @@ func resolveStaticCandidates(relPath string) []string {
 	// Map dynamic Next.js 16 App Router routes (/master/track-1, /split/track-1, /albums/album-1, etc.)
 	// to their static export placeholder shell.
 	parts := strings.Split(strings.Trim(relPath, "/"), "/")
-	if len(parts) == 2 {
+	if len(parts) == 2 && path.Ext(parts[1]) == "" {
 		switch parts[0] {
 		case "master", "split", "albums", "reference", "release-check":
 			candidates = append(candidates,
@@ -947,9 +1017,9 @@ func (s *Server) handleAnalyzeFeatures(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Audio analysis request canceled or timed out")
 		return
 	}
-	job, err := s.jobs.SubmitAnalyzeFeatures(buf)
+	job, err := s.jobs.SubmitAnalyzeFeatures(buf, requestMemory(r))
 	if err != nil {
-		writeErrorJSON(w, http.StatusServiceUnavailable, "queue_full", err.Error())
+		writeAdmissionError(w, err)
 		return
 	}
 	if r.Context().Err() != nil {

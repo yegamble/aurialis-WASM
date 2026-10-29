@@ -89,7 +89,13 @@ export function albumMastersKey(tracks: readonly Track[], level: AlbumLevel, for
   const plan = planAlbumLevels(level, tracks);
   const sequence = tracks.map((track, index) => {
     const step = plan.ok ? plan.tracks.at(index) : undefined;
-    return [track.id, track.sourceRevision, appliedRevisionKey(track) ?? engineParams(track.advanced), step?.mode === "normalize" ? step.requestedLufs : "keep"];
+    const baseline = appliedRevisionKey(track) ?? engineParams(track.advanced);
+    const render = exportRender(track);
+    const algorithm = "script" in render ? render.script.chainParams.algorithmVersion : render.params.algorithmVersion;
+    // Keep old Classic keys byte-for-byte, while selected Oversampled masters
+    // cannot be confused with a saved render of the same settings in Classic.
+    const processing = algorithm === 3 ? { algorithmVersion: 3, baseline } : baseline;
+    return [track.id, track.sourceRevision, processing, step?.mode === "normalize" ? step.requestedLufs : "keep"];
   });
   const request = deliveryRequest(format);
   // The default format (each source rate, 24-bit, TPDF) is what every earlier master

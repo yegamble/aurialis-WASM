@@ -237,6 +237,34 @@ func (m *levelModel) render(gainDB float64) (ProposalPrediction, error) {
 	return ProposalPrediction{AfterMetrics: dsp.Metrics{IntegratedLUFS: m.afterLUFS + gainDB - (1-m.slopeAboveCeiling)*over, TruePeakDBTP: math.Min(-1, -1-m.headroomDB+gainDB)}, LimiterPeakGainReductionDB: m.baseGRDB + over}, nil
 }
 
+func TestDynamicLevelMatchUsesItsLowerLimitingCap(t *testing.T) {
+	model := &levelModel{afterLUFS: -19, headroomDB: 0.25, baseGRDB: 0.1, slopeAboveCeiling: 0.4}
+	initial, _ := model.render(0)
+	initial.levelMatchLimitDB = MaxDynamicLevelMatchLimiterReductionDB
+	prediction, err := searchLevelMatch(-16, -1, initial, model.render)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prediction.LimiterPeakGainReductionDB > 1 || !prediction.LevelMatch.LimiterCapped || prediction.LevelMatch.GainDB <= 0 {
+		t.Fatalf("Dynamic & Open exceeds its 1 dB cap: %+v", prediction)
+	}
+	findings := predictionFindings(dsp.Metrics{IntegratedLUFS: -16}, prediction.AfterMetrics, &prediction)
+	if len(findings) == 0 || !strings.Contains(findings[0].Detail, "more than 1 dB of limiting") {
+		t.Fatal("the finding names the wrong profile cap:", findings)
+	}
+}
+
+func TestDynamicProfileCapsMeasuredDenseExport(t *testing.T) {
+	_, prediction, err := AnalyzeDeepV2Context(context.Background(), referenceMix(2, true), ProfileDynamicOpen, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prediction.LevelMatch.GainDB > 0 && prediction.LimiterPeakGainReductionDB > 1 {
+		t.Fatalf("positive gain costs %.2f dB of limiting", prediction.LimiterPeakGainReductionDB)
+	}
+	t.Logf("dense Dynamic & Open: %.2f dB limiting, %+.1f dB match, %.2f dB crest", prediction.LimiterPeakGainReductionDB, prediction.LevelMatch.GainDB, prediction.AfterMetrics.DynamicRangeDB)
+}
+
 // R1 (Round E): the Level match holds the source loudness unless that needs
 // more than 2 dB of export limiting; it never exceeds +12 dB and re-renders
 // at most three times.
@@ -485,6 +513,9 @@ func TestLevelMatchStaysAtZeroWhenTheProposalAlreadyLimitsHeavily(t *testing.T) 
 	}
 	if drop <= MaxUnexplainedLoudnessRiseLU || !hasFinding(script.Findings, "predicted-loudness-decrease") {
 		t.Fatalf("drop %.2f LU, findings %+v", drop, script.Findings)
+	}
+	if !hasFinding(script.Findings, "predicted-source-limiting") {
+		t.Fatal("zero Level match hides existing export limiting:", script.Findings)
 	}
 	t.Logf("clipped square at 0.8: %+.2f LU, %.2f dBTP, limiter %.2f dB with no Level match (needed %+.1f)", -drop, prediction.AfterMetrics.TruePeakDBTP, prediction.LimiterPeakGainReductionDB, match.NeededDB)
 }

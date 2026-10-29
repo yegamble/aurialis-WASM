@@ -4,6 +4,12 @@ import path from "node:path";
 const rootDir = process.cwd();
 const outDir = path.join(rootDir, "out");
 const targetDir = path.join(rootDir, "internal", "webui", "embedded");
+const executionTarget = process.env.NEXT_PUBLIC_AURIALIS_EXECUTION || "native";
+
+if (executionTarget !== "native" && executionTarget !== "browser") {
+  console.error(`Unsupported frontend execution target: ${executionTarget}`);
+  process.exit(1);
+}
 
 if (!fs.existsSync(outDir)) {
   console.error("out/ directory does not exist; run next build first.");
@@ -22,5 +28,10 @@ if (fs.existsSync(publicWasmDir) && !fs.existsSync(embeddedWasmDir)) {
 }
 
 fs.writeFileSync(path.join(targetDir, ".gitkeep"), "");
+fs.writeFileSync(
+  path.join(targetDir, `build-target-${executionTarget}.json`),
+  JSON.stringify({ schema: 1, target: executionTarget }) + "\n",
+  { flag: "wx" },
+);
 
-console.log("Synced Next.js static export out/ -> internal/webui/embedded/");
+console.log(`Synced ${executionTarget} Next.js static export out/ -> internal/webui/embedded/`);

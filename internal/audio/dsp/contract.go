@@ -9,13 +9,17 @@ const LegacyAlgorithmVersion uint32 = 1
 // LatencyFrames of audio, so callers must compensate and Drain the tail.
 const TruePeakAlgorithmVersion uint32 = 2
 
+// OversampledAlgorithmVersion adds designed FIR saturation and matched LR4
+// stereo filtering, with 64 additional frames of unconditional latency.
+const OversampledAlgorithmVersion uint32 = 3
+
 func supportsAlgorithm(version uint32) bool {
-	return version == 0 || version == LegacyAlgorithmVersion || version == TruePeakAlgorithmVersion
+	return version == 0 || version == LegacyAlgorithmVersion || version == TruePeakAlgorithmVersion || version == OversampledAlgorithmVersion
 }
 
 func algorithmOf(p Params) uint32 {
-	if p.AlgorithmVersion == TruePeakAlgorithmVersion {
-		return TruePeakAlgorithmVersion
+	if p.AlgorithmVersion == TruePeakAlgorithmVersion || p.AlgorithmVersion == OversampledAlgorithmVersion {
+		return p.AlgorithmVersion
 	}
 	return LegacyAlgorithmVersion
 }
@@ -26,8 +30,12 @@ func (e *Engine) AlgorithmVersion() uint32 { return algorithmOf(e.params) }
 
 // LatencyFrames reports buffered audio frames, excluding filter phase response
 // and any transport delay. The immediate v1 engine buffers no frames; v2 buffers
-// its true-peak lookahead at every setting, including bypass.
+// its true-peak lookahead at every setting, including bypass. Algorithm 3
+// additionally buffers the 64-frame saturation FIR delay at every setting.
 func (e *Engine) LatencyFrames() int {
+	if e.AlgorithmVersion() == OversampledAlgorithmVersion {
+		return e.truePeak.latency + saturationLatency
+	}
 	if e.AlgorithmVersion() == TruePeakAlgorithmVersion {
 		return e.truePeak.latency
 	}
@@ -41,6 +49,9 @@ func (e *Engine) LatencyFrames() int {
 // The immediate v1 engine has no buffered frames; outputs remain untouched.
 // For v2 it flushes the lookahead with silence and returns the frames written.
 func (e *Engine) Drain(outL, outR []float32) int {
+	if e.AlgorithmVersion() == OversampledAlgorithmVersion {
+		return e.drainOversampled(outL, outR)
+	}
 	if e.AlgorithmVersion() != TruePeakAlgorithmVersion {
 		return 0
 	}
@@ -65,10 +76,12 @@ func (e *Engine) Drain(outL, outR []float32) int {
 // into a loop (Repeat turned back on). It returns the frames written.
 func (e *Engine) DrainDetached(outL, outR []float32) int {
 	e.drainSaved = e.truePeak
+	e.oversampledSaved = e.oversampled
 	prng, limiterGR := e.prngState, e.lastLimGRDB
 	envelope, previousL, previousR := e.limEnvLin, e.limPrevL, e.limPrevR
 	n := e.Drain(outL, outR)
 	e.truePeak = e.drainSaved
+	e.oversampled = e.oversampledSaved
 	e.prngState, e.lastLimGRDB = prng, limiterGR
 	e.limEnvLin, e.limPrevL, e.limPrevR = envelope, previousL, previousR
 	return n

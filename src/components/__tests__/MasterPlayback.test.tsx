@@ -73,10 +73,12 @@ beforeEach(() => {
       pause: vi.fn(() => { update({ playing: false }); }),
       seek: vi.fn((position: number) => { update({ position }); }),
       setParams: vi.fn(), applyScript: vi.fn(), detachScript: vi.fn(), setBypass: vi.fn((original: boolean) => { update({ original }); }),
+      setMonitorMode: vi.fn((monitorMode: "stereo" | "mono" | "side") => { update({ monitorMode }); }),
       setVolume: vi.fn((volume: number) => { update({ volume }); }),
       setLoudnessMatch: vi.fn((match: { processedDb: number; originalDb: number } | null) => { update({ loudnessMatch: match ?? { processedDb: 0, originalDb: 0 } }); }),
       setRepeat: vi.fn((repeat: boolean) => { update({ repeat }); }),
       dispose: vi.fn(), getState: () => instance.state,
+      getDiagnostics: () => ({ sourceRate: 48000, liveRate: 48000, contextTime: 0, contextState: "running", baseLatency: 0, outputLatency: 0, deviceStats: null, acceptedControls: null, kernel: null }),
     };
     instances.push(instance);
     return instance.controller;
@@ -88,6 +90,26 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstub
 const audioRequests = () => vi.mocked(fetch).mock.calls.filter(([input]) => input !== "/api/stems/model");
 
 describe("master live playback lifecycle", () => {
+  it("changes listening mode without editing the project or recreating its processing graph", async () => {
+    mount(); await ready(); const before = savedTrack(), controller = latest().controller;
+    fireEvent.click(screen.getByRole("button", { name: "Mono" }));
+    await waitFor(() => { expect(controller.setMonitorMode).toHaveBeenLastCalledWith("mono"); });
+    expect(savedTrack()).toEqual(before); expect(instances).toHaveLength(1);
+    expect(localStorage.getItem("aurialis-monitor-mode-v1")).toBe("mono");
+    fireEvent.click(screen.getByRole("button", { name: "Side" }));
+    await waitFor(() => { expect(controller.setMonitorMode).toHaveBeenLastCalledWith("side"); });
+    expect(savedTrack()).toEqual(before);
+  });
+  it("saves an explicit render quality, pauses the previous graph and exports that quality", async () => {
+    const { delivery } = heldAudition(); mount(); await ready();
+    fireEvent.click(screen.getByRole("button", { name: "Play" })); const previous = latest();
+    fireEvent.click(screen.getByRole("button", { name: "Oversampled" }));
+    await waitFor(() => { expect(savedTrack().advanced.renderQuality).toBe("oversampled"); expect(instances).toHaveLength(2); });
+    expect(previous.controller.dispose).toHaveBeenCalledOnce(); expect(latest().state.playing).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Export" })); fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));
+    await waitFor(() => { expect(delivery).toHaveBeenCalled(); });
+    expect(delivery.mock.calls[0]?.[1]).toMatchObject({ params: { algorithmVersion: 3 } });
+  }, 30000);
   it("restores the mastered delivery selection and rejects an old render after changing it", async () => {
     const { delivery } = heldAudition();
     const view = mount(); await ready();
@@ -355,6 +377,24 @@ describe("master live playback lifecycle", () => {
     expect(screen.queryByText(/what you hear is what you export/u)).toBeNull();
   }, 30000);
 
+  it("routes media seeking to the paused or playing audition until live takes over", async () => {
+    heldAudition(); mount(); await ready();
+    const instance = latest();
+    fireEvent.click(screen.getByRole("button", { name: "Audition export" }));
+    await screen.findByRole("button", { name: "Pause audition" });
+    const element = document.querySelector<HTMLAudioElement>("audio.audition-export"); if (!element) throw new Error("Missing audition");
+    Object.defineProperty(element, "duration", { configurable: true, value: 20 });
+    fireEvent.loadedMetadata(element);
+    fireEvent.keyDown(document.body, { key: "ArrowRight", shiftKey: true });
+    expect(element.currentTime).toBe(10);
+    fireEvent.keyDown(document.body, { key: " ", code: "Space" });
+    fireEvent.keyDown(document.body, { key: "ArrowLeft" });
+    expect(element.currentTime).toBe(9);
+    expect(instance.controller.seek).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Play" }));
+    fireEvent.keyDown(document.body, { key: "ArrowRight" });
+    expect(instance.controller.seek).toHaveBeenCalled();
+  }, 30000);
   it("Export hands over the held audition file, and the play/pause key drives the audition (V1-10 S-3, S-4)", async () => {
     const { mediaPlay, mediaPause, delivery } = heldAudition();
     mount(); await ready();
@@ -542,7 +582,7 @@ describe("master live playback lifecycle", () => {
     expect(instance.state.playing).toBe(true);
     expect(instance.state.repeat).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Skip forward 10 seconds" }));
-    expect(instance.controller.seek).toHaveBeenLastCalledWith(0.1);
+    expect(instance.controller.seek).toHaveBeenLastCalledWith(0);
     expect(instance.state.playing).toBe(true);
     expect(mocks.push).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
@@ -674,15 +714,15 @@ describe("master live playback lifecycle", () => {
     fireEvent.click(toggle);
     expect(storage.get("aurialis-match-loudness-v1")).toBe("1");
     await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("B −4.5 dB to match A"); }, { timeout: 5000 });
-    expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: -4.5 });
+    await waitFor(() => { expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: -4.5 }); });
     // A is measured on what live playback plays: the export algorithm since V1-10.
     expect(measure.mock.calls.at(-1)?.[1]).toMatchObject({ params: { inputGainDb: -4.5, limiter: { truePeak: true }, algorithmVersion: 2 } });
     // A settings change makes the reading stale: the last static offset is held, then replaced.
     fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "3" } });
     await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("Re-measuring (holding B −4.5 dB)"); });
-    expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: -4.5 });
+    await waitFor(() => { expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: -4.5 }); });
     await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("A −3.0 dB to match B"); }, { timeout: 5000 });
-    expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: -3, originalDb: 0 });
+    await waitFor(() => { expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: -3, originalDb: 0 }); });
     fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "0" } });
     await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("A and B already match"); }, { timeout: 5000 });
     // Export with the match on sends exactly the request it sent with the match off.

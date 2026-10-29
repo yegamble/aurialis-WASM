@@ -1,3 +1,4 @@
+import { isMonitorMode, type MonitorMode } from "./monitor-mode";
 import { MAX_JOB_INPUT_BYTES } from "./audio-limits";
 import { audioInputShape } from "./audio-input-shape";
 import { EXPORT_SAMPLE_RATES } from "./types";
@@ -9,12 +10,14 @@ const LOCAL_FALLBACK = "For this file, use the native Aurialis build (built from
 const RETAINED_NATIVE_HINT = "Download or discard finished audio in this tab, such as album masters or reviewed WAVs, or close other heavy tabs, then try again.";
 
 interface JobRequest {
-  operation: "render" | "features" | "deep" | "reference" | "compile";
+  operation: "render" | "features" | "deep" | "reference" | "compile" | "transition";
   /** "render" skips the source measurement a client already cached (V1-13). */
   measure?: "render";
+  monitorMode?: MonitorMode;
   params?: string;
   script?: string;
   profile?: string;
+  renderQuality?: "classic" | "oversampled";
   bitDepth?: number;
   sampleRate?: number;
   dither?: string;
@@ -156,6 +159,14 @@ function awaitCancellation<T>(promise: Promise<T>, signal: AbortSignal): Promise
   });
 }
 
+/** A bounded Go/WASM edge mix in both builds; no album audio leaves the device. */
+export async function mixAlbumEdges(tail: Blob, head: Blob, bitDepth: 16 | 24 | 32, signal: AbortSignal): Promise<Blob> {
+  const result = await withForegroundAudio(() => execute({ operation: "transition", bitDepth }, tail, head, signal));
+  signal.throwIfAborted();
+  if (!result.audio.byteLength) throw new Error("The album crossfade returned no audio.");
+  return new Blob([result.audio], { type: "audio/wav" });
+}
+
 /** Background jobs (the A/B loudness measurement) yield to anything the user started. */
 export type JobPriority = "foreground" | "background";
 const backgroundJobs = new Set<{ controller: AbortController; settled: Promise<void> }>();
@@ -209,19 +220,29 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
   let request: JobRequest;
   let allowed: string[];
   switch (path) {
-    case "/api/master/render": request = { operation: "render" }; allowed = ["file", "params", "script", "profile", "bitDepth", "sampleRate", "dither", "format", "measure"]; break;
+    case "/api/master/render": request = { operation: "render" }; allowed = ["file", "params", "script", "profile", "bitDepth", "sampleRate", "dither", "format", "measure", "monitorMode"]; break;
     case "/api/analyze/features": request = { operation: "features" }; allowed = ["file"]; break;
-    case "/api/analyze/deep": request = { operation: "deep" }; allowed = ["file", "profile", "scriptVersion"]; break;
+    case "/api/analyze/deep": request = { operation: "deep" }; allowed = ["file", "profile", "scriptVersion", "renderQuality"]; break;
     case "/api/analyze/reference": request = { operation: "reference" }; allowed = ["source", "reference", "params", "options"]; break;
     default: throw new Error("This audio operation is unavailable in the browser. " + LOCAL_FALLBACK);
   }
   for (const key of fields.keys()) if (!allowed.includes(key)) throw new Error("Unsupported local audio field.");
   const text = (key: string) => { const value = fields.get(key); if (value !== undefined && typeof value !== "string") throw new Error("Invalid local audio field."); return value; };
-  const params = text("params"), script = text("script"), profile = text("profile"), format = text("format"), options = text("options"), scriptVersion = text("scriptVersion"), bitDepth = text("bitDepth"), sampleRate = text("sampleRate"), dither = text("dither");
+  const params = text("params"), script = text("script"), profile = text("profile"), format = text("format"), options = text("options"), scriptVersion = text("scriptVersion"), bitDepth = text("bitDepth"), sampleRate = text("sampleRate"), dither = text("dither"), renderQuality = text("renderQuality");
   if (params !== undefined) request.params = params;
   if (script !== undefined) request.script = script;
   if (profile !== undefined) request.profile = profile;
+  if (renderQuality !== undefined) {
+    if (renderQuality !== "classic" && renderQuality !== "oversampled") throw new Error("Invalid local audio render quality.");
+    if (scriptVersion !== "2.0") throw new Error("Render quality requires a version 2 Deep proposal.");
+    request.renderQuality = renderQuality;
+  }
   if (format !== undefined) request.format = format;
+  const monitorMode = text("monitorMode");
+  if (monitorMode !== undefined) {
+    if (!isMonitorMode(monitorMode) || request.operation !== "render" || format !== "json") throw new Error("Listening mode is available only for JSON audio measurements.");
+    request.monitorMode = monitorMode;
+  }
   if (options !== undefined) request.options = options;
   if (scriptVersion !== undefined) request.scriptVersion = scriptVersion;
   if (bitDepth !== undefined) {

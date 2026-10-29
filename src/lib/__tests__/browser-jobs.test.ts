@@ -201,6 +201,29 @@ describe("device-local browser audio transport", () => {
     expect(read).not.toHaveBeenCalled(); expect(TestWorker.all).toHaveLength(0);
   });
 
+  it("forwards listening mode only for a JSON measurement and rejects export contamination", async () => {
+    const { deviceAudioRequest } = await import("../browser-jobs"); replyToAdmittedJobs();
+    const form = body(); form.append("format", "json"); form.append("monitorMode", "side");
+    await deviceAudioRequest("/api/master/render", { method: "POST", body: form });
+    expect(JSON.parse(TestWorker.all[0]?.message?.metadata ?? "{}") as unknown).toMatchObject({ operation: "render", monitorMode: "side", format: "json" });
+    for (const [format, mode] of [["wav", "mono"], ["json", "invalid"], ["json", ""]]) {
+      const invalid = body(); invalid.append("format", format ?? ""); invalid.append("monitorMode", mode ?? "");
+      await expect(deviceAudioRequest("/api/master/render", { method: "POST", body: invalid })).rejects.toThrow(/Listening mode/u);
+    }
+    expect(TestWorker.all).toHaveLength(1);
+  });
+  it("forwards only a declared version-2 Deep render quality to the worker", async () => {
+    const { deviceAudioRequest } = await import("../browser-jobs"); replyToAdmittedJobs();
+    const form = body(); form.append("scriptVersion", "2.0"); form.append("profile", "Warm Analog"); form.append("renderQuality", "oversampled");
+    await expect(deviceAudioRequest("/api/analyze/deep", { method: "POST", body: form })).resolves.toHaveProperty("status", 200);
+    expect(JSON.parse(TestWorker.all[0]?.message?.metadata ?? "{}") as unknown).toMatchObject({ operation: "deep", renderQuality: "oversampled", scriptVersion: "2.0" });
+    for (const [version, quality] of [["1.0", "oversampled"], ["2.0", "unknown"]]) {
+      const invalid = body(); invalid.append("scriptVersion", version ?? ""); invalid.append("renderQuality", quality ?? "");
+      await expect(deviceAudioRequest("/api/analyze/deep", { method: "POST", body: invalid })).rejects.toThrow(/quality/iu);
+    }
+    expect(TestWorker.all).toHaveLength(1);
+  });
+
   it("transfers raw buffers once, keeps metadata separate, and terminates after completion without fetch", async () => {
     const { deviceAudioRequest } = await import("../browser-jobs");
     const pending = deviceAudioRequest("/api/analyze/features", { method: "POST", body: body() });

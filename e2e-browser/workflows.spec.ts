@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { fixture, decode } from "../e2e/audio-fixture";
 import { denseFixture } from "../e2e/workflow-fixture";
+import { verifyReleaseQualityStaleness } from "../e2e/release-quality-cases";
 import { exportParams, exportScript } from "../src/lib/engine-params";
 import type { AdvancedParams, ExportDelivery, MeasuredAudioMetrics, Track } from "../src/lib/types";
 import type { ReleaseReport } from "../src/lib/release-review";
@@ -97,13 +98,15 @@ async function assertPrivate(info: TestInfo, requests: ReturnType<typeof observe
   await info.attach("all-browser-and-worker-network-requests", { path, contentType: "application/json" });
 }
 
-test("measured Reference applies and exports the real local proposal with no audio requests", async ({ page, context }, info) => {
+for (const quality of ["Classic", "Oversampled"] as const) test(quality === "Classic" ? "measured Reference applies and exports the real local proposal with no audio requests" : "measured Reference Oversampled width applies and exports the real local proposal without uploads", async ({ page, context }, info) => {
   const requests = observeNetwork(context);
   const source = fixture(997, 1), id = await upload(page, source, "private-reference-source.wav");
+  if (quality === "Oversampled") await page.getByRole("button", { name: "Oversampled", exact: true }).click();
   const before = await settings(page, id);
   const reference = await upload(page, fixture(2800, 1), "private-reference-target.wav");
   await page.goto(`/reference/${id}`);
   await page.getByRole("combobox", { name: "Reference track", exact: true }).selectOption(reference);
+  if (quality === "Oversampled") await page.getByRole("checkbox", { name: "Include width", exact: true }).check();
   await page.getByRole("button", { name: "Analyze reference audio", exact: true }).click();
   await expect(page.getByRole("button", { name: "Apply measured proposal", exact: true })).toBeEnabled({ timeout: 30_000 });
   expect(await settings(page, id)).toEqual(before);
@@ -111,7 +114,13 @@ test("measured Reference applies and exports the real local proposal with no aud
   await expect(page.getByText(/Measured proposal applied/u)).toBeVisible();
   const advanced = await settings(page, id);
   expect(advanced.eqBands).not.toEqual(before.eqBands);
-  expect(advanced.stereo).toEqual(before.stereo);
+  if (quality === "Classic") expect(advanced.stereo).toEqual(before.stereo);
+  else {
+    expect(advanced.renderQuality).toBe("oversampled");
+    expect(exportParams(advanced).algorithmVersion).toBe(3);
+    expect(Math.abs(advanced.stereo.width - before.stereo.width)).toBeLessThanOrEqual(20 * .62);
+    expect(advanced.stereo).toEqual({ ...before.stereo, width: advanced.stereo.width });
+  }
   await page.getByRole("link", { name: "Back to master", exact: true }).click();
   await page.getByRole("button", { name: "Export", exact: true }).click();
   const dialog = page.getByRole("dialog");
@@ -172,6 +181,7 @@ test("Release retains native-equivalent final 16/24/32-bit WAVs and exact encode
     const native = await nativeRender(info, source, advanced, bitDepth);
     await reviewEncoded(page, info, native.audio, String(bitDepth));
   }
+  await verifyReleaseQualityStaleness(page, id);
   await assertPrivate(info, requests);
 });
 
@@ -446,7 +456,11 @@ test("Deep analysis compilation live apply and source-bound export keep every au
   const downloaded = await downloading, path = await downloaded.path();
   if (!path) throw new Error("Missing browser-local Deep script export");
   expect(await downloaded.failure()).toBeNull();
-  expect(await readFile(path)).toEqual(native.audio);
+  const actual = await readFile(path);
+  await writeFile(info.outputPath("actual-Deep-float32.wav"), actual);
+  await writeFile(info.outputPath("accepted-Deep-track.json"), JSON.stringify(accepted, null, 2));
+  await writeFile(info.outputPath("exported-Deep-track.json"), JSON.stringify(await project(), null, 2));
+  expect(actual).toEqual(native.audio);
   const evidence = info.outputPath("actual-local-Deep-evidence.json");
   await writeFile(evidence, JSON.stringify({ source: applied.source, revision: applied.revision, compiledMoves: capture.compiledMoves, capturedFrames: 16384, maximumLiveError, exactNativeWavBytes: native.audio.length }, null, 2));
   await info.attach("actual-local-Deep-evidence", { path: evidence, contentType: "application/json" });

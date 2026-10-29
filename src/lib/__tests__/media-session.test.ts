@@ -30,6 +30,18 @@ beforeEach(() => {
 afterEach(() => { for (const binding of bindings) binding.dispose(); bindings.length = 0; document.body.innerHTML = ""; vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("current-player keyboard and Media Session controls", () => {
+  it("wraps relative Repeat steps but preserves absolute end seeking", () => {
+    state = { ...state, repeat: true, playing: true, position: 98 };
+    const { actions } = connect();
+    fireEvent.keyDown(document.body, { key: "ArrowRight", shiftKey: true });
+    expect(actions.seek).toHaveBeenLastCalledWith(8);
+    handlers.get("seekbackward")?.({ action: "seekbackward", seekOffset: 10 });
+    expect(actions.seek).toHaveBeenLastCalledWith(98);
+    handlers.get("seekforward")?.({ action: "seekforward", seekOffset: 10 });
+    expect(actions.seek).toHaveBeenLastCalledWith(8);
+    handlers.get("seekto")?.({ action: "seekto", seekTime: 100 });
+    expect(actions.seek).toHaveBeenLastCalledWith(100);
+  });
   it("uses Space and precise bounded arrow seeks while leaving focused native controls alone", () => {
     const { actions } = connect();
     fireEvent.keyDown(document.body, { key: " ", code: "Space" });

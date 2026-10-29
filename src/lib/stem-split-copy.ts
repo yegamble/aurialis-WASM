@@ -3,7 +3,7 @@ import { STEM_MODEL_DISABLED, type StemModelStatus, type StemSpeed, type StemSpl
 /**
  * The one statement of Smart Split availability and speed, shared by Home,
  * Tools and the Split page so the three never disagree. Only the 32 s idle
- * window, the busy-machine window and the plain-Go 30-minute result are
+ * window, the busy-machine window, the hosted Intel window and the plain-Go 30-minute result are
  * measurements (docs/tasks.md, "Smart Split with a trained model"); the
  * 14-minute figure is 26 windows at the idle window time. Keep this in step
  * with the "Smart Split status" sentence in README.md and the guides.
@@ -13,15 +13,15 @@ export const STEM_SPLIT_PITCH = "Split a song into 2 to 6 stems with a trained s
 const BROWSER_AVAILABILITY = "Smart Split runs only in the native Aurialis build (built from source); it isn't available in the browser.";
 
 const NATIVE_AVAILABILITY =
-  "Smart Split runs on this computer, and it is slow. It needs the macOS build, which uses Apple Accelerate: on an idle Apple-silicon Mac (8-core M2) one 20-second window took about 32 seconds, so a four-minute song would take roughly 14 minutes, but no idle full-song timing has been recorded, and a busy machine took up to about three minutes per window. " +
-  "On Linux and Windows Smart Split is turned off: plain Go did not finish one 20-second window in 30 minutes, so a song could not finish within the 90-minute job limit.";
+  "Smart Split runs on this computer, and it is slow. macOS builds use Apple Accelerate: on an idle Apple-silicon Mac (8-core M2) one 20-second window took about 32 seconds, so a four-minute song would take roughly 14 minutes, but no idle full-song timing has been recorded, and a busy machine took up to about three minutes per window. " +
+  "Hosted Intel Mac tests took roughly 3–4 minutes per window. Qualified Linux and Windows builds need an AVX2/FMA processor; hosted tests took about 127–175 seconds per window. These are reference measurements, not a timing guarantee for this computer; full songs have not been timed there. A slower computer can reach the 90-minute job limit.";
 
 export function stemSplitAvailability(browser: boolean): string {
   return browser ? BROWSER_AVAILABILITY : NATIVE_AVAILABILITY;
 }
 
 /** The note for a native server built without Apple Accelerate, where Split is off. */
-export const STEM_MODEL_PLAIN_GO = "Smart Split is off in this build: it runs the model in plain Go, which did not finish one 20-second window in 30 minutes. Splitting needs the macOS build, which uses Apple Accelerate.";
+export const STEM_MODEL_PLAIN_GO = "Smart Split is off because this build or processor has no qualified inference backend. Use a macOS build with Apple Accelerate, or a Linux or Windows build on an AVX2/FMA processor. The portable and SSE3 fallback paths have not qualified for usable speed.";
 
 function megabytes(bytes: number): string {
   return `${String(Math.round(bytes / 1_000_000))} MB`;
@@ -44,7 +44,7 @@ export function stemModelNote(status: StemModelStatus | null, lastFailure: StemS
 }
 
 /** Model windows for a song, matching the server's chunk assembler (steminfer.Windows). */
-export function stemWindows(speed: StemSpeed, seconds: number): number {
+export function stemWindows(speed: Pick<StemSpeed, "windowSeconds" | "hopSeconds">, seconds: number): number {
   if (!(seconds > 0) || !Number.isFinite(seconds)) return 0;
   // Songs longer than one window are padded by half a window at each end.
   const total = seconds > speed.windowSeconds ? seconds + speed.windowSeconds : seconds;
@@ -66,19 +66,28 @@ function clock(seconds: number): string {
 /**
  * A realistic split time for this song from the recorded per-window speed, or
  * null when the server reports no speed (plain Go) or the length is unknown.
- * These are recorded figures from one Apple-silicon Mac, not a measurement of
- * this computer; any other arch (an Intel Mac's amd64) was never timed, so the
- * estimate leads with the busy figure there.
+ * These are recorded figures from an M2 Mac and one hosted Intel runner,
+ * not a measurement of this computer or a full-song timing.
  */
-export function stemSplitEstimate(speed: StemSpeed | null, seconds: number, arch: string): string | null {
+export function stemSplitEstimate(speed: StemSpeed | null, seconds: number, arch: string, backend = "apple-accelerate"): string | null {
+  if (backend === "packed-avx2-fma") {
+    const windows = stemWindows({ windowSeconds: 20, hopSeconds: 10 }, seconds);
+    if (!windows) return null;
+    return `This ${clock(seconds)} song needs ${String(windows)} model windows. Hosted Linux and Windows tests measured about 127–175 s per window; this computer and a full song have not been timed. A slower computer can reach the 90-minute job limit.`;
+  }
   if (!speed) return null;
   const windows = stemWindows(speed, seconds);
   if (windows === 0) return null;
   const idle = windows * speed.idleSecondsPerWindow, busy = windows * speed.busySecondsPerWindow;
   const limit = busy > JOB_LIMIT_SECONDS ? " and pass the 90-minute job limit, stopping the split" : "";
   const count = `${String(windows)} model window${windows === 1 ? "" : "s"}`;
+  if (arch === "amd64") {
+    const shortest = windows * 180, longest = windows * 240;
+    const cutoff = longest > JOB_LIMIT_SECONDS ? " This can exceed the 90-minute job limit, which stops the split." : "";
+    return `Estimated split time for this ${clock(seconds)} song: roughly ${String(Math.round(shortest / 60))}–${String(Math.round(longest / 60))} minutes (${count} at roughly 3–4 minutes each in hosted Intel Mac tests, including a profiled run). A full song has not been timed there; your computer and its load may differ.${cutoff}`;
+  }
   if (arch !== "arm64") {
-    return `Estimated split time for this ${clock(seconds)} song: Intel Macs have not been timed, so plan for the slow case. ` +
+    return `Estimated split time for this ${clock(seconds)} song: this architecture has not been timed, so plan for the slow case. ` +
       `At the ${String(speed.busySecondsPerWindow)} s per window a busy 8-core M2 Mac measured, it would take about ${minutes(busy)} (${count})${limit}. ` +
       `The same Mac took about ${String(speed.idleSecondsPerWindow)} s per window when idle, about ${minutes(idle)}.`;
   }

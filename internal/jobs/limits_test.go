@@ -32,7 +32,7 @@ func TestSeparationAdmissionUsesItsOwnPool(t *testing.T) {
 	manager := NewManager(1)
 	defer manager.Close()
 	block := make(chan struct{})
-	manager.SetSeparator(func(ctx context.Context, _, _ int, _, _ []float32, _ func(int, int, []float32, []float32) error, _ func(float64)) error {
+	_ = manager.SetSeparator(func(ctx context.Context, _, _ int, _, _ []float32, _ func(int, int, []float32, []float32) error, _ func(float64)) error {
 		select {
 		case <-block:
 		case <-ctx.Done():

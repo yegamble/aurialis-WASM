@@ -19,6 +19,8 @@ func WasmInit(sampleRate float64) uint32 {
 		return 0
 	}
 	reactorBridge.Init(sampleRate)
+	auditionMonitor = liveMonitor{}
+	auditionMonitor.reset()
 	return 1
 }
 
@@ -74,6 +76,7 @@ func WasmLiveResumeInput() uint32 {
 //
 //go:wasmexport aurialis_live_reset
 func WasmLiveReset() uint32 {
+	auditionMonitor.reset()
 	return reactorBlocks.reset()
 }
 

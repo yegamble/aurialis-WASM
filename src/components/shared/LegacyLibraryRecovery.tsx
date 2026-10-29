@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { reserveBrowserAudioMemory } from "@/lib/browser-jobs";
 import { discardStagedAudio, newAudioAssetId, saveAudio } from "@/lib/db";
-import { readLegacyWav, scanLegacySources, type LegacyPage, type LegacySource } from "@/lib/legacy-library";
+import { readLegacySource, scanLegacySources, type LegacyPage, type LegacySource } from "@/lib/legacy-library";
 import { importedTrack, prepareProjectFile } from "@/lib/project-import";
 import { useStore } from "@/lib/store";
 import { Button, Modal } from "./Primitives";
@@ -45,7 +45,7 @@ export function LegacyLibraryRecovery() {
     let owner: ReturnType<typeof reserveBrowserAudioMemory> | undefined;
     try {
       owner = reserveBrowserAudioMemory(source.size);
-      const selected = await readLegacyWav(source, controller.signal);
+      const selected = await readLegacySource(source, controller.signal);
       const imported = await prepareProjectFile(selected.file, controller.signal, (stage) => { if (!controller.signal.aborted) setMessage(stage); });
       // Retain original snapshot, canonical Blob and its possible storage copy.
       // Header validation no longer allocates full-length PCM validation buffers.
@@ -73,14 +73,14 @@ export function LegacyLibraryRecovery() {
   }
   function cancel() { operation.current?.abort(); setMessage("Recovery canceled. Old originals and settings are retained."); }
   return <section className="storage-note" aria-label="Old Aurialis library recovery">
-    <div><span><strong>Used the previous Aurialis?</strong><small>Recover local WAV sources from this browser.</small></span></div>
+    <div><span><strong>Used the previous Aurialis?</strong><small>Recover local audio sources from this browser.</small></span></div>
     <div className="min-w-0 max-w-full flex-col items-start gap-2">
-      <p className="disclosure">Old projects stay in their original storage. Recovery creates new projects from selected WAV sources; old mastering settings are retained separately.</p>
+      <p className="disclosure">Old projects stay in their original storage. Recovery creates new projects from selected WAV, AIFF, FLAC or MP3 sources; old mastering settings are retained separately.</p>
       <Button variant="secondary" disabled={busy} onClick={() => { void scan(); }}>Find old projects</Button>
     </div>
     <Modal open={open} title="Recover old local sources" onClose={() => { cancel(); setOpen(false); }} actions={<Button variant="secondary" onClick={() => { if (busy) cancel(); else setOpen(false); }}>{busy ? "Cancel recovery" : "Close"}</Button>}>
       <p className="disclosure">This finds saved source files and reads only the audio you select from this site’s browser storage. Saved scripts and settings are never loaded or applied. The old audio is retained.</p>
-      <p className="disclosure">WAV recovery supports the current source limits. Compressed originals need a separate recovery path and remain in old storage. Recovery is specific to this browser profile and site address; check each address you used before clearing browser data.</p>
+      <p className="disclosure">Selected WAV, AIFF, FLAC and MP3 originals pass through the current Go audio decoder and become clean PCM. Recovery is limited to 128 MiB per saved original; decoded audio must fit the current frame and device-memory limits. Unsupported originals remain in old storage. Recovery is specific to this browser profile and site address; check each address you used before clearing browser data.</p>
       {message && <p role="status" className="disclosure">{message}</p>}
       {error && <p role="alert" className="disclosure text-danger">{error}</p>}
       {!!page?.skipped && <p className="disclosure">Skipped {page.skipped} invalid or unsupported saved records on this page. Their old records are retained.</p>}
@@ -89,7 +89,7 @@ export function LegacyLibraryRecovery() {
         {page?.sources.map((source) => <li key={source.key} className="grid min-w-0 gap-2 rounded-xl border border-line-dark p-3">
           <strong className="min-w-0 break-words [overflow-wrap:anywhere]">{source.name}</strong>
           <span className="disclosure">{(source.size / 1048576).toFixed(1)} MiB · original source</span>
-          <Button variant="secondary" disabled={busy || recovered.includes(source.key)} onClick={() => { void recover(source); }} aria-label={`Recover WAV: ${source.name}`}>{recovered.includes(source.key) ? "Recovered; old copy retained" : "Recover WAV source"}</Button>
+          <Button variant="secondary" disabled={busy || recovered.includes(source.key)} onClick={() => { void recover(source); }} aria-label={`Recover source: ${source.name}`}>{recovered.includes(source.key) ? "Recovered; old copy retained" : "Recover audio source"}</Button>
         </li>)}
       </ul>
       {page?.next && <Button variant="secondary" disabled={busy} onClick={() => { void scan(page.next); }}>Next saved files</Button>}

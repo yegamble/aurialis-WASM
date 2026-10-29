@@ -45,6 +45,10 @@ func MeasureStereoContext(ctx context.Context, left, right []float32, sampleRate
 }
 
 func measureStereoContext(ctx context.Context, left, right []float32, sampleRate float64) (Metrics, error) {
+	return measureMonitorContext(ctx, left, right, sampleRate, MonitorStereo)
+}
+
+func measureMonitorContext(ctx context.Context, left, right []float32, sampleRate float64, mode MonitorMode) (Metrics, error) {
 	n := len(left)
 	if len(right) < n {
 		n = len(right)
@@ -93,8 +97,9 @@ func measureStereoContext(ctx context.Context, left, right []float32, sampleRate
 				return Metrics{}, err
 			}
 		}
-		l := sanitizeSample(float64(left[i]))
-		r := sanitizeSample(float64(right[i]))
+		ml, mr := mode.Sample(left[i], right[i])
+		l := sanitizeSample(float64(ml))
+		r := sanitizeSample(float64(mr))
 
 		sumL += l
 		sumR += r
@@ -145,7 +150,7 @@ func measureStereoContext(ctx context.Context, left, right []float32, sampleRate
 	}
 	// The export report and Release Check need the true peak of any content,
 	// so this offline meter reconstructs by spectral shift (V1-13).
-	maxTruePeak, err := offlineTruePeak(ctx, left[:n], right[:n])
+	maxTruePeak, err := offlineMonitorTruePeak(ctx, left[:n], right[:n], mode)
 	if err != nil {
 		return Metrics{}, err
 	}

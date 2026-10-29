@@ -49,6 +49,8 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
     const config = options.processorOptions;
+    this.diagnostics = config.diagnostics === true;
+    this.diagnosticFrames = 0; this.diagnosticKernel = 0; this.diagnosticWall = null; this.diagnosticLast = 0;
     this.header = new Int32Array(config.header);
     if (config.stream !== undefined) {
       if (!(config.stream instanceof SharedArrayBuffer) || config.stream.byteLength !== 24) throw new Error("The source epoch buffer is invalid.");
@@ -72,6 +74,11 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.pendingDetach = null;
     this.active = false;
     this.original = false;
+    this.monitorMode = 0;
+    this.monitorAvailable = false;
+    this.monitorBuffers = [];
+    this.selectedMeterLeft = new Float32Array(QUANTUM);
+    this.selectedMeterRight = new Float32Array(QUANTUM);
     this.mix = 0;
     this.volume = 1;
     this.targetVolume = 1;
@@ -154,6 +161,10 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         else this.pendingDetach = { ...message, gate: new Int32Array(message.gate) };
       } else if (message.type === "end" && message.generation === this.generation) {
         if (typeof message.time === "number" && message.time >= 0) this.endTime = message.time;
+      } else if (message.type === "monitor-mode") {
+        if (![0, 1, 2].includes(message.value)) throw new Error("The listening mode is invalid.");
+        this.monitorMode = message.value;
+        if (this.kernel && (this.monitorAvailable ? this.kernel.aurialis_set_monitor_mode(this.monitorMode) !== 1 : this.monitorMode !== 0)) throw new Error("This audio engine cannot use the selected listening mode. Reload to update it.");
       } else if (message.type === "original") {
         this.original = message.value;
       } else if (message.type === "volume") {
@@ -203,9 +214,13 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       if (this.controlAbiVersion === 2 && (typeof exports.aurialis_control_buffer_v2 !== "function"
         || typeof exports.aurialis_set_controls_v2 !== "function" || exports.aurialis_algorithm_supported(2) !== 1))
         throw new Error("The live audio engine is missing its versioned settings interface.");
+      if (exports.aurialis_algorithm_supported(config.requestedAlgorithm ?? 2) !== 1)
+        throw new Error("The selected render quality is unavailable in this audio engine. Reload to update it.");
       this.numericSchedule = typeof exports.aurialis_schedule_abi === "function" && exports.aurialis_schedule_abi() === 1
         && ["aurialis_schedule_source_buffer", "aurialis_schedule_bind_source", "aurialis_schedule_begin", "aurialis_schedule_move_buffer", "aurialis_schedule_stage_move", "aurialis_schedule_commit", "aurialis_schedule_revision", "aurialis_schedule_seek", "aurialis_schedule_detach", "aurialis_schedule_set_looping"].every(name => typeof exports[name] === "function");
+      this.monitorAvailable = ["aurialis_monitor_buffer", "aurialis_monitor_process", "aurialis_set_monitor_mode"].every(name => typeof exports[name] === "function");
       this.kernel = exports;
+      if (this.monitorAvailable ? exports.aurialis_set_monitor_mode(this.monitorMode) !== 1 : this.monitorMode !== 0) throw new Error("This audio engine cannot use the selected listening mode. Reload to update it.");
       this.refreshBuffers();
       host.beginRender();
       this.tryReady();
@@ -215,6 +230,16 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
   }
   setSlack(slack) {
     this.slackMs = typeof slack === "number" && Number.isFinite(slack) && slack > 0 && this.clockStep < slack / 2 ? slack : null;
+  }
+  recordDiagnostics(kernelMs, started) {
+    if (!this.diagnostics) return;
+    if (this.diagnosticWall === null) this.diagnosticWall = started;
+    this.diagnosticFrames += QUANTUM; this.diagnosticKernel += kernelMs;
+    if (this.diagnosticFrames - this.diagnosticLast < sampleRate) return;
+    this.diagnosticLast = this.diagnosticFrames;
+    this.port.postMessage({ type: "diagnostics", frames: this.diagnosticFrames, kernelMs: this.diagnosticKernel,
+      wallMs: wallNow() - this.diagnosticWall, audioMs: this.diagnosticFrames * 1000 / sampleRate,
+      clockStepMs: Number.isFinite(this.clockStep) ? this.clockStep : null });
   }
   resetWatch() {
     this.watchWall = null; this.watchFrame = 0; this.watchKernel = 0; this.watchMisses = 0; this.watchWindows = 0; this.watchStrikes = 0; this.watchLastStart = null;
@@ -242,6 +267,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     for (let channel = 0; channel < 4; channel++) pointers.push(this.kernel.aurialis_live_buffer(channel));
     pointers.push(this.controlAbiVersion === 2 ? this.kernel.aurialis_control_buffer_v2() : this.kernel.aurialis_control_buffer());
     pointers.push(this.kernel.aurialis_meter_buffer());
+    if (this.monitorAvailable) for (let channel = 0; channel < 4; channel++) pointers.push(this.kernel.aurialis_monitor_buffer(channel));
     const buffer = this.kernel.memory.buffer;
     const size = index => index === 4 ? this.controlCount * 8 : index === 5 ? METER_VALUES * 8 : QUANTUM * 4;
     for (let index = 0; index < pointers.length; index++) {
@@ -250,7 +276,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         throw new Error("The live audio engine returned an invalid buffer address.");
       pointers[index] = raw >>> 0;
       const bytes = size(index);
-      const alignment = index >= 4 ? 8 : 4;
+      const alignment = index === 4 || index === 5 ? 8 : 4;
       if (pointers[index] === 0 || pointers[index] % alignment !== 0 || pointers[index] + bytes > buffer.byteLength)
         throw new Error("The live audio engine returned an invalid buffer address.");
       for (let previous = 0; previous < index; previous++) {
@@ -265,6 +291,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
     this.outRight = new Float32Array(buffer, pointers[3], QUANTUM);
     this.controls = new Float64Array(buffer, pointers[4], this.controlCount);
     this.meterValues = new Float64Array(buffer, pointers[5], METER_VALUES);
+    if (this.monitorAvailable) this.monitorBuffers = pointers.slice(6).map(pointer => new Float32Array(buffer, pointer, QUANTUM));
     if (this.numericSchedule) {
       const sourcePointer = this.kernel.aurialis_schedule_source_buffer() >>> 0;
       const movePointer = this.kernel.aurialis_schedule_move_buffer() >>> 0;
@@ -372,6 +399,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
   }
   resetKernel() {
     if (this.kernel.aurialis_live_reset() !== 1) throw new Error("The live audio engine could not reset.");
+    if (this.monitorAvailable && this.kernel.aurialis_set_monitor_mode(this.monitorMode) !== 1) throw new Error("The listening mode could not reset.");
     this.inputEnd = undefined;
     this.tailLength = 0; this.tailPending = -1;
     this.refreshBuffers();
@@ -482,6 +510,7 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
         throw new Error("The live audio engine rejected an audio block.");
       const kernelMs = wallNow() - kernelStart;
       this.watchKernel += kernelMs;
+      this.pendingKernelMs = kernelMs; this.pendingKernelStart = kernelStart;
       this.refreshBuffers();
       if (this.generation !== Atomics.load(this.header, GENERATION)) {
         outL.fill(0); outR.fill(0); return true;
@@ -547,8 +576,24 @@ class AurialisLiveProcessor extends AudioWorkletProcessor {
       const r = audible ? (wetR * wet + dryR * dry) * this.volume : 0;
       outL[i] = audible ? (wetL * wet * this.matchProcessed + dryL * dry * this.matchOriginal) * this.volume : 0;
       outR[i] = audible ? (wetR * wet * this.matchProcessed + dryR * dry * this.matchOriginal) * this.volume : 0;
-      this.peak = Math.max(this.peak, Math.abs(l), Math.abs(r));
-      this.sum += l * l + r * r;
+      this.selectedMeterLeft[i] = l; this.selectedMeterRight[i] = r;
+    }
+    try {
+    if (this.monitorAvailable) {
+      this.monitorBuffers[0].set(this.selectedMeterLeft); this.monitorBuffers[1].set(this.selectedMeterRight);
+      this.monitorBuffers[2].set(outL); this.monitorBuffers[3].set(outR);
+      const start = wallNow();
+      if (this.kernel.aurialis_monitor_process() !== QUANTUM) { this.fail(new Error("The listening mode rejected an audio block.")); outL.fill(0); outR.fill(0); return true; }
+      const elapsed = wallNow() - start; this.watchKernel += elapsed; this.pendingKernelMs += elapsed;
+      this.refreshBuffers();
+      this.selectedMeterLeft.set(this.monitorBuffers[0]); this.selectedMeterRight.set(this.monitorBuffers[1]);
+      outL.set(this.monitorBuffers[2]); outR.set(this.monitorBuffers[3]);
+    }
+    } catch (error) { this.fail(error); outL.fill(0); outR.fill(0); return true; }
+    this.recordDiagnostics(this.pendingKernelMs, this.pendingKernelStart);
+    for (let i = 0; i < QUANTUM; i++) {
+      const l = this.selectedMeterLeft[i], r = this.selectedMeterRight[i];
+      this.peak = Math.max(this.peak, Math.abs(l), Math.abs(r)); this.sum += l * l + r * r;
       this.ll += l * l; this.rr += r * r; this.lr += l * r;
     }
     this.frames += QUANTUM;

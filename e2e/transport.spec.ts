@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 import { observeOutput, outputLevel } from "./live-output";
 import { uploadProject } from "./workflow-fixture";
 
@@ -71,4 +72,54 @@ test("wide transport centers Play and uses a legible ten-second icon", async ({ 
   const forwardBox = await forward.boundingBox();
   expect(backBox?.width).toBe(forwardBox?.width);
   expect(backBox?.y).toBe(forwardBox?.y);
+});
+
+
+test("mobile meter regions remain above the fixed transport when focused", async ({ page }, info) => {
+  await uploadProject(page, "mobile-meter-clearance.wav", 8);
+  for (const playing of [false, true]) {
+    if (playing) {
+      await page.getByRole("button", { name: "Repeat track", exact: true }).click();
+      await page.getByRole("button", { name: "Play", exact: true }).click();
+      await expect(page.getByRole("region", { name: "Live loudness of the processed output", exact: true }).locator("strong").nth(3)).not.toHaveText("—");
+    }
+    for (const width of [320, 375, 390]) {
+      await page.setViewportSize({ width, height: 640 });
+      for (const name of ["Live loudness of the processed output", "Measured audio levels"]) {
+        const meters = page.getByRole("region", { name, exact: true });
+        await meters.focus(); await meters.scrollIntoViewIfNeeded();
+        const meterBox = await meters.boundingBox(), transport = await page.locator(".transport").boundingBox(), header = await page.locator(".mobile-header").boundingBox();
+        if (!meterBox || !transport || !header) throw new Error("Missing meter, header or transport geometry");
+        expect(meterBox.height).toBeGreaterThanOrEqual(44);
+        expect(meterBox.y, `${String(width)}px ${name} header clearance`).toBeGreaterThanOrEqual(header.y + header.height);
+        expect(meterBox.y + meterBox.height, `${String(width)}px ${name} clearance`).toBeLessThanOrEqual(transport.y);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
+      const axe = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze();
+      expect(axe.violations, `${String(width)}px mobile meter accessibility`).toEqual([]);
+      await page.screenshot({ path: info.outputPath(`meters-${String(width)}-${playing ? "playing" : "stopped"}.png`) });
+    }
+  }
+});
+
+
+test("Repeat wraps Forward 10 and Shift+Right while an absolute End seek stops", async ({ page }) => {
+  await uploadProject(page, "repeat-relative.wav", 12);
+  const position = page.getByRole("slider", { name: "Track playback position", exact: true });
+  const transport = page.locator(".transport");
+  await page.getByRole("button", { name: "Repeat track", exact: true }).click();
+  for (const action of ["forward", "key"]) {
+    await position.focus(); await position.press("End");
+    await expect(transport).toHaveAttribute("data-playing", "false");
+    await position.press("ArrowLeft");
+    await page.getByRole("button", { name: "Play", exact: true }).click();
+    await expect(transport).toHaveAttribute("data-playing", "true");
+    if (action === "forward") await page.getByRole("button", { name: "Skip forward 10 seconds", exact: true }).click();
+    else { await page.evaluate(() => { if (document.activeElement instanceof HTMLElement) document.activeElement.blur(); }); await page.keyboard.press("Shift+ArrowRight"); }
+    await expect(transport).toHaveAttribute("data-playing", "true");
+    const seconds = Number(await transport.getAttribute("data-position"));
+    expect(seconds).toBeGreaterThanOrEqual(9); expect(seconds).toBeLessThan(10.5);
+  }
+  await position.focus(); await position.press("End");
+  await expect(transport).toHaveAttribute("data-playing", "false");
 });

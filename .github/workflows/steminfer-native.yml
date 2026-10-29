@@ -97,8 +97,13 @@ jobs:
           GOMAXPROCS: "2"
         run: |
           set -euo pipefail
-          go test -run '^Test(PackedMatrix|Gonum)' -count=1 -v -timeout=2m ./internal/audio/steminfer 2>&1 \
+          go test -run '^Test(PackedMatrix|Gonum|VectorExp|FullKeySoftmax|ExactFormActivations)' -count=1 -v -timeout=2m ./internal/audio/steminfer 2>&1 \
             | tee "$RUNNER_TEMP/steminfer-evidence/matrix-kernels.log"
+          if [ "${{ matrix.qualify }}" = "true" ]; then
+            GODEBUG=cpu.all=off AURIALIS_STEM_EXPECT_SCALAR=1 \
+              go test -run '^TestGonumUnsupportedCPUStaysUnavailable$' -count=1 -v ./internal/audio/steminfer 2>&1 \
+              | tee "$RUNNER_TEMP/steminfer-evidence/matrix-scalar-fallback.log"
+          fi
 
       - name: Compare full inference window with original model
         id: full-window
@@ -111,7 +116,8 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$QUALIFY_NATIVE" = "true" ]; then export AURIALIS_STEM_QUALIFY_NATIVE=1; fi
-          go test -run '^TestFullWindowMatchesPyTorchOriginal$' -count=1 -v -timeout=10m ./internal/audio/steminfer 2>&1 \
+          # Sampling adds overhead; the same 180s qualification gate still applies.
+          go test -cpuprofile="$RUNNER_TEMP/steminfer-evidence/full-window.cpu" -run '^TestFullWindowMatchesPyTorchOriginal$' -count=1 -v -timeout=10m ./internal/audio/steminfer 2>&1 \
             | tee "$RUNNER_TEMP/steminfer-evidence/full-window.log"
 
       - name: Measure fixed 20-second six-stem pipeline and reconstruction
@@ -166,9 +172,17 @@ jobs:
                           pipeline_metrics[key] = value
                   break
           residual = re.search(r"^all six retained outputs finite; exact original duration; max absolute reconstruction error=([^ ]+)$", pipeline_text, re.MULTILINE)
+          cpu_profile = evidence / "full-window.cpu"
+          profile_bytes = cpu_profile.stat().st_size if cpu_profile.exists() else 0
+          if profile_bytes > 16 * 1024 * 1024:
+              cpu_profile.unlink()
+              raise SystemExit("CPU profile exceeded the 16 MiB evidence limit")
           diagnostic = {
               "qualificationCandidate": os.environ["QUALIFICATION_CANDIDATE"] == "true",
               "platformReadinessChanged": False,
+              "profiledRun": True,
+              "profileSamplingOverheadIncludedInWindowTiming": True,
+              "cpuProfileBytes": profile_bytes,
               "outcomes": {
                   "fullWindow": os.environ["FULL_WINDOW_OUTCOME"],
                   "sixStemPipeline": os.environ["PIPELINE_OUTCOME"],
@@ -193,7 +207,7 @@ jobs:
           print(json.dumps(diagnostic, sort_keys=True))
           PY
 
-      - name: Upload logs and runner metadata only
+      - name: Upload logs, synthetic CPU profile and runner metadata only
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

@@ -118,6 +118,8 @@ python3 scripts/sync-agents.py --check
 
 The Newman runner and Playwright configuration manage their test servers. Review their configuration before running concurrent suites; stop only processes you started. If Playwright browsers are missing, install the configured Chromium browser with `pnpm exec playwright install chromium` and provide any required system dependencies.
 
+The Linux Firefox engine-matrix job owns a PulseAudio null sink under `RUNNER_TEMP` and runs a bounded real `AudioContext` resume/clock probe before and after provisioning. Its diagnostics and sink metadata are retained with the browser artifacts, and cleanup runs after the probe. This checks the CI audio environment; it does not relax the product playback assertions. The hosted rerun after this change is still pending.
+
 Record which checks actually ran, their exit status, the source revision and their scope. Unit, WASM bridge, API, browser and compiled-binary evidence establish different things. Passing a smoke test does not establish hardware fidelity, platform certification, universal browser support or every accessibility interaction. Historical results and unresolved requirements belong in [tasks](tasks.md) and [the ledger](../.claude/war-room/ledger.md).
 
 ## How CI reuses builds and runs checks

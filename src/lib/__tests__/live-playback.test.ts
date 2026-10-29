@@ -514,6 +514,25 @@ describe("per-track live audio lifecycle", () => {
     expect(nodes[0]?.options.processorOptions.watchSlackMs).toBe(10);
     controller.dispose();
   });
+  it("reads settled device latency and cancels superseded or disposed samples", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const devices = new EventTarget(); vi.stubGlobal("navigator", { mediaDevices: devices });
+    const { contexts, nodes } = graphHarness();
+    const controller = createLivePlayback(source(), createDefaultAdvancedParams()); await controller.play();
+    const context = contexts[0], node = nodes[0]; if (!context || !node) throw new Error("Missing graph");
+    devices.dispatchEvent(new Event("devicechange"));
+    Object.defineProperty(context, "outputLatency", { configurable: true, value: 0.08 });
+    await vi.advanceTimersByTimeAsync(250);
+    expect(node.port.postMessage).toHaveBeenLastCalledWith({ type: "rewatch", slackMs: 80 });
+    devices.dispatchEvent(new Event("devicechange"));
+    Object.defineProperty(context, "outputLatency", { configurable: true, value: 0.12 });
+    await vi.advanceTimersByTimeAsync(250);
+    expect(node.port.postMessage).toHaveBeenLastCalledWith({ type: "rewatch", slackMs: 120 });
+    controller.dispose(); node.port.postMessage.mockClear();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(node.port.postMessage).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
   it("rewatches the worklet's deadline watch on a context state change or an audio device change", async () => {
     const devices = new EventTarget();
     vi.stubGlobal("navigator", { mediaDevices: devices });

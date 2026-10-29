@@ -34,7 +34,10 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	if directory == "" {
 		t.Skip("set the full-window PyTorch oracle directory")
 	}
+	loadStarted := time.Now()
 	archive := actualArchive(t)
+	t.Logf("model load took %s", time.Since(loadStarted))
+	t.Logf("matrix backend %s", matrixBackendName())
 	metadataBytes, err := boundedTestArtifact(filepath.Join(directory, "oracle.json"), 1<<20)
 	if err != nil {
 		t.Fatal(err)
@@ -67,10 +70,12 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	}
 	source := read("source")
 	samples := metadata.Samples
+	setupStarted := time.Now()
 	runner, err := newWindowRunner(context.Background(), archive, samples, defaultWorkers())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("window setup took %s", time.Since(setupStarted))
 	names := [5]string{"vocal", "drums", "bass", "guitar", "piano"}
 	stopMemory := func() {}
 	if qualification {

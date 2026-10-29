@@ -154,6 +154,9 @@ jobs:
           for match in re.finditer(r"^(vocal|drums|bass|guitar|piano): max \|Go-PyTorch\| ([^,]+), SNR ([^ ]+) dB$", full_text, re.MULTILINE):
               heads[match.group(1)] = {"maxAbsoluteError": float(match.group(2)), "snrDb": float(match.group(3))}
           duration = re.search(r"^window took (.+) with ([0-9]+) lanes$", full_text, re.MULTILINE)
+          model_load = re.search(r"^model load took (.+)$", full_text, re.MULTILINE)
+          window_setup = re.search(r"^window setup took (.+)$", full_text, re.MULTILINE)
+          backend = re.search(r"^matrix backend (.+)$", full_text, re.MULTILINE)
           pipeline_metrics = {}
           for line in pipeline_text.splitlines():
               if line.startswith("backend="):
@@ -172,6 +175,9 @@ jobs:
               },
               "fullWindow": {
                   "headComparisons": heads,
+                  "modelLoadElapsed": model_load.group(1) if model_load else None,
+                  "windowSetupElapsed": window_setup.group(1) if window_setup else None,
+                  "matrixBackend": backend.group(1) if backend else None,
                   "elapsed": duration.group(1) if duration else None,
                   "lanes": int(duration.group(2)) if duration else None,
                   "expectedHeadCount": 5,

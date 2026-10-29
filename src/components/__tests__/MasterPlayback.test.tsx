@@ -692,15 +692,15 @@ describe("master live playback lifecycle", () => {
     fireEvent.click(toggle);
     expect(storage.get("aurialis-match-loudness-v1")).toBe("1");
     await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("B −4.5 dB to match A"); }, { timeout: 5000 });
-    expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: -4.5 });
+    await waitFor(() => { expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: -4.5 }); });
     // A is measured on what live playback plays: the export algorithm since V1-10.
     expect(measure.mock.calls.at(-1)?.[1]).toMatchObject({ params: { inputGainDb: -4.5, limiter: { truePeak: true }, algorithmVersion: 2 } });
     // A settings change makes the reading stale: the last static offset is held, then replaced.
     fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "3" } });
     await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("Re-measuring (holding B −4.5 dB)"); });
-    expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: -4.5 });
+    await waitFor(() => { expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: 0, originalDb: -4.5 }); });
     await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("A −3.0 dB to match B"); }, { timeout: 5000 });
-    expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: -3, originalDb: 0 });
+    await waitFor(() => { expect(instance.controller.setLoudnessMatch).toHaveBeenLastCalledWith({ processedDb: -3, originalDb: 0 }); });
     fireEvent.change(screen.getByRole("slider", { name: "Input gain" }), { target: { value: "0" } });
     await waitFor(() => { expect(document.querySelector(".match-status")?.textContent).toBe("A and B already match"); }, { timeout: 5000 });
     // Export with the match on sends exactly the request it sent with the match off.

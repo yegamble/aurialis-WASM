@@ -47,11 +47,11 @@ describe("Audition export (V1-10 owner ruling)", () => {
     fireEvent.loadedMetadata(view.element());
     fireEvent.change(screen.getByRole("slider", { name: "Audition position" }), { target: { value: "0.4" } });
     expect(view.element().currentTime).toBe(0.4);
-    act(() => { (handle as AuditionHandle | null)?.seek(0.8); });
+    act(() => { handle?.seek(0.8); });
     expect(view.element().currentTime).toBe(0.8);
     const edited = { ...base(), advanced: { ...base().advanced, input: 3 } };
     view.rerender(<AuditionExport track={edited} sourceBlob={source} delivery={DEFAULT_DELIVERY} volume={1} livePlaying={false} onStart={view.onStart} />);
-    act(() => { (handle as AuditionHandle | null)?.seek(0.1); });
+    act(() => { handle?.seek(0.1); });
     expect(view.element().currentTime).toBe(0.8);
     expect(screen.queryByRole("slider", { name: "Audition position" })).toBeNull();
   });

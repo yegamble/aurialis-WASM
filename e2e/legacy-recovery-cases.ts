@@ -3,10 +3,10 @@ import { expect, test, type BrowserContext, type Page, type TestInfo } from "@pl
 import AxeBuilder from "@axe-core/playwright";
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "../src/lib/audio-dsp";
 import type { Track } from "../src/lib/types";
-import { fixture } from "./audio-fixture";
+import { decode, fixture } from "./audio-fixture";
 
 type Execution = "native" | "browser";
 type Source = { key: string; name: string; bytes: number[] };
@@ -26,7 +26,7 @@ function source(name: string, bytes: Buffer): Source {
   return { key: `${name}|${String(bytes.length)}|1700000000000`, name, bytes: Array.from(bytes) };
 }
 const selected = source(longName, clean);
-const compressed = source("01-retained-compressed.mp3", Buffer.from("ID3synthetic-unsupported-original"));
+const compressed = source("01-retained-unsupported.ogg", Buffer.from("ID3synthetic-unsupported-original"));
 const poisoned = source("02-hostile.wav", hostile);
 function sources(paged = false): Source[] {
   return [selected, compressed, poisoned, ...(paged ? Array.from({ length: 30 }, (_, index) => source(`10-spare-${String(index).padStart(2, "0")}.wav`, plain)) : [])];
@@ -130,7 +130,7 @@ async function assertNoOldExecution(page: Page) {
 async function scan(page: Page) {
   await page.getByRole("button", { name: "Find old projects", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Recover old local sources", exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: `Recover WAV: ${longName}`, exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: `Recover source: ${longName}`, exact: true })).toBeEnabled();
 }
 async function boundary(context: BrowserContext, page: Page, info: TestInfo, execution: Execution, action: () => Promise<void>) {
   const requests: { method: string; url: string; bodyBytes: number }[] = [];
@@ -165,7 +165,7 @@ export function registerLegacyRecoveryCases(execution: Execution) {
           const trigger = page.getByRole("button", { name: "Find old projects", exact: true });
           await trigger.focus(); await page.keyboard.press("Enter");
           const dialog = page.getByRole("dialog", { name: "Recover old local sources", exact: true });
-          await expect(dialog.getByRole("button", { name: `Recover WAV: ${longName}`, exact: true })).toBeEnabled();
+          await expect(dialog.getByRole("button", { name: `Recover source: ${longName}`, exact: true })).toBeEnabled();
           await expect(dialog.getByRole("list", { name: "Old source files", exact: true }).getByRole("listitem")).toHaveCount(32);
           for (const button of await dialog.getByRole("button").all()) { const box = await button.boundingBox(); expect(box?.width).toBeGreaterThanOrEqual(44); expect(box?.height).toBeGreaterThanOrEqual(44); }
           expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -178,8 +178,8 @@ export function registerLegacyRecoveryCases(execution: Execution) {
           expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"]).analyze()).violations).toEqual([]);
           await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0); await expect(trigger).toBeFocused();
         }
-        await scan(page); await page.getByRole("button", { name: `Recover WAV: ${longName}`, exact: true }).click();
-        await expect(page.getByRole("button", { name: `Recover WAV: ${longName}`, exact: true })).toBeDisabled();
+        await scan(page); await page.getByRole("button", { name: `Recover source: ${longName}`, exact: true }).click();
+        await expect(page.getByRole("button", { name: `Recover source: ${longName}`, exact: true })).toBeDisabled();
         await expect.poll(async () => (await current(page)).tracks.length).toBe(1);
         const after = await current(page), track = after.tracks[0]; if (!track) throw new Error("Missing reconstructed recovery project");
         const expected = canonical(), prefix = Buffer.alloc(16); prefix.writeUInt32LE(48000); prefix.writeUInt32LE(2, 4); prefix.writeBigUInt64LE(BigInt((expected.length - 44) / 8), 8);
@@ -201,17 +201,55 @@ export function registerLegacyRecoveryCases(execution: Execution) {
       });
     });
 
-    test("unsupported compressed and hostile RIFF originals stay unchanged across rejection and reload", async ({ page, context }, info) => {
+    test("selected FLAC and MP3 originals become clean PCM without changing old audio or scripts", async ({ page, context }, info) => {
+      await boundary(context, page, info, execution, async () => {
+        const flacBytes = await readFile("internal/audio/testdata/tone-44k-s16.flac"), mp3Bytes = await readFile("internal/audio/testdata/tone-44k-cbr.mp3");
+        const flac = source("03-recover.flac", flacBytes), mp3 = source("04-recover.mp3", mp3Bytes);
+        await seed(page, [selected, flac, mp3]); const old = await oldSnapshot(page);
+        await scan(page);
+        for (const [index, item] of [flac, mp3].entries()) {
+          await page.getByRole("button", { name: `Recover source: ${item.name}`, exact: true }).click();
+          await expect.poll(async () => (await current(page)).tracks.length).toBe(index + 1);
+          await expect(page.getByRole("button", { name: `Recover source: ${item.name}`, exact: true })).toBeDisabled();
+        }
+        await expect.poll(async () => (await current(page)).tracks.length).toBe(2);
+        const recovered = await current(page), flacTrack = recovered.tracks.find((track) => track.filename === flac.name), mp3Track = recovered.tracks.find((track) => track.filename === mp3.name);
+        if (!flacTrack || !mp3Track) throw new Error("Missing recovered compressed sources");
+        const flacAudio = recovered.audio.find((audio) => audio.key === flacTrack.id), mp3Audio = recovered.audio.find((audio) => audio.key === mp3Track.id);
+        if (!flacAudio || !mp3Audio) throw new Error("Missing clean PCM");
+        const actual = decode(Buffer.from(flacAudio.bytes)), expected = decode(await readFile("internal/audio/testdata/tone-44k-s16.wav"));
+        expect(actual.bits).toBe(32); expect(actual.rate).toBe(expected.rate); expect(actual.left).toEqual(expected.left); expect(actual.right).toEqual(expected.right);
+        for (const track of [flacTrack, mp3Track]) {
+          expect(track.advanced).toEqual(clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate));
+          expect(track.deepMastering).toBeUndefined(); expect(track.sourceRevision).toBe(0);
+          const audio = recovered.audio.find((entry) => entry.key === track.id); if (!audio) throw new Error("Missing canonical asset");
+          expect(audio.bytes.length).toBe(44 + (track.sourceIdentity?.frames ?? 0) * 8);
+        }
+        await assertNoOldExecution(page); expect(await oldSnapshot(page)).toEqual(old);
+        await page.keyboard.press("Escape"); await page.goto("/");
+        await page.getByLabel("Import audio file").setInputFiles({ name: "fresh-mp3-source.mp3", mimeType: "audio/mpeg", buffer: mp3Bytes });
+        await expect(page).toHaveURL(/\/master\/track-/u); await expect(page.getByRole("button", { name: "Export", exact: true })).toBeEnabled();
+        const fresh = await current(page), direct = fresh.tracks.find((track) => track.filename === "fresh-mp3-source.mp3");
+        if (!direct) throw new Error("Missing direct Go CDR comparison");
+        expect(direct.sourceIdentity).toEqual(mp3Track.sourceIdentity);
+        expect(fresh.audio.find((audio) => audio.key === direct.id)?.bytes).toEqual(mp3Audio.bytes);
+        await page.reload(); expect(await oldSnapshot(page)).toEqual(old);
+        await assertNoOldExecution(page);
+        await info.attach("compressed-recovery-pcm", { body: JSON.stringify({ flacFrames: flacTrack.sourceIdentity?.frames, mp3Frames: mp3Track.sourceIdentity?.frames, flacHash: flacTrack.sourceIdentity?.pcmHash, mp3Hash: mp3Track.sourceIdentity?.pcmHash, originalsPreserved: true }), contentType: "application/json" });
+      });
+    });
+
+    test("unsupported and hostile RIFF originals stay unchanged across rejection and reload", async ({ page, context }, info) => {
       await boundary(context, page, info, execution, async () => {
         await seed(page, sources()); const before = await oldSnapshot(page); await scan(page);
-        await page.getByRole("button", { name: `Recover WAV: ${compressed.name}`, exact: true }).click();
-        await expect(page.getByRole("dialog", { name: "Recover old local sources", exact: true }).getByRole("alert")).toContainText("Codec recovery is unavailable");
+        await page.getByRole("button", { name: `Recover source: ${compressed.name}`, exact: true }).click();
+        await expect(page.getByRole("dialog", { name: "Recover old local sources", exact: true }).getByRole("alert")).toContainText("unsupported original");
         expect(await current(page)).toEqual({ tracks: [], audio: [] }); expect(await oldSnapshot(page)).toEqual(before);
-        await page.getByRole("button", { name: `Recover WAV: ${poisoned.name}`, exact: true }).click();
+        await page.getByRole("button", { name: `Recover source: ${poisoned.name}`, exact: true }).click();
         await expect(page.getByRole("dialog", { name: "Recover old local sources", exact: true }).getByRole("alert")).toContainText(/polyglot|payload|container|trailing/iu);
         expect(await current(page)).toEqual({ tracks: [], audio: [] }); expect(await oldSnapshot(page)).toEqual(before); await assertNoOldExecution(page);
         await page.reload(); await scan(page);
-        await expect(page.getByRole("button", { name: `Recover WAV: ${compressed.name}`, exact: true })).toBeEnabled();
+        await expect(page.getByRole("button", { name: `Recover source: ${compressed.name}`, exact: true })).toBeEnabled();
         expect(await current(page)).toEqual({ tracks: [], audio: [] }); expect(await oldSnapshot(page)).toEqual(before);
       });
     });
@@ -234,7 +272,7 @@ export function registerLegacyRecoveryCases(execution: Execution) {
             return transaction;
           };
         });
-        await page.getByRole("button", { name: `Recover WAV: ${longName}`, exact: true }).click();
+        await page.getByRole("button", { name: `Recover source: ${longName}`, exact: true }).click();
         await expect.poll(() => page.evaluate(() => (window as HeldWindow).heldCanonicalWrite?.key ?? "")).toMatch(/^track-/u);
         const pending = await current(page); expect(pending.tracks).toEqual([]); expect(pending.audio.map((audio) => audio.bytes)).toEqual([Array.from(canonical())]);
         await page.getByRole("button", { name: "Cancel recovery", exact: true }).click();
@@ -256,7 +294,7 @@ export function registerLegacyRecoveryCases(execution: Execution) {
             return native.call(this);
           };
         }, `${encodeURIComponent(selected.key)}.bin`);
-        await page.getByRole("button", { name: `Recover WAV: ${longName}`, exact: true }).click();
+        await page.getByRole("button", { name: `Recover source: ${longName}`, exact: true }).click();
         await expect.poll(() => page.evaluate(() => !!(window as HeldWindow).heldLegacyFile)).toBe(true);
         await page.evaluate(async ({ key, bytes }) => {
           const directory = await (await navigator.storage.getDirectory()).getDirectoryHandle("library");

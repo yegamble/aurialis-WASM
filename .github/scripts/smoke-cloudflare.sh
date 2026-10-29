@@ -4,6 +4,8 @@
 # Requires deploy/cloudflare/assets (restored CI artifact) for the HTML digest.
 set -euo pipefail
 
+source "$(dirname "$0")/cloudflare-policy-headers.sh"
+
 if [ "$#" -eq 0 ]; then
   echo "usage: $0 <origin> [<origin> ...]" >&2
   exit 2
@@ -19,8 +21,6 @@ fail() {
   exit 1
 }
 
-header() { grep -i "^$1:" "$2" | tail -n 1 | cut -d' ' -f2- | tr -d '\r'; }
-
 # Edge propagation of a new deployment is not instantaneous; retry the HTML
 # digest until it matches before asserting anything else.
 check_origin() {
@@ -34,18 +34,11 @@ check_origin() {
     sleep 10
   done
 
-  [ "$(header cross-origin-opener-policy "$work/html.h")" = "same-origin" ] || fail "$origin/ is missing COOP same-origin."
-  [ "$(header cross-origin-embedder-policy "$work/html.h")" = "require-corp" ] || fail "$origin/ is missing COEP require-corp."
-  [ "$(header cache-control "$work/html.h")" = "no-store, no-transform" ] || fail "$origin/ Cache-Control allows edge transforms."
-  [ "$(header x-frame-options "$work/html.h")" = "DENY" ] || fail "$origin/ is missing X-Frame-Options DENY."
-  [ "$(header strict-transport-security "$work/html.h")" = "max-age=63072000; includeSubDomains" ] \
-    || fail "$origin/ is missing Strict-Transport-Security max-age=63072000; includeSubDomains."
-  [ "$(header permissions-policy "$work/html.h")" = "camera=(), microphone=(), geolocation=(), payment=(), usb=()" ] \
-    || fail "$origin/ Permissions-Policy does not deny camera, microphone, geolocation, payment and usb."
+  assert_cloudflare_policy_headers "$origin" "$work/html.h" || fail "$origin/ response headers do not meet the production policy."
 
   curl -fsS --max-time 30 -D "$work/wasm.h" -o /dev/null "$origin/wasm/aurialis-dsp.wasm" \
     || fail "$origin/wasm/aurialis-dsp.wasm did not load."
-  [ "$(header content-type "$work/wasm.h")" = "application/wasm" ] || fail "$origin WASM is not served as application/wasm."
+  [ "$(cloudflare_header content-type "$work/wasm.h")" = "application/wasm" ] || fail "$origin WASM is not served as application/wasm."
 
   local status
   status="$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' -X POST "$origin/")"

@@ -50,6 +50,7 @@ jobs:
           python3 scripts/test-ci-artifacts.py
           python3 scripts/test-ci-browser-artifacts.py
           python3 scripts/test-e2e-build.py
+          python3 .github/scripts/test-cloudflare-policy-headers.py
 
       - name: Smoke-test Stop hook (Claude Code & Gemini Argon payloads)
         run: |

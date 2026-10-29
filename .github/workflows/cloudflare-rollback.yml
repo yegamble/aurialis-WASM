@@ -62,7 +62,11 @@ jobs:
       # The deployed bytes are an older build, so only check the headers and boundary.
       - name: Check production responds
         run: |
+          source .github/scripts/cloudflare-policy-headers.sh
+          headers="$(mktemp)"
+          trap 'rm -f "$headers"' EXIT
           for origin in https://aurialis.yosefgamble.com https://aurialis.yosef.app; do
-            curl -fsS --max-time 20 -D - -o /dev/null "$origin/" | grep -qi '^cross-origin-embedder-policy: require-corp' \
-              || { echo "::error::$origin is unhealthy after rollback."; exit 1; }
+            curl -fsS --max-time 20 -D "$headers" -o /dev/null "$origin/" \
+              || { echo "::error::$origin did not respond after rollback."; exit 1; }
+            assert_cloudflare_policy_headers "$origin" "$headers"
           done

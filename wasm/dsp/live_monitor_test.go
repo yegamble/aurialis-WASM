@@ -1,5 +1,7 @@
 package main
 
+// cspell:words antiphase retarget
+
 import (
 	"math"
 	"testing"

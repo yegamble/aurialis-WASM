@@ -208,6 +208,8 @@ jobs:
           pnpm exec cspell lint "**/*.{ts,tsx,go,md}"
       - name: Run Vitest unit & component suite
         run: pnpm test
+      - name: Verify test-only browser proxy and owned process cleanup
+        run: node --test scripts/test-serve-browser-qa.mjs scripts/test-serve-browser-e2e.mjs
       - uses: ./.github/actions/setup-go
         with:
           role: native-build
@@ -498,7 +500,7 @@ jobs:
           python3 scripts/ci-browser-artifacts.py restore artifacts/ci-browser-download
           AURIALIS_BROWSER_STATIC_DIR="$PWD/deploy/cloudflare" go test ./internal/browserjobs -run '^TestGeneratedStaticPolicyMatchesNative$' -count=1
       - name: Run real browser audio workflows with no audio network transfers
-        run: pnpm exec playwright test --config playwright.browser.config.ts --workers=1 --retries=0 --global-timeout=540000
+        run: AURIALIS_BROWSER_QA=1 pnpm exec playwright test --config playwright.browser.config.ts --workers=1 --retries=0 --global-timeout=540000
       - name: Retain static browser outcomes, exact WAV and request inventories
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -576,11 +578,11 @@ jobs:
           set -euo pipefail
           mkdir -p artifacts/browser-engines
           port=3847
-          if [ "$PLAYWRIGHT_ENGINE_TARGET" = browser ]; then port=3927; fi
+          if [ "$PLAYWRIGHT_ENGINE_TARGET" = browser ]; then port=3928; fi
           if [ "$PLAYWRIGHT_ENGINE_TARGET" = native ]; then
             bash scripts/serve-e2e.sh "$port" > artifacts/browser-engines/server.log 2>&1 &
           else
-            NEXT_PUBLIC_AURIALIS_EXECUTION=browser AURIALIS_USE_CI_BROWSER_ASSETS=1 bash scripts/serve-browser.sh > artifacts/browser-engines/server.log 2>&1 &
+            NEXT_PUBLIC_AURIALIS_EXECUTION=browser AURIALIS_USE_CI_BROWSER_ASSETS=1 AURIALIS_BROWSER_QA=1 bash scripts/serve-browser-e2e.sh > artifacts/browser-engines/server.log 2>&1 &
           fi
           server_pid=$!
           cleanup() { kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true; }

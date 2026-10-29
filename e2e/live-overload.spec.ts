@@ -1,6 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 import { OVERLOAD_MESSAGE } from "../src/lib/live-overload";
 import { uploadProject } from "./workflow-fixture";
+import { loadInterceptedWorklet } from "./worklet-source";
+
+// Firefox/WebKit retain their proven same-origin routed module. Only Chromium
+// needs the main-thread fetch/Blob loader, matching the existing timing fixture.
+test.use({ bypassCSP: async ({ browserName }, use) => { await use(browserName === "chromium"); } });
+test.beforeEach(async ({ page, browserName }) => { if (browserName === "chromium") await loadInterceptedWorklet(page); });
 
 // V1-10 Round 4 (QA Round E 3 cases): the overload message must follow real
 // device underruns. A test-only same-origin response patch of the real worklet

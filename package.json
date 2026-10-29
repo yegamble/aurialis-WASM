@@ -23,7 +23,7 @@
     "typecheck:worker": "tsc --noEmit -p deploy/cloudflare/tsconfig.json",
     "types:worker": "wrangler types deploy/cloudflare/worker-configuration.d.ts --include-runtime false -c deploy/cloudflare/wrangler.jsonc",
     "dev:browser": "bash scripts/serve-browser.sh",
-    "test:browser": "playwright test --config playwright.browser.config.ts",
+    "test:browser": "AURIALIS_BROWSER_QA=1 playwright test --config playwright.browser.config.ts",
     "test:browser:oracle": "node scripts/verify-browser-jobs.mjs",
     "typecheck:browser-tests": "tsc --noEmit -p e2e-browser/tsconfig.json"
   },
@@ -67,6 +67,7 @@
       "handlebars@<4.7.10": "^4.7.10",
       "lodash@<4.18.0": "^4.18.1",
       "node-forge@<1.4.0": "^1.4.0",
+      "qs@<6.16.1": "^6.16.1",
       "underscore@<1.13.8": "^1.13.8"
     },
     "auditConfig": {

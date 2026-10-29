@@ -7,7 +7,7 @@ import { downloadLocalBlob } from "@/lib/download";
 import { safeFileBaseName } from "@/lib/zip";
 import { Button, ChoiceGroup, SliderField } from "./Primitives";
 
-export type SequenceMasterFile = { id: string; title: string; blob: () => Promise<Blob | undefined>; durable: boolean };
+type SequenceMasterFile = { id: string; title: string; blob: () => Promise<Blob | undefined>; durable: boolean };
 type Held = { blob: Blob; url: string; memory: ReturnType<typeof reserveBrowserAudioMemory>; identity: string };
 
 /** A separate, explicit continuous export leaves every individual master intact. */

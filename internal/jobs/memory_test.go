@@ -204,7 +204,7 @@ func TestStemDownloadReleaseAndCancellationRace(t *testing.T) {
 		t.Fatalf("cancel/download race retained%d bytes", total)
 	}
 }
-func TestNormalAndStemSublimitsShareOneProcessCeiling(t *testing.T) {
+func TestNormalAndStemCategoryLimitsShareOneProcessCeiling(t *testing.T) {
 	m := NewManager(1)
 	defer m.Close()
 	if err := m.SetSeparator(func(context.Context, int, int, []float32, []float32, func(int, int, []float32, []float32) error, func(float64)) error {

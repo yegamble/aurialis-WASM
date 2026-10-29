@@ -13,7 +13,7 @@ type StemWAVResponse struct {
 func (r *StemWAVResponse) Release() { r.memory.Release() }
 
 // LeaseStemWAV admits encoding before allocating it. Retained PCM is charged
-// once to its existing job, and cancellation cannot uncharge it while pinned.
+// once to its existing job, and cancellation cannot release the charge for it while pinned.
 func (m *Manager) LeaseStemWAV(jobID, stemName string) (*StemWAVResponse, bool, error) {
 	m.mu.Lock()
 	job, ok := m.jobs[jobID]

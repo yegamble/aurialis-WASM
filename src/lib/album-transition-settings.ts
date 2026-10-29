@@ -1,6 +1,6 @@
 import type { AlbumTransition } from "./album-transitions";
 
-export const DEFAULT_ALBUM_TRANSITION: AlbumTransition = { mode: "gapless", seconds: 0 };
+const DEFAULT_ALBUM_TRANSITION: AlbumTransition = { mode: "gapless", seconds: 0 };
 
 /** Old albums keep exact track boundaries; malformed persisted choices cannot reach DSP. */
 export function readAlbumTransition(value: unknown): AlbumTransition {

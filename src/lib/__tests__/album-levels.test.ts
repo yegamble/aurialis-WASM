@@ -152,7 +152,7 @@ describe("album level persistence", () => {
     const legacy = { id: "legacy", title: "Old", artist: "", target: "−14 LUFS", trackIds: [first.id], mastered: true };
     const saved = { id: "saved", title: "New", artist: "", level: { mode: "normalize", targetLufs: -16, offsets: [{ trackId: first.id, offsetDb: -1 }] }, trackIds: [first.id], mastered: false };
     const state = normalizeHydratedState({ tracks: [first], albums: [legacy, saved] });
-    expect(state?.albums[0]).toEqual({ id: "legacy", title: "Old", artist: "", level: DEFAULT_ALBUM_LEVEL, delivery: DEFAULT_DELIVERY, trackIds: [first.id], mastered: false });
+    expect(state?.albums[0]).toEqual({ id: "legacy", title: "Old", artist: "", level: DEFAULT_ALBUM_LEVEL, delivery: DEFAULT_DELIVERY, transition: { mode: "gapless", seconds: 0 }, trackIds: [first.id], mastered: false });
     expect(state?.albums[1]?.level).toEqual(saved.level);
     const cd = normalizeHydratedState({ tracks: [first], albums: [{ ...saved, delivery: CD_DELIVERY }, { ...saved, id: "corrupt", delivery: { bitDepth: 8 } }] });
     expect(cd?.albums.map((album) => album.delivery)).toEqual([CD_DELIVERY, DEFAULT_DELIVERY]);

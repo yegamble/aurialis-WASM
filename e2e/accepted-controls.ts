@@ -1,20 +1,28 @@
 import { expect, type Page } from "@playwright/test";
+import { acceptedControlPacket } from "../src/lib/playback-diagnostics";
 type AcceptedWindow = Window & { qaAcceptedControls?: { version: number; values: number[] } };
-/** Observe only after the real Go kernel accepts the worklet's stable packet. */
+/** Observe the real rendered APPLIED acknowledgement using the production stable-packet reader. */
 export async function observeAcceptedControls(page: Page): Promise<void> {
-  await page.route((url) => url.pathname === "/worklets/aurialis-live-worklet.js", async (route) => {
-    const response = await route.fetch();
-    const source = await response.text(), anchor = "this.controlVersion = version;";
-    if (source.split(anchor).length !== 2) throw new Error("Update the accepted-control observer for the changed worklet.");
-    await route.fulfill({ response, body: source.replace(anchor, `${anchor}\n    this.port.postMessage({ type: "qa-accepted-controls", version, values: Array.from(this.controls) });`) });
-  });
+  // The helper is pure and depends only on built-in typed arrays/Atomics. Install
+  // that exact production function as a declaration, without eval or source patching.
+  await page.addInitScript({ content: `window.qaReadAcceptedControls = ${acceptedControlPacket.toString()};` });
   await page.addInitScript(() => {
+    type DiagnosticWindow = AcceptedWindow & { qaReadAcceptedControls?: typeof acceptedControlPacket };
     const Native = AudioWorkletNode;
     window.AudioWorkletNode = class extends Native {
       constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
-        super(context, name, options);
-        if (name === "aurialis-live") this.port.addEventListener("message", (event: MessageEvent<{ type?: string; version: number; values: number[] }>) => {
-          if (event.data.type === "qa-accepted-controls") (window as AcceptedWindow).qaAcceptedControls = { version: event.data.version, values: event.data.values };
+        const config = options?.processorOptions as { header?: SharedArrayBuffer; controls?: SharedArrayBuffer } | undefined;
+        super(context, name, name === "aurialis-live" ? { ...options, processorOptions: { ...config, diagnostics: true } } : options);
+        if (name !== "aurialis-live" || !config?.header || !config.controls) return;
+        const header = new Int32Array(config.header), controls = config.controls;
+        this.port.addEventListener("message", (event: MessageEvent<{ type?: string }>) => {
+          if (event.data.type !== "diagnostics") return;
+          const scope = window as DiagnosticWindow;
+          if (!scope.qaReadAcceptedControls) throw new Error("The accepted-control reader was not installed.");
+          const accepted = scope.qaReadAcceptedControls(header, controls);
+          // Clear a superseded packet while a newer version is still pending.
+          if (accepted) scope.qaAcceptedControls = accepted;
+          else delete scope.qaAcceptedControls;
         });
       }
     };

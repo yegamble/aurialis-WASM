@@ -227,9 +227,15 @@ func TestOversampledRenderAllocatesNoBlocks(t *testing.T) {
 
 func TestOversampledSaturationSelectedAlias(t *testing.T) {
 	const count = 32768
-	for _, rate := range []float64{44100, 48000} {
+	rates, amounts := []float64{44100, 48000}, []float64{10, 50, 100}
+	if raceEnabled {
+		// Keep every nonlinear character and the strongest drive in the race run;
+		// the mandatory non-race gate retains the complete rate/drive matrix.
+		rates, amounts = []float64{48000}, []float64{100}
+	}
+	for _, rate := range rates {
 		for _, character := range []SatCharacter{SatWarm, SatThick, SatCrisp, SatTube, SatTape, SatTransformer} {
-			for _, amount := range []float64{10, 50, 100} {
+			for _, amount := range amounts {
 				p := DefaultParams()
 				p.AlgorithmVersion = OversampledAlgorithmVersion
 				p.Saturation = SaturationParams{Enabled: true, Character: character, Amount: amount}

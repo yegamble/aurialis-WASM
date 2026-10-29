@@ -7,9 +7,9 @@ const port = process.env.PLAYWRIGHT_PORT || "3847";
 /** Real-engine qualification is separate from the Chromium responsiveness matrix. */
 export default defineConfig({
   testDir: "./e2e", outputDir: "./artifacts/browser-engines", fullyParallel: false, workers: 1,
-  retries: 0, forbidOnly: !!process.env.CI, timeout: 120_000, reporter: "list",
-  testMatch: ["engine-playback.cases.ts", "live-overload.spec.ts"],
-  grep: /engine qualification:|without playbackStats, (?:a 60 ms stall|an 8 ms call)/,
+  retries: 0, forbidOnly: !!process.env.CI, timeout: 120_000, reporter: [["list"], ["json", { outputFile: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME ?? "artifacts/browser-engines/results.json" }]],
+  testMatch: ["engine-playback.cases.ts", "live-overload.spec.ts", "transport.spec.ts"],
+  grep: /engine qualification:|Repeat wraps Forward 10 and Shift\+Right while an absolute End seek stops|without playbackStats, (?:a 60 ms stall|an 8 ms call)/,
   use: { baseURL: external || `http://127.0.0.1:${port}`, headless: true, trace: "retain-on-failure" },
   projects: [
     { name: "firefox-audio", metadata: { executionTarget: target }, use: { ...devices["Desktop Firefox"] } },

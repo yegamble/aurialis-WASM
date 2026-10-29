@@ -507,17 +507,121 @@ jobs:
           path: artifacts/browser-local/
           retention-days: 7
 
+  playwright-engine-matrix:
+    name: ${{ matrix.browser }} Playback (${{ matrix.target }})
+    needs: [frontend-quality, browser-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [native, browser]
+        browser: [firefox, webkit]
+    env:
+      AURIALIS_CI_BUILD_ATTEMPT: ${{ matrix.target == 'native' && needs.frontend-quality.outputs.build-attempt || needs.browser-build.outputs.build-attempt }}
+      NEXT_PUBLIC_AURIALIS_EXECUTION: ${{ matrix.target == 'browser' && 'browser' || 'native' }}
+      AURIALIS_USE_CI_BROWSER_ASSETS: ${{ matrix.target == 'browser' && '1' || '0' }}
+      PLAYWRIGHT_ENGINE_TARGET: ${{ matrix.target }}
+      PLAYWRIGHT_JSON_OUTPUT_NAME: artifacts/browser-engines/results-${{ matrix.target }}-${{ matrix.browser }}.json
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "26.12.0"
+          cache: pnpm
+      - name: Install test dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Identify pinned Playwright browser version
+        id: playwright-version
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Prepare bounded Ubuntu package downloads
+        timeout-minutes: 1
+        run: bash scripts/ci-ubuntu-apt.sh
+      - name: Install required browser OS dependencies
+        timeout-minutes: 5
+        run: pnpm exec playwright install-deps "${{ matrix.browser }}"
+      - name: Restore Playwright engine cache
+        id: engine-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ matrix.browser }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('pnpm-lock.yaml') }}
+      - name: Install browser on cache miss
+        timeout-minutes: 6
+        if: steps.engine-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install "${{ matrix.browser }}"
+      - name: Save engine cache from the native target only
+        if: matrix.target == 'native' && steps.engine-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ steps.engine-cache.outputs.cache-primary-key }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ matrix.target == 'native' && needs.frontend-quality.outputs.artifact-name || needs.browser-build.outputs.artifact-name }}
+          path: artifacts/engine-download
+      - name: Verify and restore native QA artifact
+        if: matrix.target == 'native'
+        run: python3 scripts/ci-artifacts.py restore artifacts/engine-download
+      - name: Verify and restore receipt-verified browser artifact
+        if: matrix.target == 'browser'
+        run: python3 scripts/ci-browser-artifacts.py restore artifacts/engine-download
+      - name: Run actual Firefox or WebKit playback against the restored target
+        env:
+          AURIALIS_E2E_BINARY: ${{ github.workspace }}/artifacts/ci-runtime/aurialis-e2e
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/browser-engines
+          port=3847
+          if [ "$PLAYWRIGHT_ENGINE_TARGET" = browser ]; then port=3927; fi
+          if [ "$PLAYWRIGHT_ENGINE_TARGET" = native ]; then
+            bash scripts/serve-e2e.sh "$port" > artifacts/browser-engines/server.log 2>&1 &
+          else
+            NEXT_PUBLIC_AURIALIS_EXECUTION=browser AURIALIS_USE_CI_BROWSER_ASSETS=1 bash scripts/serve-browser.sh > artifacts/browser-engines/server.log 2>&1 &
+          fi
+          server_pid=$!
+          cleanup() { kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true; }
+          trap cleanup EXIT
+          ready=false
+          deadline=$((SECONDS + 90))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            if [ "$PLAYWRIGHT_ENGINE_TARGET" = native ]; then
+              marker="$(curl -fsS --max-time 2 "http://127.0.0.1:$port/build-target-native.json" 2>/dev/null || true)"
+              if [ "$marker" = '{"schema":1,"target":"native"}' ]; then ready=true; break; fi
+            elif curl -fsS --max-time 2 "http://127.0.0.1:$port/" >/dev/null 2>&1; then
+              ready=true; break
+            fi
+            sleep 0.5
+          done
+          if [ "$ready" != true ]; then cat artifacts/browser-engines/server.log; exit 1; fi
+          PLAYWRIGHT_ENGINE_BASE_URL="http://127.0.0.1:$port" \
+            pnpm exec playwright test --config playwright.engines.config.ts \
+              --project="${{ matrix.browser }}-audio" --workers=1 --retries=0 \
+              --global-timeout=360000 2>&1 | tee artifacts/browser-engines/playwright.log
+      - name: Retain cross-engine playback, traces, and server logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-engine-${{ matrix.target }}-${{ matrix.browser }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/browser-engines/
+          retention-days: 7
+
   playwright-e2e:
     name: Playwright Responsive (320px-1440px) & WCAG 2.2 AA Gate
     if: always()
-    needs: [playwright-shards, static-browser]
+    needs: [playwright-shards, static-browser, playwright-engine-matrix]
     runs-on: ubuntu-latest
     steps:
-      - name: Require every browser shard
+      - name: Require every Chromium, Firefox, WebKit, and static-browser job
         env:
           SHARDS_RESULT: ${{ needs.playwright-shards.result }}
           STATIC_RESULT: ${{ needs.static-browser.result }}
-        run: test "$SHARDS_RESULT" = success && test "$STATIC_RESULT" = success
+          ENGINE_RESULT: ${{ needs.playwright-engine-matrix.result }}
+        run: test "$SHARDS_RESULT" = success && test "$STATIC_RESULT" = success && test "$ENGINE_RESULT" = success
 
   ci-passed:
     name: CI Passed

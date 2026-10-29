@@ -25,6 +25,12 @@ describe("static attenuate-only A/B loudness match (V1-11)", () => {
     expect(Math.abs((processedLufs + gains.processedDb) - (originalLufs + gains.originalDb))).toBeLessThanOrEqual(0.5);
   });
 
+  it("binds monitor measurement to the selected render quality", () => {
+    const original = testStore.tracks[0]; if (!original) throw new Error("Missing project");
+    const classic = loudnessMatchRequest(original), oversampled = loudnessMatchRequest({ ...original, advanced: { ...original.advanced, renderQuality: "oversampled" } });
+    expect(classic.key).not.toBe(oversampled.key); expect(classic.scope).toBe(oversampled.scope);
+    expect(oversampled.render).toMatchObject({ params: { algorithmVersion: 3 } });
+  });
   it("attenuates only the louder side", () => {
     const louderA = resolveLoudnessMatch(true, at(), reading(-9, -14.2));
     expect(louderA).toMatchObject({ state: "matched", attenuated: "A" });

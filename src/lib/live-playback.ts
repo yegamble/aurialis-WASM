@@ -593,7 +593,7 @@ export function createLivePlayback(
     if (!Number.isSafeInteger(revision)) throw new Error("The schedule revision limit has been reached. Reload this project.");
     const installed = { ...script, revision };
     try {
-      const packet = await prepareLiveAutomation(installed, binding.blob, context.sampleRate, combined);
+      const packet = await prepareLiveAutomation(installed, binding.blob, context.sampleRate, combined, currentParams.algorithmVersion === 3 ? "oversampled" : "classic");
       combined.throwIfAborted(); if (!canCommit()) throw new DOMException("The source or settings changed.", "AbortError");
       scheduleRevision = revision;
       const version = state.parameterVersion + 1;

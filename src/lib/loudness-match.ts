@@ -1,6 +1,6 @@
 import { clampAdvancedToSampleRate } from "./audio-dsp";
 import { measureRender } from "./browser-engine";
-import { appliedRevisionKey, type ScriptV2 } from "./deep-mastering";
+import { type ScriptV2 } from "./deep-mastering";
 import { exportParams, exportScript } from "./engine-params";
 import type { Track } from "./types";
 
@@ -97,8 +97,8 @@ export function loudnessMatchText(match: LoudnessMatch): string {
  */
 export function loudnessMatchRequest(track: Track): LoudnessMatchRequest {
   const applied = track.deepMastering?.applied;
-  const render = applied ? { script: exportScript(applied) } : { params: exportParams(clampAdvancedToSampleRate(track.advanced, track.sampleRate)) };
-  const settings = appliedRevisionKey(track) ?? JSON.stringify(render);
+  const render = applied ? { script: exportScript(applied, track.advanced.renderQuality ?? "classic") } : { params: exportParams(clampAdvancedToSampleRate(track.advanced, track.sampleRate)) };
+  const settings = JSON.stringify(render);
   const scope = ["match", track.id, track.sourceAudioId ?? track.id, track.sourceRevision ?? 0, track.sourceIdentity?.pcmHash ?? ""].join("|");
   return { key: `${scope}|${settings}`, scope, render };
 }

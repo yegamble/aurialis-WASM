@@ -2,7 +2,6 @@
 
 import { WorkspaceLink as Link } from "./shared/WorkspaceLink";
 import {
-  engineParams,
   measureAudio,
   normalizeSimpleAudio,
   exportLevelSummary,
@@ -11,7 +10,7 @@ import {
   type StereoPCM,
 } from "@/lib/browser-engine";
 import { reserveBrowserAudioMemory } from "@/lib/browser-jobs";
-import { exportRender } from "@/lib/engine-params";
+import { exportParams, exportRender } from "@/lib/engine-params";
 import { downloadLocalBlob } from "@/lib/download";
 import { clearNextPlaybackHandoff, reconcileNextPlaybackHandoff, stageNextPlaybackHandoff, takeNextPlaybackHandoff } from "@/lib/playback-handoff";
 import { bindPlaybackControls } from "@/lib/media-session";
@@ -582,7 +581,7 @@ function trackToolHref(route: TrackToolRoute, trackId: string): string {
 }
 
 function masteringSettingsKey(settings: AdvancedParams) {
-  return JSON.stringify({ ...engineParams(settings), requestedTargetLufs: settings.limiter.targetLufs });
+  return JSON.stringify({ ...exportParams(settings), requestedTargetLufs: settings.limiter.targetLufs });
 }
 
 
@@ -639,7 +638,7 @@ function MasterView({ trackId }: { trackId: string }) {
     },
     [],
   );
-  const settingsKey = useMemo(() => track ? appliedRevisionKey(track) ?? masteringSettingsKey(track.advanced) : "", [track]);
+  const settingsKey = useMemo(() => track ? track.deepMastering?.applied ? JSON.stringify([appliedRevisionKey(track), track.advanced.renderQuality ?? "classic"]) : masteringSettingsKey(track.advanced) : "", [track]);
   const rateChoices = track ? exportRateChoices(track.sampleRate, source?.left.length ?? track.sourceIdentity?.frames ?? Math.round(track.duration * track.sampleRate)) : [];
   // A choice that is unavailable for this track falls back to the source rate.
   const delivery = availableDelivery(track?.exportDelivery ?? DEFAULT_DELIVERY, rateChoices);
@@ -713,7 +712,7 @@ function MasterView({ trackId }: { trackId: string }) {
       setLiveError(error instanceof Error ? error.message : "Playback could not be initialized. Retry the source.");
       return undefined;
     }
-  }, [source, sourceBlob, trackId]);
+  }, [source, sourceBlob, trackId, track?.advanced.renderQuality]);
 
   // Monitoring only: export requests never read this gain.
   useEffect(() => { live.current?.setLoudnessMatch({ processedDb: matchProcessedDb, originalDb: matchOriginalDb }); }, [matchProcessedDb, matchOriginalDb]);
@@ -1085,6 +1084,12 @@ function MasterView({ trackId }: { trackId: string }) {
           </span>
           {(deepPlayback.busy || deepPlayback.message || deepPlayback.error) && <section className="space-y-2" aria-label="Applied automation status"><p className="disclosure" role="status">{deepPlayback.message}</p>{deepPlayback.error && <><p role="alert" className="disclosure text-danger">{deepPlayback.error}</p><div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={deepPlayback.retry}>Retry processing request</Button><Button variant="secondary" onClick={deepPlayback.restoreAppliedSettings}>Restore applied settings</Button></div></>}{deepPlayback.busy && <Button variant="secondary" onClick={deepPlayback.cancel}>Cancel processing publication</Button>}</section>}
           {track.deepMastering?.applied && <section className="space-y-2" aria-label="Applied Deep recovery"><p className="disclosure">Detach returns to the static baseline of the applied revision. Revert restores the complete settings saved before the first Apply.</p><div className="flex flex-wrap gap-2"><Button variant="secondary" onClick={deepPlayback.detach}>Detach automation</Button><Button variant="secondary" onClick={deepPlayback.revert}>Revert before first Apply</Button></div></section>}
+          <ChoiceGroup label="Render quality" value={track.advanced.renderQuality ?? "classic"} options={[{ value: "classic", label: "Classic" }, { value: "oversampled", label: "Oversampled" }]} onChange={(renderQuality) => {
+            if ((track.advanced.renderQuality ?? "classic") === renderQuality) return;
+            dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: { ...track.advanced, renderQuality } } });
+            setMessage("Render quality changed. Playback paused; press Play to hear this quality. Exports and applied Deep processing use the same choice.");
+          }} />
+          <p className="disclosure">Classic preserves existing projects. Oversampled uses more processing power; the selected quality is saved with this project.</p>
           {track.mode === "simple" && (
             <SimpleControls
               track={track}
@@ -1494,7 +1499,7 @@ function AdvancedControls({
         variant="secondary"
         icon={<Icon name="rotate-ccw" />}
         onClick={() => {
-          dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate), shortcutUndo: {} } });
+          dispatch({ type: "UPDATE_TRACK", id: track.id, patch: { advanced: clampAdvancedToSampleRate({ ...createDefaultAdvancedParams(), ...(track.advanced.renderQuality !== undefined ? { renderQuality: track.advanced.renderQuality } : {}) }, track.sampleRate), shortcutUndo: {} } });
         }}
       >
         Reset modules

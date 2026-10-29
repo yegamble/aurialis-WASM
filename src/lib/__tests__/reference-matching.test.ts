@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDefaultAdvancedParams } from "../audio-dsp";
-import { engineParams } from "../browser-engine";
+import { exportParams } from "../engine-params";
 import { matchReference } from "../reference-matching";
 import { verifyCanonicalSource } from "../project-import";
 vi.mock("../project-import", () => ({ verifyCanonicalSource: vi.fn((_blob: Blob, identity: unknown, signal: AbortSignal) => { signal.throwIfAborted(); return Promise.resolve(identity); }) }));
@@ -8,10 +8,10 @@ const identity = { pcmHash: "a".repeat(64), sampleRate: 48000, frames: 48000 };
 const expected = { source: identity, reference: { ...identity, pcmHash: "b".repeat(64) } };
 const options = { amount: .5, protectBelowHz: 120 as const, includeWidth: false };
 const baseline = () => createDefaultAdvancedParams();
-function mid(params: ReturnType<typeof engineParams>) { const band = params.bands.at(2); if (!band) throw new Error("Missing test band"); return band; }
+function mid(params: ReturnType<typeof exportParams>) { const band = params.bands.at(2); if (!band) throw new Error("Missing test band"); return band; }
 function proposal() {
-  const params = engineParams(baseline()); mid(params).gainDb = 1;
-  return { version: "1.0", sourceSpectrum: "baseline_rendered", source: expected.source, reference: expected.reference, baseline: engineParams(baseline()), params,
+  const params = exportParams(baseline()); mid(params).gainDb = 1;
+  return { version: "1.0", sourceSpectrum: "baseline_rendered", source: expected.source, reference: expected.reference, baseline: exportParams(baseline()), params,
     options: { amount: .5, protectBelowHz: 120 },
     bands: [20, 120, 500, 2000, 6000].map((lowHz, i) => ({ lowHz, highHz: [120, 500, 2000, 6000, 20000].at(i), sourceDensityDb: -42, referenceDensityDb: -41, targetDeltaDb: 1, predictedDeltaDb: .9, included: true })),
     beforeOutputResidualDb: 2, afterOutputResidualDb: 1, beforeResidualDb: 1, fitResidualDb: .1, maxPredictedBoostDb: 1.1, maxProtectedDeltaDb: .1, remeasuredProtectedDeltaDb: .1, protectionVerified: true, warnings: ["Five-band estimate"] };
@@ -23,6 +23,16 @@ function respond(value: unknown) {
 const run = () => matchReference(new Blob(["source"]), new Blob(["reference"]), baseline(), options, expected, new AbortController().signal, vi.fn());
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 describe("measured Reference binding", () => {
+  it("binds an oversampled proposal to its exact algorithm 3 baseline", async () => {
+    const advanced = { ...baseline(), renderQuality: "oversampled" as const };
+    const value = proposal(); value.baseline = exportParams(advanced); value.params = exportParams(advanced); mid(value.params).gainDb = 1;
+    const fetch = respond(value);
+    const result = await matchReference(new Blob(["source"]), new Blob(["reference"]), advanced, options, expected, new AbortController().signal, vi.fn());
+    expect(result.advanced.renderQuality).toBe("oversampled");
+    const form = (fetch.mock.calls[0]?.[1] as RequestInit).body as FormData;
+    const encoded = form.get("params"); if (typeof encoded !== "string") throw new Error("Missing submitted parameters");
+    expect(JSON.parse(encoded)).toMatchObject({ algorithmVersion: 3 });
+  });
   it("submits audio and the exact immutable baseline, accepts only permitted deltas and releases the job", async () => {
     const fetch = respond(proposal()); const result = await run();
     expect(result.advanced.eqBands[2].gainDb).toBe(1);
@@ -31,7 +41,7 @@ describe("measured Reference binding", () => {
     const body = (call[1] as RequestInit).body as FormData;
     expect(body.get("source")).toBeInstanceOf(Blob); expect(body.get("reference")).toBeInstanceOf(Blob);
     const encoded = body.get("params"); if (typeof encoded !== "string") throw new Error("Missing submitted parameters");
-    expect(JSON.parse(encoded)).toEqual(engineParams(baseline()));
+    expect(JSON.parse(encoded)).toEqual(exportParams(baseline()));
     expect(fetch.mock.calls[1]?.[1]).toMatchObject({ method: "DELETE" });
     expect(verifyCanonicalSource).toHaveBeenCalledTimes(4);
   });

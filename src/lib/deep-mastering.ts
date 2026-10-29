@@ -5,7 +5,7 @@ import { deviceAudioRequest } from "./browser-jobs";
 import { engineParams } from "./browser-engine";
 import { sameSource } from "./library";
 import { normalizeShortcutUndo } from "./mastering-shortcuts";
-import type { AdvancedParams, MeasuredAudioMetrics, ProfileId, ShortcutUndo, SourceIdentity, Track } from "./types";
+import type { AdvancedParams, RenderQuality, MeasuredAudioMetrics, ProfileId, ShortcutUndo, SourceIdentity, Track } from "./types";
 
 export const deepProfiles = ["Warm Analog", "Punchy Commercial", "Dynamic & Open", "Vocal Forward", "Bass Heavy"] as const;
 export type DeepProfile = typeof deepProfiles[number];
@@ -92,10 +92,11 @@ function params(value: unknown): ScriptParams {
   const parsed = typedShape(engineParams(createDefaultAdvancedParams()), rest);
   for (const band of parsed.bands) if (!["high_pass", "low_shelf", "peaking", "high_shelf"].includes(band.type)) throw failure();
   if (!["optical", "vari_mu", "fet", "vca"].includes(parsed.compressor.topology) || !["Warm", "Thick", "Crisp", "Clean", "Tube", "Tape", "Transformer"].includes(parsed.saturation.character)) throw failure();
-  if (parsed.repair.enabled || (parsed.limiter.enabled && parsed.limiter.truePeak)) throw failure();
+  const algorithm = algorithmVersion === undefined ? 1 : number(algorithmVersion, 0, 3, true);
+  if (parsed.repair.enabled || (parsed.limiter.enabled && parsed.limiter.truePeak && algorithm < 2)) throw failure();
   // V1-09: no script, saved or downloaded, applies a ceiling above −1 dBTP.
   const limiter = { ...parsed.limiter, ceilingDbtp: Math.min(MAX_LIMITER_CEILING_DB, parsed.limiter.ceilingDbtp) };
-  return { ...parsed, limiter, ...(algorithmVersion !== undefined ? { algorithmVersion: number(algorithmVersion, 0, 1, true) } : {}) };
+  return { ...parsed, limiter, ...(algorithmVersion !== undefined ? { algorithmVersion: algorithm } : {}) };
 }
 function points(value: unknown, frames: number): AutomationPoint[] {
   const values = list(value, 256, 2).map((item) => { const point = object(item, ["frame", "value"]); return { frame: number(point.frame, 0, frames, true), value: number(point.value) }; });
@@ -139,8 +140,9 @@ function predictedMetrics(value: unknown): Omit<DeepPrediction, "revision"> {
 }
 
 /** Analyze a source; the prediction is Go's export-algorithm render of the returned proposal. */
-export function analyzeDeep(blob: Blob, profile: DeepProfile, identity: SourceIdentity, signal: AbortSignal, onProgress: (progress: number, stage: string) => void): Promise<MeasuredProposal> {
+export function analyzeDeep(blob: Blob, profile: DeepProfile, identity: SourceIdentity, signal: AbortSignal, onProgress: (progress: number, stage: string) => void, renderQuality?: RenderQuality): Promise<MeasuredProposal> {
   const body = new FormData(); body.append("file", blob, "source.wav"); body.append("scriptVersion", "2.0"); body.append("profile", profile);
+  if (renderQuality !== undefined) body.append("renderQuality", renderQuality);
   return runAudioJob("/api/analyze/deep", body, signal, onProgress, (job) => { if (job.kind !== "analyze_deep_v2") throw failure(); return { proposal: readScriptV2(job.scriptV2, identity), prediction: predictedMetrics(job.prediction) }; });
 }
 
@@ -219,7 +221,10 @@ export function readDeepMasteringState(value: unknown, identity: SourceIdentity 
     if (!["modern_pop_polish", "hip_hop_low_end", "indie_warmth", "metal_wall", "pop_punk_air"].includes(text(before.profile))) throw failure();
     object(before.shortcutUndo);
     if (!sameJSON(normalizeShortcutUndo(before.shortcutUndo), before.shortcutUndo)) throw failure();
-    state.before = { advanced: typedShape(createDefaultAdvancedParams(), before.advanced), profile: before.profile as ProfileId, genre: text(before.genre), tone: text(before.tone), intensity: number(before.intensity, 0, 100), target: text(before.target), simpleCustom: bool(before.simpleCustom), shortcutUndo: normalizeShortcutUndo(before.shortcutUndo) };
+    const { renderQuality, ...beforeAdvanced } = object(before.advanced);
+    if (renderQuality !== undefined && renderQuality !== "classic" && renderQuality !== "oversampled") throw failure();
+    const advanced: AdvancedParams = { ...typedShape(createDefaultAdvancedParams(), beforeAdvanced), ...(renderQuality !== undefined ? { renderQuality } : {}) };
+    state.before = { advanced, profile: before.profile as ProfileId, genre: text(before.genre), tone: text(before.tone), intensity: number(before.intensity, 0, 100), target: text(before.target), simpleCustom: bool(before.simpleCustom), shortcutUndo: normalizeShortcutUndo(before.shortcutUndo) };
   }
   if ((state.applied === undefined) !== (state.before === undefined)) throw failure();
   return state;
@@ -239,7 +244,7 @@ export function advancedFromScript(script: ScriptV2): AdvancedParams {
     compressor: { enabled: params.compressor.enabled, threshold: params.compressor.thresholdDb, ratio: params.compressor.ratio, attack: params.compressor.attackMs, release: params.compressor.releaseMs, knee: params.compressor.kneeDb, makeup: params.compressor.makeupDb, sidechainHpfHz: params.compressor.sidechainHpfHz, autoRelease: params.compressor.autoRelease, topology: params.compressor.topology },
     saturationModule: { enabled: params.saturation.enabled, drive: params.saturation.amount, character: params.saturation.character },
     stereo: { enabled: params.stereo.enabled, width: params.stereo.widthPct, monoBass: params.stereo.monoBass, crossoverHz: params.stereo.crossoverHz, midGainDb: params.stereo.midGainDb, sideGainDb: params.stereo.sideGainDb },
-    limiter: { enabled: params.limiter.enabled, ceiling: Math.min(MAX_LIMITER_CEILING_DB, params.limiter.ceilingDbtp), targetLufs: params.limiter.targetLufs, release: params.limiter.releaseMs, truePeak: params.limiter.truePeak },
+    limiter: { enabled: params.limiter.enabled, ceiling: Math.min(MAX_LIMITER_CEILING_DB, params.limiter.ceilingDbtp), targetLufs: params.limiter.targetLufs, release: params.limiter.releaseMs, truePeak: false },
     deHarsh: params.deHarsh, multiband: params.multiband,
   };
 }

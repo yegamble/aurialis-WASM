@@ -7,7 +7,7 @@ export async function observeAcceptedControls(page: Page): Promise<void> {
   // that exact production function as a declaration, without eval or source patching.
   await page.addInitScript({ content: `window.qaReadAcceptedControls = ${acceptedControlPacket.toString()};` });
   await page.addInitScript(() => {
-    type DiagnosticWindow = AcceptedWindow & { qaReadAcceptedControls: typeof acceptedControlPacket };
+    type DiagnosticWindow = AcceptedWindow & { qaReadAcceptedControls?: typeof acceptedControlPacket };
     const Native = AudioWorkletNode;
     window.AudioWorkletNode = class extends Native {
       constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
@@ -18,6 +18,7 @@ export async function observeAcceptedControls(page: Page): Promise<void> {
         this.port.addEventListener("message", (event: MessageEvent<{ type?: string }>) => {
           if (event.data.type !== "diagnostics") return;
           const scope = window as DiagnosticWindow;
+          if (!scope.qaReadAcceptedControls) throw new Error("The accepted-control reader was not installed.");
           const accepted = scope.qaReadAcceptedControls(header, controls);
           // Clear a superseded packet while a newer version is still pending.
           if (accepted) scope.qaAcceptedControls = accepted;

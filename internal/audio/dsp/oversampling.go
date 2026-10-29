@@ -106,6 +106,7 @@ type oversampledState struct {
 	dry, raw                [64][2]float64
 	controls                [64]oversampledControls
 	at, pending, drainStage int
+	controlsPrimed          bool
 	// Each character has independent shaping/integral history. The active
 	// character resets on a switch, so frozen audio is never replayed.
 	curves                     [6]saturationCurveState
@@ -234,6 +235,15 @@ func (o *oversampledState) residual(ch int, input float64, c oversampledControls
 
 func (e *Engine) oversampledStage(l, r, rawL, rawR float64, c oversampledControls) (float64, float64, float64, float64, oversampledControls) {
 	o := &e.oversampled
+	if !o.controlsPrimed {
+		// Zero-extended startup uses the first source frame's controls. Empty
+		// controls would prime the limiter off for 64 frames, then fade its
+		// Nyquist guard in over real audio and violate the export ceiling.
+		for i := range o.controls {
+			o.controls[i] = c
+		}
+		o.controlsPrimed = true
+	}
 	post := o.controls[o.at]
 	saturation := o.controls[(o.at+32)&63]
 	dry, raw := o.dry[o.at], o.raw[o.at]

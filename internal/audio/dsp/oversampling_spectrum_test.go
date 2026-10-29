@@ -159,24 +159,39 @@ func TestHighRateReferenceDistinguishesFoldbackFromIntendedHarmonics(t *testing.
 	}
 }
 
+func oversampledTone(p Params, rate int, frequency, amplitude float64) ([]float32, []float32) {
+	engine := NewEngine(float64(rate))
+	engine.SetParams(p)
+	input, output := make([]float32, 2*rate), make([]float32, 2*rate)
+	for i := range input {
+		input[i] = float32(amplitude * math.Sin(2*math.Pi*frequency*float64(i)/float64(rate)))
+	}
+	engine.ProcessBlock(input, input, output, make([]float32, len(output)))
+	return input[rate:], output[rate:]
+}
+
 func TestOversampledCharactersRetainProgramGainAndLowLevelResponse(t *testing.T) {
-	for _, character := range []SatCharacter{SatWarm, SatThick, SatCrisp, SatClean, SatTube, SatTape, SatTransformer} {
-		for _, amount := range []float64{10, 50, 100} {
-			p := DefaultParams()
-			p.AlgorithmVersion = OversampledAlgorithmVersion
-			p.Saturation = SaturationParams{Enabled: true, Character: character, Amount: amount}
-			tilt := .025 * amount * boolToFloat(character == SatCrisp || character == SatTape)
-			if program := levelChangeDB(saturate(p, 1000, .25)); math.Abs(program) > .8+tilt {
-				t.Errorf("%s %.0f: program gain %.2f dB", character, amount, program)
-			}
-			low := levelChangeDB(saturate(p, 1000, .01))
-			if low < -.1 || low > 3+tilt {
-				t.Errorf("%s %.0f: low-level gain %.2f dB", character, amount, low)
-			}
-			flat := .1 + .002*amount*boolToFloat(character == SatCrisp)
-			for _, frequency := range []float64{10000, 16000, 20000} {
-				if difference := levelChangeDB(saturate(p, frequency, .01)) - low; math.Abs(difference) > flat {
-					t.Errorf("%s %.0f: %g Hz response %.2f dB", character, amount, frequency, difference)
+	for _, rate := range []int{44100, 48000} {
+		for _, character := range []SatCharacter{SatWarm, SatThick, SatCrisp, SatClean, SatTube, SatTape, SatTransformer} {
+			for _, amount := range []float64{10, 50, 100} {
+				p := DefaultParams()
+				p.AlgorithmVersion = OversampledAlgorithmVersion
+				p.Saturation = SaturationParams{Enabled: true, Character: character, Amount: amount}
+				tilt := .025 * amount * boolToFloat(character == SatCrisp || character == SatTape)
+				input, output := oversampledTone(p, rate, 1000, .25)
+				program := GoertzelMagnitudeDB(output, float64(rate), 1000) - GoertzelMagnitudeDB(input, float64(rate), 1000)
+				if math.Abs(program) > .8+tilt {
+					t.Errorf("%d Hz %s %.0f: program fundamental gain %.2f dB", rate, character, amount, program)
+				}
+				low := levelChangeDB(oversampledTone(p, rate, 1000, .01))
+				if low < -.1 || low > 3+tilt {
+					t.Errorf("%d Hz %s %.0f: low-level gain %.2f dB", rate, character, amount, low)
+				}
+				flat := .1 + .002*amount*boolToFloat(character == SatCrisp)
+				for _, frequency := range []float64{10000, 16000, 20000} {
+					if difference := levelChangeDB(oversampledTone(p, rate, frequency, .01)) - low; math.Abs(difference) > flat {
+						t.Errorf("%d Hz %s %.0f: %g Hz response %.2f dB", rate, character, amount, frequency, difference)
+					}
 				}
 			}
 		}

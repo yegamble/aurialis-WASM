@@ -80,7 +80,6 @@ type StoreAction =
     }
   | { type: "UPDATE_STEREO"; trackId: string; patch: Partial<StereoParams> }
   | { type: "UPDATE_LIMITER"; trackId: string; patch: Partial<LimiterParams> }
-  | { type: "UPDATE_REPAIR"; trackId: string; patch: Partial<RepairParams> }
   | { type: "UPDATE_DE_HARSH"; trackId: string; patch: Partial<DeHarshParams> }
   | { type: "UPDATE_MULTIBAND"; trackId: string; patch: Partial<Omit<MultibandParams, "bands">> }
   | { type: "UPDATE_MULTIBAND_BAND"; trackId: string; index: 0 | 1 | 2; patch: Partial<MultibandBandParams> }
@@ -345,23 +344,6 @@ export function reduceStoreState(
         })),
       };
 
-    case "UPDATE_REPAIR":
-      return {
-        ...state,
-        tracks: updateTrackInList(state.tracks, action.trackId, (track) => ({
-          ...track,
-          simpleCustom: true,
-          advanced: {
-            ...track.advanced,
-            repair: {
-              ...track.advanced.repair,
-              ...action.patch,
-            },
-          },
-          updatedAt: new Date().toISOString(),
-        })),
-      };
-
     case "UPDATE_DE_HARSH":
     case "UPDATE_MULTIBAND":
     case "UPDATE_MULTIBAND_BAND":
@@ -506,6 +488,10 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
     const restored: Track & { script?: unknown } = { ...normalizeSourceMetadata(track), advanced: createDefaultAdvancedParams() };
     delete restored.script;
     delete restored.releaseScore;
+    if (track.advanced?.repair?.enabled) {
+      restored.status = "ready";
+      restored.importNotice = "An older audio repair setting was removed because repair is unavailable. Your other processing settings are preserved.";
+    }
     if (track.exportDelivery !== undefined) restored.exportDelivery = readDeliveryFormat(track.exportDelivery);
     const review = readReleaseReport(track.releaseReview);
     if (review) restored.releaseReview = review;
@@ -550,10 +536,8 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
           // eslint-disable-next-line security/detect-object-injection
           bands: baseAdv.multiband.bands.map((band, index) => ({ ...band, ...track.advanced?.multiband?.bands?.[index] })) as MultibandParams["bands"],
         },
-        repair: {
-          ...baseAdv.repair,
-          ...(track.advanced?.repair ?? {}),
-        },
+        // Repair was never implemented. Old saved switches cannot prevent playback.
+        repair: createDefaultAdvancedParams().repair,
       }, track.sampleRate),
     }), loweredDeepCeilings(track.deepMastering));
   });

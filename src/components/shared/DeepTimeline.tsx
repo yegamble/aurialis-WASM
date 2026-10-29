@@ -15,8 +15,8 @@ export function automationLabel(target: AutomationTarget): string {
   // eslint-disable-next-line security/detect-object-injection
   return names[target];
 }
-const lanes = ["Volume", "EQ", "Comp/Sat", "Width", "AI Repair"];
-const colors = ["var(--lane-volume)", "var(--lane-eq)", "var(--lane-compsat)", "var(--lane-width)", "var(--lane-repair)"];
+const lanes = ["Volume", "EQ", "Comp/Sat", "Width"];
+const colors = ["var(--lane-volume)", "var(--lane-eq)", "var(--lane-compsat)", "var(--lane-width)"];
 
 export function DeepTimeline({ script, selectedId, onSelect, playheadRatio = 0 }: { script: ScriptV2; selectedId: string; onSelect: (id: string) => void; playheadRatio?: number }) {
   const summary = useId();
@@ -31,12 +31,12 @@ export function DeepTimeline({ script, selectedId, onSelect, playheadRatio = 0 }
         {lanes.map((lane, index) => <div className="lane" key={lane}>
           <strong>{lane}</strong>
           <div className="relative h-[44px] min-w-0 rounded-lg bg-paper-deep" >
-            {lane === "AI Repair" ? <span className="px-3 text-xs leading-[44px]">Not available yet</span> : script.moves.filter((move) => automationLane(move.target) === lane).map((move) => {
+            {script.moves.filter((move) => automationLane(move.target) === lane).map((move) => {
               const first = move.points[0]; const last = move.points.at(-1); if (!first || !last) return null;
               return <span key={move.id} aria-hidden="true" className="absolute top-3 h-5 min-w-px rounded-full border border-ink/30" style={{ left: String(first.frame / script.source.frames * 100) + "%", width: String((last.frame - first.frame) / script.source.frames * 100) + "%", backgroundColor: colors.at(index), opacity: move.muted ? 0.3 : 0.8 }} />;
             })}
             {script.moves.filter((move) => move.id === selectedId && automationLane(move.target) === lane).map((move) => <button key={move.id} type="button" className="absolute top-0 flex items-center justify-center !w-[44px] !min-w-[44px] !h-[44px] focus-visible:outline-2 focus-visible:outline-clay-dark" style={{ left: "clamp(0px, calc(" + String(((move.points[0]?.frame ?? 0) + (move.points.at(-1)?.frame ?? 0)) / 2 / script.source.frames * 100) + "% - 22px), calc(100% - 44px))" }} aria-label={"Edit selected " + automationLabel(move.target) + " move"} onClick={() => { onSelect(move.id); }}><span className="h-3 w-3 rounded-full border-2 border-paper bg-ink" /></button>)}
-            {lane !== "AI Repair" && <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-px bg-ink/60" style={{ left: String(Math.max(0, Math.min(1, playheadRatio)) * 100) + "%" }} />}
+            {<span aria-hidden="true" className="pointer-events-none absolute inset-y-0 w-px bg-ink/60" style={{ left: String(Math.max(0, Math.min(1, playheadRatio)) * 100) + "%" }} />}
           </div>
         </div>)}
       </div>

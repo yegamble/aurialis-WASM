@@ -456,7 +456,11 @@ test("Deep analysis compilation live apply and source-bound export keep every au
   const downloaded = await downloading, path = await downloaded.path();
   if (!path) throw new Error("Missing browser-local Deep script export");
   expect(await downloaded.failure()).toBeNull();
-  expect(await readFile(path)).toEqual(native.audio);
+  const actual = await readFile(path);
+  await writeFile(info.outputPath("actual-Deep-float32.wav"), actual);
+  await writeFile(info.outputPath("accepted-Deep-track.json"), JSON.stringify(accepted, null, 2));
+  await writeFile(info.outputPath("exported-Deep-track.json"), JSON.stringify(await project(), null, 2));
+  expect(actual).toEqual(native.audio);
   const evidence = info.outputPath("actual-local-Deep-evidence.json");
   await writeFile(evidence, JSON.stringify({ source: applied.source, revision: applied.revision, compiledMoves: capture.compiledMoves, capturedFrames: 16384, maximumLiveError, exactNativeWavBytes: native.audio.length }, null, 2));
   await info.attach("actual-local-Deep-evidence", { path: evidence, contentType: "application/json" });

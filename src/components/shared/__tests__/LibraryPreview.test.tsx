@@ -17,7 +17,7 @@ const base: Track = { ...original, sourceIdentity: source };
 const script: ScriptV2 = { version: "2.0", source, revision: 1, profile: "Warm Analog", summary: "Applied", chainParams: engineParams(base.advanced), sections: [{ id: "all", name: "Section 1", startFrame: 0, endFrame: 48000, roleHint: "unknown", confidence: 0 }], moves: [], findings: [], beforeMetrics: { integratedLufs: -18, shortTermLufs: -18, truePeakDbtp: -6, samplePeakDbfs: -6, dynamicRangeDb: 12, correlation: 1, lowBassCorrelation: 1, dcLeftDbfs: -100, dcRightDbfs: -100, clippingSamples: 0, gainReductionDb: 0 } };
 function player() {
   const state = { position: 0, duration: 1, playing: false, ready: true, loading: false, original: false, repeat: false, volume: 1, underruns: 0, parameterVersion: 1, appliedVersion: 1, error: null };
-  return { getState: () => state, play: vi.fn(() => Promise.resolve()), pause: vi.fn(), seek: vi.fn(), setBypass: vi.fn(), setVolume: vi.fn(), setRepeat: vi.fn(), setLoudnessMatch: vi.fn(), dispose: vi.fn() };
+  return { getState: () => state, play: vi.fn(() => Promise.resolve()), pause: vi.fn(), seek: vi.fn(), setBypass: vi.fn(), setMonitorMode: vi.fn(), setVolume: vi.fn(), setRepeat: vi.fn(), setLoudnessMatch: vi.fn(), dispose: vi.fn() };
 }
 beforeEach(() => { const values = new Map<string, string>(); vi.stubGlobal("localStorage", { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); } }); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers(); });

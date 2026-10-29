@@ -1,3 +1,4 @@
+import { isMonitorMode, type MonitorMode } from "./monitor-mode";
 import { MAX_JOB_INPUT_BYTES } from "./audio-limits";
 import { audioInputShape } from "./audio-input-shape";
 import { EXPORT_SAMPLE_RATES } from "./types";
@@ -12,6 +13,7 @@ interface JobRequest {
   operation: "render" | "features" | "deep" | "reference" | "compile" | "transition";
   /** "render" skips the source measurement a client already cached (V1-13). */
   measure?: "render";
+  monitorMode?: MonitorMode;
   params?: string;
   script?: string;
   profile?: string;
@@ -218,7 +220,7 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
   let request: JobRequest;
   let allowed: string[];
   switch (path) {
-    case "/api/master/render": request = { operation: "render" }; allowed = ["file", "params", "script", "profile", "bitDepth", "sampleRate", "dither", "format", "measure"]; break;
+    case "/api/master/render": request = { operation: "render" }; allowed = ["file", "params", "script", "profile", "bitDepth", "sampleRate", "dither", "format", "measure", "monitorMode"]; break;
     case "/api/analyze/features": request = { operation: "features" }; allowed = ["file"]; break;
     case "/api/analyze/deep": request = { operation: "deep" }; allowed = ["file", "profile", "scriptVersion", "renderQuality"]; break;
     case "/api/analyze/reference": request = { operation: "reference" }; allowed = ["source", "reference", "params", "options"]; break;
@@ -236,6 +238,11 @@ function formRequest(path: string, form: FormData): { request: JobRequest; sourc
     request.renderQuality = renderQuality;
   }
   if (format !== undefined) request.format = format;
+  const monitorMode = text("monitorMode");
+  if (monitorMode !== undefined) {
+    if (!isMonitorMode(monitorMode) || request.operation !== "render" || format !== "json") throw new Error("Listening mode is available only for JSON audio measurements.");
+    request.monitorMode = monitorMode;
+  }
   if (options !== undefined) request.options = options;
   if (scriptVersion !== undefined) request.scriptVersion = scriptVersion;
   if (bitDepth !== undefined) {

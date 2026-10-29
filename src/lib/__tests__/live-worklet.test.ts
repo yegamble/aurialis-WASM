@@ -14,7 +14,7 @@ type Processor = {
 
 // This VM kernel only tests protocol/lifecycle behavior. Compiled Go signal
 // parity is covered independently by the native/WASI verification script.
-function workletFixture(initialOdd = false, abiVersion: number | null = 1, capability: "count" | "algorithm" | "latency" | "missing" | null = null, sharedEpoch = false, latency = 0, clock?: () => number, watchSlackMs?: number) {
+function workletFixture(initialOdd = false, abiVersion: number | null = 1, capability: "count" | "algorithm" | "latency" | "missing" | null = null, sharedEpoch = false, latency = 0, clock?: () => number, watchSlackMs?: number, monitoring = false) {
   let Constructor: (new (options: unknown) => Processor) | undefined;
   const header = new Int32Array(new SharedArrayBuffer(8 * 4));
   const tags = new Int32Array(new SharedArrayBuffer(256 * 5 * 4));
@@ -48,6 +48,11 @@ function workletFixture(initialOdd = false, abiVersion: number | null = 1, capab
   };
   const applyGo = () => { gain = new Float64Array(memory.buffer, 2560, 81).at(3) ?? 0; return 1; };
   const kernel = {
+    ...(monitoring ? {
+      aurialis_set_monitor_mode: vi.fn(() => 1),
+      aurialis_monitor_buffer: vi.fn((channel: number) => 12288 + channel * 512),
+      aurialis_monitor_process: vi.fn(() => 128),
+    } : {}),
     aurialis_schedule_abi: vi.fn(() => 1),
     aurialis_schedule_source_buffer: vi.fn(() => 4096), aurialis_schedule_move_buffer: vi.fn(() => 8192),
     aurialis_schedule_bind_source: vi.fn(() => 1),
@@ -591,6 +596,25 @@ describe("direct Go worklet lifecycle", () => {
       const faulted = f.processor.port.postMessage.mock.calls.some(([message]) => (message as { message?: string }).message === FAULT);
       expect(faulted, race ? "seek race" : "overrun").toBe(!race);
     }
+  });
+  it("passes latency-aligned A/B and meter pairs through the separate Go listening stage", () => {
+    const f = workletFixture(false, 2, null, false, 64, undefined, undefined, true);
+    f.message({ type: "monitor-mode", value: 2 });
+    expect(f.kernel.aurialis_set_monitor_mode).toHaveBeenLastCalledWith(2);
+    f.message({ type: "reset", generation: 1 });
+    for (let block = 0; block < 12; block++) f.render(.25, .5);
+    const pair = (channel: number) => new Float32Array(f.memory.buffer, 12288 + channel * 512, 128);
+    expect(pair(0).every((value) => value === .5)).toBe(true);
+    expect(pair(1).every((value) => value === 1)).toBe(true);
+    expect(pair(2)).toEqual(pair(0)); expect(pair(3)).toEqual(pair(1));
+    // A sentinel from the Go stage must reach the speakers; this is protocol proof, not a DSP model.
+    f.kernel.aurialis_monitor_process?.mockImplementation(() => { pair(2).fill(.125); pair(3).fill(-.125); return 128; });
+    const out = f.render(.25, .5);
+    expect(out[0]?.every((value) => value === .125)).toBe(true); expect(out[1]?.every((value) => value === -.125)).toBe(true);
+    f.message({ type: "original", value: true });
+    for (let block = 0; block < 12; block++) f.render(.25, .5);
+    expect(pair(0).every((value) => Math.abs(value - .25) < 1e-7)).toBe(true);
+    expect(pair(1).every((value) => Math.abs(value - .5) < 1e-7)).toBe(true);
   });
   it("applies one static attenuate-only match gain to A or B, ramped once, without changing crest or contrast (V1-11)", () => {
     const f = workletFixture();

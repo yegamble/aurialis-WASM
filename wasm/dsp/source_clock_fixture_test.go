@@ -30,39 +30,42 @@ func TestWriteSourceClockParityFixture(t *testing.T) {
 		t.Skip("set source-clock parity artifact path")
 	}
 	fixtures := []sourceEpochParityFixture{}
-	for _, rates := range []struct{ source, device int }{{44100, 48000}, {48000, 44100}, {8001, 44100}, {48000, 192000}} {
-		for _, frames := range []int64{1, 127, 129, 48001} {
-			source := sourceBinding{rate: rates.source, frames: frames}
-			params := staticEpochParams()
-			schedule := epochSchedule(t, source, rates.device, params)
-			const count = 4096
-			left, right := epochInputs(0, count)
-			staticFrames := 128
-			if frames == 129 {
-				staticFrames = 384
-			}
-			item := sourceEpochParityFixture{Rate: rates.device, SourceRate: rates.source, Frames: frames, Seek: frames / 3, Looping: true, StaticFrames: staticFrames, StageAt: 128, DetachAt: 1024, ReapplyAt: 1536, Params: params, Moves: schedule.NumericMoves(), Left: left, Right: right, OutputLeft: make([]float32, count), OutputRight: make([]float32, count)}
-			// The independent oracle uses direct rational arithmetic, not a bridge/cursor.
-			engine := dsp.NewEngine(float64(rates.device))
-			engine.SetParams(params)
-			engine.Reset()
-			var gain [128]float64
-			for start := 0; start < count; start += 128 {
-				automated := start >= staticFrames && (start < item.DetachAt || start >= item.ReapplyAt)
-				end := start + 128
-				if automated {
-					for i := range gain {
-						phase := (item.Seek*int64(rates.device) + int64(start+i)*int64(rates.source)) % (frames * int64(rates.device))
-						gain[i] = schedule.ValueAt(automation.InputGain, float64(phase)/float64(rates.device))
-					}
-					if !engine.ProcessAutomationBlock(left[start:end], right[start:end], item.OutputLeft[start:end], item.OutputRight[start:end], gain[:], nil) {
-						t.Fatal("oracle rejected")
-					}
-				} else {
-					engine.ProcessBlock(left[start:end], right[start:end], item.OutputLeft[start:end], item.OutputRight[start:end])
+	for _, algorithm := range []uint32{dsp.LegacyAlgorithmVersion, dsp.OversampledAlgorithmVersion} {
+		for _, rates := range []struct{ source, device int }{{44100, 48000}, {48000, 44100}, {8001, 44100}, {48000, 192000}} {
+			for _, frames := range []int64{1, 127, 129, 48001} {
+				source := sourceBinding{rate: rates.source, frames: frames}
+				params := staticEpochParams()
+				params.AlgorithmVersion = algorithm
+				schedule := epochSchedule(t, source, rates.device, params)
+				const count = 4096
+				left, right := epochInputs(0, count)
+				staticFrames := 128
+				if frames == 129 {
+					staticFrames = 384
 				}
+				item := sourceEpochParityFixture{Rate: rates.device, SourceRate: rates.source, Frames: frames, Seek: frames / 3, Looping: true, StaticFrames: staticFrames, StageAt: 128, DetachAt: 1024, ReapplyAt: 1536, Params: params, Moves: schedule.NumericMoves(), Left: left, Right: right, OutputLeft: make([]float32, count), OutputRight: make([]float32, count)}
+				// The independent oracle uses direct rational arithmetic, not a bridge/cursor.
+				engine := dsp.NewEngine(float64(rates.device))
+				engine.SetParams(params)
+				engine.Reset()
+				var gain [128]float64
+				for start := 0; start < count; start += 128 {
+					automated := start >= staticFrames && (start < item.DetachAt || start >= item.ReapplyAt)
+					end := start + 128
+					if automated {
+						for i := range gain {
+							phase := (item.Seek*int64(rates.device) + int64(start+i)*int64(rates.source)) % (frames * int64(rates.device))
+							gain[i] = schedule.ValueAt(automation.InputGain, float64(phase)/float64(rates.device))
+						}
+						if !engine.ProcessAutomationBlock(left[start:end], right[start:end], item.OutputLeft[start:end], item.OutputRight[start:end], gain[:], nil) {
+							t.Fatal("oracle rejected")
+						}
+					} else {
+						engine.ProcessBlock(left[start:end], right[start:end], item.OutputLeft[start:end], item.OutputRight[start:end])
+					}
+				}
+				fixtures = append(fixtures, item)
 			}
-			fixtures = append(fixtures, item)
 		}
 	}
 	data, err := json.Marshal(fixtures)

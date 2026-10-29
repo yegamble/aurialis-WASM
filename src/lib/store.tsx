@@ -207,7 +207,7 @@ export function reduceStoreState(
             ...next,
             shortcutUndo: directionChanged ? {} : track.shortcutUndo ?? {},
             simpleCustom: directionChanged ? false : track.simpleCustom ?? true,
-            advanced: directionChanged ? { ...mapped, limiter: { ...mapped.limiter, ...limiterTarget } } : { ...track.advanced, limiter: { ...track.advanced.limiter, ...limiterTarget } },
+            advanced: directionChanged ? { ...mapped, ...(track.advanced.renderQuality !== undefined ? { renderQuality: track.advanced.renderQuality } : {}), limiter: { ...mapped.limiter, ...limiterTarget } } : { ...track.advanced, limiter: { ...track.advanced.limiter, ...limiterTarget } },
             updatedAt: new Date().toISOString(),
           };
         }),
@@ -376,7 +376,7 @@ export function reduceStoreState(
           ...track,
           simpleCustom: true,
           shortcutUndo: {},
-          advanced: clampAdvancedToSampleRate(createDefaultAdvancedParams(), track.sampleRate),
+          advanced: clampAdvancedToSampleRate({ ...createDefaultAdvancedParams(), ...(track.advanced.renderQuality !== undefined ? { renderQuality: track.advanced.renderQuality } : {}) }, track.sampleRate),
           updatedAt: new Date().toISOString(),
         })),
       };
@@ -484,10 +484,16 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
   if (!Array.isArray(candidate.tracks)) return null;
   const tracks: Track[] = candidate.tracks.filter((track) => track.source !== "demo").map((track) => {
     const baseAdv = createDefaultAdvancedParams(track.advanced);
+    const renderQuality: unknown = track.advanced?.renderQuality;
+    const advancedSeed = { ...track.advanced }; delete advancedSeed.renderQuality;
     const storedBands: unknown = track.advanced?.eqBands;
     const restored: Track & { script?: unknown } = { ...normalizeSourceMetadata(track), advanced: createDefaultAdvancedParams() };
     delete restored.script;
     delete restored.releaseScore;
+    if (renderQuality !== undefined && renderQuality !== "classic" && renderQuality !== "oversampled") {
+      restored.status = "ready";
+      restored.importNotice = "An unsupported render quality was removed. This project uses Classic until you explicitly choose another quality.";
+    }
     if (track.advanced?.repair?.enabled) {
       restored.status = "ready";
       restored.importNotice = "An older audio repair setting was removed because repair is unavailable. Your other processing settings are preserved.";
@@ -506,7 +512,8 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
       mode: track.mode,
       advanced: clampAdvancedToSampleRate({
         ...baseAdv,
-        ...track.advanced,
+        ...advancedSeed,
+        ...(renderQuality === "classic" || renderQuality === "oversampled" ? { renderQuality } : {}),
         eqBands:
           Array.isArray(storedBands) && storedBands.length === 5
             ? (storedBands as Track["advanced"]["eqBands"])

@@ -30,7 +30,7 @@ export function useDeepPlayback(track: Track | undefined, live: RefObject<LivePl
     try {
       const accepted = await player.applyScript(script, controller.signal, canCommit);
       controller.signal.throwIfAborted(); if (!canCommit()) throw new DOMException("The source or pending settings changed.", "AbortError");
-      dispatch({ type: "COMMIT_DEEP_APPLIED", id: current.id, expectedSourceRevision: sourceRevision, expectedAudioKey: key, expectedAppliedRevision: previous, expectedAdvanced: advanced, script: accepted, advanced: automatic ? advanced : advancedFromScript(accepted), before: deepSettingsSnapshot(current) });
+      dispatch({ type: "COMMIT_DEEP_APPLIED", id: current.id, expectedSourceRevision: sourceRevision, expectedAudioKey: key, expectedAppliedRevision: previous, expectedAdvanced: advanced, script: accepted, advanced: automatic ? advanced : { ...advancedFromScript(accepted), ...(advanced.renderQuality !== undefined ? { renderQuality: advanced.renderQuality } : {}) }, before: deepSettingsSnapshot(current) });
       retryRequest.current = null;
       setMessage("Applied revision " + String(accepted.revision) + " acknowledged. Live playback and export use this complete snapshot.");
     } catch (cause) {
@@ -58,7 +58,7 @@ export function useDeepPlayback(track: Track | undefined, live: RefObject<LivePl
     const current = latest.current.tracks.find((item) => item.id === id), player = live.current;
     const deep = current?.deepMastering; if (!current || !deep?.applied || !deep.before || !player) return;
     pending.current?.abort(); const controller = new AbortController(); pending.current = controller; const ticket = ++generation.current;
-    const snapshot = revert ? deep.before : { ...deepSettingsSnapshot(current), advanced: advancedFromScript(deep.applied), shortcutUndo: {} };
+    const snapshot = revert ? deep.before : { ...deepSettingsSnapshot(current), advanced: { ...advancedFromScript(deep.applied), ...(current.advanced.renderQuality !== undefined ? { renderQuality: current.advanced.renderQuality } : {}) }, shortcutUndo: {} };
     const applied = deep.applied;
     const revision = applied.revision, sourceRevision = current.sourceRevision ?? 0, key = audioKey(current), advanced = current.advanced;
     function canCommit() { const active = latest.current.tracks.find((item) => item.id === id); return generation.current === ticket && !controller.signal.aborted && live.current === player && !!active && deepSourceMatches(active, applied, sourceRevision) && audioKey(active) === key && active.advanced === advanced && active.deepMastering?.applied?.revision === revision; }
@@ -72,5 +72,5 @@ export function useDeepPlayback(track: Track | undefined, live: RefObject<LivePl
     } catch (cause) { if (pending.current === controller && !controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Could not restore static processing."); }
     finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
   }
-  return { apply, busy, message, error, retry: () => { const request = retryRequest.current; if (request) void apply(request.script, request.automatic).catch(() => undefined); else setRetry((value) => value + 1); }, revert: () => { void detach(true); }, detach: () => { void detach(false); }, cancel: () => { generation.current++; pending.current?.abort(); pending.current = null; setBusy(false); setMessage("Processing publication canceled. The previous applied revision remains selected."); }, restoreAppliedSettings: () => { const current = latest.current.tracks.find((item) => item.id === id); if (current?.deepMastering?.applied) dispatch({ type: "UPDATE_TRACK", id: current.id, patch: { advanced: advancedFromScript(current.deepMastering.applied) } }); } };
+  return { apply, busy, message, error, retry: () => { const request = retryRequest.current; if (request) void apply(request.script, request.automatic).catch(() => undefined); else setRetry((value) => value + 1); }, revert: () => { void detach(true); }, detach: () => { void detach(false); }, cancel: () => { generation.current++; pending.current?.abort(); pending.current = null; setBusy(false); setMessage("Processing publication canceled. The previous applied revision remains selected."); }, restoreAppliedSettings: () => { const current = latest.current.tracks.find((item) => item.id === id); if (current?.deepMastering?.applied) dispatch({ type: "UPDATE_TRACK", id: current.id, patch: { advanced: { ...advancedFromScript(current.deepMastering.applied), ...(current.advanced.renderQuality !== undefined ? { renderQuality: current.advanced.renderQuality } : {}) } } }); } };
 }

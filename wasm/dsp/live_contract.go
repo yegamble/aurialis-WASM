@@ -31,7 +31,7 @@ func liveAlgorithmSupported(version uint32) uint32 {
 }
 
 func liveAlgorithm(value float64) bool {
-	return value == float64(dsp.LegacyAlgorithmVersion) || value == float64(dsp.TruePeakAlgorithmVersion)
+	return value == float64(dsp.LegacyAlgorithmVersion) || value == float64(dsp.TruePeakAlgorithmVersion) || value == float64(dsp.OversampledAlgorithmVersion)
 }
 
 func (v *liveVersionedControlVector) apply(bridge *Bridge, count uint32) uint32 {

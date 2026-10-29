@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { clampAdvancedToSampleRate, createDefaultAdvancedParams } from "../audio-dsp";
 import { engineParams } from "../browser-engine";
-import { analyzeDeep, appliedRevisionKey, automationTargets, compileScript, readDeepMasteringState, readScriptV2, type DeepMasteringState, type ScriptV2, type TargetMetadata } from "../deep-mastering";
+import { advancedFromScript, analyzeDeep, appliedRevisionKey, automationTargets, compileScript, readDeepMasteringState, readScriptV2, type DeepMasteringState, type ScriptV2, type TargetMetadata } from "../deep-mastering";
 import { normalizeHydratedState, reduceStoreState } from "../store";
 import { testStore } from "./fixtures";
 
@@ -16,6 +16,15 @@ const queued = { jobId: "deep-job-1", kind: "analyze_deep_v2", status: "queued",
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("source-bound Deep DTO and jobs", () => {
+  it.each([0, 1, 2, 3])("reads authored algorithm %s without enabling the retired UI true-peak switch", (algorithmVersion) => {
+    const original = script(), modern = algorithmVersion >= 2;
+    const authored = { ...original, chainParams: { ...original.chainParams, algorithmVersion, limiter: { ...original.chainParams.limiter, enabled: true, truePeak: modern } } };
+    const parsed = readScriptV2(authored, identity);
+    expect(parsed.chainParams.algorithmVersion).toBe(algorithmVersion);
+    expect(advancedFromScript(parsed).limiter.truePeak).toBe(false);
+    expect(() => engineParams(advancedFromScript(parsed))).not.toThrow();
+    if (!modern) expect(() => readScriptV2({ ...authored, chainParams: { ...authored.chainParams, limiter: { ...authored.chainParams.limiter, truePeak: true } } })).toThrow();
+  });
   it("keeps exported status for an unapplied draft but invalidates applied and detached audio", () => {
     const original = testStore.tracks[0]; if (!original) throw new Error("Missing source");
     const track = { ...original, status: "mastered" as const, sourceIdentity: identity, sourceRevision: 0, deepMastering: state() };
@@ -74,12 +83,12 @@ describe("source-bound Deep DTO and jobs", () => {
     expect(appliedRevisionKey({ ...track, deepMastering: { ...track.deepMastering, applied: { ...script(), revision: 2 } } })).not.toBe(key);
     expect(appliedRevisionKey(original)).toBeNull();
   });
-  it("receives and deletes an admitted ScriptV2 job after cancellation", async () => {
+  it.each([undefined, "classic", "oversampled"] as const)("receives and deletes an admitted ScriptV2 job after cancellation (quality=%s)", async (quality) => {
     let accept: ((response: Response) => void) | undefined;
     const fetch = vi.fn().mockReturnValueOnce(new Promise<Response>((resolve) => { accept = resolve; })).mockResolvedValueOnce(json({})); vi.stubGlobal("fetch", fetch);
-    const controller = new AbortController(); const pending = analyzeDeep(new Blob(["canonical"]), "Warm Analog", identity, controller.signal, vi.fn()); controller.abort(); accept?.(json(queued, 202));
+    const controller = new AbortController(); const pending = analyzeDeep(new Blob(["canonical"]), "Warm Analog", identity, controller.signal, vi.fn(), quality); controller.abort(); accept?.(json(queued, 202));
     await expect(pending).rejects.toMatchObject({ name: "AbortError" }); expect(fetch.mock.calls[1]?.[0]).toBe("/api/jobs/deep-job-1"); expect(fetch.mock.calls[1]?.[1]).toMatchObject({ method: "DELETE" });
-    const body = (fetch.mock.calls[0]?.[1] as { body: FormData }).body; expect(body.get("scriptVersion")).toBe("2.0"); expect(body.get("profile")).toBe("Warm Analog");
+    const body = (fetch.mock.calls[0]?.[1] as { body: FormData }).body; expect(body.get("scriptVersion")).toBe("2.0"); expect(body.get("profile")).toBe("Warm Analog"); expect(body.get("renderQuality")).toBe(quality ?? null);
   });
   it("rejects a completed proposal without its export prediction", async () => {
     for (const prediction of [undefined, {}, { afterMetrics: { integratedLufs: -14 } }, { afterMetrics: script().beforeMetrics }, { afterMetrics: script().beforeMetrics, levelMatch: { gainDb: 1, neededDb: 1, limiterCapped: false }, compressorAverageGainReductionDb: 1.5, limiterPeakGainReductionDb: "0" }]) {

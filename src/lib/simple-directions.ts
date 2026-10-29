@@ -58,7 +58,7 @@ export function prepareSimpleChange(track: Track, patch: SimplePatch): SimpleCha
   const changed = patch.genre !== undefined || patch.tone !== undefined || patch.intensity !== undefined || patch.style !== undefined || patch.depth !== undefined || patch.presence !== undefined;
   const target = patch.target === undefined ? track.advanced.limiter : masteringTargets.find((item) => item.name === patch.target) ?? track.advanced.limiter;
   const base = changed ? composeSimpleDirection(direction) : track.advanced;
-  const advanced = clampAdvancedToSampleRate({ ...base, input: track.advanced.input,
+  const advanced = clampAdvancedToSampleRate({ ...base, ...(track.advanced.renderQuality !== undefined ? { renderQuality: track.advanced.renderQuality } : {}), input: track.advanced.input,
     limiter: { ...base.limiter, targetLufs: target.targetLufs, ceiling: target.ceiling },
   }, track.sampleRate);
   return { genre, tone, intensity, target: patch.target ?? track.target, advanced,

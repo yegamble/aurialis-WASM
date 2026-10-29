@@ -42,8 +42,8 @@ type liveBlockBridge struct {
 	metered         [2][liveBlockFrames]float32
 }
 
-// liveTailFrames bounds the drained lookahead (the v2 latency is at most 334
-// frames at 192 kHz).
+// liveTailFrames bounds the drained pipeline (v2 has at most 334 frames;
+// algorithm 3 adds 64 FIR frames, totaling 398 at 192 kHz).
 const liveTailFrames = 512
 
 func (b *liveBlockBridge) buffer(channel uint32) *[liveBlockFrames]float32 {

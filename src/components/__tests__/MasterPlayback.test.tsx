@@ -89,6 +89,16 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstub
 const audioRequests = () => vi.mocked(fetch).mock.calls.filter(([input]) => input !== "/api/stems/model");
 
 describe("master live playback lifecycle", () => {
+  it("saves an explicit render quality, pauses the previous graph and exports that quality", async () => {
+    const { delivery } = heldAudition(); mount(); await ready();
+    fireEvent.click(screen.getByRole("button", { name: "Play" })); const previous = latest();
+    fireEvent.click(screen.getByRole("button", { name: "Oversampled" }));
+    await waitFor(() => { expect(savedTrack().advanced.renderQuality).toBe("oversampled"); expect(instances).toHaveLength(2); });
+    expect(previous.controller.dispose).toHaveBeenCalledOnce(); expect(latest().state.playing).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Export" })); fireEvent.click(screen.getByRole("button", { name: "Render & download WAV" }));
+    await waitFor(() => { expect(delivery).toHaveBeenCalled(); });
+    expect(delivery.mock.calls[0]?.[1]).toMatchObject({ params: { algorithmVersion: 3 } });
+  }, 30000);
   it("restores the mastered delivery selection and rejects an old render after changing it", async () => {
     const { delivery } = heldAudition();
     const view = mount(); await ready();

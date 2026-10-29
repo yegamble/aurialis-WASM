@@ -17,7 +17,10 @@ async function build(page: Page): Promise<Buffer> {
   return download(page, "Download continuous WAV");
 }
 
-test("continuous album preserves masters, inserts silence, mixes linear edges and cancels pending work", async ({ page }) => {
+export function registerAlbumTransitionCase(execution: "native" | "browser") {
+test("continuous album preserves masters, inserts silence, mixes linear edges and cancels pending work", async ({ page, context }, info) => {
+  const requests: { method: string; url: string; bytes: number }[] = [];
+  if (execution === "browser") context.on("request", (request) => { requests.push({ method: request.method(), url: request.url(), bytes: request.postDataBuffer()?.length ?? 0 }); });
   test.setTimeout(180_000);
   const firstId = await uploadProject(page, "sequence-first.wav", 1, fixture(330, 1));
   await uploadProject(page, "sequence-second.wav", 1, fixture(550, 1));
@@ -92,4 +95,11 @@ test("continuous album preserves masters, inserts silence, mixes linear edges an
   const refreshed = decode(await build(page));
   expect(refreshed.rate).toBe(one.rate);
   expect(refreshed.left).toHaveLength(one.left.length + two.left.length - frames);
+  if (execution === "browser") {
+    expect(requests.filter((request) => !["GET", "HEAD"].includes(request.method) || request.bytes > 0)).toEqual([]);
+    const origin = new URL(page.url()).origin;
+    expect(requests.every((request) => new URL(request.url).origin === origin)).toBe(true);
+    await info.attach("private-album-quality-network", { body: JSON.stringify(requests), contentType: "application/json" });
+  }
 });
+}

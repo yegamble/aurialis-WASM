@@ -1,1 +1,2 @@
-import "../e2e/album-transition-cases";
+import { registerAlbumTransitionCase } from "../e2e/album-transition-cases";
+registerAlbumTransitionCase("browser");

@@ -74,4 +74,25 @@ describe("continuous album ownership", () => {
     expect(memory.dispose).toHaveBeenCalledOnce(); expect(revoke).toHaveBeenCalledWith("blob:continuous");
     expect(screen.queryByLabelText("Continuous album preview")).toBeNull();
   });
+  it("releases admission on failure without exposing an over-budget WAV", async () => {
+    const memory = { update: vi.fn((bytes: number) => { if (bytes > input.size) throw new Error("Controlled browser memory budget"); }), dispose: vi.fn() };
+    vi.spyOn(jobs, "reserveBrowserAudioMemory").mockReturnValue(memory);
+    mount(); fireEvent.click(screen.getByRole("button", { name: "Build continuous WAV" }));
+    await screen.findByText("Controlled browser memory budget");
+    expect(memory.dispose).toHaveBeenCalledOnce(); expect(create).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Continuous album preview")).toBeNull();
+  });
+  it("aborts on unmount but keeps pending work charged until it settles", async () => {
+    const memory = { update: vi.fn(), dispose: vi.fn() };
+    vi.spyOn(jobs, "reserveBrowserAudioMemory").mockReturnValue(memory);
+    let resolve: ((blob: Blob) => void) | undefined;
+    vi.mocked(assembly.assembleAlbumSequence).mockImplementation((_blobs, _transition, _signal, admit) => { admit(1024); return new Promise<Blob>((done) => { resolve = done; }); });
+    const view = mount(); fireEvent.click(screen.getByRole("button", { name: "Build continuous WAV" }));
+    await waitFor(() => { expect(memory.update).toHaveBeenCalledWith(1024); });
+    const signal = vi.mocked(assembly.assembleAlbumSequence).mock.calls[0]?.[2];
+    view.unmount(); expect(signal?.aborted).toBe(true); expect(memory.dispose).not.toHaveBeenCalled();
+    await act(async () => { resolve?.(output); await Promise.resolve(); });
+    expect(memory.dispose).toHaveBeenCalledOnce(); expect(create).not.toHaveBeenCalled();
+  });
+
 });

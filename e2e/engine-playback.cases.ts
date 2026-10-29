@@ -70,7 +70,7 @@ test("engine qualification: closing Export cancels the active native request or 
     const dialog = page.getByRole("dialog"); await dialog.getByRole("button", { name: "Render & download WAV", exact: true }).click();
     const request = await seen;
     const stopped = browserBuild ? null : context.waitForEvent("requestfailed", (candidate) => candidate === request);
-    await dialog.getByRole("button", { name: /^Close(?: dialog)?$/ }).click();
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
     if (stopped) await stopped;
     if (browserBuild) await expect.poll(() => page.evaluate(() => (window as Window & { qaCancelWorkers?: number }).qaCancelWorkers)).toBe(0);
     await expect(dialog).toBeHidden(); await expect(page).toHaveURL(new RegExp(`/master/${id}$`));

@@ -3,35 +3,47 @@ import { OVERLOAD_MESSAGE } from "../src/lib/live-overload";
 import { uploadProject } from "./workflow-fixture";
 
 // V1-10 Round 4 (QA Round E 3 cases): the overload message must follow real
-// device underruns. A test-only patch of the real worklet (loaded from a blob
-// URL, hence bypassCSP; the app's own CSP is unchanged) spins Date.now for a
+// device underruns. A test-only same-origin response patch of the real worklet
+// spins Date.now for a
 // fixed time at a chosen point of every Nth quantum. Nothing else is replaced.
-test.use({ bypassCSP: true });
 const LOOP_SECONDS = 8;
 const WRITE = "Atomics.store(this.header, WRITE, sequence);";
 const KERNEL = "if (this.kernel.aurialis_live_process() !== QUANTUM)\n        throw new Error(\"The live audio engine rejected an audio block.\");";
 const AFTER = "this.refreshBuffers();\n      if (this.generation !== Atomics.load(this.header, GENERATION)) {";
+const instrumentedPages = new WeakSet<Page>();
+type HitchWindow = Window & { qaHitch?: { armed: boolean; count: number; quantum: number; waitMs: number; everyQuanta: number } };
 type Where = "before" | "inside" | "after";
 
 /** Spin `waitMs` every `everyQuanta` quanta; with `skipEvery`, leave out every
  * skipEvery-th of those stalls (60/60/0 ms is skipEvery 3). */
 async function hitch(page: Page, waitMs: number, everyQuanta: number, where: Where, skipEvery = 0, onlyOnce = false): Promise<void> {
-  const burn = `let qaN = 0; function qaBurn() { if (++qaN % ${String(everyQuanta)} === 0 && (!${String(onlyOnce)} || qaN === ${String(everyQuanta)}) && (${String(skipEvery)} === 0 || (qaN / ${String(everyQuanta)}) % ${String(skipEvery)} !== 0)) { const s = Date.now(); while (Date.now() - s < ${String(waitMs)}) {} } }`;
-  const replace: [string, string] = where === "before" ? [WRITE, `${WRITE} qaBurn();`]
-    : where === "inside" ? [KERNEL, `${KERNEL}\n      qaBurn();`] : [AFTER, `qaBurn(); ${AFTER}`];
-  await page.addInitScript(({ burn, replace }) => {
-    const nativeAddModule = AudioWorklet.prototype.addModule;
-    AudioWorklet.prototype.addModule = async function (this: AudioWorklet, url: string | URL, options?: WorkletOptions) {
-      const href = new URL(url, location.href);
-      if (!href.pathname.endsWith("/worklets/aurialis-live-worklet.js")) return nativeAddModule.call(this, url, options);
-      const host = "from \"./aurialis-wasi-host.js\"";
-      let source = (await (await fetch(href)).text()).replace(host, `from "${new URL("./aurialis-wasi-host.js", href).href}"`);
-      if (!source.includes(replace[0]) || !source.includes("const QUANTUM = 128;")) throw new Error("The worklet changed; update the hitch patch.");
-      source = source.replace(replace[0], replace[1]).replace("const QUANTUM = 128;", `const QUANTUM = 128;${burn}`);
-      const blob = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
-      try { await nativeAddModule.call(this, blob, options); } finally { URL.revokeObjectURL(blob); }
+  instrumentedPages.add(page);
+  await page.addInitScript(() => {
+    const Native = AudioWorkletNode;
+    window.AudioWorkletNode = class extends Native {
+      constructor(context: BaseAudioContext, name: string, options?: AudioWorkletNodeOptions) {
+        super(context, name, options);
+        if (name === "aurialis-live") this.port.addEventListener("message", (event: MessageEvent<{ type: string; count: number; quantum: number; waitMs: number; everyQuanta: number }>) => {
+          const data = event.data, scope = window as HitchWindow;
+          if (data.type === "qa-hitch-armed") scope.qaHitch = { armed: true, count: 0, quantum: 0, waitMs: data.waitMs, everyQuanta: data.everyQuanta };
+          else if (data.type === "qa-hitch" && scope.qaHitch) scope.qaHitch = { ...scope.qaHitch, count: data.count, quantum: data.quantum };
+        });
+      }
     };
-  }, { burn, replace });
+  });
+  const burn = `let qaN = 0, qaHitches = 0; function qaBurn(processor) { if (++qaN % ${String(everyQuanta)} === 0 && (!${String(onlyOnce)} || qaN === ${String(everyQuanta)}) && (${String(skipEvery)} === 0 || (qaN / ${String(everyQuanta)}) % ${String(skipEvery)} !== 0)) { const s = Date.now(); while (Date.now() - s < ${String(waitMs)}) {} processor.port.postMessage({type:"qa-hitch",count:++qaHitches,quantum:qaN}); } }`;
+  const replace: [string, string] = where === "before" ? [WRITE, `${WRITE} qaBurn(this);`]
+    : where === "inside" ? [KERNEL, `${KERNEL}\n      qaBurn(this);`] : [AFTER, `qaBurn(this); ${AFTER}`];
+  await page.route((url) => url.pathname === "/worklets/aurialis-live-worklet.js", async (route) => {
+    const response = await route.fetch();
+    let source = await response.text();
+    if (!source.includes(replace[0]) || !source.includes("const QUANTUM = 128;")) throw new Error("The worklet changed; update the hitch patch.");
+    const ready = 'this.port.postMessage({ type: "ready" });';
+    if (!source.includes(ready)) throw new Error("The worklet changed; update the hitch arm observer.");
+    source = source.replace(replace[0], replace[1]).replace("const QUANTUM = 128;", `const QUANTUM = 128;${burn}`)
+      .replace(ready, `${ready} this.port.postMessage({type:"qa-hitch-armed",waitMs:${String(waitMs)},everyQuanta:${String(everyQuanta)}});`);
+    await route.fulfill({ response, body: source });
+  });
 }
 
 /** A browser without playbackStats: the worklet's fallback slack rule decides. */
@@ -49,7 +61,13 @@ async function play(page: Page, name: string): Promise<number> {
   await page.getByRole("button", { name: "Repeat track", exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
+  if (instrumentedPages.has(page)) await expect.poll(() => page.evaluate(() => (window as HitchWindow).qaHitch?.armed)).toBe(true);
   return Date.now();
+}
+
+async function assertHitches(page: Page) {
+  await expect.poll(() => page.evaluate(() => (window as HitchWindow).qaHitch?.count ?? 0)).toBeGreaterThan(0);
+  await test.info().attach("actual-worklet-hitches", { body: JSON.stringify(await page.evaluate(() => (window as HitchWindow).qaHitch)), contentType: "application/json" });
 }
 
 async function keepsPlaying(page: Page, seconds: number): Promise<void> {
@@ -60,6 +78,7 @@ async function keepsPlaying(page: Page, seconds: number): Promise<void> {
   }
   await expect(page.locator(".transport")).toHaveAttribute("data-playing", "true");
   await page.getByRole("button", { name: "Pause", exact: true }).click();
+  if (instrumentedPages.has(page)) await assertHitches(page);
 }
 
 // One slow call a second fits the ~10.6 ms output buffer: Chromium reports no
@@ -104,6 +123,7 @@ test("a 1 s stall every 6 s stops with the can't-keep-up message", async ({ page
   await hitch(page, 1000, 2250, "after");
   const started = await play(page, "sparse-1s-6s.wav");
   await expect(page.getByText(OVERLOAD_MESSAGE, { exact: true })).toBeVisible({ timeout: 40_000 });
+  await assertHitches(page);
   const elapsed = Date.now() - started;
   test.info().annotations.push({ type: "fired-after-ms", description: String(elapsed) });
   console.log(`sparse 1 s every 6 s fired after ${String(elapsed)} ms`);
@@ -122,6 +142,7 @@ for (const [waitMs, every, where, skip] of [[4, 1, "before", 0], [60, 375, "befo
     await hitch(page, waitMs, every, where, skip);
     const started = await play(page, `stall-${String(waitMs)}-${String(every)}-${where}-${String(skip)}.wav`);
     await expect(page.getByText(OVERLOAD_MESSAGE, { exact: true })).toBeVisible({ timeout: 20_000 });
+  await assertHitches(page);
     const elapsed = Date.now() - started;
     await expect(page.locator(".transport")).toHaveAttribute("data-playing", "false");
     await expect(page.getByText(/buffer fault/u)).toHaveCount(0);
@@ -141,6 +162,7 @@ test("without playbackStats, a 60 ms stall once a second still stops playback", 
   await hitch(page, 60, 375, "after");
   await play(page, "fallback-stall.wav");
   await expect(page.getByText(OVERLOAD_MESSAGE, { exact: true })).toBeVisible({ timeout: 20_000 });
+  await assertHitches(page);
 });
 test("without playbackStats, an 8 ms call once a second keeps playing", async ({ page }) => {
   test.setTimeout(120_000);

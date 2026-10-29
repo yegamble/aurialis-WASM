@@ -2,7 +2,7 @@ import { expect, type Page } from "@playwright/test";
 type AcceptedWindow = Window & { qaAcceptedControls?: { version: number; values: number[] } };
 /** Observe only after the real Go kernel accepts the worklet's stable packet. */
 export async function observeAcceptedControls(page: Page): Promise<void> {
-  await page.route("**/worklets/aurialis-live-worklet.js", async (route) => {
+  await page.route((url) => url.pathname === "/worklets/aurialis-live-worklet.js", async (route) => {
     const response = await route.fetch();
     const source = await response.text(), anchor = "this.controlVersion = version;";
     if (source.split(anchor).length !== 2) throw new Error("Update the accepted-control observer for the changed worklet.");

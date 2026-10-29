@@ -16,7 +16,8 @@ func TestMeasureFixedTwentySecondTrainedPipeline(t *testing.T) {
 	if os.Getenv("AURIALIS_STEM_MEASURE_PIPELINE") != "1" {
 		t.Skip("set explicit private full-context measurement opt-in")
 	}
-	const rate, frames, stems = 48000, 480000, 6
+	const rate, seconds, stems = 48000, 20, 6
+	const frames = rate * seconds
 	resources, err := planPipeline(rate, frames, stems, maximumWindowSamples, defaultWorkers())
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +72,7 @@ func TestMeasureFixedTwentySecondTrainedPipeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if observedWindows != 1 || completedWindow != 0 || completedStep != 32 {
+	if observedWindows != 2 || completedWindow != 1 || completedStep != 32 {
 		t.Fatal("wrong actual window graph count", observedWindows, completedWindow, completedStep)
 	}
 	var maximumError float64

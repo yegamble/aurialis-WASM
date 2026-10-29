@@ -81,6 +81,7 @@ func TestWriteOfflineJobParityFixture(t *testing.T) {
 		sum := sha256.Sum256(result.Audio)
 		fixtures = append(fixtures, offlineParityFixture{Request: string(raw), Source: source, AudioSHA256: hex.EncodeToString(sum[:]), Metadata: string(result.Metadata)})
 	}
+	fixtures = append(fixtures, deepEnvelopeParityFixture(t))
 	encoded, err := json.Marshal(fixtures)
 	if err != nil {
 		t.Fatal(err)

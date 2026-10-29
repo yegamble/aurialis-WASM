@@ -536,12 +536,13 @@ func computeBandCoeffs(sampleRate float64, b BandParams) svfCoeffs {
 		a1 := 1.0 / (1.0 + g*(g+k))
 		a2 := g * a1
 		a3 := g * a2
+		// Round the squared gain before subtraction, as WASM does.
 		return svfCoeffs{
 			a1:     a1,
 			a2:     a2,
 			a3:     a3,
 			m0:     1.0,
-			m1:     k * (amp*amp - 1.0),
+			m1:     k * (float64(amp*amp) - 1.0),
 			m2:     0.0,
 			active: true,
 		}
@@ -947,6 +948,13 @@ func (e *Engine) processRepairSample(l, r float64) (float64, float64) {
 	return l, r
 }
 
+// roundedEnvelopeBlend rounds each envelope step consistently in native and WASM.
+// Explicit conversions round each product before the sum, preventing ARM FMA
+// contraction from changing a downstream float32 export sample.
+func roundedEnvelopeBlend(coefficient, previous, target float64) float64 {
+	return float64(coefficient*previous) + float64((1-coefficient)*target)
+}
+
 func (e *Engine) processCompressorSample(l, r float64) (float64, float64) {
 	c := &e.params.Compressor
 	scL := l
@@ -962,9 +970,9 @@ func (e *Engine) processCompressorSample(l, r float64) (float64, float64) {
 	// The topology model picks the detector and any program-dependent release.
 	targetGRDB, relCoeff := e.compModel.target(scL, scR, c, &e.stages.compModel, e.stages.compRelease, e.compEnvDB)
 	if targetGRDB > e.compEnvDB {
-		e.compEnvDB = e.stages.compAttack*e.compEnvDB + (1.0-e.stages.compAttack)*targetGRDB
+		e.compEnvDB = roundedEnvelopeBlend(e.stages.compAttack, e.compEnvDB, targetGRDB)
 	} else {
-		e.compEnvDB = relCoeff*e.compEnvDB + (1.0-relCoeff)*targetGRDB
+		e.compEnvDB = roundedEnvelopeBlend(relCoeff, e.compEnvDB, targetGRDB)
 	}
 	grDB := e.compEnvDB
 	if c.Topology == CompOptical {

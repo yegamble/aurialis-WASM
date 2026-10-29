@@ -154,6 +154,27 @@ jobs:
         timeout-minutes: 3
         run: python3 wasm/dsp/verify_meters.py
 
+  parser-fuzz-smoke:
+    name: Bounded WAV, AIFF & Compressed Parser Fuzzing
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      GOMAXPROCS: "2"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/setup-go
+        with:
+          role: parser-fuzz
+      - name: Fuzz WAV parser with one bounded worker
+        timeout-minutes: 2
+        run: go test ./internal/audio -run '^$' -fuzz '^FuzzWAVDecode$' -fuzztime=10s -parallel=1
+      - name: Fuzz AIFF parser with one bounded worker
+        timeout-minutes: 2
+        run: go test ./internal/audio -run '^$' -fuzz '^FuzzAIFFDecode$' -fuzztime=10s -parallel=1
+      - name: Fuzz FLAC and MP3 CDR parsers with one bounded worker
+        timeout-minutes: 2
+        run: go test ./internal/audio -run '^$' -fuzz '^FuzzCompressedDecode$' -fuzztime=10s -parallel=1
+
   frontend-quality:
     outputs:
       artifact-name: ${{ steps.build-identity.outputs.name }}
@@ -314,7 +335,7 @@ jobs:
   go-wasm:
     name: Go 1.26 & WASM Quality Gate
     if: always()
-    needs: [go-static-quality, go-race-meters, wasm-parity]
+    needs: [go-static-quality, go-race-meters, wasm-parity, parser-fuzz-smoke]
     runs-on: ubuntu-latest
     steps:
       - name: Require static, race, meter and actual compiled parity
@@ -322,7 +343,8 @@ jobs:
           STATIC_RESULT: ${{ needs.go-static-quality.result }}
           RACE_RESULT: ${{ needs.go-race-meters.result }}
           WASM_RESULT: ${{ needs.wasm-parity.result }}
-        run: test "$STATIC_RESULT" = success && test "$RACE_RESULT" = success && test "$WASM_RESULT" = success
+          FUZZ_RESULT: ${{ needs.parser-fuzz-smoke.result }}
+        run: test "$STATIC_RESULT" = success && test "$RACE_RESULT" = success && test "$WASM_RESULT" = success && test "$FUZZ_RESULT" = success
 
   backend-newman:
     env:

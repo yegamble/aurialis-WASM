@@ -1,10 +1,11 @@
 package steminfer
 
-// cspell:words steminfer ulps sgemm
+// cspell:words steminfer ulps sgemm Roundoff
 
 import (
 	"context"
 	"math"
+	"runtime"
 	"slices"
 	"testing"
 )
@@ -57,16 +58,86 @@ func testRotations(rotary []float32, rows int) []float32 {
 	return rotations
 }
 
-// batchTolerance is the allowed float32 ulp distance between one batched run
-// and the same rows run alone. The portable backend computes every row
-// independently, so it must be bit-exact. Accelerate's sgemm may pick a
-// different kernel for a taller matrix; it is bit-exact at these sizes today,
-// but 1 ulp of drift there would not be a batching bug.
-func batchTolerance() float64 {
-	if matrixBackendName() == "portable-go" {
-		return 0
+// assertBatchMatches preserves the strict ULP contract except on Intel
+// Accelerate, whose SGEMM reduction changes with row count. Its unit-scale
+// fixtures use an independently checked absolute and normalized RMS budget.
+// See TestIntelBatchNumericsDiagnostics: the float64 reference is invariant
+// across grouping and each SGEMM satisfies its forward rounding bound.
+func assertBatchMatches(t *testing.T, label string, got, want []float32) {
+	t.Helper()
+	if runtime.GOOS == "darwin" && runtime.GOARCH == "amd64" && matrixBackendName() == "apple-accelerate" {
+		assertIntelBatchRoundoff(t, label, got, want)
+		return
 	}
-	return 1
+	tolerance := 1.0
+	if matrixBackendName() == "portable-go" {
+		tolerance = 0
+	}
+	assertWithinUlps(t, label, got, want, tolerance)
+}
+
+const float32Precision = 1.0 / (1 << 23)
+
+// intelBatchErrors returns infinities for invalid geometry or nonfinite data.
+// A zero reference requires exact zero output, so relative RMS is well defined.
+func intelBatchErrors(got, want []float32) (maximum, relativeRMS float64) {
+	if len(got) != len(want) || len(want) == 0 {
+		return math.Inf(1), math.Inf(1)
+	}
+	var errorEnergy, signalEnergy float64
+	for i, expected := range want {
+		if !finite32(got[i]) || !finite32(expected) {
+			return math.Inf(1), math.Inf(1)
+		}
+		difference := float64(got[i]) - float64(expected)
+		maximum = math.Max(maximum, math.Abs(difference))
+		errorEnergy += difference * difference
+		signalEnergy += float64(expected) * float64(expected)
+	}
+	if signalEnergy == 0 {
+		if errorEnergy != 0 {
+			return maximum, math.Inf(1)
+		}
+		return maximum, 0
+	}
+	return maximum, math.Sqrt(errorEnergy / signalEnergy)
+}
+
+func assertIntelBatchRoundoff(t *testing.T, label string, got, want []float32) {
+	t.Helper()
+	maximum, relativeRMS := intelBatchErrors(got, want)
+	// Both limits apply: a localized error cannot hide in the RMS, and many
+	// small errors cannot hide below the absolute cap. These are >52x tighter
+	// in absolute error and >40 dB stricter than the full-model quality gate.
+	if maximum > 16*float32Precision || relativeRMS > 8*float32Precision {
+		t.Fatalf("%s: Intel SGEMM maxAbs=%g (limit %g), normalizedRMS=%g (limit %g)", label, maximum, 16*float32Precision, relativeRMS, 8*float32Precision)
+	}
+}
+
+func TestIntelBatchRoundoffBudget(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		got, want []float32
+		accepted  bool
+	}{
+		{"exact zero", []float32{0}, []float32{0}, true},
+		{"small rounding", []float32{1 + 4*float32Precision}, []float32{1}, true},
+		{"absolute cap", []float32{8 + 24*float32Precision}, []float32{8}, false},
+		{"RMS cap", []float32{.125 + 2*float32Precision}, []float32{.125}, false},
+		{"zero reference", []float32{math.SmallestNonzeroFloat32}, []float32{0}, false},
+		{"shape", []float32{0}, []float32{}, false},
+		{"empty", nil, nil, false},
+		{"NaN", []float32{float32(math.NaN())}, []float32{0}, false},
+		{"infinite reference", []float32{0}, []float32{float32(math.Inf(1))}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			maximum, relativeRMS := intelBatchErrors(test.got, test.want)
+			accepted := maximum <= 16*float32Precision && relativeRMS <= 8*float32Precision
+			if accepted != test.accepted {
+				t.Fatalf("accepted=%v want %v: maxAbs=%g normalizedRMS=%g", accepted, test.accepted, maximum, relativeRMS)
+			}
+		})
+	}
 }
 
 // assertWithinUlps fails when got and want differ by more than ulps units of
@@ -113,7 +184,7 @@ func TestBatchedTransformerMatchesSingleSequences(t *testing.T) {
 			if err := single.transformer(context.Background(), rotations, alone, sequence, 1, weights); err != nil {
 				t.Fatal(err)
 			}
-			assertWithinUlps(t, "batched group", batched[group*sequence*modelDimension:(group+1)*sequence*modelDimension], alone, batchTolerance())
+			assertBatchMatches(t, "batched group", batched[group*sequence*modelDimension:(group+1)*sequence*modelDimension], alone)
 		}
 	}
 }
@@ -150,5 +221,5 @@ func TestFrequencyAxisBatchesAndLanesMatchSerial(t *testing.T) {
 	if !slices.Equal(serial, parallel) {
 		t.Fatal("frequency axis differs between one and six lanes")
 	}
-	assertWithinUlps(t, "batched frequency axis", serial, unbatched, batchTolerance())
+	assertBatchMatches(t, "batched frequency axis", serial, unbatched)
 }

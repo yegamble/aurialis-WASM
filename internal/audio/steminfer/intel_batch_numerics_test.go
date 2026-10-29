@@ -7,7 +7,6 @@ package steminfer
 import (
 	"context"
 	"math"
-	"os"
 	"slices"
 	"testing"
 )
@@ -46,6 +45,7 @@ func compareBatchNumerics(t *testing.T, label string, got, want []float32) {
 		metric.add(x, float64(want[i]))
 	}
 	metric.report(t, label)
+	assertIntelBatchRoundoff(t, label, got, want)
 }
 
 // referenceMatrix rounds each independently accumulated float64 dot product
@@ -104,6 +104,9 @@ func measureAppleMatrixShapes(t *testing.T) {
 				referenceRoundoff := float64(shape.inner) * math.Ldexp(1, -53)
 				bound := (gamma + referenceRoundoff/(1-referenceRoundoff)) * magnitude
 				for _, value := range []float32{batched[index], alone[index]} {
+					if !finite32(value) {
+						t.Fatal("nonfinite SGEMM result")
+					}
 					difference := math.Abs(float64(value) - sum)
 					if difference > bound {
 						t.Fatalf("SGEMM exceeds independent forward bound: error%g bound%g", difference, bound)
@@ -213,9 +216,6 @@ func measureAppleFrequencyLanes(t *testing.T) {
 }
 
 func TestIntelBatchNumericsDiagnostics(t *testing.T) {
-	if os.Getenv("AURIALIS_STEM_MEASURE_BATCHING") != "1" {
-		t.Skip("explicit model-free Intel numerical diagnostic")
-	}
 	measureAppleMatrixShapes(t)
 	measureAppleFrequencyLanes(t)
 	for _, fixture := range []struct {

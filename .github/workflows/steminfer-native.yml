@@ -98,10 +98,10 @@ jobs:
           GOMAXPROCS: "2"
         run: |
           set -euo pipefail
-          go test -run '^Test(PackedMatrix|Gonum|Vector|FullKeySoftmax|ExactFormActivations|BackendReportsAcceleration|BatchedTransformer|FrequencyAxis)' -count=1 -v -timeout=2m ./internal/audio/steminfer 2>&1 \
+          go test -run '^Test(PackedMatrix|Gonum|Vector|FullKeySoftmax|ExactFormActivations|BackendReportsAcceleration|BatchedTransformer|FrequencyAxis|IntelBatchNumerics|IntelBatchRoundoff)' -count=1 -v -timeout=2m ./internal/audio/steminfer 2>&1 \
             | tee "$RUNNER_TEMP/steminfer-evidence/matrix-kernels.log"
           if [ "${{ matrix.platform }}" = "linux-amd64" ]; then
-            go test -race -run '^Test(PackedMatrixRowBatch|BatchedTransformer|FrequencyAxis)' -count=1 -v -timeout=2m ./internal/audio/steminfer 2>&1 \
+            go test -race -run '^Test(PackedMatrixRowBatch|BatchedTransformer|FrequencyAxis|IntelBatchNumerics|IntelBatchRoundoff)' -count=1 -v -timeout=2m ./internal/audio/steminfer 2>&1 \
               | tee "$RUNNER_TEMP/steminfer-evidence/batching-race.log"
           fi
           go test -run '^TestConfigureStemsReportsBackendAndCacheState$' -count=1 -v ./cmd/aurialis 2>&1 \

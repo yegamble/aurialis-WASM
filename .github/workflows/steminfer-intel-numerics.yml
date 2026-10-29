@@ -25,10 +25,9 @@ jobs:
       - name: Compare synthetic matrix shapes and transformer batches
         env:
           GOMAXPROCS: "2"
-          AURIALIS_STEM_MEASURE_BATCHING: "1"
         run: |
           set -euo pipefail
-          go test -run '^TestIntelBatchNumericsDiagnostics$' -count=1 -v -timeout=2m ./internal/audio/steminfer 2>&1 \
+          go test -run '^Test(IntelBatchNumericsDiagnostics|IntelBatchRoundoffBudget|BatchedTransformerMatchesSingleSequences|FrequencyAxisBatchesAndLanesMatchSerial)$' -count=1 -v -timeout=2m ./internal/audio/steminfer 2>&1 \
             | tee "$RUNNER_TEMP/intel-batch-numerics.log"
       - name: Upload synthetic numerical diagnostics
         if: always()

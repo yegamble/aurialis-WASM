@@ -58,3 +58,27 @@ loop:
  VMOVUPS Y7, 32(R15)
  VZEROUPPER
  RET
+
+// One-row edge of the four-row kernel. Both accumulate each dot product
+// in increasing inner-index order with one FMA per term and no reduction.
+TEXT ·packedKernel1x16(SB), NOSPLIT, $0-32
+ MOVQ dst+0(FP), DI
+ MOVQ left+8(FP), SI
+ MOVQ panel+16(FP), DX
+ MOVQ depth+24(FP), CX
+ VMOVUPS (DI), Y0
+ VMOVUPS 32(DI), Y1
+rowLoop:
+ VMOVUPS (DX), Y2
+ VMOVUPS 32(DX), Y3
+ VBROADCASTSS (SI), Y4
+ VFMADD231PS Y2, Y4, Y0
+ VFMADD231PS Y3, Y4, Y1
+ ADDQ $4, SI
+ ADDQ $64, DX
+ DECQ CX
+ JNZ rowLoop
+ VMOVUPS Y0, (DI)
+ VMOVUPS Y1, 32(DI)
+ VZEROUPPER
+ RET

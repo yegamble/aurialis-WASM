@@ -74,7 +74,7 @@ type StemModelStatus struct {
 	// Arch is the server's GOARCH. The recorded speed was measured on arm64
 	// (Apple silicon) only, so the client caveats estimates elsewhere.
 	Arch string `json:"arch,omitempty"`
-	// Speed is the recorded per-window time, present on accelerated builds.
+	// Speed is optional recorded timing; acceleration alone does not supply it.
 	Speed *StemSpeed `json:"speed,omitempty"`
 }
 

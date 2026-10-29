@@ -39,6 +39,7 @@ type Request struct {
 	DeviceRate    int    `json:"deviceRate,omitempty"`
 	Options       string `json:"options,omitempty"`
 	ScriptVersion string `json:"scriptVersion,omitempty"`
+	RenderQuality string `json:"renderQuality,omitempty"`
 	Measure       string `json:"measure,omitempty"`
 }
 
@@ -90,7 +91,13 @@ func DecodeRequest(raw []byte) (Request, error) {
 	case "features":
 		allowed = " operation "
 	case "deep":
-		allowed = " operation profile scriptVersion "
+		allowed = " operation profile scriptVersion renderQuality "
+		if _, err := mastering.RenderQualityAlgorithm(request.RenderQuality); err != nil {
+			return request, err
+		}
+		if seen["renderQuality"] && request.ScriptVersion != "2.0" {
+			return request, errors.New("renderQuality requires ScriptV2")
+		}
 	case "reference":
 		allowed = " operation params options "
 	case "compile":
@@ -153,7 +160,7 @@ func Execute(ctx context.Context, raw, source, reference []byte, progress func(i
 			return nil, err
 		}
 		if request.ScriptVersion == "2.0" {
-			script, prediction, err := mastering.AnalyzeDeepV2Context(ctx, buf, profile, progress)
+			script, prediction, err := mastering.AnalyzeDeepV2QualityContext(ctx, buf, profile, request.RenderQuality, progress)
 			if err != nil {
 				return nil, err
 			}

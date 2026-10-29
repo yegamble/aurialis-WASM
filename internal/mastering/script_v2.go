@@ -164,7 +164,7 @@ func ValidateScriptV2Context(ctx context.Context, script *ScriptV2, deviceRate i
 	}
 	// Algorithm 1 only supports the sample-peak limiter; algorithm 2 (exports)
 	// selects its lookahead true-peak limiter with TruePeak.
-	legacyTruePeak := script.ChainParams.Limiter.TruePeak && script.ChainParams.AlgorithmVersion != dsp.TruePeakAlgorithmVersion
+	legacyTruePeak := script.ChainParams.Limiter.TruePeak && script.ChainParams.AlgorithmVersion < dsp.TruePeakAlgorithmVersion
 	if script.ChainParams.Repair.Enabled || (script.ChainParams.Limiter.Enabled && legacyTruePeak) {
 		return nil, errors.New("ScriptV2 requires disabled repair and, before algorithm 2, the sample-peak limiter")
 	}

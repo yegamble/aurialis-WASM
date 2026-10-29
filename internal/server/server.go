@@ -386,7 +386,7 @@ func (s *Server) readAndDisarmUpload(w http.ResponseWriter, r *http.Request, exp
 				writeErrorJSON(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Audio file exceeds the decoded-frame storage limit")
 				return nil, false
 			}
-		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "format" || name == "script" || name == "scriptVersion" || (exportFields && (name == "sampleRate" || name == "dither" || name == "measure"))) && disposition["filename"] == "" && values[name] == nil:
+		case (name == "stems" || name == "model" || name == "profile" || name == "params" || name == "bitDepth" || name == "format" || name == "script" || name == "scriptVersion" || ((r.URL.Path == "/api/analyze/deep" || r.URL.Path == "/analyze/deep") && name == "renderQuality") || (exportFields && (name == "sampleRate" || name == "dither" || name == "measure"))) && disposition["filename"] == "" && values[name] == nil:
 			var value []byte
 			fieldLimit := 64 * 1024
 			if name == "script" {
@@ -558,20 +558,34 @@ func (s *Server) handleAnalyzeDeep(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, http.StatusRequestTimeout, "canceled", "Analysis request canceled")
 		return
 	}
+	quality := r.FormValue("renderQuality")
+	_, qualityInForm := r.Form["renderQuality"]
+	qualityInQuery := r.URL.Query().Has("renderQuality")
+	if qualityInQuery {
+		if qualityInForm || len(r.URL.Query()["renderQuality"]) != 1 {
+			writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "Duplicate renderQuality")
+			return
+		}
+		quality = r.URL.Query().Get("renderQuality")
+	}
+	if _, qualityErr := mastering.RenderQualityAlgorithm(quality); qualityErr != nil || ((qualityInForm || qualityInQuery) && version != "2.0") {
+		writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "renderQuality must be classic or oversampled and requires ScriptV2")
+		return
+	}
 	if version == "2.0" {
 		for key, values := range r.URL.Query() {
-			if (key != "profile" && key != "scriptVersion") || len(values) != 1 {
+			if (key != "profile" && key != "scriptVersion" && key != "renderQuality") || len(values) != 1 {
 				writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "Unsupported ScriptV2 analysis query")
 				return
 			}
 		}
 		for key := range r.Form {
-			if key != "profile" && key != "scriptVersion" {
-				writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "ScriptV2 analysis accepts only profile and scriptVersion")
+			if key != "profile" && key != "scriptVersion" && key != "renderQuality" {
+				writeErrorJSON(w, http.StatusBadRequest, "invalid_parameter", "ScriptV2 analysis accepts only profile, scriptVersion and renderQuality")
 				return
 			}
 		}
-		job, submitErr := s.jobs.SubmitAnalyzeDeepV2(buf, profile, requestMemory(r))
+		job, submitErr := s.jobs.SubmitAnalyzeDeepV2Quality(buf, profile, quality, requestMemory(r))
 		if submitErr != nil {
 			writeAdmissionError(w, submitErr)
 			return

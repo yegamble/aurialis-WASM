@@ -26,7 +26,7 @@ func heaviestLiveParams(algorithm uint32, character dsp.SatCharacter) dsp.Params
 	p.Compressor.ThresholdDB, p.Compressor.Ratio, p.Compressor.AutoRelease = -20, 3, true
 	p.Saturation.Amount, p.Saturation.Character = 60, character
 	p.Stereo = dsp.StereoParams{Enabled: true, WidthPct: 130, MonoBass: true, CrossoverHz: 110, MidGainDB: 1, SideGainDB: -1}
-	p.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: -1, TargetLUFS: -9, ReleaseMS: 80, TruePeak: algorithm == dsp.TruePeakAlgorithmVersion}
+	p.Limiter = dsp.LimiterParams{Enabled: true, CeilingDBTP: -1, TargetLUFS: -9, ReleaseMS: 80, TruePeak: algorithm >= dsp.TruePeakAlgorithmVersion}
 	return p
 }
 
@@ -35,7 +35,7 @@ func heaviestLiveParams(algorithm uint32, character dsp.SatCharacter) dsp.Params
 // ns/op divided by the quantum's real-time duration is the CPU load factor.
 func BenchmarkLiveBlock(b *testing.B) {
 	for _, rate := range []float64{44100, 48000, 96000} {
-		for _, algorithm := range []uint32{dsp.LegacyAlgorithmVersion, dsp.TruePeakAlgorithmVersion} {
+		for _, algorithm := range []uint32{dsp.LegacyAlgorithmVersion, dsp.TruePeakAlgorithmVersion, dsp.OversampledAlgorithmVersion} {
 			for _, character := range []dsp.SatCharacter{dsp.SatWarm, dsp.SatTube, dsp.SatTransformer} {
 				name := fmt.Sprintf("rate=%.0f/algorithm=%d/saturation=%s", rate, algorithm, character)
 				b.Run(name, func(b *testing.B) {

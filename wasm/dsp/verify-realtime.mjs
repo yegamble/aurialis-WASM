@@ -51,7 +51,8 @@ async function createKernel(fixture, abi = 1) {
   for (const unknown of [0, 3, 0xffffffff]) assert.equal(wasm.aurialis_control_count(unknown), 0);
   assert.equal(wasm.aurialis_algorithm_supported(1), 1);
   assert.equal(wasm.aurialis_algorithm_supported(2), 1);
-  for (const unknown of [0, 3, 0xffffffff]) assert.equal(wasm.aurialis_algorithm_supported(unknown), 0);
+  assert.equal(wasm.aurialis_algorithm_supported(3), 1);
+  for (const unknown of [0, 4, 0xffffffff]) assert.equal(wasm.aurialis_algorithm_supported(unknown), 0);
   assert.equal(wasm.aurialis_latency_frames(), 0);
   // The compiled loudness snapshot starts empty: no readings, no peak, no reduction.
   assert.equal(wasm.aurialis_meter_snapshot(), 7);
@@ -248,7 +249,7 @@ assert.equal(versioned.wasm.aurialis_live_reset(), 1);
 versioned.render(Float32Array.from(active.left.slice(0, 128)), Float32Array.from(active.right.slice(0, 128)));
 const acceptedControls = versioned.controls().slice();
 for (const count of [0, 81, 83, 0xffffffff]) assert.equal(versioned.wasm.aurialis_set_controls_v2(count), 0);
-for (const algorithm of [0, 3, -1, 1.5, NaN, Infinity]) {
+for (const algorithm of [0, 4, -1, 1.5, NaN, Infinity]) {
   versioned.controls()[81] = algorithm;
   assert.equal(versioned.wasm.aurialis_set_controls_v2(82), 0);
 }

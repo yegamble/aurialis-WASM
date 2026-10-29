@@ -223,10 +223,12 @@ type stageCoeffs struct {
 
 // Engine executes the real-time and offline mastering DSP chain with zero heap allocations per block.
 type Engine struct {
-	extended   extendedState
-	sampleRate float64
-	params     Params
-	stages     stageCoeffs
+	oversampled      oversampledState
+	oversampledSaved oversampledState
+	extended         extendedState
+	sampleRate       float64
+	params           Params
+	stages           stageCoeffs
 
 	eqCoeffs [NumEQBands]svfCoeffs
 	eqState  [NumEQBands][2]svfState
@@ -311,9 +313,16 @@ func (e *Engine) SetParams(next Params) {
 	}
 	prev := e.params
 	e.params = next
+	if algorithmOf(next) == TruePeakAlgorithmVersion && prev.Limiter.TruePeak != next.Limiter.TruePeak {
+		// The sample limiter does not run during true-peak limiting. Its old
+		// envelope must not duck unrelated audio when that mode returns.
+		e.limEnvLin = 1
+		e.limPrevL, e.limPrevR = [3]float64{}, [3]float64{}
+	}
 	if algorithmOf(prev) != algorithmOf(next) {
 		// Latency changes with the algorithm; never mix delayed and immediate frames.
 		e.truePeak.reset()
+		e.oversampled = oversampledState{}
 	}
 	if prev.Compressor != next.Compressor || prev.Saturation != next.Saturation || prev.Stereo != next.Stereo || prev.Limiter != next.Limiter || prev.Repair != next.Repair || prev.DeHarsh != next.DeHarsh || prev.Multiband != next.Multiband {
 		e.recomputeStageCoeffs()
@@ -340,6 +349,7 @@ func (e *Engine) SetParams(next Params) {
 		e.deEssCoeffs = computeBandpassSVF(e.sampleRate, 6500.0, 2.0)
 	}
 	e.clearStoppedStageHistory(prev)
+	e.configureOversampling()
 }
 
 // SetBand updates exclusively EQ band index [0..4] without touching any other band or module.
@@ -366,6 +376,8 @@ func (e *Engine) SetBand(index int, band BandParams) {
 
 // Reset clears filter delay lines and envelope followers back to zero silence.
 func (e *Engine) Reset() {
+	e.oversampled = oversampledState{}
+	e.configureOversampling()
 	e.extended = extendedState{}
 	e.recomputeExtended()
 	e.eqState = [NumEQBands][2]svfState{}
@@ -443,6 +455,7 @@ func (e *Engine) recomputeStageCoeffs() {
 }
 
 func (e *Engine) recomputeAllCoeffs() {
+	e.configureOversampling()
 	e.recomputeStageCoeffs()
 	for i := 0; i < NumEQBands; i++ {
 		e.eqCoeffs[i] = computeBandCoeffs(e.sampleRate, e.params.Bands[i])
@@ -695,7 +708,8 @@ func (e *Engine) processBlock(inL, inR, outL, outR []float32, lanes *automationL
 
 	// Fast bit-identical bypass when Bypass is enabled or all stages are neutral (and not monitoring B Original).
 	laneActive := lanes != nil && (len(lanes.gain) > 0 || (e.params.Stereo.Enabled && len(lanes.width) > 0))
-	if e.params.Bypass || (!laneActive && e.isChainNeutral() && !e.params.ABOriginal) {
+	oversampled := e.params.AlgorithmVersion == OversampledAlgorithmVersion
+	if !oversampled && (e.params.Bypass || (!laneActive && e.isChainNeutral() && !e.params.ABOriginal)) {
 		if e.params.AlgorithmVersion == TruePeakAlgorithmVersion {
 			for i := 0; i < n; i++ {
 				outL[i], outR[i] = e.truePeakPassthrough(inL[i], inR[i])
@@ -735,6 +749,7 @@ func (e *Engine) processBlock(inL, inR, outL, outR []float32, lanes *automationL
 	repairActive := e.params.Repair.Enabled && (math.Abs(e.params.Repair.DeEssDB) >= 1e-7 || math.Abs(e.params.Repair.TransientDB) >= 1e-7 || e.params.Repair.DeClip)
 	limActive := e.params.Limiter.Enabled
 	truePeakV2 := e.params.AlgorithmVersion == TruePeakAlgorithmVersion
+	oversampledControl := e.oversampledControls(e.stages.stereoWidth)
 
 	for i := 0; i < n; i++ {
 		rawL := sanitizeSample(float64(inL[i]))
@@ -750,34 +765,51 @@ func (e *Engine) processBlock(inL, inR, outL, outR []float32, lanes *automationL
 		l := rawL * frameGain
 		r := rawR * frameGain
 
-		// Stage 1: Deterministic soft clipping, de-essing, and transient shaping
-		if repairActive {
-			l, r = e.processRepairSample(l, r)
+		if oversampled && e.params.Bypass {
+			l, r = rawL, rawR
 		}
+		if !oversampled || !e.params.Bypass {
+			// Stage 1: Deterministic soft clipping, de-essing, and transient shaping
+			if repairActive {
+				l, r = e.processRepairSample(l, r)
+			}
 
-		// Stage 2: 5-Band Topology-Preserving Transform (TPT/ZDF) Parametric EQ
-		if e.params.EQEnabled {
-			for b := 0; b < NumEQBands; b++ {
-				c := e.eqCoeffs[b]
-				if c.active {
-					l = processSVF(c, &e.eqState[b][0], l)
-					r = processSVF(c, &e.eqState[b][1], r)
+			// Stage 2: 5-Band Topology-Preserving Transform (TPT/ZDF) Parametric EQ
+			if e.params.EQEnabled {
+				for b := 0; b < NumEQBands; b++ {
+					c := e.eqCoeffs[b]
+					if c.active {
+						l = processSVF(c, &e.eqState[b][0], l)
+						r = processSVF(c, &e.eqState[b][1], r)
+					}
 				}
 			}
-		}
 
-		if e.params.DeHarsh.Enabled {
-			l, r = e.processDeHarsh(l, r)
-		}
-		if e.params.Multiband.Enabled {
-			l, r = e.processMultiband(l, r)
-		}
+			if e.params.DeHarsh.Enabled {
+				l, r = e.processDeHarsh(l, r)
+			}
+			if e.params.Multiband.Enabled {
+				l, r = e.processMultiband(l, r)
+			}
 
-		// Stage 3: Program-Dependent Stereo Compressor with 90 Hz Sidechain HPF
-		if compActive {
-			l, r = e.processCompressorSample(l, r)
-		} else {
-			e.lastGRDB = 0
+			// Stage 3: Program-Dependent Stereo Compressor with 90 Hz Sidechain HPF
+			if compActive {
+				l, r = e.processCompressorSample(l, r)
+			} else {
+				e.lastGRDB = 0
+			}
+
+		}
+		if oversampled {
+			control := oversampledControl
+			if lanes != nil && len(lanes.width) > 0 {
+				control.width = lanes.width[i] / 100
+			}
+			l, r, rawL, rawR, control = e.oversampledStage(l, r, rawL, rawR, control)
+			l, r = e.oversampledStereo(l, r, control)
+			outL[i], outR[i] = e.oversampledOutput(l, r, rawL, rawR, control)
+			e.grStats.observe(compActive && !e.params.Bypass, e.compModel.level, e.lastGRDB, e.lastLimGRDB)
+			continue
 		}
 
 		// Stage 4: 2x Oversampled ADAA Analog Harmonic Saturation + DC Blocker
@@ -810,6 +842,10 @@ func (e *Engine) processBlock(inL, inR, outL, outR []float32, lanes *automationL
 		}
 		outL[i], outR[i] = e.finishSample(l, r, rawL, rawR, limActive)
 		e.grStats.observe(compActive, e.compModel.level, e.lastGRDB, e.lastLimGRDB)
+	}
+	if oversampled {
+		e.oversampled.pending = e.LatencyFrames()
+		e.oversampled.drainStage = saturationLatency
 	}
 	if truePeakV2 {
 		e.truePeak.pending = e.truePeak.latency

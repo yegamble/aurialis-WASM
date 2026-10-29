@@ -85,6 +85,8 @@ import { DeepProposalPanel } from "./shared/DeepProposalPanel";
 import { useDeepPlayback } from "@/lib/use-deep-playback";
 import { appliedRevisionKey } from "@/lib/deep-mastering";
 import { ALBUM_OFFSET_LIMIT_DB, ALBUM_TARGETS, albumLevelSummary, albumMastersKey, albumOffset, DEFAULT_ALBUM_LEVEL, planAlbumLevels, renderAlbumTrack, withAlbumOffset, type AlbumLevel, type AlbumMasterLevel, type AlbumRenderEngine } from "@/lib/album-levels";
+import { AlbumSequence } from "./shared/AlbumSequence";
+import { readAlbumTransition } from "@/lib/album-transition-settings";
 import { AlbumLevelChart, type MeasuredAlbumMaster } from "./shared/AlbumLevelChart";
 import type { ScriptV2 } from "@/lib/deep-mastering";
 import { DeepTimeline } from "./shared/DeepTimeline";
@@ -1843,6 +1845,7 @@ function AlbumView({ albumId }: { albumId: string }) {
         </> : <Button variant="secondary" icon={<Icon name="trash" />} disabled={working} onClick={() => { setConfirmDelete(true); }}>Delete album</Button>}
         {confirmDelete && <p className="disclosure">Deletes this album and its saved masters. Your projects and their sources stay in the Library.</p>}
       </div>
+      <AlbumSequence files={artifacts} identity={JSON.stringify([album.id, artifactKey, saved?.createdAt, rendered !== null])} title={album.title} transition={readAlbumTransition(album.transition)} disabled={working} onChange={(transition) => { dispatch({ type: "UPDATE_ALBUM", id: album.id, patch: { transition } }); }} />
       <div className="album-layout">
         <section className="paper-panel">
           <div className="section-heading">

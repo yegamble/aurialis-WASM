@@ -18,6 +18,7 @@ import { masteringTargets } from "./mastering-targets";
 import { restoredSimpleDirection, type SimpleChange } from "./simple-directions";
 import { hasAppliedDeep } from "./reference-matching";
 import { readReleaseReport } from "./release-review";
+import { readAlbumTransition } from "./album-transition-settings";
 import { pruneAlbumOffsets, readAlbumLevel } from "./album-levels";
 import { readDeliveryFormat } from "./delivery-format";
 import { deepSourceMatches, loweredDeepCeilings, readDeepMasteringState, type DeepMasteringState, type DeepSettingsSnapshot, type ScriptV2 } from "./deep-mastering";
@@ -552,7 +553,7 @@ export function normalizeHydratedState(raw: unknown): StoreState | null {
     tracks,
     albums: Array.isArray(candidate.albums) ? candidate.albums.map(({ target: _legacyTarget, ...album }) => {
       const trackIds = album.trackIds.filter((id) => tracks.some((track) => track.id === id));
-      return { ...album, level: pruneAlbumOffsets(readAlbumLevel(album.level), trackIds), delivery: readDeliveryFormat(album.delivery), mastered: false, trackIds };
+      return { ...album, level: pruneAlbumOffsets(readAlbumLevel(album.level), trackIds), delivery: readDeliveryFormat(album.delivery), transition: readAlbumTransition(album.transition), mastered: false, trackIds };
     }) : [],
     stems: [],
   };

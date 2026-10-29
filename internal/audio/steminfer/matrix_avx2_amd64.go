@@ -22,7 +22,7 @@ func hasPackedMatrix() bool { return cpu.X86.HasSSE3 && cpu.X86.HasAVX2 && cpu.X
 func multiplyPacked(dst, left, right []float32, rows, columns, inner int, transposeRight bool) {
 	var panel [packedInner * packedColumns]float32
 	fullRows, fullColumns := rows/4*4, columns/packedColumns*packedColumns
-	clear(dst[:fullRows*columns])
+	clear(dst)
 	for column := 0; column < fullColumns; column += packedColumns {
 		for first := 0; first < inner; first += packedInner {
 			depth := min(packedInner, inner-first)
@@ -41,30 +41,27 @@ func multiplyPacked(dst, left, right []float32, rows, columns, inner int, transp
 			for row := 0; row < fullRows; row += 4 {
 				packedKernel4x16(&dst[row*columns+column], &left[row*inner+first], &panel[0], inner*4, columns*4, depth)
 			}
+			// A partial row uses the identical ordered FMA accumulation. Sending
+			// it to a dot-product reduction would change a sequence's arithmetic
+			// when batching moves that row into a complete four-row tile.
+			for row := fullRows; row < rows; row++ {
+				packedKernel1x16(&dst[row*columns+column], &left[row*inner+first], &panel[0], depth)
+			}
 		}
 	}
-	// The small right/bottom edges retain the audited SSE3 implementation;
-	// neither path reads padding beyond the caller's exact slice geometry.
+	// The right edge has the same columns in every batching layout, so it
+	// retains the SSE3 implementation for every row. Neither path reads
+	// padding beyond the caller's exact slice geometry.
 	transpose, leading := blas.NoTrans, columns
 	if transposeRight {
 		transpose, leading = blas.Trans, inner
 	}
-	if fullColumns < columns && fullRows > 0 {
+	if fullColumns < columns {
 		offset := fullColumns
 		if transposeRight {
 			offset *= inner
 		}
-		gonum.Implementation{}.Sgemm(blas.NoTrans, transpose, fullRows, columns-fullColumns, inner, 1, left, inner, right[offset:], leading, 0, dst[fullColumns:], columns)
-	}
-	if fullRows < rows {
-		// Split columns as in the fallback, preventing Gonum's nested workers.
-		for first := 0; first < columns; first += 64 {
-			count, offset := min(64, columns-first), first
-			if transposeRight {
-				offset *= inner
-			}
-			gonum.Implementation{}.Sgemm(blas.NoTrans, transpose, rows-fullRows, count, inner, 1, left[fullRows*inner:], inner, right[offset:], leading, 0, dst[fullRows*columns+first:], columns)
-		}
+		gonum.Implementation{}.Sgemm(blas.NoTrans, transpose, rows, columns-fullColumns, inner, 1, left, inner, right[offset:], leading, 0, dst[fullColumns:], columns)
 	}
 }
 
@@ -74,3 +71,9 @@ func multiplyPacked(dst, left, right []float32, rows, columns, inner int, transp
 //
 //go:noescape
 func packedKernel4x16(dst, left, panel *float32, leftStride, dstStride, depth int)
+
+// packedKernel1x16 is the one-row edge of packedKernel4x16, with exactly the
+// same float32 FMA order. depth is positive and at most packedInner.
+//
+//go:noescape
+func packedKernel1x16(dst, left, panel *float32, depth int)

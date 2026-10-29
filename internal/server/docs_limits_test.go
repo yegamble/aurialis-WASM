@@ -124,6 +124,7 @@ func TestDocsLimitsEveryMentionMatchesConstants(t *testing.T) {
 	request := float64(DefaultMaxUploadBytes)
 	file := float64(MaxAudioFileBytes - 44) // stated as "<n> MiB plus 44 bytes"
 	budget := float64(jobs.MaxMemoryBytes)
+	legacyFile := sourceNumber(t, "src/lib/legacy-library.ts", `MAX_FILE_BYTES = (\d+) \* 1024 \* 1024 \+ 44`) * mib
 	rules := []struct {
 		re   string
 		want float64 // bytes or seconds
@@ -143,6 +144,8 @@ func TestDocsLimitsEveryMentionMatchesConstants(t *testing.T) {
 		{`within the (\d+ MiB) plus 44-byte`, file},
 		{`cache capped at (\d+ MiB) plus 44 bytes`, file},
 		{`total cache cap of \*\*(\d+ MiB) plus 44 bytes`, file},
+		{`Recovery is capped at (\d+ MiB)`, legacyFile},
+		{`Each saved original is limited to (\d+ MiB)`, legacyFile},
 		// Job memory budget (jobs.MaxMemoryBytes).
 		{`(\d+ MiB) job budget`, budget},
 		{`within \*\*(\d+ MiB)\*\*`, budget},

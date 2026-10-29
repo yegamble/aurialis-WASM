@@ -1,6 +1,6 @@
 /* Test-owned Playwright download paths never come from audio filenames. */
 /* eslint-disable security/detect-non-literal-fs-filename */
-// cspell:words describedby
+// cspell:words describedby spinbutton
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
 import { createHash } from "node:crypto";

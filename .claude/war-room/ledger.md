@@ -13,7 +13,7 @@ Source of truth for the **Aurialis-WASM** backlog across `/war-room` and `/war-r
 
 ## Full completion inventory — 2026-10-29
 
-Owner clarified that **100% complete includes every P2/P3 and product acceptance item**; zero P0/P1 is not sufficient. C01–C36 are the deduplicated remaining inventory from Round A–D and associated task records. Every row remains **open** until its stated acceptance and required review/evidence land. Hardware or owner dependencies keep their individual row open; they do not block unrelated work or make the whole effort blocked.
+Owner clarified that **100% complete includes every P2/P3 and product acceptance item**; zero P0/P1 is not sufficient. C01–C37 are the deduplicated remaining inventory from Round A–D and associated task records. Every row remains **open** until its stated acceptance and required review/evidence land. Hardware or owner dependencies keep their individual row open; they do not block unrelated work or make the whole effort blocked.
 
 | ID | Open item | Acceptance still required | Status |
 |---|---|---|---|
@@ -35,7 +35,7 @@ Owner clarified that **100% complete includes every P2/P3 and product acceptance
 | C16 | Responsive and touch details | Verify mobile meter clearance, Smart Split failure targets at 44 px and the album delivery panel beside the level panel on wide screens. | open |
 | C17 | Deterministic playback tests | Fix or reliably isolate the overload false-negative, burner timing, MasterPlayback and DeepProposalPanel load flakes; retain repeatable evidence under ordinary load. | open |
 | C18 | Shared choices/downloads and repair state | Finish ChoiceGroup and downloadLocalBlob reuse; remove dead repair/legacy state and the unavailable AI Repair lane from the product surface. | open |
-| C19 | Limiter-off gain cross-fade | Smooth the gain change when limiter, true peak or bypass turns off under gain reduction; preserve level and no-splice acceptance. | open |
+| C19 | Limiter-off gain cross-fade | Smooth the gain change when limiter or true peak turns off under gain reduction; preserve level and no-splice acceptance. | open |
 | C20 | Shared FFT | Consolidate production FFT implementations without changing outputs; measure runtime and allocations. | open |
 | C21 | Hot-source finding and Dynamic & Open cap | Explain that a hot clipped source itself needs heavy limiting; measure and rule on the proposed 1 dB Dynamic & Open limiting cap. | open |
 | C22 | Warm Analog voicing | Measure the proposed 180 Hz adjustment on dense rock/metal and obtain listening review before changing the recipe. | open |
@@ -53,8 +53,9 @@ Owner clarified that **100% complete includes every P2/P3 and product acceptance
 | C34 | Dependabot branches | Check compatibility and merge the six outstanding Dependabot updates. | open |
 | C35 | Agent contract documentation | Update repo-map and AGENTS descriptions to match supported FLAC/MP3 input, enabled ScriptV2 automation, deprecated v1 compatibility and unavailable repair targets. | open |
 | C36 | Album transitions | Define product acceptance for continuous album playback, gaps and cross-fades, then implement and verify it. Default track rendering must remain exact. | open |
+| C37 | Compressed legacy-library recovery | Recover selected supported FLAC/MP3 into independent clean-PCM projects through current Go CDR; preserve old audio, scripts and unsupported files; prove cancel, quota and recovery behavior. | open |
 
-Historical items not reopened here: the old MUB ceiling tolerance is superseded by the strict V1-13 gate; cached-model readiness is already covered by V1-06; and the array-element type response is already specific, so C05 is contract-test work rather than a fix for generic current behavior. The existing Metal/Jazz recipes already differ; C29 asks for proof and acceptance. The 1 dB cap and voicing changes remain measurement and owner decisions, not approved changes. Prior PR #60 closes only browser compressed-input admission, not C03 native process accounting.
+Historical items not reopened here: the old MUB ceiling tolerance is superseded by the strict V1-13 gate; cached-model readiness is already covered by V1-06; and the array-element type response is already specific, so C05 is contract-test work rather than a fix for generic current behavior. The existing Metal/Jazz recipes already differ; C29 asks for proof and acceptance. The Chair accepted the measured 1 dB Dynamic & Open cap; voicing changes still require their stated review. Prior PR #60 closes only browser compressed-input admission, not C03 native process accounting.
 
 ---
 

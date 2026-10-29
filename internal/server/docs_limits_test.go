@@ -34,6 +34,8 @@ func TestAPIDocsLimitsMatchConstants(t *testing.T) {
 		fmt.Sprintf("`maxDecodedFrames: %d`", audio.MaxDecodedFrames),
 		fmt.Sprintf("**%s frames**", grouped(int64(audio.MaxDecodedFrames))),
 		fmt.Sprintf("`jobMemoryBudgetBytes: %d`", jobs.MaxMemoryBytes),
+		fmt.Sprintf("`processMemoryBudgetBytes: %d`", jobs.MaxProcessMemoryBytes),
+		fmt.Sprintf("`modelMemoryAllowanceBytes: %d`", jobs.ModelMemoryAllowance),
 		fmt.Sprintf("within **%d MiB**", jobs.MaxMemoryBytes/mib),
 		fmt.Sprintf("at most **%d jobs**", jobs.MaxRetainedJobs),
 		fmt.Sprintf("**%d-second** base deadline", int(postRequestTimeout/time.Second)),
@@ -59,6 +61,8 @@ func TestAPIDocsLimitsMatchConstants(t *testing.T) {
 		{`(\d+) MiB job budget`, jobs.MaxMemoryBytes / mib},
 		{`maxUploadBytes: (\d+)`, DefaultMaxUploadBytes},
 		{`jobMemoryBudgetBytes: (\d+)`, jobs.MaxMemoryBytes},
+		{`processMemoryBudgetBytes: (\d+)`, jobs.MaxProcessMemoryBytes},
+		{`modelMemoryAllowanceBytes: (\d+)`, jobs.ModelMemoryAllowance},
 	} {
 		matches := regexp.MustCompile(c.re).FindAllStringSubmatch(doc, -1)
 		if len(matches) == 0 {
@@ -104,6 +108,8 @@ func TestDocsLimitsEveryMentionMatchesConstants(t *testing.T) {
 	browserBudgets := sourceNumbers(t, "src/lib/browser-jobs.ts", `return (?:coarse \? )?(\d+) \* MIB(?: : (\d+) \* MIB)?;`)
 	browserDeadline := sourceNumber(t, "src/lib/browser-jobs.ts", `return (\d+)_000 \* Math\.max\(1, decoded`)
 	compileSignal := sourceNumber(t, "src/lib/deep-mastering.ts", `AbortSignal\.timeout\((\d+)_000\)`)
+	qaBuildDeadline := sourceNumber(t, "scripts/serve-e2e.sh", `result = process\.wait\(timeout=(\d+)\)`)
+	qaStartDeadline := sourceNumber(t, "scripts/serve-e2e.sh", `deadline=\$\(\(SECONDS \+ (\d+)\)\)`)
 	readTimeout := sourceNumber(t, "cmd/aurialis/main.go", `ReadTimeout:\s+(\d+) \* time\.Second`)
 	staticFile := sourceNumber(t, "scripts/prepare-browser-assets.mjs", `info\.size > (\d+) \* 1024 \* 1024`)
 	assetFile := sourceNumber(t, "scripts/ci-browser-artifacts.py", `MAXIMUM_FILE = (\d+) \* 1024 \* 1024`)
@@ -142,6 +148,11 @@ func TestDocsLimitsEveryMentionMatchesConstants(t *testing.T) {
 		{`within \*\*(\d+ MiB)\*\*`, budget},
 		{`jobMemoryBudgetBytes: \d+` + "`" + ` \((\d+ MiB)\)`, budget},
 		{`reservations are bounded at (\d+ MiB)`, budget},
+		{`(\d+ MiB) normal-job`, budget},
+		{`(\d+(?:\.\d+)? GiB) working-allocation budget`, float64(jobs.MaxProcessMemoryBytes)},
+		{`(\d+(?:\.\d+)? GiB) (?:separation|stem) limits`, float64(jobs.MaxSeparationBytes)},
+		{`(\d+-minute) process-tree deadline`, qaBuildDeadline},
+		{`(\d+-second) server-start check`, qaStartDeadline},
 		{`reference\.frames × 8 \+ (\d+ MiB)`, referenceHeadroom * mib},
 		{`retained scripts are charged at (\d+ MiB)`, mastering.MaxScriptV2Bytes},
 		// Separation pool and deadline (jobs.MaxSeparationBytes, jobs.SeparationTimeout).

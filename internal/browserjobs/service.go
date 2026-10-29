@@ -41,6 +41,7 @@ type Request struct {
 	ScriptVersion string `json:"scriptVersion,omitempty"`
 	RenderQuality string `json:"renderQuality,omitempty"`
 	Measure       string `json:"measure,omitempty"`
+	MonitorMode   string `json:"monitorMode,omitempty"`
 }
 
 // Result separates bounded JSON diagnostics from transferable binary audio buffers.
@@ -87,7 +88,7 @@ func DecodeRequest(raw []byte) (Request, error) {
 	var allowed string
 	switch request.Operation {
 	case "render":
-		allowed = " operation params script profile bitDepth sampleRate dither format measure "
+		allowed = " operation params script profile bitDepth sampleRate dither format measure monitorMode "
 	case "features":
 		allowed = " operation "
 	case "deep":
@@ -111,6 +112,9 @@ func DecodeRequest(raw []byte) (Request, error) {
 		if !strings.Contains(allowed, " "+key+" ") {
 			return request, errors.New("local audio metadata contains an unknown or unrelated field")
 		}
+	}
+	if seen["monitorMode"] && request.Format != "json" {
+		return request, errors.New("monitorMode is only accepted on a JSON render measurement")
 	}
 	return request, nil
 }

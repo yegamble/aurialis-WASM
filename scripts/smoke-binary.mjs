@@ -38,9 +38,15 @@ try {
       assert.deepEqual([...bytes.slice(0, 4)], [0, 97, 115, 109]);
       const exports = WebAssembly.Module.exports(await WebAssembly.compile(bytes));
       const realtime = route.endsWith("aurialis-realtime.wasm");
-      const required = realtime ? [...liveExports, "_initialize", "aurialis_init", "aurialis_control_buffer", "aurialis_set_controls"] : liveExports;
+      // The production JS module exposes Go runtime entry points; its offline
+      // dispatcher is a JS global exercised by test:wasm. Direct live exports
+      // belong only to the WASI reactor and the separately tagged QA probe.
+      const required = realtime ? [...liveExports, "_initialize", "aurialis_init", "aurialis_control_buffer", "aurialis_set_controls",
+        "aurialis_set_monitor_mode", "aurialis_monitor_buffer", "aurialis_monitor_process"] : ["run", "resume", "getsp"];
       for (const name of required)
         assert.ok(exports.some(item => item.name === name && item.kind === "function"), `embedded WASM is missing ${name}`);
+      if (!realtime) for (const name of liveExports)
+        assert.ok(!exports.some(item => item.name === name), `production offline WASM contains the legacy live export ${name}`);
       assert.ok(exports.some(item => item.name === (realtime ? "memory" : "mem") && item.kind === "memory"), "embedded WASM memory is missing");
     } else {
       const source = await response.text();

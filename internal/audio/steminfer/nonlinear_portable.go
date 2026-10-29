@@ -13,11 +13,7 @@ func softmaxBackend(values []float32, rows, width int) {
 		for _, x := range v {
 			maximum = max(maximum, x*.125)
 		}
-		var sum float64
-		for i, x := range v {
-			v[i] = float32(math.Exp(float64(x*.125 - maximum)))
-			sum += float64(v[i])
-		}
+		sum := softmaxExponentials(v, maximum)
 		for i := range v {
 			v[i] = float32(float64(v[i]) / sum)
 		}

@@ -874,13 +874,29 @@ func (s *Server) handleStaticOrSPA(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fallback if static export is not mounted on this path
-	if strings.HasPrefix(cleanPath, "/jobs/") || strings.HasPrefix(cleanPath, "/api/") || path.Ext(cleanPath) != "" {
+	if !knownStudioRoute(cleanPath) {
 		writeErrorJSON(w, http.StatusNotFound, "not_found", "API route not found")
 		return
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(w, `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Aurialis Mastering Studio</title></head><body><div id="app">Aurialis-WASM</div></body></html>`)
+}
+
+func knownStudioRoute(cleanPath string) bool {
+	switch cleanPath {
+	case "/", "/library", "/albums", "/tools":
+		return true
+	}
+	parts := strings.Split(strings.Trim(cleanPath, "/"), "/")
+	if len(parts) != 2 || parts[1] == "" || path.Ext(parts[1]) != "" {
+		return false
+	}
+	switch parts[0] {
+	case "master", "split", "albums", "reference", "release-check":
+		return true
+	}
+	return false
 }
 
 func resolveStaticCandidates(relPath string) []string {

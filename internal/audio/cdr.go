@@ -45,6 +45,11 @@ var pcmSlicePool = sync.Pool{
 // MaxDecodedFrames bounds the memory expansion of compressed-width PCM input.
 const MaxDecodedFrames = 32 * 1024 * 1024
 
+// MaxFloatPCMAmplitude is +36 dBFS, recoverable with the supported -36 dB
+// Input trim. This import policy preserves useful float headroom without
+// silently clipping extreme input. It is not an overflow safety certificate.
+const MaxFloatPCMAmplitude = 63.09573444801933
+
 // AcquirePCM returns a pooled float32 slice of length n.
 func AcquirePCM(n int) []float32 {
 	ptr, ok := pcmSlicePool.Get().(*[]float32)
@@ -334,6 +339,9 @@ func decodeAndDisarmWAV(raw []byte) (*Buffer, error) {
 		if numChannels >= 2 {
 			sR = decodeSampleLE(pcmData[base+bytesPerSample:base+2*bytesPerSample], audioFormat, bitsPerSample)
 		}
+		if math.Abs(float64(sL)) > MaxFloatPCMAmplitude || math.Abs(float64(sR)) > MaxFloatPCMAmplitude {
+			return nil, fmt.Errorf("%w: float PCM exceeds +36 dBFS import headroom; attenuate the source before importing", ErrCorruptContainer)
+		}
 		left[f] = sL
 		right[f] = sR
 	}
@@ -502,6 +510,9 @@ func decodeAndDisarmAIFF(raw []byte) (*Buffer, error) {
 		sR := sL
 		if numChannels >= 2 {
 			sR = decode(ssndData[base+bytesPerSample : base+2*bytesPerSample])
+		}
+		if math.Abs(float64(sL)) > MaxFloatPCMAmplitude || math.Abs(float64(sR)) > MaxFloatPCMAmplitude {
+			return nil, fmt.Errorf("%w: float PCM exceeds +36 dBFS import headroom; attenuate the source before importing", ErrCorruptContainer)
 		}
 		left[f] = sL
 		right[f] = sR

@@ -88,7 +88,7 @@ func TestPCMBytesAreNotPayloadSignatures(t *testing.T) {
 }
 
 func TestFloatWAVFiniteRangeAndNonFiniteSanitization(t *testing.T) {
-	samples := []float32{math.MaxFloat32, -math.MaxFloat32, float32(math.NaN()), float32(math.Inf(1)), 1.5, -1.5, 0, 1}
+	samples := []float32{float32(audio.MaxFloatPCMAmplitude), -float32(audio.MaxFloatPCMAmplitude), float32(math.NaN()), float32(math.Inf(1)), 1.5, -1.5, 0, 1}
 	wav, err := audio.EncodeWAV(samples, samples, 48000, 32)
 	if err != nil {
 		t.Fatal(err)

@@ -1,0 +1,40 @@
+name: Intel Batch Numerical Diagnostics
+
+on:
+  push:
+    branches:
+      - codex/diagnose-intel-batching
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: steminfer-intel-numerics-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  measure:
+    runs-on: macos-15-intel
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/setup-go
+        with:
+          role: stem-intel-batch-numerics
+      - name: Compare synthetic matrix shapes and transformer batches
+        env:
+          GOMAXPROCS: "2"
+          AURIALIS_STEM_MEASURE_BATCHING: "1"
+        run: |
+          set -euo pipefail
+          go test -run '^TestIntelBatchNumericsDiagnostics$' -count=1 -v -timeout=2m ./internal/audio/steminfer 2>&1 \
+            | tee "$RUNNER_TEMP/intel-batch-numerics.log"
+      - name: Upload synthetic numerical diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: intel-batch-numerics-${{ github.run_id }}
+          path: ${{ runner.temp }}/intel-batch-numerics.log
+          if-no-files-found: error
+          retention-days: 30

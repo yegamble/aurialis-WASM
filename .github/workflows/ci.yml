@@ -558,6 +558,18 @@ jobs:
         timeout-minutes: 6
         if: steps.engine-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install "${{ matrix.browser }}"
+      - name: Record Firefox clock before CI audio provisioning
+        if: matrix.browser == 'firefox'
+        run: node scripts/ci-firefox-audio.mjs before
+      - name: Provision an isolated Linux audio output for Firefox
+        if: matrix.browser == 'firefox'
+        timeout-minutes: 3
+        run: |
+          sudo apt-get install --no-install-recommends -y pulseaudio pulseaudio-utils
+          bash scripts/ci-firefox-audio.sh start
+      - name: Require the real Firefox audio clock after provisioning
+        if: matrix.browser == 'firefox'
+        run: node scripts/ci-firefox-audio.mjs after
       - name: Save engine cache from the native target only
         if: matrix.target == 'native' && steps.engine-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -606,6 +618,9 @@ jobs:
             pnpm exec playwright test --config playwright.engines.config.ts \
               --project="${{ matrix.browser }}-audio" --workers=1 --retries=0 \
               --global-timeout=360000 2>&1 | tee artifacts/browser-engines/playwright.log
+      - name: Stop the owned Firefox CI audio server
+        if: always() && matrix.browser == 'firefox'
+        run: bash scripts/ci-firefox-audio.sh stop
       - name: Retain cross-engine playback, traces, and server logs
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

@@ -127,15 +127,16 @@ func TestVectorGELUCandidateAgainstErf(t *testing.T) {
 	for i, x := range original {
 		want := .5 * float64(x) * (1 + math.Erf(float64(x)/math.Sqrt2))
 		got := float64(values[i])
-		if math.IsNaN(want) {
+		switch {
+		case math.IsNaN(want):
 			if !math.IsNaN(got) {
 				t.Fatal("GELU hid NaN")
 			}
-		} else if math.IsInf(want, 0) || x == 0 {
+		case math.IsInf(want, 0) || x == 0:
 			if math.Float32bits(values[i]) != math.Float32bits(float32(want)) {
 				t.Fatal("GELU exceptional or signed-zero changed")
 			}
-		} else {
+		default:
 			difference := math.Abs(got - want)
 			worst = math.Max(worst, difference)
 			if difference > 2e-6 {

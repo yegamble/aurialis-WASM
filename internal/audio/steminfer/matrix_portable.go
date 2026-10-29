@@ -2,7 +2,7 @@
 
 package steminfer
 
-// cspell:words steminfer dtype CFLAGS DACCELERATE LAPACK cblas sgemm Cblas GFLOP
+// cspell:words noasm steminfer dtype CFLAGS DACCELERATE LAPACK cblas sgemm Cblas GFLOP
 
 func matrixBackendName() string { return "portable-go" }
 func multiplyBackend(dst, left, right []float32, rows, columns, inner int, transposeRight bool) {

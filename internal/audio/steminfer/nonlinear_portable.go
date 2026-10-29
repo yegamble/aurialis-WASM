@@ -2,7 +2,7 @@
 
 package steminfer
 
-// cspell:words softmax steminfer GELU
+// cspell:words Exponentials softmax steminfer GELU
 
 import "math"
 

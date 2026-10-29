@@ -1,6 +1,6 @@
 package steminfer
 
-// cspell:words steminfer
+// cspell:words gonum steminfer
 
 import (
 	"math"

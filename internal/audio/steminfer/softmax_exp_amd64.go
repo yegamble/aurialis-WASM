@@ -80,7 +80,7 @@ func normalizeSoftmax(values []float32, sum float64) {
 func maximumFiniteSoftmax(values *float32, count int) float32
 
 // divideSoftmaxFourLanes preserves the scalar float64 division and float32
-// rounding for each value independently. It does not reassociate the sum.
+// rounding for each value independently, keeping the sum order unchanged.
 //
 //go:noescape
 func divideSoftmaxFourLanes(values *float32, count int, sum float64)

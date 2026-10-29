@@ -1,5 +1,5 @@
 # Aurialis-WASM API reference
-<!-- cspell:words Hann steganography yosefgamble -->
+<!-- cspell:words Hann steganography yosefgamble gonum -->
 Library relink consumes the existing canonical import source identity; it adds no HTTP endpoint. Exact PCM identity is independent of filenames and does not acknowledge durable browser metadata storage. Source replacement uses a fresh local asset key and retained recovery audio as described in [architecture](architecture.md#library-source-lifecycle).
 
 
@@ -150,7 +150,7 @@ Both root and `/api` aliases exist for health, render, Deep/source-feature analy
 | `POST /analyze/deep` | 202 legacy heuristic job, or a measured source-bound ScriptV2 proposal with `scriptVersion=2.0`. The integrated Deep editor explicitly requests ScriptV2. |
 | `POST /api/automation/compile` | 200 bounded numeric ScriptV2 schedule; declared source remains unverified until actual-source binding. No root alias. |
 | `POST /api/analyze/reference` | 202 measured source/reference proposal with joint input admission and full-chain output guards. No root alias. |
-| `POST /separate` | 202 trained stem-separation job for 2–6 outputs. 503 `stems_unavailable` when the binary runs without a model or was built without Apple Accelerate, 503 `queue_full` when the separation pool is busy, 413 `too_long` when the source exceeds the per-job memory ceiling. |
+| `POST /separate` | 202 trained stem-separation job for 2–6 outputs. 503 `stems_unavailable` when the binary runs without a model or without a qualified inference backend, 503 `queue_full` when the separation pool is busy, 413 `too_long` when the source exceeds the per-job memory ceiling. |
 | `GET /api/stems/model` | 200 `{available, ready, downloading, downloadedBytes, totalBytes, state, accelerated, backend, arch?, speed?}` for the separation model; see below. |
 
 `GET /api/stems/model` fields:
@@ -161,9 +161,9 @@ Both root and `/api` aliases exist for health, render, Deep/source-feature analy
 | `state` | `disabled` (started with `-stem-model-url ""`), `absent` (no cached file), `downloading`, `loading` (reading the verified file into memory, from the cache or right after a download), `cached` (on disk and matching the `.verified` marker written after its last full SHA-256 check, not yet loaded), `invalid` (the cached file failed its check, or is a symlink or other non-regular file; the next split replaces it) or `loaded`. The marker records size and modification time and, on macOS and Linux, the inode and change time, which any later write moves; elsewhere it records size and modification time only. Checking never loads the 176 MB model; an unmarked cache is hashed once and remembered. Loading always re-checks the full SHA-256 and refuses a symlink. |
 | `ready`, `downloading` | `state` is `loaded` / `downloading` (kept for older clients). |
 | `downloadedBytes`, `totalBytes` | Bytes downloaded so far and the pinned model size (176,487,688). |
-| `accelerated`, `backend` | `true` / `"apple-accelerate"` on macOS cgo builds; `false` / `"portable-go"` elsewhere, where `available` is false because plain Go did not finish one 20-second window in 30 minutes. `backend` is `""` when disabled. |
-| `arch` | The server's `GOARCH` (`arm64`, `amd64`, …); omitted when disabled. The published idle/busy speeds are Apple-silicon timings. A separate hosted Intel macOS run measured one 20-second window at 177.86 seconds, but did not time model setup, full-song completion, cancellation or heap use; Intel remains unqualified and the API does not publish an Intel speed. |
-| `speed` | Accelerated builds only: `{windowSeconds: 20, hopSeconds: 10, idleSecondsPerWindow: 32, busySecondsPerWindow: 173}`, the recorded 8-core M2 figures in [tasks](tasks.md). A song of `d` seconds needs `ceil((d + 20) / 10)` windows when `d > 20`, otherwise `ceil(d / 10)`. |
+| `accelerated`, `backend` | `true` on `apple-accelerate` (macOS cgo) and qualified `packed-avx2-fma` (Linux/Windows amd64); `false` on unqualified `gonum-sse3` and `portable-go` fallbacks. `backend` names the selected kernel or is `""` when disabled. The hosted Linux/Windows AVX2/FMA qualification passed, but the Windows window was only 5.61 s under the 180 s gate, so timing is not a device guarantee. |
+| `arch` | The server's `GOARCH` (`arm64`, `amd64`, …); omitted when disabled. The published idle/busy speeds are Apple-silicon timings only. The latest profiled Intel macOS candidate measured 230.33 s for one 20-second window (model load 0.68 s, setup 0.011 s); Intel remains unqualified because full-song, cancellation and heap acceptance is incomplete, and the API does not publish an Intel speed. |
+| `speed` | Present only where the build publishes measured timing (currently Apple Accelerate). Qualified `packed-avx2-fma` builds omit it rather than borrowing Apple timings. Apple reports `{windowSeconds: 20, hopSeconds: 10, idleSecondsPerWindow: 32, busySecondsPerWindow: 173}`. A song of `d` seconds needs `ceil((d + 20) / 10)` windows when `d > 20`, otherwise `ceil(d / 10)`. |
 | `GET /jobs/{id}` | 200 job snapshot; `/status` and `/result` aliases return the same snapshot. `?wait=1` waits up to four seconds while queued/running. |
 | `DELETE /jobs/{id}` | Cancels queued/running work and clears terminal artifacts too; repeated cancellation of a retained record is idempotent. Missing or expired ID returns 404. |
 | `GET /jobs/{id}/stems/{stemName}` | 200 WAV when an artifact exists; optional `.wav` suffix; 404 otherwise. Traversal components are rejected. |

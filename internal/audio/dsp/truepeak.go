@@ -151,6 +151,9 @@ type truePeakLimiter struct {
 	guardPrimed, guardStale bool
 	// Keep each queued frame's fade and intended unguarded peak together.
 	guardHistory, targetPeak [truePeakRing]float64
+	// A partial guard may also be fading in under active limiting. Only
+	// frames queued while turning it off may release their gain.
+	releasing [truePeakRing]bool
 
 	// Delay line: processed L/R and raw L/R for A/B monitoring and bypass.
 	delay   [4][truePeakRing]float64
@@ -279,13 +282,15 @@ func (t *truePeakLimiter) process(l, r, rawL, rawR, ceiling, release float64, li
 	gain := t.gain(t.requirement(l, r, ceiling*truePeakHeadroom, protected), release)
 	delayedLimit := t.limited[t.cursor]
 	delayedMix, delayedPeak := t.guardHistory[t.cursor], t.targetPeak[t.cursor]
+	delayedRelease := t.releasing[t.cursor]
 	t.limited[t.cursor] = protected
 	t.guardHistory[t.cursor], t.targetPeak[t.cursor] = t.guardMix, targetPeak
+	t.releasing[t.cursor] = !limit && t.guardMix > 0
 	l, r, rawL, rawR = t.push(l, r, rawL, rawR)
 	if !limit && !delayedLimit {
 		return l, r, rawL, rawR, 1
 	}
-	if !limit && delayedMix < 1 {
+	if !limit && delayedRelease {
 		weight := 0.5 + 0.5*math.Cos(math.Pi*delayedMix)
 		gain += (1 - gain) * weight
 		// Old boosted guard history must not overshoot a newly neutral

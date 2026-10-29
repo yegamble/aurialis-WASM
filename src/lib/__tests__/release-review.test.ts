@@ -151,6 +151,18 @@ describe("encoded release artifacts and saved receipts", () => {
     vi.mocked(renderDelivery).mockImplementation(() => delivered(pcm16(48000, 1)));
     await expect(collectReleaseReview(source(), track, CD_DELIVERY, "CD", signal())).rejects.toThrow(/expected clean WAV/u);
   });
+  it("invalidates a Classic receipt for selected Oversampled quality while preserving legacy bindings", async () => {
+    const classic = await releaseBindingHash(track, DEFAULT_DELIVERY, signal());
+    const selectedClassic = { ...track, advanced: { ...track.advanced, renderQuality: "classic" as const } };
+    const oversampled = { ...track, advanced: { ...track.advanced, renderQuality: "oversampled" as const } };
+    expect(await releaseBindingHash(selectedClassic, DEFAULT_DELIVERY, signal())).toBe(classic);
+    expect(await releaseBindingHash(oversampled, DEFAULT_DELIVERY, signal())).not.toBe(classic);
+    const applied = { ...script(), chainParams: { ...script().chainParams, algorithmVersion: 3 } };
+    const deep: Track = { ...selectedClassic, deepMastering: { sourceRevision: 4, proposal: applied, applied, targets: [] } };
+    const legacy = createHash("sha256").update(JSON.stringify({ id: deep.id, title: deep.title, audio: deep.sourceAudioId ?? deep.id, sourceRevision: 4, source: identity, bits: 24, params: engineParams(deep.advanced), script: applied })).digest("hex");
+    expect(await releaseBindingHash(deep, DEFAULT_DELIVERY, signal())).toBe(legacy);
+    expect(await releaseBindingHash({ ...deep, advanced: oversampled.advanced }, DEFAULT_DELIVERY, signal())).not.toBe(legacy);
+  });
   it("binds the check to the delivery rate and dither, keeping the default format's earlier binding", async () => {
     const cd = await releaseBindingHash(track, CD_DELIVERY, signal());
     const sourceRate = await releaseBindingHash(track, { ...CD_DELIVERY, sampleRate: "source" }, signal());

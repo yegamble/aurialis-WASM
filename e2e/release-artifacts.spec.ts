@@ -4,6 +4,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { decode, fixture } from "./audio-fixture";
 import { uploadProject } from "./workflow-fixture";
+import { verifyReleaseQualityStaleness } from "./release-quality-cases";
 import { exportScript } from "../src/lib/engine-params";
 import type { ReleaseReport } from "../src/lib/release-review";
 import type { Track } from "../src/lib/types";
@@ -67,6 +68,7 @@ test("saved release receipts survive reload, invalidate on edits and recover vis
   await expect.poll(async () => (await project(page)).releaseReview?.output.sha256).toBe(original.output.sha256);
   await page.reload(); await expect(page.getByRole("region", { name: "Encoded audio review", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Download measured WAV", exact: true })).toBeDisabled(); expect((await report(page)).output).toEqual(original.output);
+  await verifyReleaseQualityStaleness(page, id);
   await chooseBits(page, 16); await expect(page.getByRole("region", { name: "Encoded audio review", exact: true })).toHaveCount(0);
   await page.goto(`/master/${id}`); await page.getByRole("slider", { name: "Input gain", exact: true }).fill("6"); await page.goto(`/release-check/${id}`);
   await expect(page.getByRole("region", { name: "Encoded audio review", exact: true })).toHaveCount(0);

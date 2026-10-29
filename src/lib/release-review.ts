@@ -33,9 +33,15 @@ async function textHash(value: string, signal: AbortSignal): Promise<string> {
  * A converted rate or disabled dither is appended, so a source-rate dithered check
  * keeps the binding it had before the delivery format was selectable. */
 export async function releaseBindingHash(track: Track, format: DeliveryFormat, signal: AbortSignal): Promise<string> {
+  const render = exportRender(track);
+  const algorithm = "script" in render ? render.script.chainParams.algorithmVersion : render.params.algorithmVersion;
+  // Preserve existing Classic receipts byte-for-byte, but never present them as
+  // measurements of the distinct Oversampled renderer. Selected quality also
+  // overrides an imported script's authored algorithm through exportRender.
+  const quality = algorithm === 3 ? { renderAlgorithm: 3 } : {};
   return textHash(JSON.stringify({ id: track.id, title: track.title, audio: track.sourceAudioId ?? track.id,
     sourceRevision: track.sourceRevision ?? 0, source: track.sourceIdentity, bits: format.bitDepth,
-    params: engineParams(track.advanced), script: track.deepMastering?.applied ?? null, ...deliveryRequest(format) }), signal);
+    params: engineParams(track.advanced), script: track.deepMastering?.applied ?? null, ...deliveryRequest(format), ...quality }), signal);
 }
 
 type ReviewMemory = ReturnType<typeof reserveBrowserAudioMemory>;

@@ -12,6 +12,12 @@ import (
 // measurement rate. This distinguishes processing dependence from a meter
 // rate difference; it does not promise rate-invariant nonlinear processing.
 func TestOfflineChainRateDependenceIsMeasuredAtOneDeliveryRate(t *testing.T) {
+	t.Run("Classic2", func(t *testing.T) { compareOfflineRates(t, dsp.TruePeakAlgorithmVersion) })
+	t.Run("Oversampled3", func(t *testing.T) { compareOfflineRates(t, dsp.OversampledAlgorithmVersion) })
+}
+
+func compareOfflineRates(t *testing.T, algorithm uint32) {
+	t.Helper()
 	const highRate, lowRate, frames = 96000, 48000, 192000
 	ctx := context.Background()
 	left, right := make([]float32, frames), make([]float32, frames)
@@ -26,7 +32,7 @@ func TestOfflineChainRateDependenceIsMeasuredAtOneDeliveryRate(t *testing.T) {
 		t.Fatal(err)
 	}
 	base := dsp.DefaultParams()
-	base.AlgorithmVersion = dsp.TruePeakAlgorithmVersion
+	base.AlgorithmVersion = algorithm
 	full := base
 	full.InputGainDB = 10
 	full.EQEnabled, full.Bands[3].GainDB = true, 3

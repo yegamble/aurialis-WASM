@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 
 const phase = process.argv[2];
 assert.ok(phase === "before" || phase === "after", "choose before or after provisioning");
-const directory = process.env.AURIALIS_AUDIO_DIAGNOSTICS ?? "artifacts/browser-engines";
+const directory = process.env.AURIALIS_AUDIO_DIAGNOSTICS ?? "artifacts/browser-engine-audio";
 await mkdir(directory, { recursive: true });
 const diagnostics = { phase, platform: process.platform, console: [], errors: [], samples: [] };
 const browser = await firefox.launch({ headless: true });

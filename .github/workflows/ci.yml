@@ -628,6 +628,7 @@ jobs:
           name: browser-engine-${{ matrix.target }}-${{ matrix.browser }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             artifacts/browser-engines/
+            artifacts/browser-engine-audio/
           retention-days: 7
 
   playwright-e2e:

@@ -97,3 +97,129 @@ func TestGuardSwitchLeavesNoSplice(t *testing.T) {
 		}
 	}
 }
+
+// Reset modules and bypass must not release the delayed, boosted input at
+// unity gain. Only newly queued neutral audio is unprotected; once the guard
+// fades out it must equal the delayed source bit for bit.
+func TestLimitedToNeutralRetainsQueuedGain(t *testing.T) {
+	for _, rate := range []float64{44100, 48000, 96000} {
+		for _, bypass := range []bool{false, true} {
+			for _, inputGain := range []float64{6, 12} {
+				t.Run(fmt.Sprintf("%.0f/bypass=%t/gain=%.0f", rate, bypass, inputGain), func(t *testing.T) {
+					p := truePeakParams(-1)
+					p.InputGainDB = inputGain
+					e := NewEngine(rate)
+					e.SetParams(p)
+					const block, warmup, captured = 128, 400, 8
+					in, out := [2][block]float32{}, [2][block]float32{}
+					source := make([]float32, (warmup+captured)*block)
+					for i := range source {
+						source[i] = float32(dbToLin(-3.1) * math.Sin(2*math.Pi*220*float64(i)/rate))
+					}
+					var peak float64
+					identityStart := e.LatencyFrames() + int(math.Ceil(rate*guardFadeSeconds))
+					for b := range warmup + captured {
+						if b == warmup {
+							if gr := e.LastGainReductionDB(); gr < 3 {
+								t.Fatalf("fixture needs gain reduction: %.3f dB", gr)
+							}
+							off := DefaultParams()
+							off.AlgorithmVersion = TruePeakAlgorithmVersion
+							if bypass {
+								off = p
+								off.Bypass = true
+							}
+							e.SetParams(off)
+						}
+						for i := range block {
+							in[0][i], in[1][i] = source[b*block+i], -0.8*source[b*block+i]
+						}
+						e.ProcessBlock(in[0][:], in[1][:], out[0][:], out[1][:])
+						if b < warmup {
+							continue
+						}
+						for i := range block {
+							peak = math.Max(peak, math.Max(math.Abs(float64(out[0][i])), math.Abs(float64(out[1][i]))))
+							if (b-warmup)*block+i >= identityStart {
+								want := source[b*block+i-e.LatencyFrames()]
+								if out[0][i] != want || out[1][i] != -0.8*want {
+									t.Fatalf("steady neutral changed source at frame %d", b*block+i)
+								}
+							}
+						}
+					}
+					t.Logf("transition peak %.3f dBFS", linToDB(peak))
+					if peak > dbToLin(-1) || math.IsNaN(peak) {
+						t.Fatalf("transition released queued audio over the ceiling: %.3f dBFS", linToDB(peak))
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestQueuedGainSurvivesInterruptedGuardFade(t *testing.T) {
+	for _, rate := range []float64{44100, 48000, 96000} {
+		for _, mode := range []string{"limiter-off", "true-peak-off", "rapid-neutral", "rapid-bypass"} {
+			t.Run(fmt.Sprintf("%.0f/%s", rate, mode), func(t *testing.T) {
+				on := truePeakParams(-1)
+				on.InputGainDB = 12
+				off := on
+				switch mode {
+				case "limiter-off":
+					off.Limiter.Enabled = false
+				case "true-peak-off":
+					off.Limiter.TruePeak = false
+				case "rapid-neutral":
+					off = DefaultParams()
+					off.AlgorithmVersion = TruePeakAlgorithmVersion
+				default:
+					off.Bypass = true
+				}
+				e := NewEngine(rate)
+				e.SetParams(on)
+				var in, out [2][128]float32
+				frame := 0
+				process := func(n int) {
+					for i := range n {
+						x := float32(dbToLin(-3.1) * math.Sin(2*math.Pi*220*float64(frame+i)/rate))
+						in[0][i], in[1][i] = x, -0.8*x
+					}
+					e.ProcessBlock(in[0][:n], in[1][:n], out[0][:n], out[1][:n])
+					frame += n
+				}
+				for range 400 {
+					process(128)
+				}
+				e.SetParams(off)
+				settled := e.LatencyFrames() + int(math.Ceil(rate*guardFadeSeconds))
+				var unprotectedPeak float64
+				for at := 0; at < settled+512; at += 13 {
+					if mode == "rapid-neutral" || mode == "rapid-bypass" {
+						if at%26 == 0 {
+							e.SetParams(off)
+						} else {
+							e.SetParams(on)
+						}
+					}
+					process(13)
+					for i := range 13 {
+						peak := math.Max(math.Abs(float64(out[0][i])), math.Abs(float64(out[1][i])))
+						if math.IsNaN(peak) || math.IsInf(peak, 0) {
+							t.Fatal("non-finite transition output")
+						}
+						if (mode != "limiter-off" || at+i < e.LatencyFrames()) && peak > dbToLin(-1)+1e-7 {
+							t.Fatalf("unprotected transition frame %d: %.3f dBFS", at+i, linToDB(peak))
+						}
+						if at+i >= settled {
+							unprotectedPeak = math.Max(unprotectedPeak, peak)
+						}
+					}
+				}
+				if mode == "limiter-off" && unprotectedPeak <= 1 {
+					t.Fatal("disabling the limiter still limits newly unprotected boosted audio")
+				}
+			})
+		}
+	}
+}

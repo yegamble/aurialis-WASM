@@ -151,8 +151,9 @@ type truePeakLimiter struct {
 	guardPrimed, guardStale bool
 
 	// Delay line: processed L/R and raw L/R for A/B monitoring and bypass.
-	delay  [4][truePeakRing]float64
-	cursor int
+	delay   [4][truePeakRing]float64
+	limited [truePeakRing]bool // Limited and guard-fade frames retain protection on exit.
+	cursor  int
 	// Frames Drain still owes: the full latency after any input, else zero.
 	pending int
 
@@ -241,9 +242,10 @@ func (t *truePeakLimiter) push(l, r, rawL, rawR float64) (float64, float64, floa
 }
 
 // process advances the limiter by one frame and returns the delayed frame with
-// its gain. With limit false it runs at unity gain on the unfiltered frame;
-// the guard still runs so its state is current when limiting resumes, and a
-// change of limit crossfades the two over guardFadeSeconds.
+// its gain. Frames queued under limiting or its guard fade retain protection
+// when limiting turns off; fully unguarded frames leave at unity. The guard
+// still runs so its state is current when limiting resumes, and a change of
+// limit crossfades the two over guardFadeSeconds.
 func (t *truePeakLimiter) process(l, r, rawL, rawR, ceiling, release float64, limit bool) (float64, float64, float64, float64, float64) {
 	guardL, guardR := t.guard.sample(l, r)
 	target := 0.0
@@ -268,9 +270,14 @@ func (t *truePeakLimiter) process(l, r, rawL, rawR, ceiling, release float64, li
 		l += weight * (guardL - l)
 		r += weight * (guardR - r)
 	}
-	gain := t.gain(t.requirement(l, r, ceiling*truePeakHeadroom, limit), release)
+	// The guard can ring from the preceding boosted input into a neutral
+	// frame during the fade. Protect that mixture too until it is fully raw.
+	protected := limit || t.guardMix > 0
+	gain := t.gain(t.requirement(l, r, ceiling*truePeakHeadroom, protected), release)
+	delayedLimit := t.limited[t.cursor]
+	t.limited[t.cursor] = protected
 	l, r, rawL, rawR = t.push(l, r, rawL, rawR)
-	if !limit {
+	if !limit && !delayedLimit {
 		return l, r, rawL, rawR, 1
 	}
 	return l * gain, r * gain, rawL, rawR, gain

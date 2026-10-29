@@ -1250,7 +1250,8 @@ func (e *Engine) processTruePeakStage(l, r, rawL, rawR float64, limActive bool) 
 // the same lookahead as processed audio so toggling bypass stays aligned. It
 // plays the stage's processed column: once the guard has faded out that is the
 // source exactly, and audio processed before bypass leaves the delay line
-// first, so engaging bypass crossfades out of the guard instead of splicing.
+// first with its limiter gain, so engaging bypass crossfades out of the guard
+// instead of splicing or releasing queued audio without its gain reduction.
 func (e *Engine) truePeakPassthrough(inL, inR float32) (float32, float32) {
 	l, r := float64(inL), float64(inR)
 	if math.IsNaN(l) || math.IsInf(l, 0) {

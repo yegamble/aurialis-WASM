@@ -12,6 +12,10 @@ import { denseFixture, uploadProject } from "./workflow-fixture";
 // V1-10: live playback renders the export algorithm, so what is heard is what is exported.
 const RATE = 48000, LOOP_SECONDS = 8, CEILING_DBTP = -1;
 const SOAK_SECONDS = Number(process.env.AURIALIS_LIVE_SOAK_SECONDS ?? "30");
+const SOAK_QUALITY = process.env.AURIALIS_LIVE_SOAK_QUALITY ?? "classic";
+const SOAK_RATE = Number(process.env.AURIALIS_LIVE_SOAK_RATE ?? "48000");
+if (SOAK_QUALITY !== "classic" && SOAK_QUALITY !== "oversampled") throw new Error("Choose classic or oversampled soak quality.");
+if (SOAK_RATE !== 44100 && SOAK_RATE !== 48000) throw new Error("Choose 44100 or 48000 Hz soak rate.");
 /** Audio-clock lag allowed: min(250 ms, 5 ms per audio second), 150 ms at
  * 30 s. Quiet-host runs lagged −4 to +2 ms in 30 s and under 40 ms in 600 s;
  * the worst run QA called clean lagged 234 ms in 150 s (1.6 ms/s). A kernel too
@@ -28,11 +32,11 @@ type Timing = { clock: string; resolutionMs: number; quanta: number; totalMs: nu
 type TimingWindow = Window & { qaTiming?: Timing };
 
 /** Run the AudioContext at the 48 kHz source rate so live and export process the same samples. */
-async function pinDeviceRate(page: Page): Promise<void> {
+async function pinDeviceRate(page: Page, deviceRate = RATE): Promise<void> {
   await page.addInitScript((rate) => {
     const NativeContext = AudioContext;
     window.AudioContext = class extends NativeContext { constructor(options?: AudioContextOptions) { super({ ...options, sampleRate: rate }); (window as StatsWindow).qaContext = this; } };
-  }, RATE);
+  }, deviceRate);
 }
 type StatsWindow = Window & { qaContext?: AudioContext };
 /** Chromium's device underrun counter for the live context, or null elsewhere. */
@@ -87,9 +91,15 @@ async function timeWorklet(page: Page): Promise<void> {
       if (!href.pathname.endsWith("/worklets/aurialis-live-worklet.js")) return nativeAddModule.call(this, url, options);
       const source = await (await fetch(href)).text(), host = "from \"./aurialis-wasi-host.js\"";
       if (!source.includes(render) || !source.includes("const QUANTUM = 128;") || !source.includes(host)) throw new Error("The worklet changed; update the timing tap.");
-      const timed = source.replace(host, `from "${new URL("./aurialis-wasi-host.js", href).href}"`)
-        .replace("const QUANTUM = 128;", `const QUANTUM = 128;${tap}`)
-        .replace(render, `const qaStart = qaNow();\n      ${render}\n      qaTiming(this, qaNow() - qaStart);`);
+      const finalStage = "this.recordDiagnostics(this.pendingKernelMs, this.pendingKernelStart);";
+      const prepared = source.replace(host, `from "${new URL("./aurialis-wasi-host.js", href).href}"`)
+        .replace("const QUANTUM = 128;", `const QUANTUM = 128;${tap}`);
+      // New engines include the final Go monitor stage and alignment/mixing work
+      // in one quantum budget. The older source only has the DSP call anchor.
+      const timed = source.includes(finalStage)
+        ? prepared.replace(render, `this.qaKernelStart = qaNow();\n      ${render}`)
+          .replace(finalStage, `${finalStage} qaTiming(this, qaNow() - this.qaKernelStart);`)
+        : prepared.replace(render, `const qaStart = qaNow();\n      ${render}\n      qaTiming(this, qaNow() - qaStart);`);
       const blob = URL.createObjectURL(new Blob([timed], { type: "text/javascript" }));
       try { await nativeAddModule.call(this, blob, options); } finally { URL.revokeObjectURL(blob); }
     };
@@ -108,11 +118,12 @@ async function timeWorklet(page: Page): Promise<void> {
 }
 
 /** Every module the UI can enable together, saved before reload like a returning project. */
-async function heaviestChain(page: Page): Promise<void> {
+async function heaviestChain(page: Page, quality: "classic" | "oversampled" = "classic"): Promise<void> {
   await observeAcceptedControls(page);
-  await page.evaluate(() => {
+  await page.evaluate((renderQuality) => {
     const state = JSON.parse(localStorage.getItem("aurialis-state-v1") ?? "{}") as { tracks: Track[] };
     const advanced = state.tracks[0]?.advanced; if (!advanced) throw new Error("Missing uploaded track");
+    advanced.renderQuality = renderQuality;
     advanced.input = 6;
     advanced.eqBands = advanced.eqBands.map((band) => ({ ...band, gainDb: 2 })) as typeof advanced.eqBands;
     advanced.deHarsh = { ...advanced.deHarsh, enabled: true, thresholdDb: -30, rangeDb: 6 };
@@ -122,7 +133,7 @@ async function heaviestChain(page: Page): Promise<void> {
     advanced.stereo = { ...advanced.stereo, enabled: true, width: 130, monoBass: true, midGainDb: 1, sideGainDb: -1 };
     advanced.limiter = { ...advanced.limiter, enabled: true, ceiling: -1 };
     localStorage.setItem("aurialis-state-v1", JSON.stringify(state));
-  });
+  }, quality);
   await page.reload();
   await expect(page.getByRole("button", { name: "A Processed", exact: true })).toBeEnabled({ timeout: 30_000 });
   await expect(page.getByRole("slider", { name: "Input gain", exact: true })).toHaveValue("6");
@@ -413,17 +424,17 @@ test("a burner at +0.3 of each quantum stays under real time and plays 30 s with
 });
 
 test.describe("sustained live playback", () => {
-test(`the export algorithm keeps up live for ${String(SOAK_SECONDS)} s with every module on`, async ({ page }, info) => {
+test(`the ${SOAK_QUALITY} export algorithm keeps up live for ${String(SOAK_SECONDS)} s at ${String(SOAK_RATE)} Hz with every module on`, async ({ page }, info) => {
   test.setTimeout(SOAK_SECONDS * 1000 + 120_000);
-  await pinDeviceRate(page); await timeWorklet(page);
+  await pinDeviceRate(page, SOAK_RATE); await timeWorklet(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await uploadProject(page, "live-soak.wav", LOOP_SECONDS, "dense");
-  await heaviestChain(page);
+  await uploadProject(page, "live-soak.wav", LOOP_SECONDS, denseFixture(LOOP_SECONDS, -1.3, SOAK_RATE));
+  await heaviestChain(page, SOAK_QUALITY);
   await page.getByRole("button", { name: "Repeat track", exact: true }).click();
   await page.getByRole("button", { name: "Play", exact: true }).click();
   const transport = page.locator(".transport");
   await expect(transport).toHaveAttribute("data-playing", "true", { timeout: 20_000 });
-  await expectHeaviestAccepted(page);
+  const acceptedControls = await expectHeaviestAccepted(page, SOAK_QUALITY === "oversampled" ? 3 : 2);
   // Warm-up: Chromium records 12–19 underrun events while the stream starts.
   await expect.poll(() => page.evaluate(() => (window as TimingWindow).qaTiming?.audioMs ?? 0), { intervals: [500], timeout: 60_000 }).toBeGreaterThanOrEqual(2000);
   const warmUnderruns = await underrunEvents(page);
@@ -435,12 +446,12 @@ test(`the export algorithm keeps up live for ${String(SOAK_SECONDS)} s with ever
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   if (!timing) throw new Error("Missing worklet timing");
   const quantumMs = 1000 * 128 / timing.sampleRate;
-  const evidence = { ...timing, meanKernelMs: timing.totalMs / timing.quanta, meanLoad: timing.totalMs / timing.quanta / quantumMs, quantumMs,
+  const evidence = { ...timing, quality: SOAK_QUALITY, acceptedControls, meanKernelMs: timing.totalMs / timing.quanta, meanLoad: timing.totalMs / timing.quanta / quantumMs, quantumMs,
     clockDriftMs: timing.wallMs - timing.audioMs, driftLimitMs: Math.min(DRIFT_MS_MAX, DRIFT_MS_PER_AUDIO_SECOND * timing.audioMs / 1000),
     deviceUnderrunsAfterWarmUp: warmUnderruns === null || endUnderruns === null ? null : endUnderruns - warmUnderruns };
   await writeFile(info.outputPath("live-soak-evidence.json"), JSON.stringify(evidence, null, 2));
   await info.attach("live-soak-evidence", { body: JSON.stringify(evidence), contentType: "application/json" });
-  expect(timing.sampleRate).toBe(RATE);
+  expect(timing.sampleRate).toBe(SOAK_RATE);
   // No device underrun after warm-up (Chromium's playbackStats), and the audio
   // clock kept pace with the wall clock (a render thread that falls behind makes
   // it lag). `slow` (kernel calls over 2.67 ms by Date.now) is informational: the

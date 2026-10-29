@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LoudnessMatchGains } from "./live-playback";
 import { loudnessMatchRequest, loudnessMatchText, measureLoudnessMatch, readMatchPreference, resolveLoudnessMatch, writeMatchPreference, type LoudnessMatch, type LoudnessReading } from "./loudness-match";
+import type { MonitorMode } from "./monitor-mode";
 import type { Track } from "./types";
 
 /** Wait for a settings edit to settle before measuring a whole render. */
@@ -16,7 +17,7 @@ const RETRY_DELAY_MS = 1500;
  * measurement yields to Export, Deep and other user jobs and retries later.
  * The preference is per browser, not per project.
  */
-export function useLoudnessMatch(track: Track | undefined, source: Blob | null) {
+export function useLoudnessMatch(track: Track | undefined, source: Blob | null, monitorMode: MonitorMode = "stereo") {
   const [enabled, setEnabledState] = useState(false);
   const [reading, setReading] = useState<LoudnessReading | null>(null);
   const [failure, setFailure] = useState<{ key: string; message: string } | null>(null);
@@ -30,9 +31,9 @@ export function useLoudnessMatch(track: Track | undefined, source: Blob | null) 
   }, []);
   const request = useMemo(() => {
     if (!track) return null;
-    try { return loudnessMatchRequest(track); }
+    try { return loudnessMatchRequest(track, monitorMode); }
     catch (cause) { return { key: null, scope: null, error: cause instanceof Error ? cause.message : "These settings cannot be measured." }; }
-  }, [track]);
+  }, [track, monitorMode]);
   const pending = useRef(request);
   pending.current = request;
   const key = request?.key ?? null;

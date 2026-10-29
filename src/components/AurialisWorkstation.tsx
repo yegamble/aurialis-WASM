@@ -19,6 +19,7 @@ import { DSPModule } from "./shared/DSPModule";
 import { EQBandControls, LimiterReleaseControl } from "./shared/EQBandControls";
 import { RealTransport } from "./shared/RealTransport";
 import { relativeSeekPosition } from "@/lib/playback-position";
+import { useMonitorMode } from "@/lib/use-monitor-mode";
 import { useLoudnessMatch } from "@/lib/use-loudness-match";
 import { ReleaseReview } from "./shared/ReleaseReview";
 import { AuditionExport, auditionKey, type AuditionHandle, type HeldAudition } from "./shared/AuditionExport";
@@ -85,6 +86,8 @@ import { DeepProposalPanel } from "./shared/DeepProposalPanel";
 import { useDeepPlayback } from "@/lib/use-deep-playback";
 import { appliedRevisionKey } from "@/lib/deep-mastering";
 import { ALBUM_OFFSET_LIMIT_DB, ALBUM_TARGETS, albumLevelSummary, albumMastersKey, albumOffset, DEFAULT_ALBUM_LEVEL, planAlbumLevels, renderAlbumTrack, withAlbumOffset, type AlbumLevel, type AlbumMasterLevel, type AlbumRenderEngine } from "@/lib/album-levels";
+import { AlbumSequence } from "./shared/AlbumSequence";
+import { readAlbumTransition } from "@/lib/album-transition-settings";
 import { AlbumLevelChart, type MeasuredAlbumMaster } from "./shared/AlbumLevelChart";
 import type { ScriptV2 } from "@/lib/deep-mastering";
 import { DeepTimeline } from "./shared/DeepTimeline";
@@ -654,10 +657,13 @@ function MasterView({ trackId }: { trackId: string }) {
   const liveSettings = useMemo(() => track ? clampAdvancedToSampleRate(track.advanced, source?.sampleRate ?? track.sampleRate) : createDefaultAdvancedParams(), [track?.advanced, track?.sampleRate, source?.sampleRate]);
   const currentSettings = useRef(liveSettings);
   currentSettings.current = liveSettings;
-  const loudnessMatch = useLoudnessMatch(track, sourceBlob);
+  const monitor = useMonitorMode();
+  const currentMonitor = useRef(monitor.mode); currentMonitor.current = monitor.mode;
+  const loudnessMatch = useLoudnessMatch(track, sourceBlob, monitor.mode);
   const { processedDb: matchProcessedDb, originalDb: matchOriginalDb } = loudnessMatch.gains;
   const currentMatch = useRef(loudnessMatch.gains);
   currentMatch.current = loudnessMatch.gains;
+  useEffect(() => { live.current?.setMonitorMode(monitor.mode); }, [monitor.mode]);
   const liveMeter = playback?.playing ? meter : null;
   const levels = liveMeter ? { peak: liveMeter.peakDbfs <= -119.9 ? "−∞" : liveMeter.peakDbfs.toFixed(1), rms: liveMeter.rmsDbfs <= -119.9 ? "−∞" : liveMeter.rmsDbfs.toFixed(1), crest: liveMeter.peakDbfs <= -119.9 ? "—" : liveMeter.crestDb.toFixed(1) } : null;
   const reading = (value: number | null | undefined) => value === null || value === undefined ? "—" : value.toFixed(1);
@@ -687,6 +693,7 @@ function MasterView({ trackId }: { trackId: string }) {
         onError: (error) => { if (active) setLiveError(error.message); },
       }, sourceBlob && track?.sourceIdentity ? { blob: sourceBlob, identity: track.sourceIdentity, ...(track.deepMastering?.applied ? { applied: track.deepMastering.applied } : {}) } : undefined);
       live.current = controller;
+      controller.setMonitorMode(currentMonitor.current);
       controller.setLoudnessMatch(currentMatch.current);
       setPlayback(controller.getState());
       setLiveError("");
@@ -986,6 +993,7 @@ function MasterView({ trackId }: { trackId: string }) {
               <small>−1 to +1</small>
             </div>
           </div>
+          {monitor.mode !== "stereo" && <p className="disclosure">LUFS and true peak show the processed stereo delivery. Sample peak, RMS and correlation follow the selected A/B listening mode.</p>}
           <div className="metric-strip" role="region" tabIndex={0} aria-label="Measured audio levels">
             <div>
               <span>Sample peak</span>
@@ -1035,6 +1043,7 @@ function MasterView({ trackId }: { trackId: string }) {
             onForward={forward}
             onRepeat={(repeat) => { live.current?.setRepeat(repeat); }}
             onScrub={onScrub}
+            monitor={{ mode: monitor.mode, onChange: (mode) => { if (mode === monitor.mode) return; if (audition.current?.playing()) audition.current.pause(); lastPlayed.current = "live"; monitor.select(mode); } }}
             match={{ enabled: loudnessMatch.enabled, text: loudnessMatch.text, onToggle: loudnessMatch.setEnabled }}
             {...(nextTrack ? { nextTrackTitle: nextTrack.title || "Untitled track" } : {})}
             handover={handover}
@@ -1843,6 +1852,7 @@ function AlbumView({ albumId }: { albumId: string }) {
         </> : <Button variant="secondary" icon={<Icon name="trash" />} disabled={working} onClick={() => { setConfirmDelete(true); }}>Delete album</Button>}
         {confirmDelete && <p className="disclosure">Deletes this album and its saved masters. Your projects and their sources stay in the Library.</p>}
       </div>
+      <AlbumSequence files={artifacts} identity={JSON.stringify([album.id, artifactKey, saved?.createdAt, rendered !== null])} title={album.title} transition={readAlbumTransition(album.transition)} disabled={working} onChange={(transition) => { dispatch({ type: "UPDATE_ALBUM", id: album.id, patch: { transition } }); }} />
       <div className="album-layout">
         <section className="paper-panel">
           <div className="section-heading">

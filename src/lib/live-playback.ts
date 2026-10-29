@@ -1,3 +1,4 @@
+import { isMonitorMode, monitorModeCode, type MonitorMode } from "./monitor-mode";
 import { acceptedControlPacket, readKernelDiagnostics, type KernelDiagnostics } from "./playback-diagnostics";
 import { MAX_SOURCE_FRAMES } from "./audio-limits";
 import type { StereoPCM } from "./browser-engine";
@@ -20,6 +21,7 @@ export type LivePlaybackState = {
   ready: boolean;
   loading: boolean;
   original: boolean;
+  monitorMode?: MonitorMode;
   repeat: boolean;
   repeatPending?: boolean;
   volume: number;
@@ -116,6 +118,7 @@ export type LivePlaybackController = {
   applyScript: (script: ScriptV2, signal: AbortSignal, canCommit?: () => boolean) => Promise<ScriptV2>;
   detachScript: (settings: AdvancedParams, signal: AbortSignal, canCommit?: () => boolean) => Promise<void>;
   setBypass: (original: boolean) => void;
+  setMonitorMode: (mode: MonitorMode) => void;
   setVolume: (volume: number) => void;
   /** Apply one static attenuate-only monitor gain pair, or unity with null. */
   setLoudnessMatch: (match: LoudnessMatchGains | null) => void;
@@ -532,6 +535,7 @@ export function createLivePlayback(
       left.connect(merge, 0, 0); right.connect(merge, 0, 1);
       merge.connect(context.destination);
       splitter = split; merger = merge; leftAnalyser = left; rightAnalyser = right;
+      node.port.postMessage({ type: "monitor-mode", value: monitorModeCode(state.monitorMode ?? "stereo") });
       node.port.postMessage({ type: "original", value: state.original });
       node.port.postMessage({ type: "volume", value: state.volume });
       node.port.postMessage(matchMessage(state.loudnessMatch ?? UNITY_MATCH));
@@ -693,6 +697,12 @@ export function createLivePlayback(
       if (disposed) return;
       state = { ...state, original };
       worklet?.port.postMessage({ type: "original", value: original });
+      emit();
+    },
+    setMonitorMode(mode) {
+      if (disposed || !isMonitorMode(mode)) return;
+      state = { ...state, monitorMode: mode };
+      worklet?.port.postMessage({ type: "monitor-mode", value: monitorModeCode(mode) });
       emit();
     },
     setVolume(volume) {

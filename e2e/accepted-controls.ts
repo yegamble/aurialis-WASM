@@ -20,7 +20,7 @@ export async function observeAcceptedControls(page: Page): Promise<void> {
     };
   });
 }
-export async function expectHeaviestAccepted(page: Page): Promise<void> {
+export async function expectHeaviestAccepted(page: Page, algorithm: 2 | 3 = 2): Promise<{ version: number; values: number[] }> {
   await expect.poll(() => page.evaluate(() => (window as AcceptedWindow).qaAcceptedControls?.version ?? 0)).toBeGreaterThan(0);
   const accepted = await page.evaluate(() => (window as AcceptedWindow).qaAcceptedControls);
   if (!accepted) throw new Error("No Go-accepted controls");
@@ -32,6 +32,7 @@ export async function expectHeaviestAccepted(page: Page): Promise<void> {
     limiter: values[46], ceiling: values[47], truePeak: values[50], autoRelease: values[56], mid: values[57], side: values[58],
     deHarsh: values[59], multiband: values[63], multibandRatios: [67, 72, 77].map((index) => values[index]), algorithm: values[81] })
     .toEqual({ input: 6, eq: 1, gains: [2, 2, 2, 2, 2], bands: [1, 1, 1, 1, 1], compressor: 1, ratio: 3, saturation: 1, drive: 60, width: 130, stereo: 1, monoBass: 1,
-      limiter: 1, ceiling: -1, truePeak: 1, autoRelease: 1, mid: 1, side: -1, deHarsh: 1, multiband: 1, multibandRatios: [3, 3, 3], algorithm: 2 });
+      limiter: 1, ceiling: -1, truePeak: 1, autoRelease: 1, mid: 1, side: -1, deHarsh: 1, multiband: 1, multibandRatios: [3, 3, 3], algorithm });
   await expect(page.locator(".transport")).toHaveAttribute("data-applied-version", String(accepted.version));
+  return accepted;
 }

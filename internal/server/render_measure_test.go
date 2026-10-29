@@ -76,3 +76,33 @@ func TestRenderMeasurementSelection(t *testing.T) {
 		}
 	})
 }
+
+func TestMonitorModeRejectsExportsAndOtherOperations(t *testing.T) {
+	srv := server.New(server.Config{Workers: 1})
+	defer srv.Close()
+	wav, err := audio.EncodeWAV(make([]float32, 128), make([]float32, 128), 8000, 32)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		target string
+		fields map[string]string
+	}{
+		{"/api/master/render", map[string]string{"monitorMode": "mono"}},
+		{"/api/master/render", map[string]string{"monitorMode": ""}},
+		{"/api/master/render", map[string]string{"monitorMode": "side", "format": "wav"}},
+		{"/api/master/render", map[string]string{"monitorMode": "middle", "format": "json"}},
+		{"/api/analyze/features", map[string]string{"monitorMode": "mono"}},
+	} {
+		rec := httptest.NewRecorder()
+		srv.Handler().ServeHTTP(rec, newMultipartRequest(t, http.MethodPost, c.target, "source.wav", wav, c.fields))
+		if rec.Code != 400 {
+			t.Fatalf("accepted %v: %d", c, rec.Code)
+		}
+	}
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, repeatedFieldRequest(t, "/api/master/render", wav, "monitorMode", []string{"mono", "side"}))
+	if rec.Code != 400 {
+		t.Fatal("duplicate mode accepted")
+	}
+}

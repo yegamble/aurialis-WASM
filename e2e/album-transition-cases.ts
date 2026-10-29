@@ -1,0 +1,74 @@
+import { readFile } from "node:fs/promises";
+import { expect, test, type Page } from "@playwright/test";
+import { decode, fixture } from "./audio-fixture";
+import { uploadProject } from "./workflow-fixture";
+
+async function download(page: Page, name: string): Promise<Buffer> {
+  const waiting = page.waitForEvent("download");
+  await page.getByRole("button", { name, exact: true }).click();
+  return readFile(await (await waiting).path());
+}
+async function build(page: Page): Promise<Buffer> {
+  await page.getByRole("button", { name: "Build continuous WAV", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Download continuous WAV", exact: true })).toBeVisible({ timeout: 60_000 });
+  const audio = page.getByLabel("Continuous album preview", { exact: true });
+  await expect(audio).toHaveAttribute("preload", "none");
+  expect(await audio.evaluate((node: HTMLAudioElement) => node.paused)).toBe(true);
+  return download(page, "Download continuous WAV");
+}
+
+test("continuous album preserves masters, inserts silence, mixes linear edges and cancels pending work", async ({ page }) => {
+  test.setTimeout(180_000);
+  await uploadProject(page, "sequence-first.wav", 1, fixture(330, 1));
+  await uploadProject(page, "sequence-second.wav", 1, fixture(550, 1));
+  await page.goto("/albums");
+  await page.getByRole("button", { name: "New album", exact: true }).click();
+  await page.getByRole("link", { name: /Untitled sequence 1/ }).click();
+  await page.getByRole("button", { name: "sequence first", exact: true }).click();
+  await page.getByRole("button", { name: "sequence second", exact: true }).click();
+  await page.getByRole("button", { name: "Render album masters", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Download sequence second", exact: true })).toBeVisible({ timeout: 60_000 });
+  const first = await download(page, "Download sequence first"), second = await download(page, "Download sequence second");
+  const gapless = await build(page);
+  expect(gapless.subarray(44).equals(Buffer.concat([first.subarray(44), second.subarray(44)]))).toBe(true);
+  const one = decode(first), two = decode(second);
+  expect(decode(gapless).left).toHaveLength(one.left.length + two.left.length);
+
+  const transitions = page.getByRole("region", { name: "Album transitions", exact: true });
+  await transitions.getByRole("button", { name: "Silence between tracks", exact: true }).click();
+  await page.getByRole("slider", { name: "Gap duration", exact: true }).fill("0.2");
+  await expect(page.getByRole("button", { name: "Download continuous WAV", exact: true })).toHaveCount(0);
+  const gap = await build(page), align = first.readUInt16LE(32), frames = Math.round(one.rate * 0.2);
+  expect(gap.subarray(44).equals(Buffer.concat([first.subarray(44), Buffer.alloc(frames * align), second.subarray(44)]))).toBe(true);
+
+  await transitions.getByRole("button", { name: "Linear crossfade", exact: true }).click();
+  await page.getByRole("slider", { name: "Crossfade duration", exact: true }).fill("0.2");
+  const crossfade = await build(page), result = decode(crossfade), start = one.left.length - frames;
+  expect(result.left).toHaveLength(one.left.length + two.left.length - frames);
+  expect(crossfade.subarray(44, 44 + start * align).equals(first.subarray(44, 44 + start * align))).toBe(true);
+  expect(crossfade.subarray(44 + one.left.length * align).equals(second.subarray(44 + frames * align))).toBe(true);
+  const tolerance = 2 / 2 ** (one.bits - 1);
+  for (const index of [0, Math.floor(frames / 2), frames - 1]) {
+    const mix = index / (frames - 1);
+    for (const channel of ["left", "right"] as const) {
+      const expected = (one[channel][start + index] ?? 0) * (1 - mix) + (two[channel][index] ?? 0) * mix;
+      expect(Math.abs((result[channel][start + index] ?? 0) - expected)).toBeLessThanOrEqual(tolerance);
+    }
+  }
+  expect((await download(page, "Download sequence first")).equals(first)).toBe(true);
+  expect((await download(page, "Download sequence second")).equals(second)).toBe(true);
+
+  await page.getByRole("button", { name: "Discard continuous WAV", exact: true }).click();
+  let release: (() => void) | undefined, entered: (() => void) | undefined;
+  const blocked = new Promise<void>((resolve) => { release = resolve; });
+  const started = new Promise<void>((resolve) => { entered = resolve; });
+  await page.route("**/offline-job-worker.js", async (route) => { entered?.(); await blocked; await route.continue(); });
+  try {
+    await page.getByRole("button", { name: "Build continuous WAV", exact: true }).click();
+    await started;
+    await page.getByRole("button", { name: "Cancel continuous album", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Build continuous WAV", exact: true })).toBeEnabled();
+    await expect(transitions.getByRole("status")).toContainText("cancelled");
+    await expect(page.getByRole("button", { name: "Download continuous WAV", exact: true })).toHaveCount(0);
+  } finally { release?.(); await page.unrouteAll({ behavior: "wait" }); }
+});

@@ -55,5 +55,5 @@ describe.each([
 
 it("keeps the two availability statements distinct and honest about speed", () => {
   expect(stemSplitAvailability(true)).toBe("Smart Split runs only in the native Aurialis build (built from source); it isn't available in the browser.");
-  expect(stemSplitAvailability(false)).toMatch(/took about 32 seconds.*did not finish one 20-second window in 30 minutes/su);
+  expect(stemSplitAvailability(false)).toMatch(/took about 32 seconds.*Qualified Linux and Windows builds need an AVX2\/FMA processor/su);
 });

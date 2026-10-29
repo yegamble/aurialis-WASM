@@ -140,7 +140,7 @@ jobs:
         run: go test -run '^Test(ExportMeter|TruePeakMeterReads|LiveMeter)' -count=1 ./internal/audio/dsp
       - name: Verify complete oversampling spectral and saturation matrices without the race detector
         timeout-minutes: 5
-        run: go test -run '^Test(Oversampl|CenteredADAA|HighRateReference|Polyphase)' -count=1 ./internal/audio/dsp
+        run: go test -run '^Test(Oversampled|Oversampling|CenteredADAA|HighRateReference|Polyphase)' -count=1 ./internal/audio/dsp
       - name: Install FFmpeg for independent meter verification
         timeout-minutes: 5
         run: |

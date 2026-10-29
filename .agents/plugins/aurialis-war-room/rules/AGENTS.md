@@ -65,7 +65,7 @@ go test -race -count=1 ./...
 # and complete oversampling spectral/saturation matrix without instrumentation too.
 go test -run 'HoldTheCeilingAgainstTheLongSincReference$|^TestLivePlaybackOfALoudAbruptEndRendersTheExport$' -count=1 ./wasm/dsp
 go test -run '^Test(ExportMeter|TruePeakMeterReads|LiveMeter)' -count=1 ./internal/audio/dsp
-go test -run '^Test(Oversampl|CenteredADAA|HighRateReference|Polyphase)' -count=1 ./internal/audio/dsp
+go test -run '^Test(Oversampled|Oversampling|CenteredADAA|HighRateReference|Polyphase)' -count=1 ./internal/audio/dsp
 GOOS=js GOARCH=wasm go build -o public/wasm/aurialis-dsp.wasm ./wasm/dsp
 
 # 2. Next.js 16 / TypeScript & Bundle Quality Gate (pnpm only — direct equivalents to Go linters)

@@ -16,7 +16,7 @@ func (b *flacTestBits) put(value int64, width uint) {
 		if b.count%8 == 0 {
 			b.data = append(b.data, 0)
 		}
-		b.data[len(b.data)-1] |= byte((uint64(value)>>(i-1))&1) << (7 - b.count%8)
+		b.data[len(b.data)-1] |= byte((uint64(value)>>(i-1))&1) << (7 - b.count%8) // #nosec G115 -- encode signed two's-complement test bits
 		b.count++
 	}
 }

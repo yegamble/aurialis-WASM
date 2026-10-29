@@ -48,7 +48,7 @@ func floatAIFC(sample float32) []byte {
 	copy(comm[8:], []byte{0x40, 0x0e, 0xbb, 0x80, 0, 0, 0, 0, 0, 0})
 	copy(comm[18:], "fl32")
 	raw = append(raw, []byte("COMM")...)
-	raw = binary.BigEndian.AppendUint32(raw, uint32(len(comm)))
+	raw = binary.BigEndian.AppendUint32(raw, 22)
 	raw = append(raw, comm...)
 	raw = append(raw, []byte("SSND")...)
 	raw = binary.BigEndian.AppendUint32(raw, 72)
@@ -56,7 +56,7 @@ func floatAIFC(sample float32) []byte {
 	for i := 0; i < 16; i++ {
 		binary.BigEndian.PutUint32(raw[len(raw)-64+i*4:], math.Float32bits(sample))
 	}
-	binary.BigEndian.PutUint32(raw[4:], uint32(len(raw)-8))
+	binary.BigEndian.PutUint32(raw[4:], uint32(len(raw)-8)) // #nosec G115 -- fixed 122-byte AIFF-C fixture
 	return raw
 }
 

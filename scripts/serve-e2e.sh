@@ -25,11 +25,22 @@ else
   python3 - "$binary" <<'PY'
 import subprocess
 import sys
+import os
+import signal
 
+process = subprocess.Popen(["bash", "scripts/build-e2e.sh", sys.argv[1]], start_new_session=True)
 try:
-    subprocess.run(["bash", "scripts/build-e2e.sh", sys.argv[1]], check=True, timeout=480)
+    result = process.wait(timeout=480)
 except subprocess.TimeoutExpired as error:
+    os.killpg(process.pid, signal.SIGTERM)
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+        process.wait()
     raise SystemExit(f"Cold QA build exceeded its 8 minute deadline: {error}")
+if result != 0:
+    raise SystemExit(result)
 PY
 fi
 if ! LC_ALL=C grep -aFq '{"schema":1,"target":"native"}' "$binary"; then

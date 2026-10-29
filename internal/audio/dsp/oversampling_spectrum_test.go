@@ -100,10 +100,17 @@ func TestOversampledHighOrderAliasingIsMeasuredSeparately(t *testing.T) {
 	const count = 16384
 	plan := fft.New(count, fft.DirectTwiddles)
 	worst, worstCase, ordinary := -300.0, "", -300.0
-	for _, rate := range []float64{44100, 48000} {
+	rates := []float64{44100, 48000}
+	amplitudes, bins := []float64{.25, .5, 1}, []int{3501, 6061, 7507}
+	if raceEnabled {
+		// Keep every nonlinear character, ordinary/stress levels and the highest
+		// frequency under instrumentation. CI runs the complete spectral grid separately.
+		rates, amplitudes, bins = []float64{48000}, []float64{.25, 1}, []int{7507}
+	}
+	for _, rate := range rates {
 		for _, character := range []SatCharacter{SatWarm, SatThick, SatCrisp, SatTube, SatTape, SatTransformer} {
-			for _, amplitude := range []float64{.25, .5, 1} {
-				for _, bin := range []int{3501, 6061, 7507} {
+			for _, amplitude := range amplitudes {
+				for _, bin := range bins {
 					alias, relative, peakBin := toneAlias(t, plan, rate, character, amplitude, bin, OversampledAlgorithmVersion)
 					classic, _, _ := toneAlias(t, plan, rate, character, amplitude, bin, TruePeakAlgorithmVersion)
 					t.Logf("%.0f Hz %s drive100 input%.2f tone%.1fHz: largest non-harmonic %.2f dBFS / %.2f dBc at %.1fHz; classic %.2f dBFS", rate, character, amplitude, rate*float64(bin)/count, alias, relative, rate*float64(peakBin)/count, classic)
@@ -162,18 +169,30 @@ func TestHighRateReferenceDistinguishesFoldbackFromIntendedHarmonics(t *testing.
 func oversampledTone(p Params, rate int, frequency, amplitude float64) ([]float32, []float32) {
 	engine := NewEngine(float64(rate))
 	engine.SetParams(p)
-	input, output := make([]float32, 2*rate), make([]float32, 2*rate)
+	settledFrames := rate
+	if raceEnabled {
+		// Static saturation/FIR probes retain 250 ms to settle and a coherent
+		// 250 ms observation window. The non-race grid retains both full seconds.
+		settledFrames = rate / 4
+	}
+	input, output := make([]float32, 2*settledFrames), make([]float32, 2*settledFrames)
 	for i := range input {
 		input[i] = float32(amplitude * math.Sin(2*math.Pi*frequency*float64(i)/float64(rate)))
 	}
 	engine.ProcessBlock(input, input, output, make([]float32, len(output)))
-	return input[rate:], output[rate:]
+	return input[settledFrames:], output[settledFrames:]
 }
 
 func TestOversampledCharactersRetainProgramGainAndLowLevelResponse(t *testing.T) {
-	for _, rate := range []int{44100, 48000} {
+	rates, amounts := []int{44100, 48000}, []float64{10, 50, 100}
+	if raceEnabled {
+		// Exercise all seven characters and every response assertion at maximum
+		// drive. The explicit non-race gate retains both rates and all three drives.
+		rates, amounts = []int{48000}, []float64{100}
+	}
+	for _, rate := range rates {
 		for _, character := range []SatCharacter{SatWarm, SatThick, SatCrisp, SatClean, SatTube, SatTape, SatTransformer} {
-			for _, amount := range []float64{10, 50, 100} {
+			for _, amount := range amounts {
 				p := DefaultParams()
 				p.AlgorithmVersion = OversampledAlgorithmVersion
 				p.Saturation = SaturationParams{Enabled: true, Character: character, Amount: amount}

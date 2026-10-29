@@ -19,6 +19,7 @@ import { ExtendedCompressorControls, ExtendedStereoControls, FrequencyDynamicsCo
 import { DSPModule } from "./shared/DSPModule";
 import { EQBandControls, LimiterReleaseControl } from "./shared/EQBandControls";
 import { RealTransport } from "./shared/RealTransport";
+import { relativeSeekPosition } from "@/lib/playback-position";
 import { useLoudnessMatch } from "@/lib/use-loudness-match";
 import { ReleaseReview } from "./shared/ReleaseReview";
 import { AuditionExport, auditionKey, type AuditionHandle, type HeldAudition } from "./shared/AuditionExport";
@@ -752,7 +753,7 @@ function MasterView({ trackId }: { trackId: string }) {
     const current = controller.getState();
     const intendedPlaying = scrub.current?.wasPlaying ?? current.playing;
     stopScrub(false);
-    if (!nextTrack) { controller.seek(Math.min(current.duration, current.position + 10)); return; }
+    if (!nextTrack) { controller.seek(relativeSeekPosition(current, 10)); return; }
     stageNextPlaybackHandoff({ fromTrackId: trackId, trackId: nextTrack.id, playing: intendedPlaying, volume: current.volume });
     handoverActive.current = true;
     setHandover(true);

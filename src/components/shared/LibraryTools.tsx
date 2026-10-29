@@ -9,6 +9,7 @@ import { useTransportScrub } from "@/lib/use-transport-scrub";
 import { useStore } from "@/lib/store";
 import type { Track } from "@/lib/types";
 import { Button, Modal } from "./Primitives";
+import { relativeSeekPosition } from "@/lib/playback-position";
 import { RealTransport } from "./RealTransport";
 
 export function StorageGuidance({ revision }: { revision: number }) {
@@ -93,6 +94,6 @@ export function LibraryPreview({ track, onClose }: { track: Track; onClose: () =
   return <Modal open title={`Preview “${track.title}”`} onClose={onClose}>
     <p className="disclosure">Listen through this project’s current processing settings. A/B compares the original source.</p>
     {error && <p role="alert" className="disclosure text-danger">{error}</p>}
-    <RealTransport inline state={state} sourceReady={live.current !== null} onPlay={async () => { try { stopScrub(false); await live.current?.play(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Press Play to retry."); } }} onPause={() => { stopScrub(false); live.current?.pause(); }} onOriginal={(value) => { live.current?.setBypass(value); }} onVolume={(value) => { live.current?.setVolume(value); }} onRestart={() => { seek(0); }} onForward={() => { seek((state?.position ?? 0) + 10); }} onRepeat={(value) => { live.current?.setRepeat(value); }} onScrub={onScrub} />
+    <RealTransport inline state={state} sourceReady={live.current !== null} onPlay={async () => { try { stopScrub(false); await live.current?.play(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Press Play to retry."); } }} onPause={() => { stopScrub(false); live.current?.pause(); }} onOriginal={(value) => { live.current?.setBypass(value); }} onVolume={(value) => { live.current?.setVolume(value); }} onRestart={() => { seek(0); }} onForward={() => { if (state) seek(relativeSeekPosition(state, 10)); }} onRepeat={(value) => { live.current?.setRepeat(value); }} onScrub={onScrub} />
   </Modal>;
 }

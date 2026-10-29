@@ -1,6 +1,6 @@
 package steminfer
 
-// cspell:words steminfer fullwindow
+// cspell:words gonum steminfer fullwindow
 
 import (
 	"context"
@@ -24,10 +24,21 @@ type fullWindowTensor struct {
 // by testdata/fullwindow_oracle.py (oracle.json + oracle.bin).
 func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	directory := os.Getenv("AURIALIS_STEM_FULL_ORACLE")
+	qualification := os.Getenv("AURIALIS_STEM_QUALIFY_NATIVE") == "1"
+	observed := qualification || os.Getenv("AURIALIS_STEM_OBSERVE_NATIVE") == "1"
+	if observed && (directory == "" || os.Getenv("AURIALIS_STEM_MODEL") == "") {
+		t.Fatal("native qualification requires the synthetic oracle and pinned model")
+	}
+	if qualification && matrixBackendName() != "gonum-sse3" && matrixBackendName() != "packed-avx2-fma" {
+		t.Fatalf("qualification did not select a candidate native kernel: %s", matrixBackendName())
+	}
 	if directory == "" {
 		t.Skip("set the full-window PyTorch oracle directory")
 	}
+	loadStarted := time.Now()
 	archive := actualArchive(t)
+	t.Logf("model load took %s", time.Since(loadStarted))
+	t.Logf("matrix backend %s", matrixBackendName())
 	metadataBytes, err := boundedTestArtifact(filepath.Join(directory, "oracle.json"), 1<<20)
 	if err != nil {
 		t.Fatal(err)
@@ -40,9 +51,12 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	if err := json.Unmarshal(metadataBytes, &metadata); err != nil || metadata.Format != "aurialis-original-full-window-v1" || metadata.Samples != maximumWindowSamples {
 		t.Fatal("unexpected full-window oracle", err, metadata.Format, metadata.Samples)
 	}
-	raw, err := boundedTestArtifact(filepath.Join(directory, "oracle.bin"), 256<<20)
+	raw, err := readFullWindowOracle(directory)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if observed {
+		verifyNativeSyntheticOracle(t, metadataBytes, raw)
 	}
 	read := func(name string) []float32 {
 		tensor, ok := metadata.Tensors[name]
@@ -57,13 +71,32 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 	}
 	source := read("source")
 	samples := metadata.Samples
+	setupStarted := time.Now()
 	runner, err := newWindowRunner(context.Background(), archive, samples, defaultWorkers())
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Logf("window setup took %s", time.Since(setupStarted))
 	names := [5]string{"vocal", "drums", "bass", "guitar", "piano"}
+	stopMemory := func() {}
+	if observed {
+		stopMemory = observeNativeQualificationHeap(t, len(raw))
+	}
+	defer stopMemory()
 	started := time.Now()
-	err = runner.predict(context.Background(), source[:samples], source[samples:], []int{0, 1, 2, 3, 4}, func(head int, left, right []float32) error {
+	ctx := context.Background()
+	cancel := func() {}
+	hooks := inferenceHooks{}
+	if qualification {
+		ctx, cancel = context.WithTimeout(ctx, 180*time.Second)
+	}
+	if observed {
+		hooks.progress = func(completed, total int) {
+			t.Logf("native inference step %d/%d elapsed %s", completed, total, time.Since(started))
+		}
+	}
+	defer cancel()
+	err = runner.predict(ctx, source[:samples], source[samples:], []int{0, 1, 2, 3, 4}, func(head int, left, right []float32) error {
 		expected := read("pcm." + names[head])
 		var worst, errorEnergy, signalEnergy float64
 		for channel, got := range [2][]float32{left, right} {
@@ -81,9 +114,17 @@ func TestFullWindowMatchesPyTorchOriginal(t *testing.T) {
 			t.Errorf("%s drifted from the original model: max %.3g, SNR %.1f dB", names[head], worst, snr)
 		}
 		return nil
-	}, inferenceHooks{})
+	}, hooks)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("window took %v with %d lanes", time.Since(started), defaultWorkers())
+	elapsed := time.Since(started)
+	t.Logf("window took %v with %d lanes", elapsed, defaultWorkers())
+	if qualification && elapsed > 180*time.Second {
+		t.Errorf("native window took %s, exceeds qualified 180s usable budget", elapsed)
+	}
+	if observed {
+		stopMemory()
+		verifyNativeWindowCancellation(t, runner, source[:samples], source[samples:])
+	}
 }

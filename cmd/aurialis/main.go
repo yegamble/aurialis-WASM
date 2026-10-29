@@ -154,10 +154,10 @@ func configureStems(cfg *server.Config, url, dir string) error {
 		dir = filepath.Join(cache, "Aurialis", "models")
 	}
 	store := &steminfer.Store{Dir: dir, URL: url, Client: &http.Client{Timeout: 30 * time.Minute}}
-	speed, accelerated := steminfer.RecordedSpeed()
-	// Plain Go did not finish one 20-second window in 30 minutes, so a song
-	// cannot finish inside the 90-minute job limit: Smart Split stays
-	// unavailable on builds without Apple Accelerate.
+	speed, speedKnown := steminfer.RecordedSpeed()
+	accelerated := steminfer.Accelerated()
+	// Availability follows the qualified kernel, independently of whether
+	// this backend has a published per-device timing estimate.
 	if accelerated {
 		cfg.Separator = func(ctx context.Context, rate, stems int, left, right []float32, sink func(int, int, []float32, []float32) error, progress func(float64)) error {
 			model, err := store.Model(ctx)
@@ -174,7 +174,7 @@ func configureStems(cfg *server.Config, url, dir string) error {
 			Downloaded: status.Written, Total: steminfer.ModelBytes, State: string(status.State),
 			Accelerated: accelerated, Backend: steminfer.Backend(), Arch: runtime.GOARCH,
 		}
-		if accelerated {
+		if speedKnown {
 			report.Speed = &server.StemSpeed{WindowSeconds: speed.WindowSeconds, HopSeconds: speed.HopSeconds,
 				IdleSecondsPerWindow: speed.IdleSecondsPerWindow, BusySecondsPerWindow: speed.BusySecondsPerWindow}
 		}

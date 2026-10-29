@@ -1,0 +1,226 @@
+name: Smart Split Native Qualification (informational)
+
+# This candidate workflow measures real hosted CPU behavior only. It is not a
+# required check and it never changes platform readiness flags.
+on:
+  push:
+    branches:
+      - codex/complete-backend
+  workflow_dispatch:
+
+concurrency:
+  group: steminfer-native-qualification-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  qualification:
+    name: native ${{ matrix.platform }} model qualification
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.job_timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: ubuntu-latest
+            cache_role: native-qualification-linux
+            qualify: "true"
+            pipeline: "true"
+            job_timeout: 40
+          - platform: windows-amd64
+            runner: windows-latest
+            cache_role: native-qualification-windows
+            qualify: "true"
+            pipeline: "true"
+            job_timeout: 40
+          - platform: intel-macos
+            runner: macos-15-intel
+            cache_role: native-qualification-intel-macos
+            qualify: "false"
+            pipeline: "true"
+            job_timeout: 35
+    steps:
+      - name: Checkout source and synthetic fixture
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/setup-go
+        with:
+          role: stem-${{ matrix.cache_role }}
+
+      - name: Create non-sensitive runner evidence directory
+        shell: bash
+        run: mkdir -p "$RUNNER_TEMP/steminfer-evidence"
+
+      - name: Download exact public model pinned by Go source
+        shell: bash
+        run: python3 .github/scripts/download-stem-model.py "$RUNNER_TEMP/mega53-five-heads-v1.safetensors"
+
+      - name: Record runner and model metadata
+        shell: bash
+        run: |
+          python3 - "$RUNNER_TEMP/mega53-five-heads-v1.safetensors" "$RUNNER_TEMP/steminfer-evidence/runner.json" <<'PY'
+          import hashlib
+          import json
+          import platform
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          model = Path(sys.argv[1])
+          checksum = hashlib.sha256()
+          with model.open("rb") as source:
+              for chunk in iter(lambda: source.read(1 << 20), b""):
+                  checksum.update(chunk)
+          digest = checksum.hexdigest()
+          metadata = {
+              "runnerOS": platform.system(),
+              "runnerRelease": platform.release(),
+              "machine": platform.machine(),
+              "processor": platform.processor(),
+              "goVersion": subprocess.check_output(["go", "version"], text=True).strip(),
+              "modelBytes": model.stat().st_size,
+              "modelSHA256": digest,
+              "qualificationCandidate": "${{ matrix.qualify }}" == "true",
+              "platformReadinessChanged": False,
+              "workflowRef": "${{ github.ref }}",
+          }
+          Path(sys.argv[2]).write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(metadata, sort_keys=True))
+          PY
+
+      - name: Check native matrix correctness and bounded cancellation
+        shell: bash
+        env:
+          GOMAXPROCS: "2"
+        run: |
+          set -euo pipefail
+          go test -run '^Test(PackedMatrix|Gonum|Vector|FullKeySoftmax|ExactFormActivations|BackendReportsAcceleration)' -count=1 -v -timeout=2m ./internal/audio/steminfer 2>&1 \
+            | tee "$RUNNER_TEMP/steminfer-evidence/matrix-kernels.log"
+          go test -run '^TestConfigureStemsReportsBackendAndCacheState$' -count=1 -v ./cmd/aurialis 2>&1 \
+            | tee "$RUNNER_TEMP/steminfer-evidence/backend-availability.log"
+          if [ "${{ matrix.qualify }}" = "true" ]; then
+            GODEBUG=cpu.all=off AURIALIS_STEM_EXPECT_SCALAR=1 \
+              go test -run '^TestGonumUnsupportedCPUStaysUnavailable$' -count=1 -v ./internal/audio/steminfer 2>&1 \
+              | tee "$RUNNER_TEMP/steminfer-evidence/matrix-scalar-fallback.log"
+          fi
+
+      - name: Compare full inference window with original model
+        id: full-window
+        shell: bash
+        env:
+          AURIALIS_STEM_MODEL: ${{ runner.temp }}/mega53-five-heads-v1.safetensors
+          AURIALIS_STEM_FULL_ORACLE: ${{ github.workspace }}/internal/audio/steminfer/testdata/native-synthetic-full
+          GOMAXPROCS: "2"
+          QUALIFY_NATIVE: ${{ matrix.qualify }}
+          AURIALIS_STEM_OBSERVE_NATIVE: "1"
+        run: |
+          set -euo pipefail
+          if [ "$QUALIFY_NATIVE" = "true" ]; then export AURIALIS_STEM_QUALIFY_NATIVE=1; fi
+          # Sampling adds overhead; the same 180s qualification gate still applies.
+          go test -cpuprofile="$RUNNER_TEMP/steminfer-evidence/full-window.cpu" -run '^TestFullWindowMatchesPyTorchOriginal$' -count=1 -v -timeout=10m ./internal/audio/steminfer 2>&1 \
+            | tee "$RUNNER_TEMP/steminfer-evidence/full-window.log"
+
+      - name: Measure fixed 20-second six-stem pipeline and reconstruction
+        id: pipeline
+        if: matrix.pipeline == 'true'
+        shell: bash
+        env:
+          AURIALIS_STEM_MODEL: ${{ runner.temp }}/mega53-five-heads-v1.safetensors
+          AURIALIS_STEM_MEASURE_PIPELINE: "1"
+          GOMAXPROCS: "2"
+        run: |
+          set -euo pipefail
+          # The test's 9-minute Go timeout bounds this model execution independently.
+          go test -run '^TestMeasureFixedTwentySecondTrainedPipeline$' -count=1 -v -timeout=9m ./internal/audio/steminfer 2>&1 \
+            | tee "$RUNNER_TEMP/steminfer-evidence/six-stem-pipeline.log"
+
+      - name: Write structured qualification diagnostics
+        if: always()
+        shell: bash
+        env:
+          FULL_WINDOW_OUTCOME: ${{ steps.full-window.outcome }}
+          PIPELINE_OUTCOME: ${{ steps.pipeline.outcome }}
+          QUALIFICATION_CANDIDATE: ${{ matrix.qualify }}
+        run: |
+          python3 - "$RUNNER_TEMP/steminfer-evidence" <<'PY'
+          import json
+          import os
+          import re
+          import sys
+          from pathlib import Path
+
+          evidence = Path(sys.argv[1])
+          full_log = evidence / "full-window.log"
+          pipeline_log = evidence / "six-stem-pipeline.log"
+          full_text = full_log.read_text(encoding="utf-8", errors="replace") if full_log.exists() else ""
+          pipeline_text = pipeline_log.read_text(encoding="utf-8", errors="replace") if pipeline_log.exists() else ""
+          full_text = re.sub(r"^\s+\S+\.go:\d+:\s*", "", full_text, flags=re.MULTILINE)
+          pipeline_text = re.sub(r"^\s+\S+\.go:\d+:\s*", "", pipeline_text, flags=re.MULTILINE)
+          heads = {}
+          for match in re.finditer(r"^(vocal|drums|bass|guitar|piano): max \|Go-PyTorch\| ([^,]+), SNR ([^ ]+) dB$", full_text, re.MULTILINE):
+              heads[match.group(1)] = {"maxAbsoluteError": float(match.group(2)), "snrDb": float(match.group(3))}
+          duration = re.search(r"^window took (.+) with ([0-9]+) lanes$", full_text, re.MULTILINE)
+          model_load = re.search(r"^model load took (.+)$", full_text, re.MULTILINE)
+          window_setup = re.search(r"^window setup took (.+)$", full_text, re.MULTILINE)
+          backend = re.search(r"^matrix backend (.+)$", full_text, re.MULTILINE)
+          heap = re.search(r"^native qualification peak Go heap=([0-9]+) bytes", full_text, re.MULTILINE)
+          cancellation = re.search(r"^same-model cancellation returned after (.+)$", full_text, re.MULTILINE)
+          pipeline_metrics = {}
+          for line in pipeline_text.splitlines():
+              if line.startswith("backend="):
+                  for item in line.split():
+                      key, separator, value = item.partition("=")
+                      if separator:
+                          pipeline_metrics[key] = value
+                  break
+          residual = re.search(r"^all six retained outputs finite; exact original duration; max absolute reconstruction error=([^ ]+)$", pipeline_text, re.MULTILINE)
+          cpu_profile = evidence / "full-window.cpu"
+          profile_bytes = cpu_profile.stat().st_size if cpu_profile.exists() else 0
+          if profile_bytes > 16 * 1024 * 1024:
+              cpu_profile.unlink()
+              raise SystemExit("CPU profile exceeded the 16 MiB evidence limit")
+          diagnostic = {
+              "qualificationCandidate": os.environ["QUALIFICATION_CANDIDATE"] == "true",
+              "platformReadinessChanged": False,
+              "profiledRun": True,
+              "boundedObservationRequested": True,
+              "windowBudgetSeconds": 180 if os.environ["QUALIFICATION_CANDIDATE"] == "true" else None,
+              "profileSamplingOverheadIncludedInWindowTiming": True,
+              "cpuProfileBytes": profile_bytes,
+              "outcomes": {
+                  "fullWindow": os.environ["FULL_WINDOW_OUTCOME"],
+                  "sixStemPipeline": os.environ["PIPELINE_OUTCOME"],
+              },
+              "fullWindow": {
+                  "headComparisons": heads,
+                  "modelLoadElapsed": model_load.group(1) if model_load else None,
+                  "windowSetupElapsed": window_setup.group(1) if window_setup else None,
+                  "matrixBackend": backend.group(1) if backend else None,
+                  "elapsed": duration.group(1) if duration else None,
+                  "lanes": int(duration.group(2)) if duration else None,
+                  "expectedHeadCount": 5,
+                  "peakGoHeapBytes": int(heap.group(1)) if heap else None,
+                  "cancellationElapsed": cancellation.group(1) if cancellation else None,
+              },
+              "sixStemPipeline": {
+                  "measurements": pipeline_metrics,
+                  "maximumReconstructionError": float(residual.group(1)) if residual else None,
+                  "expectedStemCount": 6,
+                  "expectedReconstructionErrorMaximum": 3e-8,
+              },
+          }
+          (evidence / "diagnostics.json").write_text(json.dumps(diagnostic, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(diagnostic, sort_keys=True))
+          PY
+
+      - name: Upload logs, synthetic CPU profile and runner metadata only
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: steminfer-native-${{ matrix.platform }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/steminfer-evidence/
+          if-no-files-found: ignore
+          retention-days: 30

@@ -1197,6 +1197,235 @@
           ]
         }
       }
+    },
+    {
+      "name": "TS-033 JSON Render Can Skip Source Measurement",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Measurement selection contract', function () { pm.response.to.have.status(200); const body=pm.response.json(); pm.expect(body.beforeMetrics).to.eql(null); pm.expect(body.afterMetrics).to.be.an('object'); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/master/render",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "format",
+              "type": "text",
+              "value": "json"
+            },
+            {
+              "key": "measure",
+              "type": "text",
+              "value": "render"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "TS-034 Reject Render Measurement Without JSON",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Measurement selection contract', function () { pm.response.to.have.status(400); const body=pm.response.json(); pm.expect(body.error).to.eql('invalid_multipart'); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/master/render",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "measure",
+              "type": "text",
+              "value": "render"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "TS-035 Reject Unknown Measurement Selection",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Measurement selection contract', function () { pm.response.to.have.status(400); const body=pm.response.json(); pm.expect(body.error).to.eql('invalid_multipart'); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/master/render",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "format",
+              "type": "text",
+              "value": "json"
+            },
+            {
+              "key": "measure",
+              "type": "text",
+              "value": "source"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "TS-036 Reject Repeated Measurement Selection",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Measurement selection contract', function () { pm.response.to.have.status(400); const body=pm.response.json(); pm.expect(body.error).to.eql('invalid_multipart'); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/master/render",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "measure",
+              "type": "text",
+              "value": "render"
+            },
+            {
+              "key": "measure",
+              "type": "text",
+              "value": "render"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "TS-037 Reject Measurement Selection On Feature Analysis",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Measurement selection contract', function () { pm.response.to.have.status(400); const body=pm.response.json(); pm.expect(body.error).to.eql('invalid_multipart'); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/analyze/features",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "measure",
+              "type": "text",
+              "value": "render"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "TS-038 Bypass Retains Source Measurement",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Measurement selection contract', function () { pm.response.to.have.status(200); const body=pm.response.json(); pm.expect(body.beforeMetrics).to.be.an('object'); pm.expect(body.afterMetrics).to.eql(body.beforeMetrics); });"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "{{baseUrl}}/api/master/render",
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{validWavPath}}"
+            },
+            {
+              "key": "format",
+              "type": "text",
+              "value": "json"
+            },
+            {
+              "key": "measure",
+              "type": "text",
+              "value": "render"
+            },
+            {
+              "key": "params",
+              "type": "text",
+              "value": "{\"bypass\":true}"
+            }
+          ]
+        }
+      }
     }
   ]
 }

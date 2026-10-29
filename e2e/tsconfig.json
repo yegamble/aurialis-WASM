@@ -1,6 +1,6 @@
 {
   "extends": "../tsconfig.json",
   "compilerOptions": { "incremental": false, "plugins": [] },
-  "include": ["./**/*.ts", "../playwright.config.ts"],
+  "include": ["./**/*.ts", "../playwright.config.ts", "../playwright.engines.config.ts"],
   "exclude": ["../node_modules"]
 }

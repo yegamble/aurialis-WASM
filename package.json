@@ -30,15 +30,15 @@
   "dependencies": {
     "@fontsource/instrument-sans": "^5.3.0",
     "@fontsource/newsreader": "^5.3.0",
-    "next": "^16.4.2",
+    "next": "^16.4.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
-    "@cloudflare/workers-types": "5.20261023.1",
+    "@cloudflare/workers-types": "5.20261030.1",
     "@eslint/js": "^9.20.0",
-    "@next/eslint-plugin-next": "^16.0.0",
+    "@next/eslint-plugin-next": "^16.4.3",
     "@playwright/test": "^1.50.0",
     "@tailwindcss/postcss": "^4.0.0",
     "@testing-library/jest-dom": "^6.6.3",
@@ -54,12 +54,12 @@
     "jsdom": "^26.0.0",
     "knip": "^5.43.0",
     "newman": "^6.2.3",
-    "postcss": "^8.5.0",
+    "postcss": "^8.5.32",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.8.2",
-    "typescript-eslint": "^8.24.0",
+    "typescript-eslint": "^8.72.1",
     "vitest": "^4.1.12",
-    "wrangler": "4.153.0"
+    "wrangler": "4.156.0"
   },
   "pnpm": {
     "overrides": {

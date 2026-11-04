@@ -9,6 +9,8 @@ The blanket “all slices verified” claim at `ade7736` is withdrawn. The earli
 
 **Local evidence:** strict TypeScript, configured ESLint, Knip and changed-file spelling checks passed. Frontend and native binary builds passed with Node 26.12.0 and Go 1.26.10. Browser checks passed for album panel spacing and arrangement at 320/375/390/768/1024/1440px, and inspector internal scrolling plus page handoff in both directions at 1024/1440px. COOP/COEP headers and zero horizontal overflow passed across nine routes at all six widths (50.2 s). The full Vitest run passed 859/862 cases: two overload-clock fallback assertions and one listening-mode timeout failed. An isolated serial rerun of the three affected files passed 88/88; this does not establish a clean full-suite run. Album controls and the measured chart passed responsive accessibility checks at all six widths, including axe (41.7 s). The owner authorized merging and pushing for deployment; remote CI and merge remain pending.
 
+**PR and dependency follow-up:** [PR #75](https://github.com/yegamble/aurialis-WASM/pull/75) is pushed. Its initial frontend CI stopped at the dependency audit because Newman’s test-runner dependency `node-forge` 1.4.0 has high-severity advisories. Raising the existing override floor to 1.4.1 resolves 1.4.3 in the lockfile; `pnpm audit --audit-level=high` now exits 0 under the existing ignore policy. No other dependencies or audio processing changed. The local Newman backend check and full serial Vitest rerun are running; exact-head remote CI, merge and deployment remain pending.
+
 ## Ledger, docs and branch truth (V1-12) — 2026-10-27
 
 V1-12 (P1), findings PE-7/8 and QA-8.

@@ -1852,9 +1852,9 @@ function AlbumView({ albumId }: { albumId: string }) {
         </> : <Button variant="secondary" icon={<Icon name="trash" />} disabled={working} onClick={() => { setConfirmDelete(true); }}>Delete album</Button>}
         {confirmDelete && <p className="disclosure">Deletes this album and its saved masters. Your projects and their sources stay in the Library.</p>}
       </div>
-      <AlbumSequence files={artifacts} identity={JSON.stringify([album.id, artifactKey, saved?.createdAt, rendered !== null])} title={album.title} transition={readAlbumTransition(album.transition)} disabled={working} onChange={(transition) => { dispatch({ type: "UPDATE_ALBUM", id: album.id, patch: { transition } }); }} />
-      <div className="album-layout">
-        <section className="paper-panel">
+      <div className="album-layout mt-[18px]">
+        <AlbumSequence files={artifacts} identity={JSON.stringify([album.id, artifactKey, saved?.createdAt, rendered !== null])} title={album.title} transition={readAlbumTransition(album.transition)} disabled={working} onChange={(transition) => { dispatch({ type: "UPDATE_ALBUM", id: album.id, patch: { transition } }); }} />
+        <section className="paper-panel album-running-order">
           <div className="section-heading">
             <div>
               <span className="eyebrow">Running order</span>

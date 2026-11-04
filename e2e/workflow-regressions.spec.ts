@@ -336,7 +336,7 @@ test("each visible audio slider changes its own settings without mutating anothe
 });
 
 
-test("album level and delivery sit side by side on desktop and stack on mobile", async ({ page }, info) => {
+test("album panels have padding and separation, with level and delivery paired on desktop", async ({ page }, info) => {
   await uploadProject(page, "album-layout.wav", 1);
   await page.goto("/albums"); await page.getByRole("button", { name: "New album", exact: true }).click();
   await page.getByRole("link", { name: /Untitled sequence 1/ }).click();
@@ -345,10 +345,61 @@ test("album level and delivery sit side by side on desktop and stack on mobile",
     await page.setViewportSize({ width, height: 1000 });
     const level = await page.getByRole("region", { name: "Album level", exact: true }).boundingBox();
     const delivery = await page.getByRole("region", { name: "Album delivery format", exact: true }).boundingBox();
+    const transitions = page.getByRole("region", { name: "Album transitions", exact: true });
+    const panel = await transitions.boundingBox();
+    const heading = await transitions.getByRole("heading", { name: "Album transitions", exact: true }).boundingBox();
+    const order = await page.locator(".album-running-order").boundingBox();
+    const deletion = await page.getByRole("button", { name: "Delete album", exact: true }).boundingBox();
+    if (!panel || !heading || !order || !deletion) throw new Error("Missing album transition layout");
+    expect(heading.x - panel.x).toBeGreaterThanOrEqual(20);
+    expect(heading.x + heading.width).toBeLessThanOrEqual(panel.x + panel.width - 20);
+    expect(panel.y - deletion.y - deletion.height).toBeGreaterThanOrEqual(18);
+    expect(order.y - panel.y - panel.height).toBeGreaterThanOrEqual(18);
+    expect(order.x).toBeCloseTo(panel.x, 0);
+    expect(order.width).toBeCloseTo(panel.width, 0);
     if (!level || !delivery) throw new Error("Missing album panels");
     if (width >= 1200) { expect(Math.abs(level.y - delivery.y)).toBeLessThan(1); expect(delivery.x).toBeGreaterThanOrEqual(level.x + level.width); }
     else expect(delivery.y).toBeGreaterThanOrEqual(level.y + level.height);
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBe(0);
     if (width === 320 || width === 1440) await page.screenshot({ path: info.outputPath(`album-layout-${String(width)}.png`), fullPage: true });
+  }
+});
+
+test("mastering inspector hands scrolling back to the page at both boundaries", async ({ page }) => {
+  await uploadProject(page, "inspector-scroll.wav", 1);
+  const inspector = page.getByRole("complementary", { name: "Mastering controls inspector", exact: true });
+  for (const width of [1024, 1440]) {
+    await page.setViewportSize({ width, height: 700 });
+    expect(await inspector.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeGreaterThan(0);
+    await page.evaluate(() => window.scrollTo(0, 100));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(100);
+    await inspector.evaluate((element) => { element.scrollTop = 0; });
+    const box = await inspector.boundingBox();
+    if (!box) throw new Error("Missing inspector");
+    await page.mouse.move(box.x + 2, Math.max(20, box.y + 20));
+    await page.mouse.wheel(0, -200);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(100);
+    expect(await inspector.evaluate((element) => element.scrollTop)).toBe(0);
+
+    await page.reload();
+    await expect(inspector).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await inspector.evaluate((element) => { element.scrollTop = 0; });
+    await inspector.hover({ position: { x: 2, y: 20 } });
+    await page.mouse.wheel(0, 150);
+    await expect.poll(() => inspector.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+    // Start with a fresh document so a prior wheel gesture cannot keep its
+    // scroll target while the test programmatically jumps to the bottom.
+    await page.reload();
+    await expect(inspector).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await inspector.evaluate((element) => { element.scrollTop = element.scrollHeight; });
+    await inspector.hover({ position: { x: 2, y: 20 } });
+    await expect.poll(async () => {
+      await page.mouse.wheel(0, 200);
+      return page.evaluate(() => window.scrollY);
+    }).toBeGreaterThan(0);
   }
 });

@@ -13,6 +13,13 @@ export const metadata: Metadata = {
   title: "Aurialis — Mastering, made human",
   description:
     "Self-contained WebAssembly audio mastering workstation for shaping tone, comparing direction, separating stems, and preparing releases.",
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/favicon-light.svg", type: "image/svg+xml", media: "(prefers-color-scheme: light)" },
+      { url: "/favicon-dark.svg", type: "image/svg+xml", media: "(prefers-color-scheme: dark)" },
+    ],
+  },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

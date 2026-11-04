@@ -1277,7 +1277,6 @@ input[type="range"] {
     padding-right: 8px;
     padding-bottom: 18px;
     scrollbar-gutter: stable;
-    overscroll-behavior-y: contain;
   }
 }
 
@@ -1453,7 +1452,7 @@ input[type="range"] {
   .album-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .album-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .album-layout > section { padding: 28px; }
-  .album-layout > section:first-child { grid-column: 1 / -1; }
+  .album-layout > .album-sequence, .album-layout > .album-running-order { grid-column: 1 / -1; }
   .album-hero { grid-template-columns: 180px minmax(0, 1fr) auto; padding-block: 65px; gap: 35px; }
   .album-hero .album-art-large { width: 180px; }
   .album-hero > .button { grid-column: auto; }

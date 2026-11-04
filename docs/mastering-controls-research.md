@@ -23,6 +23,12 @@ Glue, Add Air, Cut Mud and Tape Warmth are explicit setting shortcuts. Repeating
 
 New genre presets use modest tonal shifts, compression ratios, saturation and width. Intensity scales processing strength, rather than adding an unexplained fixed amount of distortion at zero. No preset silently changes the user's output target or claims automatic loudness normalization. De-harsh and multiband require explicit user selection because a genre label alone cannot establish that a mix needs corrective processing.
 
+## Original Aurialis comparison — 2026-11-04
+
+Source inspection compared [original Aurialis at `6fb7ade87b9896d55b49c4bd40edeb44bab8a053`](https://github.com/yegamble/Aurialis/tree/6fb7ade87b9896d55b49c4bd40edeb44bab8a053) with the current preset and shortcut mappings. Original Pop at 50% used a −19 dB compressor threshold, 2.5:1 ratio, +1.5 dB makeup and enabled low-band multiband compression. Current Pop with Clean at 50% uses −11 dB, 1.25:1, zero makeup and multiband off. Original Add Air applied +1.5 dB at 4 kHz and +3 dB at 12 kHz; the current shortcut applies +1 dB at 12 kHz. These values explain why the current starting points can produce smaller changes, although compression depends on the source level and envelope. This is a source comparison, not listening proof; no DSP changes were made for this investigation.
+
+The recommended direction is to retain gentle defaults while providing a useful stronger range, and judge compression by the gain reduction on the actual source rather than a fixed threshold alone. The Waves workflow references above support that approach; they do not establish Waves emulation or sonic equivalence. Any calibration change still needs measured output and level-matched listening evidence.
+
 ## Required evidence
 
 - Independent signal tests for each new parameter, including bypass, silence, sample-rate limits and finite output.

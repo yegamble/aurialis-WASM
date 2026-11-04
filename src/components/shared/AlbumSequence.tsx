@@ -75,7 +75,7 @@ export function AlbumSequence({ files, identity, title, transition, onChange, di
     }
   };
   const ready = held?.identity === key ? held : null;
-  return <section className="paper-panel grid gap-4" aria-labelledby={heading}>
+  return <section className="paper-panel album-sequence grid gap-4" aria-labelledby={heading}>
     <div><span className="eyebrow">Optional continuous export</span><h2 id={heading}>Album transitions</h2></div>
     <p className="disclosure">Individual masters keep their exact boundaries. Build a separate continuous stereo WAV to hear this running order. All masters need the same sample rate and bit depth.</p>
     <ChoiceGroup label="Transition" value={transition.mode} options={[{ value: "gapless", label: "Gapless" }, { value: "gap", label: "Silence between tracks" }, { value: "crossfade", label: "Linear crossfade" }]} onChange={(mode) => { onChange({ mode, seconds: mode === "gapless" ? 0 : transition.seconds || 1 }); }} />

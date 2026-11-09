@@ -30,17 +30,17 @@
   "dependencies": {
     "@fontsource/instrument-sans": "^5.3.0",
     "@fontsource/newsreader": "^5.3.0",
-    "next": "^16.4.2",
+    "next": "^16.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
-    "@cloudflare/workers-types": "5.20261023.1",
+    "@cloudflare/workers-types": "5.20261106.1",
     "@eslint/js": "^9.20.0",
-    "@next/eslint-plugin-next": "^16.0.0",
-    "@playwright/test": "^1.50.0",
-    "@tailwindcss/postcss": "^4.0.0",
+    "@next/eslint-plugin-next": "^16.4.5",
+    "@playwright/test": "^1.65.0",
+    "@tailwindcss/postcss": "^4.3.4",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.2.0",
     "@types/node": "^22.13.0",
@@ -50,16 +50,16 @@
     "eslint": "^9.20.0",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-security": "^3.0.1",
-    "fake-indexeddb": "^6.0.0",
+    "fake-indexeddb": "^6.2.7",
     "jsdom": "^26.0.0",
     "knip": "^5.43.0",
     "newman": "^6.2.3",
-    "postcss": "^8.5.0",
-    "tailwindcss": "^4.0.0",
+    "postcss": "^8.5.32",
+    "tailwindcss": "^4.3.4",
     "typescript": "^5.8.2",
-    "typescript-eslint": "^8.24.0",
+    "typescript-eslint": "^8.72.1",
     "vitest": "^4.1.12",
-    "wrangler": "4.153.0"
+    "wrangler": "4.158.0"
   },
   "pnpm": {
     "overrides": {

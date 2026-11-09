@@ -49,7 +49,7 @@
     "cspell": "^8.17.0",
     "eslint": "^9.20.0",
     "eslint-plugin-jsx-a11y": "^6.10.2",
-    "eslint-plugin-security": "^3.0.1",
+    "eslint-plugin-security": "^4.2.1",
     "fake-indexeddb": "^6.0.0",
     "jsdom": "^26.0.0",
     "knip": "^5.43.0",

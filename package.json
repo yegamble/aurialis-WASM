@@ -46,7 +46,7 @@
     "@types/node": "^22.13.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "cspell": "^8.17.0",
+    "cspell": "^10.4.0",
     "eslint": "^9.20.0",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-security": "^3.0.1",

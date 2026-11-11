@@ -56,7 +56,7 @@
     "newman": "^6.2.3",
     "postcss": "^8.5.0",
     "tailwindcss": "^4.0.0",
-    "typescript": "^5.8.2",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.24.0",
     "vitest": "^4.1.12",
     "wrangler": "4.153.0"
